@@ -1,8 +1,11 @@
 // =============================================
 // PurchaseBillImport.jsx
-// Purchase Bill from a JPG / PNG / PDF of the supplier's bill (server:
-// utils/purchaseBillImport.js).
-//   1. Upload - the bill is read (vendor, PAN, bill no, date, lines, VAT).
+// Purchase Bill from a JPG / PNG / PDF of the supplier's bill - free and
+// offline: the bill is read here in the browser (utils/billOcr.js -
+// Tesseract.js OCR / PDF.js, served by the app itself), the server picks
+// out its parts and matches them (utils/purchaseBillImport.js).
+//   1. Upload - read the text (vendor, PAN, bill no, date, lines, VAT). The
+//      text is shown and can be corrected and parsed again.
 //   2. Review - vendor found by PAN / ledger tag / name (change it if
 //      needed); each line shows its product:
 //        Remembered  - mapped the same way on this vendor's earlier bill
@@ -19,16 +22,25 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import Layout from '../components/Layout';
 import SearchablePopupSelect from '../components/SearchablePopupSelect';
+import { readBillText } from '../utils/billOcr';
 
 const fmt2 = n => Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const STATUS = { remembered: ['Remembered', 'bg-blue-100 text-blue-800'], suggested: ['Suggested', 'bg-green-100 text-green-800'], new: ['Looks new', 'bg-amber-100 text-amber-800'], manual: ['Chosen', 'bg-gray-100 text-gray-700'], create: ['New product', 'bg-purple-100 text-purple-800'] };
-const readFile = file => new Promise((resolve, reject) => { const r = new FileReader(); r.onload = () => resolve(r.result); r.onerror = reject; r.readAsDataURL(file); });
+const SOURCE = { image_ocr: 'image (OCR)', pdf_text: 'PDF text', pdf_ocr: 'scanned PDF (OCR)', pdf_mixed: 'PDF text + OCR' };
+let blankId = 1000;
+const blankLine = () => ({ index: blankId++, description: '', product_code: '', hs_code: '', batch_no: '', qty: 1, free_qty: 0, unit_text: '', rate: 0, discount_amount: 0, amount: 0,
+    checked: true, status: 'new', product_id: null, suggestions: [], unit_id: null, unit_matched: null, unit_warning: null,
+    new_product: { product_name: '', unit_id: null, unit_text: '', rate: 0, hs_code: '' } });
 
 export default function PurchaseBillImport() {
     const { authFetch } = useAuth();
     const [file, setFile] = useState(null);
     const [preview, setPreview] = useState(null);
     const [reading, setReading] = useState(false);
+    const [progress, setProgress] = useState(null);     // { status, progress }
+    const [ocr, setOcr] = useState(null);               // { text, source, pages, total_pages }
+    const [showText, setShowText] = useState(false);
+    const [layout, setLayout] = useState('table');
     const [result, setResult] = useState(null);        // server response
     const [head, setHead] = useState(null);            // { vendor_ledger_id, party_bill_no, bill_date, apply_vat }
     const [lines, setLines] = useState([]);
@@ -47,7 +59,7 @@ export default function PurchaseBillImport() {
     useEffect(() => () => { if (preview) URL.revokeObjectURL(preview); }, [preview]);
 
     const pick = f => {
-        setError(''); setResult(null); setDone(null);
+        setError(''); setResult(null); setDone(null); setOcr(null);
         if (!f) return;
         if (!/^(image\/(jpeg|jpg|png|webp)|application\/pdf)$/.test(f.type)) { setError('Choose a JPG, PNG, WEBP or PDF file'); return; }
         if (f.size > 20 * 1024 * 1024) { setError('File too large - keep it under 20 MB'); return; }
@@ -55,25 +67,49 @@ export default function PurchaseBillImport() {
     };
     const toLine = l => ({ ...l, choice: l.product_id ? (l.status === 'remembered' ? 'remembered' : 'suggested') : 'new', new_name: l.new_product.product_name, new_unit_id: l.new_product.unit_id || '', new_rate: l.rate });
 
+    // Text -> bill parts + matches (server).
+    const parse = async text => {
+        const res = (await authFetch('/api/purchase-bill-import/extract', { method: 'POST', body: JSON.stringify({ file_name: file?.name || '', text }) })).data;
+        setResult(res);
+        setHead(h => ({ vendor_ledger_id: res.vendor.ledger_id || h?.vendor_ledger_id || '', party_bill_no: res.bill.bill_no || h?.party_bill_no || '', bill_date: res.bill_date || h?.bill_date || '',
+            apply_vat: Number(res.bill.vat_amount) > 0, vat_percent: 13 }));
+        setLines(res.lines.map(toLine));
+        if (!res.lines.length) setShowText(true);
+    };
     const read = async () => {
         if (!file) return;
-        setReading(true); setError('');
+        setReading(true); setError(''); setDone(null);
         try {
-            const data = await readFile(file);
-            const res = (await authFetch('/api/purchase-bill-import/extract', { method: 'POST', body: JSON.stringify({ file_name: file.name, media_type: file.type, data }) })).data;
-            setResult(res);
-            setHead({ vendor_ledger_id: res.vendor.ledger_id || '', party_bill_no: res.bill.bill_no || '', bill_date: res.bill_date || '', apply_vat: Number(res.bill.vat_amount) > 0, vat_percent: 13 });
-            setLines(res.lines.map(toLine));
+            const r = await readBillText(file, p => setProgress(p), { layout });
+            setOcr(r); setProgress({ status: 'Matching vendor and products', progress: 1 });
+            await parse(r.text);
+        } catch (e) { setError(e.message || 'The bill could not be read'); }
+        finally { setReading(false); setProgress(null); }
+    };
+    const reparse = async () => {
+        if (!ocr) return;
+        setReading(true); setError('');
+        try { await parse(ocr.text); } catch (e) { setError(e.message); } finally { setReading(false); }
+    };
+    // Match one edited / added line again.
+    const rematchLine = async i => {
+        const l = lines[i];
+        if (!l.description.trim()) return;
+        try {
+            const res = (await authFetch('/api/purchase-bill-import/rematch', { method: 'POST', body: JSON.stringify({ vendor_ledger_id: head?.vendor_ledger_id || null,
+                items: [{ description: l.description, qty: l.qty, unit: l.unit_text, rate: l.rate, discount_amount: l.discount_amount, amount: l.amount }] }) })).data;
+            const m = toLine(res.lines[0]);
+            update(i, { ...m, index: l.index, qty: l.qty, rate: l.rate, discount_amount: l.discount_amount, unit_text: l.unit_text });
         } catch (e) { setError(e.message); }
-        finally { setReading(false); }
     };
 
     const changeVendor = async id => {
         setHead(h => ({ ...h, vendor_ledger_id: id }));
         if (!result) return;
         try {   // re-check remembered mappings for this vendor, keep lines the user already chose
-            const res = (await authFetch('/api/purchase-bill-import/rematch', { method: 'POST', body: JSON.stringify({ vendor_ledger_id: id, items: result.bill.items }) })).data;
-            setLines(ls => ls.map((l, i) => (['manual', 'create'].includes(l.choice) ? l : { ...toLine(res.lines[i]), qty: l.qty, rate: l.rate, discount_amount: l.discount_amount, unit_id: l.unit_id || res.lines[i].unit_id })));
+            const res = (await authFetch('/api/purchase-bill-import/rematch', { method: 'POST', body: JSON.stringify({ vendor_ledger_id: id,
+                items: lines.map(l => ({ description: l.description, qty: l.qty, unit: l.unit_text, rate: l.rate, discount_amount: l.discount_amount, amount: l.amount })) }) })).data;
+            setLines(ls => ls.map((l, i) => (['manual', 'create'].includes(l.choice) || !res.lines[i] ? l : { ...toLine(res.lines[i]), index: l.index, description: l.description, qty: l.qty, rate: l.rate, discount_amount: l.discount_amount, unit_id: l.unit_id || res.lines[i].unit_id })));
         } catch { /* keep current lines */ }
     };
     const update = (i, patch) => setLines(ls => ls.map((l, j) => (j === i ? { ...l, ...patch } : l)));
@@ -131,10 +167,27 @@ export default function PurchaseBillImport() {
                 <div className="flex flex-wrap items-end gap-3 mb-3">
                     <div className="erp-field"><label className="erp-label">Supplier's bill (JPG, PNG, PDF)</label>
                         <input type="file" accept="image/jpeg,image/png,image/webp,application/pdf" onChange={e => pick(e.target.files?.[0])} /></div>
+                    <div className="erp-field"><label className="erp-label">Bill layout</label>
+                        <select className="erp-select" value={layout} onChange={e => setLayout(e.target.value)}><option value="table">Table / rows (most bills)</option><option value="auto">Free layout</option></select></div>
                     <button className="erp-btn primary" disabled={!file || reading} onClick={read}>{reading ? 'Reading the bill…' : '🔎 Read bill'}</button>
+                    {ocr && <button className="erp-btn" onClick={() => setShowText(s => !s)}>{showText ? '▾ Hide text' : '▸ Show / correct text'}</button>}
                     {result && <span className="text-sm text-gray-600">{result.counts.remembered} remembered · {result.counts.suggested} suggested · {result.counts.new} look new</span>}
                 </div>
+                {progress && (
+                    <div className="mb-2 text-sm text-gray-600">{progress.status}
+                        <div className="h-1.5 bg-gray-200 rounded mt-1 w-72"><div className="h-1.5 bg-blue-600 rounded" style={{ width: `${Math.round((progress.progress || 0) * 100)}%` }} /></div></div>
+                )}
                 {error && <p className="text-sm text-red-600 mb-2">{error}</p>}
+                {ocr && showText && (
+                    <div className="mb-3 border rounded p-2 bg-gray-50">
+                        <div className="flex justify-between items-center mb-1 text-xs text-gray-600">
+                            <span>Read from {SOURCE[ocr.source] || ocr.source}{ocr.total_pages > ocr.pages ? ` - first ${ocr.pages} of ${ocr.total_pages} pages` : ''}. Fix any misread words / numbers (one bill line per row: name, qty, unit, rate, amount) and parse again.</span>
+                            <button className="erp-btn primary" disabled={reading} onClick={reparse}>↻ Parse again</button>
+                        </div>
+                        <textarea className="erp-input font-mono text-xs w-full" rows={14} value={ocr.text} onChange={e => setOcr(o => ({ ...o, text: e.target.value }))} />
+                        {result?.bill?.unread_lines?.length > 0 && <p className="text-[11px] text-amber-700 mt-1">Not taken as item lines: {result.bill.unread_lines.slice(0, 6).join(' · ')}</p>}
+                    </div>
+                )}
                 {result?.warnings?.length > 0 && <p className="text-xs text-amber-700 mb-2">{result.warnings.join(' · ')}</p>}
                 {done && (
                     <div className="mb-3 border rounded p-3 bg-green-50 text-sm text-green-800">
@@ -184,9 +237,13 @@ export default function PurchaseBillImport() {
                                             return (
                                                 <tr key={i} className={l.skip ? 'opacity-40' : ''}>
                                                     <td className="align-top">
-                                                        <div className="font-medium">{l.description}</div>
+                                                        <div className="flex gap-1">
+                                                            <input className="erp-input font-medium" value={l.description} placeholder="Item as on the bill" onChange={e => update(i, { description: e.target.value })} />
+                                                            <button className="text-xs text-blue-600 whitespace-nowrap" title="Match this text again" onClick={() => rematchLine(i)}>↻</button>
+                                                        </div>
                                                         <div className="text-[10px] text-gray-500">{l.qty} {l.unit_text} × {fmt2(l.rate)} = {fmt2(l.amount)}{l.product_code ? ` · code ${l.product_code}` : ''}</div>
                                                         <span className={`inline-block mt-1 px-2 py-0.5 rounded text-[10px] ${st[1]}`}>{st[0]}</span>
+                                                        {l.checked === false && <span className="inline-block mt-1 ml-1 px-2 py-0.5 rounded text-[10px] bg-red-100 text-red-700" title="qty x rate did not equal the amount on the bill">check qty / rate</span>}
                                                     </td>
                                                     <td className="align-top">
                                                         {l.choice === 'create' ? (
@@ -211,7 +268,7 @@ export default function PurchaseBillImport() {
                                                             <SearchablePopupSelect listKey="bill_import_product" columns={[{ key: 'product_code', label: 'Code' }, { key: 'product_name', label: 'Name' }]} defaultVisibleKeys={['product_name']}
                                                                 items={products} getId={p => p.id} getLabel={p => p.product_name} searchKeys={['product_name', 'product_code', 'short_name']}
                                                                 value={l.product_id || ''} onChange={id => setProduct(i, id)} placeholder="Search any product" />
-                                                            <button className="text-xs text-purple-700 mt-1" onClick={() => update(i, { choice: 'create' })}>➕ Create new product from this line</button>
+                                                            <button className="text-xs text-purple-700 mt-1" onClick={() => update(i, { choice: 'create', new_name: l.new_name || l.description, new_rate: l.new_rate || l.rate })}>➕ Create new product from this line</button>
                                                         </>)}
                                                         {l.unit_warning && <div className="text-[10px] text-amber-700">{l.unit_warning}</div>}
                                                     </td>
@@ -234,6 +291,7 @@ export default function PurchaseBillImport() {
                                     <tfoot><tr className="font-bold bg-blue-50"><td colSpan={6} className="text-right">Lines total{head.apply_vat ? ' (before VAT)' : ''}</td><td className="text-right tabular-nums">{fmt2(total)}</td><td /></tr></tfoot>
                                 </table>
                             </div>
+                            <button className="text-xs text-blue-600 mt-2" onClick={() => setLines(ls => [...ls, toLine(blankLine())])}>➕ Add line</button>
                             <div className="flex items-center gap-3 mt-3">
                                 <button className="erp-btn primary" disabled={!ready || saving || !!done} onClick={create}>{saving ? 'Creating…' : '🧾 Create Draft Purchase Bill'}</button>
                                 {!ready && <span className="text-xs text-gray-500">Choose the vendor, bill date and a product (or new product) for every line.</span>}

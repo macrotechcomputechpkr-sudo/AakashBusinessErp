@@ -1,6 +1,7 @@
 -- =============================================
 -- PURCHASE BILL IMPORT (from a JPG / PNG / PDF of the supplier's bill)
--- The bill is read by Claude (server/utils/purchaseBillImport.js), the
+-- The bill is read in the browser (Tesseract.js OCR / PDF.js - free, bundled)
+-- and parsed by server/utils/billTextParser.js; the
 -- vendor is found by PAN / ledger tags / name, each line by product tags /
 -- name. What the user confirms is remembered here, per vendor, so the same
 -- item text on that vendor's next bill maps straight to the product (and

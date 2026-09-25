@@ -1,10 +1,12 @@
 // =============================================
 // utils/purchaseBillImport.js
-// Purchase Bill from a JPG / PNG / WEBP / PDF of the supplier's bill.
-//
-// 1. Read - Claude (vision / PDF input, structured JSON output) returns the
-//    vendor (name, PAN), bill no, date, lines (text, qty, unit, rate,
-//    discount, amount) and totals. Needs ANTHROPIC_API_KEY on the server.
+// Purchase Bill from a JPG / PNG / PDF of the supplier's bill - free and
+// self-contained, no outside AI service:
+// 1. Read - in the browser: Tesseract.js OCR for images / scanned PDFs, the
+//    PDF.js text layer for digital PDFs (both open source, their files served
+//    from the app itself - client/scripts/copy-ocr-assets.js). The text comes
+//    here and utils/billTextParser.js picks out vendor, PAN, bill no, date,
+//    lines and totals. The user can correct the text and parse it again.
 // 2. Vendor - PAN printed on the bill = ledger's VAT/PAN number; else a
 //    ledger tag equal to the PAN or the vendor name; else name similarity.
 // 3. Lines - per line, in order:
@@ -19,8 +21,7 @@
 // The screen then creates any new products (normal Product API), a DRAFT
 // Purchase Bill (normal Purchase Bill API) and saves the confirmed mappings.
 // =============================================
-const AnthropicModule = require('@anthropic-ai/sdk');
-const Anthropic = AnthropicModule.default || AnthropicModule;
+const { parseBillText } = require('./billTextParser');
 const bsCalendar = require('./bsCalendar');
 const { nepaliDateConverter } = require('./nepaliDateUtils');
 
@@ -35,61 +36,6 @@ async function fetchAll(build) {
         out.push(...(data || []));
         if (!data || data.length < 1000) return out;
     }
-}
-
-// ---------------- reading the bill ----------------
-const MEDIA = { 'image/jpeg': 'image', 'image/jpg': 'image', 'image/png': 'image', 'image/webp': 'image', 'image/gif': 'image', 'application/pdf': 'document' };
-const str = { type: 'string' }, num = { type: 'number' };
-const obj = (properties) => ({ type: 'object', properties, required: Object.keys(properties), additionalProperties: false });
-const BILL_SCHEMA = obj({
-    vendor_name: str, vendor_pan: str, vendor_address: str, vendor_phone: str,
-    buyer_name: str, buyer_pan: str,
-    bill_no: str, bill_date_ad: str, bill_date_bs: str, currency: str,
-    items: { type: 'array', items: obj({ description: str, product_code: str, hs_code: str, batch_no: str, qty: num, free_qty: num, unit: str, rate: num, discount_amount: num, amount: num }) },
-    subtotal: num, discount_total: num, taxable_amount: num, non_taxable_amount: num, vat_amount: num,
-    other_charges: { type: 'array', items: obj({ name: str, amount: num }) },
-    grand_total: num, notes: str
-});
-const PROMPT = `This is a supplier's purchase bill / tax invoice (usually from Nepal). Read it and fill the JSON exactly as printed.
-- vendor_* = the SELLER who issued the bill; buyer_* = who it is billed to. PAN / VAT numbers: digits only.
-- bill_date_ad: the date as YYYY-MM-DD only if it is an AD (Gregorian) date; bill_date_bs: the Bikram Sambat date as YYYY-MM-DD if a BS date is printed. Leave a field "" when not printed.
-- items: one entry per product line, in order. description = the product text as printed (keep brand, size, pack). qty and rate as numbers; unit as printed (Pcs, Box, Ctn, Kg, Ltr ...); amount = the line amount as printed before VAT. Use 0 for numbers that are not printed.
-- other_charges: freight, insurance, round-off etc. printed below the lines (negative for deductions).
-- Never invent values that are not on the bill.`;
-
-async function readBill({ media_type, data }) {
-    const kind = MEDIA[String(media_type || '').toLowerCase()];
-    if (!kind) throw httpError('Upload a JPG, PNG, WEBP or PDF file');
-    if (!data || typeof data !== 'string') throw httpError('The file is empty');
-    const b64 = data.replace(/^data:[^;]+;base64,/, '').replace(/\s/g, '');
-    if (b64.length * 0.75 > 25 * 1024 * 1024) throw httpError('File too large - keep it under 25 MB');
-    if (!process.env.ANTHROPIC_API_KEY && !process.env.ANTHROPIC_AUTH_TOKEN) throw httpError('Bill reading is not set up: add ANTHROPIC_API_KEY to the server .env', 503);
-
-    const client = new Anthropic();
-    const source = kind === 'image'
-        ? { type: 'image', source: { type: 'base64', media_type: media_type === 'image/jpg' ? 'image/jpeg' : media_type, data: b64 } }
-        : { type: 'document', source: { type: 'base64', media_type: 'application/pdf', data: b64 } };
-    let response;
-    try {
-        response = await client.beta.messages.create({
-            model: 'claude-opus-5',
-            max_tokens: 16000,
-            betas: ['server-side-fallback-2026-07-01'],
-            fallbacks: 'default',
-            output_config: { format: { type: 'json_schema', schema: BILL_SCHEMA } },
-            messages: [{ role: 'user', content: [source, { type: 'text', text: PROMPT }] }]
-        });
-    } catch (err) {
-        if (err instanceof Anthropic.AuthenticationError) throw httpError('Bill reading: the ANTHROPIC_API_KEY is not valid', 503);
-        if (err instanceof Anthropic.RateLimitError) throw httpError('Bill reading is busy - try again in a minute', 429);
-        if (err instanceof Anthropic.BadRequestError) throw httpError(`Bill reading could not use this file: ${err.message}`);
-        if (err instanceof Anthropic.APIError) throw httpError(`Bill reading failed (${err.status}): ${err.message}`, 502);
-        throw err;
-    }
-    if (response.stop_reason === 'refusal') throw httpError('The bill could not be read (declined)', 422);
-    if (response.stop_reason === 'max_tokens') throw httpError('The bill has too many lines to read at once - split the PDF', 422);
-    const text = response.content.filter(b => b.type === 'text').map(b => b.text).join('');
-    try { return JSON.parse(text); } catch { throw httpError('The bill could not be read - try a clearer image', 422); }
 }
 
 // ---------------- matching ----------------
@@ -200,6 +146,7 @@ function matchLines(bill, data, learned) {
             index, description: text, product_code: it.product_code || '', hs_code: it.hs_code || '', batch_no: it.batch_no || '',
             qty: Number(it.qty) || 0, free_qty: Number(it.free_qty) || 0, unit_text: it.unit || '', rate: Number(it.rate) || 0,
             discount_amount: Number(it.discount_amount) || 0, amount: Number(it.amount) || 0,
+            checked: it.checked !== false,
             status: best ? (best.by === 'remembered' ? 'remembered' : 'suggested') : 'new',
             product_id: best ? best.product_id : null, suggestions: top,
             unit_id: unit && unitOk ? unit.id : (best ? best.base_unit_id : unit?.id || null), unit_matched: unit ? unit.unit_name : null,
@@ -223,7 +170,10 @@ function billDate(bill) {
 }
 
 async function extractPurchaseBill(c, t, body) {
-    const bill = await readBill(body);
+    const text = String(body.text || '');
+    if (text.replace(/\s/g, '').length < 10) throw httpError('No text could be read from the bill - try a clearer / straighter photo, or type the lines');
+    if (text.length > 200000) throw httpError('The bill text is too long');
+    const bill = parseBillText(text);
     const data = await loadMatchData(c, t);
     const vendor = matchVendor(bill, data);
     let learned = {};
@@ -237,6 +187,8 @@ async function extractPurchaseBill(c, t, body) {
     const warnings = [];
     if (vendor.pan_not_found) warnings.push(`No ledger has PAN ${vendor.pan_not_found} - choose the vendor (and add the PAN to its ledger so the next bill matches).`);
     if (bill.subtotal && Math.abs(lineTotal - bill.subtotal) > 1) warnings.push(`Line amounts add up to ${lineTotal}, the bill's sub-total is ${bill.subtotal} - check the lines.`);
+    if (!bill.items.length) warnings.push('No item lines were recognised - correct the text (each line: name, qty, unit, rate, amount) and parse again, or add lines below.');
+    if (bill.items.some(i => !i.checked)) warnings.push('Some lines did not multiply out (qty x rate = amount) - check them.');
     if (!date.ad) warnings.push(date.bs ? `Bill date is BS ${date.bs} - enter it (exact BS conversion needs the nepali-date-converter package).` : 'Bill date not read - enter it.');
     return { bill, vendor, lines, bill_date: date.ad, bill_date_from: date.from, bill_date_bs: bill.bill_date_bs || date.bs || null, line_total: lineTotal, match_at: MATCH_AT, warnings,
         counts: { remembered: lines.filter(l => l.status === 'remembered').length, suggested: lines.filter(l => l.status === 'suggested').length, new: lines.filter(l => l.status === 'new').length } };
@@ -267,4 +219,4 @@ async function learnMappings(c, t, userId, body) {
     return { saved: maps.length };
 }
 
-module.exports = { extractPurchaseBill, rematchLines, learnMappings, similarity, matchVendor, matchLines, readBill, BILL_SCHEMA };
+module.exports = { extractPurchaseBill, rematchLines, learnMappings, similarity, matchVendor, matchLines };

@@ -1,12 +1,12 @@
 // =============================================
 // routes/purchaseBillImportRoutes.js
-//   POST /purchase-bill-import/extract  { file_name, media_type, data (base64) }
-//        -> the bill read + vendor / product matches (utils/purchaseBillImport.js)
+//   POST /purchase-bill-import/extract  { file_name, text }  (text read in the browser by OCR / PDF.js)
+//        -> the bill's parts + vendor / product matches (utils/purchaseBillImport.js)
 //   POST /purchase-bill-import/rematch  { vendor_ledger_id, items }
 //   POST /purchase-bill-import/learn    { vendor_ledger_id, mappings: [{ item_text, product_id, unit_id }] }
 //   GET  /reports/pdc                   PDC register / dashboard (utils/pdcReport.js)
-// The upload body is large, so this router is mounted with its own JSON
-// limit ahead of the global parser (server.js).
+// A long bill's text can pass the default body limit, so this router gets
+// its own JSON limit ahead of the global parser (server.js).
 // =============================================
 const express = require('express');
 const router = express.Router();

@@ -19,8 +19,8 @@ app.use(cors({
         callback(new Error('Not allowed by CORS'));
     }
 }));
-// Bill images / PDFs for Purchase Bill Import are large - parsed here first, with their own limit.
-app.use('/api/purchase-bill-import', express.json({ limit: '35mb' }));
+// Purchase Bill Import sends a whole bill's text - parsed here first, with its own limit.
+app.use('/api/purchase-bill-import', express.json({ limit: '5mb' }));
 app.use(express.json());
 
 const authRoutes = require('./routes/authRoutes');
