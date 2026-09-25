@@ -72,6 +72,7 @@ const navItems = [
     { to: '/financial-reports', label: '📊 Financial Reports' },
     { to: '/stock-movement', label: '📦 Stock Movement' },
     { to: '/stock-report', label: '📋 Stock Report' },
+    { to: '/stock-in-out', label: '🔁 Stock In / Out (Qty)' },
     { to: '/ledger-report', label: '📒 Ledger Report' },
     { to: '/lc-register', label: '🏦 LC Register & Mapping' },
     { to: '/categories', label: '🏷️ Category Management' },

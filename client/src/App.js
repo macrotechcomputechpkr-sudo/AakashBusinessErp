@@ -33,6 +33,7 @@ import PartySummaryReport from './pages/PartySummaryReport';
 import FinancialReports from './pages/FinancialReports';
 import StockMovementReport from './pages/StockMovementReport';
 import StockReport from './pages/StockReport';
+import StockInOutReport from './pages/StockInOutReport';
 import PricingMasters from './pages/PricingMasters';
 import LedgerReport from './pages/LedgerReport';
 import LcRegister from './pages/LcRegister';
@@ -117,6 +118,7 @@ function AppRoutes() {
             <Route path="/financial-reports" element={<PrivateRoute><FinancialReports /></PrivateRoute>} />
             <Route path="/stock-movement" element={<PrivateRoute><StockMovementReport /></PrivateRoute>} />
             <Route path="/stock-report" element={<PrivateRoute><StockReport /></PrivateRoute>} />
+            <Route path="/stock-in-out" element={<PrivateRoute><StockInOutReport /></PrivateRoute>} />
             <Route path="/pricing-masters" element={<PrivateRoute><PricingMasters /></PrivateRoute>} />
             <Route path="/ledger-report" element={<PrivateRoute><LedgerReport /></PrivateRoute>} />
             <Route path="/lc-register" element={<PrivateRoute><LcRegister /></PrivateRoute>} />
