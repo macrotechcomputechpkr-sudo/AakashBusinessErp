@@ -79,6 +79,7 @@ const navItems = [
     { to: '/profitability', label: '💹 Profitability' },
     { to: '/rate-history', label: '🏷 Rate History' },
     { to: '/loading-sheet', label: '🚚 Loading Sheet' },
+    { to: '/ageing', label: '⏳ Ageing Report' },
     { to: '/ledger-report', label: '📒 Ledger Report' },
     { to: '/lc-register', label: '🏦 LC Register & Mapping' },
     { to: '/categories', label: '🏷️ Category Management' },

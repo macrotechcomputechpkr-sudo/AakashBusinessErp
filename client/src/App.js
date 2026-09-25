@@ -38,6 +38,7 @@ import StockValuationReport from './pages/StockValuationReport';
 import SalesPurchaseAnalysis from './pages/SalesPurchaseAnalysis';
 import RateHistoryReport from './pages/RateHistoryReport';
 import LoadingSheet from './pages/LoadingSheet';
+import AgeingReport from './pages/AgeingReport';
 import PricingMasters from './pages/PricingMasters';
 import LedgerReport from './pages/LedgerReport';
 import LcRegister from './pages/LcRegister';
@@ -129,6 +130,7 @@ function AppRoutes() {
             <Route path="/profitability" element={<PrivateRoute><SalesPurchaseAnalysis mode="profit" /></PrivateRoute>} />
             <Route path="/rate-history" element={<PrivateRoute><RateHistoryReport /></PrivateRoute>} />
             <Route path="/loading-sheet" element={<PrivateRoute><LoadingSheet /></PrivateRoute>} />
+            <Route path="/ageing" element={<PrivateRoute><AgeingReport /></PrivateRoute>} />
             <Route path="/pricing-masters" element={<PrivateRoute><PricingMasters /></PrivateRoute>} />
             <Route path="/ledger-report" element={<PrivateRoute><LedgerReport /></PrivateRoute>} />
             <Route path="/lc-register" element={<PrivateRoute><LcRegister /></PrivateRoute>} />
