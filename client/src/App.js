@@ -34,6 +34,9 @@ import FinancialReports from './pages/FinancialReports';
 import StockMovementReport from './pages/StockMovementReport';
 import StockReport from './pages/StockReport';
 import StockInOutReport from './pages/StockInOutReport';
+import StockValuationReport from './pages/StockValuationReport';
+import SalesPurchaseAnalysis from './pages/SalesPurchaseAnalysis';
+import RateHistoryReport from './pages/RateHistoryReport';
 import PricingMasters from './pages/PricingMasters';
 import LedgerReport from './pages/LedgerReport';
 import LcRegister from './pages/LcRegister';
@@ -119,6 +122,11 @@ function AppRoutes() {
             <Route path="/stock-movement" element={<PrivateRoute><StockMovementReport /></PrivateRoute>} />
             <Route path="/stock-report" element={<PrivateRoute><StockReport /></PrivateRoute>} />
             <Route path="/stock-in-out" element={<PrivateRoute><StockInOutReport /></PrivateRoute>} />
+            <Route path="/stock-valuation" element={<PrivateRoute><StockValuationReport /></PrivateRoute>} />
+            <Route path="/sales-purchase-analysis" element={<PrivateRoute><SalesPurchaseAnalysis mode="analysis" /></PrivateRoute>} />
+            <Route path="/monthly-analysis" element={<PrivateRoute><SalesPurchaseAnalysis mode="monthly" /></PrivateRoute>} />
+            <Route path="/profitability" element={<PrivateRoute><SalesPurchaseAnalysis mode="profit" /></PrivateRoute>} />
+            <Route path="/rate-history" element={<PrivateRoute><RateHistoryReport /></PrivateRoute>} />
             <Route path="/pricing-masters" element={<PrivateRoute><PricingMasters /></PrivateRoute>} />
             <Route path="/ledger-report" element={<PrivateRoute><LedgerReport /></PrivateRoute>} />
             <Route path="/lc-register" element={<PrivateRoute><LcRegister /></PrivateRoute>} />

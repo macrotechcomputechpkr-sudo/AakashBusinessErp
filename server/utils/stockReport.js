@@ -515,4 +515,4 @@ async function stockReportMeta(c, t) {
     };
 }
 
-module.exports = { stockReport, stockReportMeta, parseQuery, loadProducts, statusOk };
+module.exports = { stockReport, stockReportMeta, parseQuery, loadProducts, loadEvents, statusOk };

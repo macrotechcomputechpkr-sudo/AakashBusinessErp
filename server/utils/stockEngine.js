@@ -235,4 +235,43 @@ async function closingStock(tenantClient, tenantId, asOf, method, filters = {}) 
     };
 }
 
-module.exports = { stockMovement, closingStock, METHODS, MODULE_LABEL, TRANSFER_KEYS, itemMovement };
+// Cost per BASE unit of the stock issued on given dates under `method`
+// (Profitability's cost of sales). The ledger is replayed to the start of
+// each date plus that day's receipts; FIFO / LIFO then cost the day's issued
+// qty from the layers, the average methods use their rate.
+// wants: { productId: [{ date, qty }] }  ->  { 'productId|date': rate }
+async function costRatesOn(tenantClient, tenantId, wants, method = 'moving_average') {
+    if (!METHODS[method]) method = 'moving_average';
+    const pids = Object.keys(wants).filter(p => wants[p].length);
+    if (!pids.length) return {};
+    const maxDate = pids.flatMap(p => wants[p].map(w => w.date)).sort().pop();
+    const { events } = await loadItems(tenantClient, tenantId, maxDate, pids.length === 1 ? { productId: pids[0] } : {});
+    const out = {};
+    const apply = (st, e, withIssue) => {
+        if (e.src === 'stock_transfer') return;                // company level: no effect
+        if (e.qin > 0) { receive(st, e.qin, e.cost); if (e.cost > 0 && PURCHASE_SOURCES.has(e.src)) st.last = e.cost; }
+        if (withIssue && e.qout > 0) issue(st, e.qout, method);
+    };
+    pids.forEach(pid => {
+        const ev = events[pid] || [], st = newState();
+        const qtyOn = {};
+        wants[pid].forEach(w => { qtyOn[w.date] = (qtyOn[w.date] || 0) + (Number(w.qty) || 0); });
+        let i = 0;
+        Object.keys(qtyOn).sort().forEach(d => {
+            for (; i < ev.length && ev[i].date < d; i++) apply(st, ev[i], true);
+            // that day's receipts first (not its issues) on a copy of the state
+            const day = { ...st, layers: st.layers.map(L => ({ ...L })) };
+            for (let j = i; j < ev.length && ev[j].date === d; j++) apply(day, ev[j], false);
+            const q = qtyOn[d];
+            let rate = rateOf(day, method);
+            if ((method === 'fifo' || method === 'lifo') && q > 1e-9 && day.layers.length) {
+                const taken = Math.min(q, day.layers.reduce((s, L) => s + L.q, 0));
+                if (taken > 1e-9) rate = issue({ ...day, layers: day.layers.map(L => ({ ...L })) }, taken, method) / taken;
+            }
+            out[`${pid}|${d}`] = rate;
+        });
+    });
+    return out;
+}
+
+module.exports = { stockMovement, closingStock, costRatesOn, METHODS, MODULE_LABEL, TRANSFER_KEYS, itemMovement };
