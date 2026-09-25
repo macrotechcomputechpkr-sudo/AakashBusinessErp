@@ -42,6 +42,8 @@ import AgeingReport from './pages/AgeingReport';
 import StockAgeingReport from './pages/StockAgeingReport';
 import ReorderReport from './pages/ReorderReport';
 import ConsignmentCostReport from './pages/ConsignmentCostReport';
+import PdcDashboard from './pages/PdcDashboard';
+import PurchaseBillImport from './pages/PurchaseBillImport';
 import PricingMasters from './pages/PricingMasters';
 import LedgerReport from './pages/LedgerReport';
 import LcRegister from './pages/LcRegister';
@@ -137,6 +139,8 @@ function AppRoutes() {
             <Route path="/stock-ageing" element={<PrivateRoute><StockAgeingReport /></PrivateRoute>} />
             <Route path="/reorder" element={<PrivateRoute><ReorderReport /></PrivateRoute>} />
             <Route path="/consignment-cost" element={<PrivateRoute><ConsignmentCostReport /></PrivateRoute>} />
+            <Route path="/pdc-dashboard" element={<PrivateRoute><PdcDashboard /></PrivateRoute>} />
+            <Route path="/purchase-bill-import" element={<PrivateRoute><PurchaseBillImport /></PrivateRoute>} />
             <Route path="/pricing-masters" element={<PrivateRoute><PricingMasters /></PrivateRoute>} />
             <Route path="/ledger-report" element={<PrivateRoute><LedgerReport /></PrivateRoute>} />
             <Route path="/lc-register" element={<PrivateRoute><LcRegister /></PrivateRoute>} />
