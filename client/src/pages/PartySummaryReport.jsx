@@ -18,7 +18,7 @@ const COLS = [
 const today = () => new Date().toISOString().slice(0, 10);
 const defaultConfig = () => ({
     date_from: `${new Date().getFullYear()}-01-01`, date_to: today(), party_scope: 'all', account_group_id: '', party_ledger_id: '',
-    area_id: '', agent_id: '', route_id: '', ledger_category_id: '', product_company_id: '', hide_zero: true, balance_side: ''
+    area_id: '', agent_id: '', route_id: '', ledger_category_id: '', product_company_id: '', hide_zero: true, balance_side: '', pdc_separate: false
 });
 const fmt = n => Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const drcr = n => Math.abs(n) < 0.005 ? '0.00' : `${fmt(Math.abs(n))} ${n > 0 ? 'Dr' : 'Cr'}`;
@@ -44,16 +44,18 @@ export default function PartySummaryReport() {
         try {
             const p = new URLSearchParams();
             Object.entries(cfg).forEach(([k, v]) => { if (v !== '' && v !== false && v !== null) p.set(k, v === true ? 'true' : v); });
-            setData((await authFetch(`/api/party-summary?${p}`)).data);
+            setData({ ...(await authFetch(`/api/party-summary?${p}`)).data, pdc_separate: !!cfg.pdc_separate });
         } catch (err) { setError(err.message); setData(null); }
         finally { setLoading(false); }
     }, [authFetch, config]);
 
     const exportCsv = () => {
-        const head = ['Party', 'Code', 'Group', 'PAN', 'Opening', ...COLS.map(c => c[1]), 'Others Dr', 'Others Cr', 'Closing'];
+        const cs = data?.pdc_separate ? [...COLS, ['pdc_received', 'PDC Received'], ['pdc_issued', 'PDC Issued']] : COLS;
+        const head = ['Party', 'Code', 'Group', 'PAN', 'Opening', ...cs.map(c => c[1]), 'Others Dr', 'Others Cr', 'Closing', ...(data?.pdc_separate ? ['Pending PDC Received', 'Pending PDC Issued', 'Closing after PDC'] : [])];
         const signed = n => (Number(n) || 0).toFixed(2);
-        const lines = (data?.rows || []).map(r => [r.party_name, r.account_code, r.group_name, r.pan || '', signed(r.opening), ...COLS.map(([k]) => signed(r[k])), signed(r.others_dr), signed(r.others_cr), signed(r.closing)]);
-        if (data?.totals) lines.push(['TOTAL', '', '', '', signed(data.totals.opening), ...COLS.map(([k]) => signed(data.totals[k])), signed(data.totals.others_dr), signed(data.totals.others_cr), signed(data.totals.closing)]);
+        const pd = r => (data?.pdc_separate ? [signed(r.pdc_pending_received), signed(r.pdc_pending_issued), signed(r.closing_after_pdc)] : []);
+        const lines = (data?.rows || []).map(r => [r.party_name, r.account_code, r.group_name, r.pan || '', signed(r.opening), ...cs.map(([k]) => signed(r[k])), signed(r.others_dr), signed(r.others_cr), signed(r.closing), ...pd(r)]);
+        if (data?.totals) lines.push(['TOTAL', '', '', '', signed(data.totals.opening), ...cs.map(([k]) => signed(data.totals[k])), signed(data.totals.others_dr), signed(data.totals.others_cr), signed(data.totals.closing), ...pd(data.totals)]);
         const esc = v => /[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : v;
         const a = document.createElement('a');
         a.href = URL.createObjectURL(new Blob(['\uFEFF' + [head, ...lines].map(r => r.map(esc).join(',')).join('\r\n')], { type: 'text/csv;charset=utf-8' }));
@@ -69,6 +71,8 @@ export default function PartySummaryReport() {
         </div>
     );
     const showOthers = data && (Math.abs(data.totals?.others_dr || 0) > 0.005 || Math.abs(data.totals?.others_cr || 0) > 0.005);
+    const pdcOn = !!data?.pdc_separate;
+    const cols = pdcOn ? [...COLS, ['pdc_received', 'PDC Received'], ['pdc_issued', 'PDC Issued']] : COLS;
 
     return (
         <Layout>
@@ -96,34 +100,37 @@ export default function PartySummaryReport() {
                             <option value="">Any</option><option value="dr">Debit (receivable) only</option><option value="cr">Credit (payable) only</option>
                         </select></div>
                     <label className="flex items-center gap-2 text-sm mt-6"><input type="checkbox" checked={config.hide_zero} onChange={e => set('hide_zero', e.target.checked)} /> Hide parties with nothing to show</label>
+                    <label className="flex items-center gap-2 text-sm mt-6"><input type="checkbox" checked={config.pdc_separate} onChange={e => set('pdc_separate', e.target.checked)} /> Show PDC separately (matured + pending cheques)</label>
                 </div>
                 <div className="flex gap-2 mb-3">
                     <button className="erp-btn primary" onClick={() => run()} disabled={loading}>{loading ? 'Loading…' : '🔍 Show'}</button>
                     {data?.rows?.length > 0 && <button className="erp-btn" onClick={exportCsv}>⬇ Excel</button>}
                 </div>
-                <p className="text-xs text-gray-500 mb-2">JV entries are shown under Debit Note (party debited) or Credit Note (party credited). Cash/Bank and PDC: party credited = Receipt, debited = Payment.{config.product_company_id ? ' Company view: only that company\u2019s entries; the ledger\u2019s master opening is not included.' : ''}</p>
+                <p className="text-xs text-gray-500 mb-2">JV entries are shown under Debit Note (party debited) or Credit Note (party credited). Cash/Bank and PDC: party credited = Receipt, debited = Payment (tick "Show PDC separately" to split matured PDCs into their own columns and see pending cheques).{config.product_company_id ? ' Company view: only that company\u2019s entries; the ledger\u2019s master opening is not included.' : ''}</p>
                 {error && <p className="text-sm text-red-600 mb-2">{error}</p>}
                 {data && data.all_reconcile === false && <p className="text-sm text-red-600 mb-2">Some rows do not reconcile - please report this.</p>}
                 {data && (
                     <div className="overflow-x-auto">
                         <table className="erp-grid-table text-sm">
-                            <thead><tr><th>Party</th><th className="text-right">Opening</th>{COLS.map(([k, l]) => <th key={k} className="text-right">{l}</th>)}{showOthers && <><th className="text-right">Others Dr</th><th className="text-right">Others Cr</th></>}<th className="text-right">Closing</th></tr></thead>
+                            <thead><tr><th>Party</th><th className="text-right">Opening</th>{cols.map(([k, l]) => <th key={k} className="text-right">{l}</th>)}{showOthers && <><th className="text-right">Others Dr</th><th className="text-right">Others Cr</th></>}<th className="text-right">Closing</th>{pdcOn && <><th className="text-right">Pending PDC Recd.</th><th className="text-right">Pending PDC Issued</th><th className="text-right">Closing after PDC</th></>}</tr></thead>
                             <tbody>
                                 {data.rows.map(r => (
                                     <tr key={r.ledger_id}>
                                         <td><a href={`/ledger-report?ledger_id=${r.ledger_id}&date_from=${config.date_from}&date_to=${config.date_to}&mode=detail`} target="_blank" rel="noopener noreferrer" className="hover:underline" title="Open ledger">{r.party_name}</a><div className="text-xs text-gray-400">{r.group_name}{r.pan ? ` · PAN ${r.pan}` : ''}</div></td>
                                         <td className="text-right">{drcr(r.opening)}</td>
-                                        {COLS.map(([k]) => <td key={k} className="text-right">{Math.abs(r[k]) < 0.005 ? '' : fmt(r[k])}</td>)}
+                                        {cols.map(([k]) => <td key={k} className="text-right">{Math.abs(r[k]) < 0.005 ? '' : fmt(r[k])}</td>)}
                                         {showOthers && <><td className="text-right">{r.others_dr ? fmt(r.others_dr) : ''}</td><td className="text-right">{r.others_cr ? fmt(r.others_cr) : ''}</td></>}
                                         <td className="text-right font-semibold">{drcr(r.closing)}</td>
+                                        {pdcOn && <><td className="text-right">{r.pdc_pending_received ? fmt(r.pdc_pending_received) : ''}</td><td className="text-right">{r.pdc_pending_issued ? fmt(r.pdc_pending_issued) : ''}</td><td className="text-right font-semibold">{drcr(r.closing_after_pdc)}</td></>}
                                     </tr>
                                 ))}
                                 {data.totals && (
                                     <tr className="font-semibold bg-slate-50">
                                         <td>Total ({data.rows.length})</td><td className="text-right">{drcr(data.totals.opening)}</td>
-                                        {COLS.map(([k]) => <td key={k} className="text-right">{fmt(data.totals[k])}</td>)}
+                                        {cols.map(([k]) => <td key={k} className="text-right">{fmt(data.totals[k])}</td>)}
                                         {showOthers && <><td className="text-right">{fmt(data.totals.others_dr)}</td><td className="text-right">{fmt(data.totals.others_cr)}</td></>}
                                         <td className="text-right">{drcr(data.totals.closing)}</td>
+                                        {pdcOn && <><td className="text-right">{fmt(data.totals.pdc_pending_received)}</td><td className="text-right">{fmt(data.totals.pdc_pending_issued)}</td><td className="text-right">{drcr(data.totals.closing_after_pdc)}</td></>}
                                     </tr>
                                 )}
                             </tbody>

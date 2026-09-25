@@ -27,7 +27,7 @@ const DEFAULT_CONFIG = {
     ledger_id: '', account_group_id: '', ledger_category_id: '', area_id: '', agent_id: '', route_id: '', product_company_id: '',
     models: [], document_types: [], narration: '',
     mode: 'detail', group_wise: true,
-    include_items: false, include_terms: false, include_lc_bg: false, include_bill_wise: false, hide_zero: true, balance_side: '', min_balance: ''
+    include_items: false, include_terms: false, include_lc_bg: false, include_bill_wise: false, pdc_separate: false, hide_zero: true, balance_side: '', min_balance: ''
 };
 
 const fmt = n => Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -86,7 +86,7 @@ export default function LedgerReport() {
             if (cfg.ledger_category_id && categorySetting.enabled) p.set('ledger_category_id', cfg.ledger_category_id);
             if (cfg.document_types.length) p.set('document_types', cfg.document_types.join(','));
             else if (cfg.models.length) p.set('models', cfg.models.join(','));
-            ['include_items', 'include_terms', 'include_lc_bg', 'include_bill_wise'].forEach(k => { if (cfg[k]) p.set(k, 'true'); });
+            ['include_items', 'include_terms', 'include_lc_bg', 'include_bill_wise', 'pdc_separate'].forEach(k => { if (cfg[k]) p.set(k, 'true'); });
             p.set('hide_zero', cfg.hide_zero ? 'true' : 'false');
             if (cfg.balance_side) p.set('balance_side', cfg.balance_side);
             if (Number(cfg.min_balance) > 0) p.set('min_balance', cfg.min_balance);
@@ -133,6 +133,7 @@ export default function LedgerReport() {
         </div>
     );
 
+    const pdcCols = !!(result?.ledgers || []).some(l => l.pdc);
     const ledgersByGroup = {};
     (result?.ledgers || []).forEach(l => { (ledgersByGroup[l.group_id || 'none'] = ledgersByGroup[l.group_id || 'none'] || []).push(l); });
 
@@ -148,6 +149,7 @@ export default function LedgerReport() {
                         <span>Dr: <b>{fmt(l.total_debit)}</b></span>
                         <span>Cr: <b>{fmt(l.total_credit)}</b></span>
                         <span>Closing: <b>{drcr(l.closing)}</b></span>
+                        {l.pdc && (l.pdc.pending_received > 0 || l.pdc.pending_issued > 0) && <span className="text-purple-700">Pending PDC: Recd {fmt(l.pdc.pending_received)} · Issued {fmt(l.pdc.pending_issued)} → after PDC <b>{drcr(l.pdc.closing_after_pending)}</b></span>}
                         {l.credit_limit_used_percent !== null && <span className={over ? 'text-red-600 font-semibold' : 'text-gray-500'}>Credit limit used: {l.credit_limit_used_percent}%</span>}
                     </span>
                 </div>
@@ -213,14 +215,20 @@ export default function LedgerReport() {
                     </table>
                 )}
 
-                {isOpen && l.lc_bg && (l.lc_bg.lcs.length > 0 || l.lc_bg.bg || l.lc_bg.legacy_lc) && (
+                {isOpen && l.lc_bg && (l.lc_bg.lcs.length > 0 || l.lc_bg.bg || l.lc_bg.legacy_lc || (l.lc_bg.bgs || []).length > 0 || (l.lc_bg.pdcs || []).length > 0) && (
                     <div className="px-3 py-2 text-xs border-t">
-                        <p className="font-semibold text-gray-500 mb-1">LC / BG</p>
+                        <p className="font-semibold text-gray-500 mb-1">LC / BG / PDC</p>
                         {l.lc_bg.lcs.map((lc, i) => (
                             <p key={i} className={lc.is_expired ? 'text-red-600' : ''}>LC {lc.lc_number} ({lc.bank || '—'}) — Amount {fmt(lc.amount)}, Used {fmt(lc.utilized)}, <b>Remaining {fmt(lc.remaining)}</b>, Expiry {lc.expiry_date || '—'} [{lc.status}{lc.is_expired ? ', expired' : ''}]</p>
                         ))}
                         {l.lc_bg.lcs.length === 0 && l.lc_bg.legacy_lc && <p>LC {l.lc_bg.legacy_lc.lc_number} ({l.lc_bg.legacy_lc.bank || '—'}) — {fmt(l.lc_bg.legacy_lc.amount)}, Expiry {l.lc_bg.legacy_lc.expiry_date || '—'}</p>}
-                        {l.lc_bg.bg && <p className={l.lc_bg.bg.is_expired ? 'text-red-600' : ''}>BG {l.lc_bg.bg.bg_number} ({l.lc_bg.bg.bank || '—'}) — {fmt(l.lc_bg.bg.amount)}, Expiry {l.lc_bg.bg.expiry_date || '—'}{l.lc_bg.bg.is_expired ? ' (expired)' : ''}</p>}
+                        {(l.lc_bg.bgs || []).map((b, i) => (
+                            <p key={`bg${i}`} className={b.is_expired && b.status === 'open' ? 'text-red-600' : ''}>BG {b.bg_number} ({b.direction === 'issued' ? 'issued for us' : 'received'} · {b.bg_type.replace('_', ' ')}, {b.bank || '—'}) — {fmt(b.amount)}, Expiry {b.expiry_date || '—'} [{b.status}{b.is_expired && b.status === 'open' ? ', expired' : ''}]</p>
+                        ))}
+                        {(l.lc_bg.pdcs || []).map((x, i) => (
+                            <p key={`pdc${i}`} className={x.matured ? 'text-orange-700' : x.status === 'pending' ? '' : 'text-gray-400'}>PDC {x.doc_no} {x.voucher_type} · chq {x.cheque_no} {x.bank || ''} dated {x.cheque_date} — {fmt(x.amount)} [{x.status}{x.matured ? ', matured' : ''}]</p>
+                        ))}
+                        {!(l.lc_bg.bgs || []).length && l.lc_bg.bg && <p className={l.lc_bg.bg.is_expired ? 'text-red-600' : ''}>BG {l.lc_bg.bg.bg_number} ({l.lc_bg.bg.bank || '—'}) — {fmt(l.lc_bg.bg.amount)}, Expiry {l.lc_bg.bg.expiry_date || '—'}{l.lc_bg.bg.is_expired ? ' (expired)' : ''}</p>}
                     </div>
                 )}
 
@@ -296,8 +304,9 @@ export default function LedgerReport() {
                     <label className="flex items-center gap-1"><input type="checkbox" checked={config.group_wise} onChange={e => set('group_wise', e.target.checked)} /> Group-wise subtotals</label>
                     <label className="flex items-center gap-1"><input type="checkbox" checked={config.include_items} disabled={config.mode !== 'detail'} onChange={e => set('include_items', e.target.checked)} /> Item details</label>
                     <label className="flex items-center gap-1"><input type="checkbox" checked={config.include_terms} disabled={config.mode !== 'detail'} onChange={e => set('include_terms', e.target.checked)} /> Billing term details</label>
-                    <label className="flex items-center gap-1"><input type="checkbox" checked={config.include_lc_bg} onChange={e => set('include_lc_bg', e.target.checked)} /> LC / BG details</label>
+                    <label className="flex items-center gap-1"><input type="checkbox" checked={config.include_lc_bg} onChange={e => set('include_lc_bg', e.target.checked)} /> LC / BG / PDC details</label>
                     <label className="flex items-center gap-1"><input type="checkbox" checked={config.include_bill_wise} onChange={e => set('include_bill_wise', e.target.checked)} /> Pending bills</label>
+                    <label className="flex items-center gap-1" title="Matured PDC shown apart from other receipts / payments, plus pending post-dated cheques and the balance after them"><input type="checkbox" checked={config.pdc_separate} onChange={e => set('pdc_separate', e.target.checked)} /> PDC separate</label>
                     <label className="flex items-center gap-1"><input type="checkbox" checked={config.hide_zero} onChange={e => set('hide_zero', e.target.checked)} /> Hide zero-balance ledgers</label>
                     <select className="erp-select" style={{ width: 'auto' }} value={config.balance_side || ''} onChange={e => set('balance_side', e.target.value)}>
                         <option value="">Any balance</option>
@@ -321,15 +330,18 @@ export default function LedgerReport() {
                         {result.mode === 'summary' ? (
                             <div className="overflow-x-auto">
                                 <table className="erp-grid-table">
-                                    <thead><tr><th>Ledger</th><th>Group</th><th>Opening</th><th>Debit</th><th>Credit</th><th>Closing</th><th>Credit Limit Used</th></tr></thead>
+                                    <thead><tr><th>Ledger</th><th>Group</th><th>Opening</th>{pdcCols ? <><th>Debit (excl. PDC)</th><th>Credit (excl. PDC)</th><th>PDC Dr</th><th>PDC Cr</th></> : <><th>Debit</th><th>Credit</th></>}<th>Closing</th>{pdcCols && <><th>Pending PDC Recd.</th><th>Pending PDC Issued</th><th>Closing after PDC</th></>}<th>Credit Limit Used</th></tr></thead>
                                     <tbody>
                                         {(config.group_wise ? result.groups : [{ group_id: '__all', group_name: null }]).map(g => (
                                             <React.Fragment key={g.group_id || 'none'}>
-                                                {config.group_wise && <tr className="bg-slate-100 font-semibold"><td colSpan={2}>{g.group_name} ({g.ledger_count})</td><td>{drcr(g.opening)}</td><td>{fmt(g.total_debit)}</td><td>{fmt(g.total_credit)}</td><td>{drcr(g.closing)}</td><td></td></tr>}
+                                                {config.group_wise && <tr className="bg-slate-100 font-semibold"><td colSpan={2}>{g.group_name} ({g.ledger_count})</td><td>{drcr(g.opening)}</td><td>{fmt(g.total_debit)}</td><td>{fmt(g.total_credit)}</td>{pdcCols && <><td></td><td></td></>}<td>{drcr(g.closing)}</td>{pdcCols && <><td></td><td></td><td></td></>}<td></td></tr>}
                                                 {(config.group_wise ? (ledgersByGroup[g.group_id || 'none'] || []) : result.ledgers).map(l => (
                                                     <tr key={l.ledger_id}>
                                                         <td>{l.account_name}</td><td className="text-xs text-gray-500">{l.group_name}</td>
-                                                        <td>{drcr(l.opening)}</td><td>{fmt(l.total_debit)}</td><td>{fmt(l.total_credit)}</td><td>{drcr(l.closing)}</td>
+                                                        <td>{drcr(l.opening)}</td>
+                                                        {pdcCols && l.pdc ? <><td>{fmt(l.pdc.debit_excl_pdc)}</td><td>{fmt(l.pdc.credit_excl_pdc)}</td><td>{l.pdc.posted_debit ? fmt(l.pdc.posted_debit) : ''}</td><td>{l.pdc.posted_credit ? fmt(l.pdc.posted_credit) : ''}</td></> : <><td>{fmt(l.total_debit)}</td><td>{fmt(l.total_credit)}</td></>}
+                                                        <td>{drcr(l.closing)}</td>
+                                                        {pdcCols && l.pdc && <><td>{l.pdc.pending_received ? fmt(l.pdc.pending_received) : ''}</td><td>{l.pdc.pending_issued ? fmt(l.pdc.pending_issued) : ''}</td><td className="font-semibold">{drcr(l.pdc.closing_after_pending)}</td></>}
                                                         <td className={l.credit_limit_used_percent >= 100 ? 'text-red-600 font-semibold' : ''}>{l.credit_limit_used_percent !== null ? `${l.credit_limit_used_percent}%` : '—'}</td>
                                                     </tr>
                                                 ))}

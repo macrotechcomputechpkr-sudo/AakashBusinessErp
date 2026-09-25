@@ -25,7 +25,15 @@ const VOUCHER_TYPES = [
     { value: 'cash', label: 'Cash Voucher' },
     { value: 'bank', label: 'Bank Voucher' },
     { value: 'pdc', label: 'PDC (Post-Dated Cheque)' },
-    { value: 'production', label: 'Production Entry' }
+    { value: 'production', label: 'Production Entry' },
+    { value: 'sales_quotation', label: 'Sales Quotation' },
+    { value: 'sales_nonsalable_return', label: 'Sales Non-saleable Return' },
+    { value: 'purchase_requisition', label: 'Purchase Requisition' },
+    { value: 'purchase_quotation', label: 'Purchase Quotation' },
+    { value: 'purchase_nonsalable_return', label: 'Purchase Non-saleable Return' },
+    { value: 'stock_transfer', label: 'Stock Transfer' },
+    { value: 'debit_note', label: 'Debit Note' },
+    { value: 'credit_note', label: 'Credit Note' }
 ];
 const FIELD_TYPES = [
     { value: 'text', label: 'Text' },

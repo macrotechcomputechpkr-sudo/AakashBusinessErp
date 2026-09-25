@@ -14,6 +14,8 @@ import NumberingCategorySelector from '../components/NumberingCategorySelector';
 import { useEnterKeyNavigation } from '../hooks/useEnterKeyNavigation';
 import { formatDateForDisplay } from '../utils/nepaliDateUtils';
 import { amountToWords } from '../utils/numberToWords';
+import UdfValuesModal from '../components/UdfValuesModal';
+import useLedgerPurposes from '../components/useLedgerPurposes';
 
 const emptyDetailRow = () => ({ ledger_id: '', sub_ledger_id: '', product_company_id: '', agent_id: '', debit_amount: '', credit_amount: '', tds_percent: '', narration: '' });
 
@@ -23,8 +25,12 @@ const emptyForm = {
     ref_doc_no: '', ref_doc_date: '',
     cost_center_id: '', business_unit_id: '', remarks_text: '', narration: '',
     is_memo: false,
+    // taxable / non-taxable purchase or sales entry
+    tax_entry_type: 'none', party_ledger_id: '', party_pan: '', party_bill_no: '', party_bill_date: '',
+    taxable_amount: '', non_taxable_amount: '', vat_percent: 13, vat_amount: '', is_capital: false,
     details: [emptyDetailRow(), emptyDetailRow()]
 };
+const r2 = n => Math.round((Number(n) || 0) * 100) / 100;
 
 // Master fields of this screen covered by Entry Field Control (see useEntryFieldControls).
 const EFC_RENDERED_KEYS = ['business_unit_id', 'cost_center_id', 'doc_date', 'narration', 'ref_doc_date', 'ref_doc_no'];
@@ -80,10 +86,51 @@ export default function JournalVoucher() {
     }, [authFetch]);
     useEffect(() => { load(); }, [load]);
 
-    const resetForm = () => { setForm(emptyForm); setEditingId(null); };
+    const resetForm = () => { setForm(emptyForm); setEditingId(null); setAutoLines(true); };
     const addDetailRow = () => setForm(f => ({ ...f, details: [...f.details, emptyDetailRow()] }));
     const removeDetailRow = (idx) => setForm(f => ({ ...f, details: f.details.length > 2 ? f.details.filter((_, i) => i !== idx) : f.details }));
-    const updateDetailRow = (idx, patch) => setForm(f => ({ ...f, details: f.details.map((d, i) => i === idx ? { ...d, ...patch } : d) }));
+    const updateDetailRow = (idx, patch) => { setAutoLines(false); setForm(f => ({ ...f, details: f.details.map((d, i) => i === idx ? { ...d, ...patch } : d) })); };
+
+    // ---- taxable / non-taxable purchase or sales entry: voucher lines are
+    // filled from the party, amounts and accounts, and stay editable (once a
+    // line is edited by hand, it is no longer refilled automatically).
+    const lp = useLedgerPurposes();
+    const [sysCtl, setSysCtl] = useState({});
+    const [taxAcct, setTaxAcct] = useState({ goods: '', vat: '' });
+    const [autoLines, setAutoLines] = useState(true);
+    useEffect(() => { authFetch('/api/system-control').then(r => setSysCtl(r.data || {})).catch(() => {}); }, [authFetch]);
+    const isTax = form.tax_entry_type === 'purchase' || form.tax_entry_type === 'sales';
+    const taxTotal = r2(Number(form.taxable_amount || 0) + Number(form.non_taxable_amount || 0) + Number(form.vat_amount || 0));
+    const setTax = patch => setForm(f => {
+        const n = { ...f, ...patch };
+        if (('taxable_amount' in patch || 'vat_percent' in patch) && !('vat_amount' in patch)) n.vat_amount = n.vat_percent === '' ? n.vat_amount : r2(Number(n.taxable_amount || 0) * Number(n.vat_percent || 0) / 100);
+        if (patch.party_ledger_id) { const pl = ledgers.find(l => l.id === patch.party_ledger_id); n.party_pan = pl?.vat_pan_number || pl?.pan_number || n.party_pan || ''; }
+        return n;
+    });
+    const buildTaxLines = (f, acct) => {
+        const purchase = f.tax_entry_type === 'purchase';
+        const goodsAmt = r2(Number(f.taxable_amount || 0) + Number(f.non_taxable_amount || 0)), vat = r2(f.vat_amount), total = r2(goodsAmt + vat);
+        const text = f.party_bill_no ? `${purchase ? 'Purchase' : 'Sales'} bill ${f.party_bill_no}` : '';
+        const row = (ledger_id, dr, cr) => ({ ...emptyDetailRow(), ledger_id: ledger_id || '', debit_amount: dr ? dr : '', credit_amount: cr ? cr : '', narration: text });
+        const lines = purchase
+            ? [row(acct.goods, goodsAmt, 0), ...(vat ? [row(acct.vat, vat, 0)] : []), row(f.party_ledger_id, 0, total)]
+            : [row(f.party_ledger_id, total, 0), row(acct.goods, 0, goodsAmt), ...(vat ? [row(acct.vat, 0, vat)] : [])];
+        return lines.filter(l => Number(l.debit_amount) || Number(l.credit_amount));
+    };
+    // default accounts when the entry type changes
+    useEffect(() => {
+        if (!isTax) return;
+        setTaxAcct(a => ({
+            goods: a.goods && lp.can(a.goods, form.tax_entry_type === 'purchase' ? 'purchase_goods' : 'sales_goods') ? a.goods
+                : (form.tax_entry_type === 'purchase' ? sysCtl.purchase_account_ledger_id : sysCtl.sales_account_ledger_id) || '',
+            vat: a.vat || sysCtl.vat_ledger_id || ''
+        }));
+    }, [form.tax_entry_type, sysCtl]); // eslint-disable-line react-hooks/exhaustive-deps
+    // refill the lines while they are automatic
+    useEffect(() => {
+        if (!isTax || !autoLines) return;
+        setForm(f => ({ ...f, details: buildTaxLines(f, taxAcct).length ? buildTaxLines(f, taxAcct) : f.details }));
+    }, [form.tax_entry_type, form.party_ledger_id, form.taxable_amount, form.non_taxable_amount, form.vat_amount, form.party_bill_no, taxAcct, autoLines]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const autoCalcTdsFromRate = (idx, ratePercent) => {
         setForm(f => {
@@ -131,8 +178,9 @@ export default function JournalVoucher() {
         try {
             const res = await authFetch(`/api/journal-vouchers/${row.id}`);
             setEditingId(row.id);
+            setAutoLines(false);
             setForm({
-                ...emptyForm, ...res.data,
+                ...emptyForm, ...Object.fromEntries(Object.entries(res.data).filter(([, v]) => v !== null)),
                 doc_date: res.data.doc_date?.slice(0, 10) || emptyForm.doc_date,
                 ref_doc_date: res.data.ref_doc_date?.slice(0, 10) || '',
                 details: (res.data.details || []).length > 0 ? res.data.details : [emptyDetailRow(), emptyDetailRow()]
@@ -149,8 +197,9 @@ export default function JournalVoucher() {
             const res = await authFetch(`/api/journal-vouchers/${sourceId}`);
             const src = res.data;
             setEditingId(null);
+            setAutoLines(false);
             setForm({
-                ...emptyForm, ...src,
+                ...emptyForm, ...Object.fromEntries(Object.entries(src).filter(([, v]) => v !== null)),
                 doc_no: '', doc_date: new Date().toISOString().slice(0, 10), status: 'draft',
                 details: (src.details || []).length > 0 ? src.details.map(d => ({ ...emptyDetailRow(), ...d })) : [emptyDetailRow(), emptyDetailRow()]
             });
@@ -200,6 +249,8 @@ export default function JournalVoucher() {
             showAlert(err.message, 'danger');
         }
     };
+
+    const [udfDoc, setUdfDoc] = useState(null);
 
     const openAuditTrail = async (row) => {
         try {
@@ -303,6 +354,61 @@ export default function JournalVoucher() {
                                 <label className="erp-label">Narration {efc.isRequired('narration') && <span className="req">*</span>}</label>
                                 <input disabled={efc.isReadonly('narration')} className="erp-input" value={form.narration} onChange={e => setForm({ ...form, narration: e.target.value })} />
                             </div>
+                        </div>
+
+                        <div className="border rounded p-3 mb-4 bg-blue-50/40">
+                            <div className="flex flex-wrap items-center gap-3 mb-2 text-sm">
+                                <b>Entry as</b>
+                                {[['none', 'Normal journal'], ['purchase', 'Taxable / non-taxable Purchase'], ['sales', 'Taxable / non-taxable Sales']].map(([k, t]) => (
+                                    <label key={k} className="flex items-center gap-1"><input type="radio" name="jv_tax_type" checked={form.tax_entry_type === k} onChange={() => { setAutoLines(true); setForm(f => ({ ...f, tax_entry_type: k })); }} /> {t}</label>
+                                ))}
+                            </div>
+                            {isTax && (
+                                <>
+                                    <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
+                                        <div className="erp-field md:col-span-2"><label className="erp-label">{form.tax_entry_type === 'purchase' ? 'Supplier' : 'Customer'} <span className="req">*</span></label>
+                                            <SearchablePopupSelect
+                                                listKey="jv_tax_party_picker"
+                                                columns={[{ key: 'account_code', label: 'Code' }, { key: 'account_name', label: 'Name' }, { key: 'pan_number', label: 'PAN' }]}
+                                                defaultVisibleKeys={['account_name']}
+                                                items={lp.filter(ledgers, form.tax_entry_type === 'purchase' ? 'supplier' : 'customer', form.party_ledger_id)} getId={l => l.id} getLabel={l => l.account_name}
+                                                searchKeys={['account_name', 'account_code', 'pan_number']}
+                                                value={form.party_ledger_id} onChange={id => setTax({ party_ledger_id: id })} placeholder="Choose party"
+                                            /></div>
+                                        <div className="erp-field"><label className="erp-label">PAN / VAT No</label><input className="erp-input" value={form.party_pan || ''} onChange={e => setTax({ party_pan: e.target.value })} /></div>
+                                        <div className="erp-field"><label className="erp-label">{form.tax_entry_type === 'purchase' ? "Supplier's Bill No *" : 'Invoice No'}</label><input className="erp-input" value={form.party_bill_no || ''} onChange={e => setTax({ party_bill_no: e.target.value })} /></div>
+                                        <div className="erp-field"><label className="erp-label">Bill Date</label><input type="date" className="erp-input" value={form.party_bill_date || ''} onChange={e => setTax({ party_bill_date: e.target.value })} /></div>
+                                        {form.tax_entry_type === 'purchase' && <label className="flex items-center gap-1 text-sm mt-5"><input type="checkbox" checked={!!form.is_capital} onChange={e => setTax({ is_capital: e.target.checked })} /> Capital purchase</label>}
+                                        <div className="erp-field"><label className="erp-label">Taxable Amount</label><input type="number" step="0.01" className="erp-input" value={form.taxable_amount} onChange={e => setTax({ taxable_amount: e.target.value })} /></div>
+                                        <div className="erp-field"><label className="erp-label">Non-taxable Amount</label><input type="number" step="0.01" className="erp-input" value={form.non_taxable_amount} onChange={e => setTax({ non_taxable_amount: e.target.value })} /></div>
+                                        <div className="erp-field"><label className="erp-label">VAT %</label><input type="number" step="0.01" className="erp-input" value={form.vat_percent ?? ''} onChange={e => setTax({ vat_percent: e.target.value })} /></div>
+                                        <div className="erp-field"><label className="erp-label">VAT Amount</label><input type="number" step="0.01" className="erp-input" value={form.vat_amount} onChange={e => setTax({ vat_amount: e.target.value })} /></div>
+                                        <div className="erp-field"><label className="erp-label">{form.tax_entry_type === 'purchase' ? 'Purchase / Expense A/c' : 'Sales A/c'}</label>
+                                            <SearchablePopupSelect
+                                                listKey="jv_tax_goods_picker"
+                                                columns={[{ key: 'account_code', label: 'Code' }, { key: 'account_name', label: 'Name' }]}
+                                                defaultVisibleKeys={['account_name']}
+                                                items={lp.filter(ledgers, form.tax_entry_type === 'purchase' ? 'purchase_goods' : 'sales_goods', taxAcct.goods)} getId={l => l.id} getLabel={l => l.account_name}
+                                                searchKeys={['account_name', 'account_code']}
+                                                value={taxAcct.goods} onChange={id => { setAutoLines(true); setTaxAcct(a => ({ ...a, goods: id })); }} placeholder="Choose account"
+                                            /></div>
+                                        <div className="erp-field"><label className="erp-label">VAT A/c</label>
+                                            <SearchablePopupSelect
+                                                listKey="jv_tax_vat_picker"
+                                                columns={[{ key: 'account_code', label: 'Code' }, { key: 'account_name', label: 'Name' }]}
+                                                defaultVisibleKeys={['account_name']}
+                                                items={lp.filter(ledgers, 'vat', taxAcct.vat)} getId={l => l.id} getLabel={l => l.account_name}
+                                                searchKeys={['account_name', 'account_code']}
+                                                value={taxAcct.vat} onChange={id => { setAutoLines(true); setTaxAcct(a => ({ ...a, vat: id })); }} placeholder="VAT ledger"
+                                            /></div>
+                                    </div>
+                                    <div className="flex items-center gap-3 text-sm mt-2">
+                                        <span>Bill total <b>{taxTotal.toFixed(2)}</b></span>
+                                        {!autoLines && <button type="button" className="erp-btn" onClick={() => setAutoLines(true)}>↻ Refill voucher lines from these</button>}
+                                        <span className="text-xs text-gray-500">{autoLines ? 'Voucher lines below are filled automatically - edit any line to change it.' : 'Voucher lines were edited by hand.'} Shown in the VAT {form.tax_entry_type} register and VAT return.</span>
+                                    </div>
+                                </>
+                            )}
                         </div>
 
                         <h2 className="font-semibold text-sm text-gray-500 uppercase mb-2">Voucher Lines</h2>
@@ -415,6 +521,7 @@ export default function JournalVoucher() {
                         <button onClick={() => handleEdit(row)} className="px-2 py-1 bg-blue-600 text-white rounded text-xs">Open</button>
                         {row.status === 'posted' && <a href={`/print/journal_voucher/${row.id}`} target="_blank" rel="noopener noreferrer" className="px-2 py-1 bg-purple-600 text-white rounded text-xs">🖨️ Print</a>}
                         <button onClick={() => openAuditTrail(row)} className="px-2 py-1 bg-gray-500 text-white rounded text-xs">History</button>
+                        <button onClick={() => setUdfDoc(row.id)} className="px-2 py-1 bg-indigo-500 text-white rounded text-xs" title="Custom fields (UDF)">UDF</button>{udfDoc === row.id && <UdfValuesModal docType="journal_voucher" docId={row.id} onClose={() => setUdfDoc(null)} />}
                         {row.status === 'draft' && !row.is_memo && <button onClick={() => handleStatusChange(row, 'posted')} className="px-2 py-1 bg-green-600 text-white rounded text-xs">Post</button>}
                         {!row.audit_locked && row.status !== 'cancelled' && <button onClick={() => handleStatusChange(row, 'cancelled')} className="px-2 py-1 bg-red-600 text-white rounded text-xs">Cancel</button>}
                         {row.status === 'draft' && !row.audit_locked && <button onClick={() => handleDeleteDraft(row)} className="px-2 py-1 bg-red-800 text-white rounded text-xs">Delete</button>}

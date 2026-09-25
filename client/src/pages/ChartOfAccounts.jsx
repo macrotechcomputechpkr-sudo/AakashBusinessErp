@@ -69,13 +69,13 @@ const LEDGER_TYPE_OPTIONS = [
 
 const emptyAccountForm = {
     account_name: '', short_name: '', tags: [], category_type: '', account_group_id: '',
-    pan_number: '', vat_pan_type: 'Non Registered',
+    pan_number: '', vat_pan_type: 'Non Registered', billing_name: '',
     area_id: '', route_id: '', agent_id: '',
     street: '', city: '', state: '', zip_code: '', country: 'Nepal',
     shipping_address: '',
     contact_person: '', contact_person_mobile: '',
     opening_balance: 0, opening_balance_type: 'dr', currency: 'NPR',
-    credit_limit: 0, credit_days: 0, rate_category_id: '', discount_group_id: '',
+    credit_limit: 0, credit_days: 0, interest_rate: 0, rate_category_id: '', discount_group_id: '',
     bank_name: '', bank_account_number: '', swift_code: '',
     email: '', contact_person_phone: '', is_active: true,
     // Ledger Category - separate, OPTIONAL, tenant-custom classification
@@ -751,6 +751,10 @@ export default function ChartOfAccounts() {
                             {/* ==================== PARTY DETAILS ==================== */}
                             {isParty && (
                                 <div className={ledgerFormTab === 'party' ? 'grid grid-cols-1 md:grid-cols-2 gap-4' : 'hidden'}>
+                                    <div className="md:col-span-2">
+                                        <label className="erp-label">Billing Name <span className="hint">(printed on bills / confirmation letters; leave blank to use the ledger name)</span></label>
+                                        <input className="erp-input" value={accountForm.billing_name || ''} onChange={e => setAccountForm({ ...accountForm, billing_name: e.target.value })} />
+                                    </div>
                                     <div>
                                         <label className="erp-label">VAT/PAN Number</label>
                                         <input className="erp-input" maxLength={9} value={accountForm.pan_number}
@@ -847,6 +851,10 @@ export default function ChartOfAccounts() {
                                                 <input type="number" className="border rounded-lg px-2 py-2" value={accountForm.credit_limit} onChange={e => setAccountForm({ ...accountForm, credit_limit: e.target.value })} />
                                                 <input type="number" className="border rounded-lg px-2 py-2" value={accountForm.credit_days} onChange={e => setAccountForm({ ...accountForm, credit_days: e.target.value })} />
                                             </div>
+                                        </div>
+                                        <div>
+                                            <label className="erp-label">Interest % p.a. <span className="hint">(charged on bills overdue past their due date / credit days - Interest Posting)</span></label>
+                                            <input type="number" step="0.01" min="0" className="erp-input" value={accountForm.interest_rate ?? 0} onChange={e => setAccountForm({ ...accountForm, interest_rate: e.target.value })} />
                                         </div>
                                         <div>
                                             <label className="erp-label">Rate Category <span className="hint">(which sales rate tier this customer sees)</span></label>

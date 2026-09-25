@@ -35,6 +35,11 @@ const VAT_DOCS = {
     credit_note:     { label: 'Credit Note',     label_np: 'क्रेडिट नोट',       side: 'sales',    sign: -1, header: 'credit_notes',     detail: 'credit_note_details',     fk: 'credit_note_id', party: 'party_ledger_id',    partyName: 'party_name_snapshot', ledgerNote: true },
     purchase:        { label: 'Purchase',        label_np: 'खरिद',            side: 'purchase', sign: 1,  header: 'purchase_bills',   detail: 'purchase_bill_details',   fk: 'bill_id',        party: 'vendor_ledger_id',   partyName: 'vendor_name_snapshot', termDocType: 'purchase_bill' },
     purchase_return: { label: 'Purchase Return', label_np: 'खरिद फिर्ता',       side: 'purchase', sign: -1, header: 'purchase_returns', detail: 'purchase_return_details', fk: 'return_id',      party: 'vendor_ledger_id',   partyName: 'vendor_name_snapshot', termDocType: 'purchase_return' },
+    // Additional expense bills (transport, clearing ...) - each taxable / non-taxable bill line
+    purchase_expense: { label: 'Purchase Expense Bill', label_np: 'खर्च बिल (खरिद)', side: 'purchase', sign: 1, custom: 'expense', party: 'vendor_ledger_id' },
+    // Journal Vouchers entered as a taxable / non-taxable purchase or sale
+    jv_purchase:     { label: 'Purchase (JV)',   label_np: 'खरिद (जर्नल)',      side: 'purchase', sign: 1,  custom: 'jv', jvType: 'purchase', party: 'party_ledger_id' },
+    jv_sales:        { label: 'Sales (JV)',      label_np: 'बिक्री (जर्नल)',     side: 'sales',    sign: 1,  custom: 'jv', jvType: 'sales', party: 'party_ledger_id' },
     debit_note:      { label: 'Debit Note',      label_np: 'डेबिट नोट',         side: 'purchase', sign: -1, header: 'debit_notes',      detail: 'debit_note_details',      fk: 'debit_note_id',  party: 'party_ledger_id',    partyName: 'party_name_snapshot', ledgerNote: true }
 };
 
@@ -86,9 +91,69 @@ function periodKeyOf(adDate, periods) {
     return { key: m, label: m + ' (AD)', label_np: m + ' (AD)', start: m + '-01', end: null, exact: false };
 }
 
+// ---------- Expense bills and JV tax entries ----------
+async function loadCustomTaxDocs(tenantClient, tenantId, docType, cfg, { dateFrom, dateTo, partyId, withLines }) {
+    const table = cfg.custom === 'expense' ? 'purchase_additional_expenses' : 'journal_vouchers';
+    let q = tenantClient.from(table).select('*').eq('tenant_id', tenantId).eq('status', 'posted');
+    if (cfg.custom === 'jv') q = q.eq('tax_entry_type', cfg.jvType);
+    if (dateFrom) q = q.gte('doc_date', dateFrom);
+    if (dateTo) q = q.lte('doc_date', dateTo);
+    const { data: headers, error } = await q.order('doc_date').limit(20000);
+    if (error) throw error;
+    if (!headers || !headers.length) return [];
+    const defaultLedger = await defaultVatLedger(tenantClient, tenantId, cfg.side);
+    const out = [];
+    if (cfg.custom === 'expense') {
+        const lines = await inChunks(headers.map(h => h.id), 200, async chunk => (await tenantClient.from('purchase_additional_expense_lines').select('*').in('expense_id', chunk).in('bill_type', ['taxable', 'non_taxable'])).data);
+        const partyIds = [...new Set([...lines.map(l => l.party_ledger_id), ...headers.map(h => h.vendor_ledger_id)].filter(Boolean))];
+        const parties = await inChunks(partyIds, 200, async chunk => (await tenantClient.from('ledger_accounts').select('id, account_name, pan_number, vat_pan_number').in('id', chunk)).data);
+        const partyById = Object.fromEntries(parties.map(x => [x.id, x]));
+        const byId = Object.fromEntries(headers.map(h => [h.id, h]));
+        const bills = new Map();
+        lines.filter(l => l.entry_sign !== 'deduct').forEach(l => {
+            const h = byId[l.expense_id], pid = l.party_ledger_id || h.vendor_ledger_id || null;
+            if (partyId && pid !== partyId) return;
+            const k = `${h.id}|${pid}|${String(l.party_bill_no || '').trim().toLowerCase()}`;
+            if (!bills.has(k)) {
+                const party = partyById[pid];
+                bills.set(k, { doc_type: docType, doc_label: cfg.label, side: cfg.side, sign: cfg.sign, id: k, document_id: h.id, doc_no: h.doc_no, doc_date: h.doc_date,
+                    party_ledger_id: pid, party_name: l.party_name_snapshot || (l.party_ledger_id ? party?.account_name : h.vendor_name_snapshot || h.cash_vendor_name) || party?.account_name || '(Cash)',
+                    party_pan: l.party_pan || party?.vat_pan_number || party?.pan_number || null, party_bill_no: l.party_bill_no || null, party_bill_date: l.party_bill_date || null,
+                    invoice_type: h.invoice_type || null, taxable: 0, exempt: 0, vat: 0, total: 0, import_taxable: 0, vat_by_ledger: {}, lines: withLines ? [] : undefined });
+            }
+            const b = bills.get(k), base = round2(l.amount), vat = l.bill_type === 'taxable' ? round2(l.vat_amount) : 0;
+            if (l.bill_type === 'taxable') b.taxable = round2(b.taxable + base); else b.exempt = round2(b.exempt + base);
+            b.vat = round2(b.vat + vat); b.total = round2(b.total + base + vat);
+            if (vat) { const lk = l.vat_in_cost ? 'not_claimed' : (l.vat_ledger_id || defaultLedger || 'unassigned'); b.vat_by_ledger[lk] = round2((b.vat_by_ledger[lk] || 0) + vat); }
+            if (withLines) b.lines.push({ product_name: l.description || 'Expense', qty: null, uom: null, rate: null, taxable: l.bill_type === 'taxable' ? base : 0, exempt: l.bill_type === 'taxable' ? 0 : base, vat, amount: round2(base + vat) });
+        });
+        out.push(...bills.values());
+    } else {
+        const vatIds = new Set(await allVatLedgerIds(tenantClient, tenantId));
+        const details = await inChunks(headers.map(h => h.id), 200, async chunk => (await tenantClient.from('journal_voucher_details').select('jv_id, ledger_id, ledger_name_snapshot, debit_amount, credit_amount, narration').in('jv_id', chunk)).data);
+        const partyIds = [...new Set(headers.map(h => h.party_ledger_id).filter(Boolean))];
+        const parties = await inChunks(partyIds, 200, async chunk => (await tenantClient.from('ledger_accounts').select('id, account_name, pan_number, vat_pan_number').in('id', chunk)).data);
+        const partyById = Object.fromEntries(parties.map(x => [x.id, x]));
+        headers.filter(h => !partyId || h.party_ledger_id === partyId).forEach(h => {
+            const party = partyById[h.party_ledger_id];
+            const taxable = round2(h.taxable_amount), exempt = round2(h.non_taxable_amount), vat = round2(h.vat_amount);
+            const byLedger = {};
+            details.filter(d => d.jv_id === h.id && vatIds.has(d.ledger_id)).forEach(d => { byLedger[d.ledger_id] = round2((byLedger[d.ledger_id] || 0) + Math.abs(Number(d.debit_amount) - Number(d.credit_amount))); });
+            if (vat && !Object.keys(byLedger).length) byLedger[defaultLedger || 'unassigned'] = vat;
+            out.push({ doc_type: docType, doc_label: cfg.label, side: cfg.side, sign: cfg.sign, id: h.id, document_id: h.id, doc_no: h.doc_no, doc_date: h.doc_date,
+                party_ledger_id: h.party_ledger_id, party_name: h.party_name_snapshot || party?.account_name || '', party_pan: h.party_pan || party?.vat_pan_number || party?.pan_number || null,
+                party_bill_no: h.party_bill_no || h.ref_doc_no || null, party_bill_date: h.party_bill_date || h.ref_doc_date || null, invoice_type: null, is_capital: !!h.is_capital,
+                taxable, exempt, vat, total: round2(taxable + exempt + vat), import_taxable: 0, vat_by_ledger: byLedger,
+                lines: withLines ? details.filter(d => d.jv_id === h.id).map(d => ({ product_name: d.ledger_name_snapshot || d.narration, qty: null, uom: null, rate: null, taxable: 0, vat: vatIds.has(d.ledger_id) ? round2(Math.abs(d.debit_amount - d.credit_amount)) : 0, amount: round2(Math.abs(d.debit_amount - d.credit_amount)) })) : undefined });
+        });
+    }
+    return out;
+}
+
 // ---------- The one loader ----------
 async function loadTaxDocs(tenantClient, tenantId, docType, { dateFrom, dateTo, partyId, withLines }) {
     const cfg = VAT_DOCS[docType];
+    if (cfg.custom) return loadCustomTaxDocs(tenantClient, tenantId, docType, cfg, { dateFrom, dateTo, partyId, withLines });
     let q = tenantClient.from(cfg.header).select('*').eq('tenant_id', tenantId).eq('status', 'posted');
     if (dateFrom) q = q.gte('doc_date', dateFrom);
     if (dateTo) q = q.lte('doc_date', dateTo);
@@ -191,6 +256,8 @@ function applyDocFilters(docs, q) {
     return out;
 }
 
+// Output / input VAT from every document type of that side (returns and notes carry sign -1).
+const sideVat = (byType, side) => round2(Object.entries(VAT_DOCS).filter(([, c]) => c.side === side).reduce((a, [k, c]) => a + c.sign * (byType[k] || 0), 0));
 const sumOf = rows => rows.reduce((t, d) => ({
     count: t.count + 1, taxable: round2(t.taxable + d.taxable), exempt: round2(t.exempt + d.exempt), vat: round2(t.vat + d.vat), total: round2(t.total + d.total), import_taxable: round2(t.import_taxable + (d.import_taxable || 0))
 }), { count: 0, taxable: 0, exempt: 0, vat: 0, total: 0, import_taxable: 0 });
@@ -322,8 +389,9 @@ router.get('/vat-reports/monthly-summary', requireAuth, loadUserPermissions, req
             });
         }
         const rows = Object.values(months).sort((a, b) => String(a.period_key).localeCompare(String(b.period_key))).map(m => {
-            const v = t => m.types[t]?.vat || 0;
-            return { ...m, output_vat: round2(v('sales') - v('sales_return') - v('credit_note')), input_vat: round2(v('purchase') - v('purchase_return') - v('debit_note')), net_vat: round2(v('sales') - v('sales_return') - v('credit_note') - (v('purchase') - v('purchase_return') - v('debit_note'))) };
+            const vats = Object.fromEntries(Object.keys(VAT_DOCS).map(t => [t, m.types[t]?.vat || 0]));
+            const out = sideVat(vats, 'sales'), inp = sideVat(vats, 'purchase');
+            return { ...m, output_vat: out, input_vat: inp, net_vat: round2(out - inp) };
         });
         res.json({ success: true, data: { rows, doc_types: Object.entries(VAT_DOCS).map(([k, c]) => ({ key: k, label: c.label, label_np: c.label_np })), periods_configured: periods.length > 0 } });
     } catch (error) {
@@ -371,8 +439,13 @@ router.get('/vat-reports/vat-return', requireAuth, loadUserPermissions, requireP
         const s = {};
         for (const t of Object.keys(VAT_DOCS)) s[t] = sumOf(await loadTaxDocs(tenantClient, tenantId, t, { dateFrom: q.date_from, dateTo: q.date_to }));
         const carry = round2(q.carry_forward_credit);
-        const output = round2(s.sales.vat - s.sales_return.vat - s.credit_note.vat);
-        const input = round2(s.purchase.vat - s.purchase_return.vat - s.debit_note.vat);
+        const vats = Object.fromEntries(Object.entries(s).map(([k, v]) => [k, v.vat]));
+        const output = sideVat(vats, 'sales');
+        // input credit: VAT that went to a VAT ledger (expense-bill VAT added to cost is not claimed)
+        const notClaimed = round2((await loadTaxDocs(tenantClient, tenantId, 'purchase_expense', { dateFrom: q.date_from, dateTo: q.date_to })).reduce((a, d) => a + (d.vat_by_ledger.not_claimed || 0), 0));
+        const input = round2(sideVat(vats, 'purchase') - notClaimed);
+        const addUp = (...keys) => keys.reduce((o, k) => ({ taxable: round2(o.taxable + s[k].taxable), exempt: round2(o.exempt + s[k].exempt), vat: round2(o.vat + s[k].vat), count: o.count + s[k].count, import_taxable: round2(o.import_taxable + (s[k].import_taxable || 0)) }), { taxable: 0, exempt: 0, vat: 0, count: 0, import_taxable: 0 });
+        const salesAll = addUp('sales', 'jv_sales'), purchaseAll = addUp('purchase', 'purchase_expense', 'jv_purchase');
         const net = round2(output - input - carry);
 
         // Reconciliation against the GL for the same dates, across EVERY
@@ -399,10 +472,12 @@ router.get('/vat-reports/vat-return', requireAuth, loadUserPermissions, requireP
             success: true,
             data: {
                 period: { from: q.date_from, to: q.date_to },
-                sales: { taxable: s.sales.taxable, exempt: s.sales.exempt, vat: s.sales.vat, count: s.sales.count },
+                sales: { taxable: salesAll.taxable, exempt: salesAll.exempt, vat: salesAll.vat, count: salesAll.count },
+                sales_breakdown: { sales_bill: s.sales, jv_sales: s.jv_sales },
+                purchase_breakdown: { purchase_bill: s.purchase, purchase_expense: s.purchase_expense, jv_purchase: s.jv_purchase, expense_vat_not_claimed: notClaimed },
                 sales_return: { taxable: s.sales_return.taxable, exempt: s.sales_return.exempt, vat: s.sales_return.vat, count: s.sales_return.count },
                 credit_note: { taxable: s.credit_note.taxable, exempt: s.credit_note.exempt, vat: s.credit_note.vat, count: s.credit_note.count },
-                purchase: { taxable: round2(s.purchase.taxable - s.purchase.import_taxable), import_taxable: s.purchase.import_taxable, exempt: s.purchase.exempt, vat: s.purchase.vat, count: s.purchase.count },
+                purchase: { taxable: round2(purchaseAll.taxable - purchaseAll.import_taxable), import_taxable: purchaseAll.import_taxable, exempt: purchaseAll.exempt, vat: purchaseAll.vat, count: purchaseAll.count },
                 purchase_return: { taxable: s.purchase_return.taxable, exempt: s.purchase_return.exempt, vat: s.purchase_return.vat, count: s.purchase_return.count },
                 debit_note: { taxable: s.debit_note.taxable, exempt: s.debit_note.exempt, vat: s.debit_note.vat, count: s.debit_note.count },
                 output_vat: output, input_vat: input, carry_forward_credit: carry,
@@ -425,11 +500,11 @@ router.get('/vat-reports/vat-ledger', requireAuth, loadUserPermissions, requireP
         for (const t of Object.keys(VAT_DOCS)) docs.push(...await loadTaxDocs(tenantClient, tenantId, t, { dateFrom: q.date_from, dateTo: q.date_to, partyId: q.party_ledger_id }));
         // VAT Account filter: keep only documents touching that ledger and
         // count ONLY that ledger's share of their VAT.
-        const vatOf = d => q.vat_ledger_id ? Number(d.vat_by_ledger[q.vat_ledger_id] || 0) : d.vat;
+        const vatOf = d => q.vat_ledger_id ? Number(d.vat_by_ledger[q.vat_ledger_id] || 0) : round2(d.vat - Number(d.vat_by_ledger.not_claimed || 0));
         docs = applyDocFilters(docs, q).filter(d => q.include_exempt === 'true' || vatOf(d) !== 0)
             .filter(d => !q.vat_ledger_id || d.vat_by_ledger[q.vat_ledger_id] !== undefined)
             .sort((a, b) => String(a.doc_date).localeCompare(String(b.doc_date)) || String(a.doc_no).localeCompare(String(b.doc_no)));
-        const ledgerIds = [...new Set(docs.flatMap(d => Object.keys(d.vat_by_ledger)).filter(k => k !== 'unassigned'))];
+        const ledgerIds = [...new Set(docs.flatMap(d => Object.keys(d.vat_by_ledger)).filter(k => k !== 'unassigned' && k !== 'not_claimed'))];
         const { data: ledgerNames } = ledgerIds.length ? await tenantClient.from('ledger_accounts').select('id, account_name').in('id', ledgerIds) : { data: [] };
         const nameOf = Object.fromEntries((ledgerNames || []).map(l => [l.id, l.account_name]));
         let running = round2(q.opening);
@@ -439,7 +514,7 @@ router.get('/vat-reports/vat-ledger', requireAuth, loadUserPermissions, requireP
             const vatOut = d.side === 'sales' ? round2(d.sign * v) : 0;
             const vatIn = d.side === 'purchase' ? round2(d.sign * v) : 0;
             running = round2(running + vatOut - vatIn);
-            const accounts = Object.entries(d.vat_by_ledger).map(([k, a]) => `${k === 'unassigned' ? '(no VAT ledger)' : (nameOf[k] || k)}${Object.keys(d.vat_by_ledger).length > 1 ? ' ' + round2(a).toFixed(2) : ''}`).join(', ');
+            const accounts = Object.entries(d.vat_by_ledger).map(([k, a]) => `${k === 'unassigned' ? '(no VAT ledger)' : k === 'not_claimed' ? '(added to cost, not claimed)' : (nameOf[k] || k)}${Object.keys(d.vat_by_ledger).length > 1 ? ' ' + round2(a).toFixed(2) : ''}`).join(', ');
             return { doc_date: d.doc_date, bs_date: bsDateOf(d.doc_date, periods), doc_label: d.doc_label, doc_type: d.doc_type, doc_no: d.doc_no, party_name: d.party_name, party_pan: d.party_pan, party_bill_no: d.party_bill_no, vat_accounts: accounts, taxable: round2(d.sign * d.taxable), exempt: round2(d.sign * d.exempt), vat_out: vatOut, vat_in: vatIn, running_payable: running };
         });
         const totals = rows.reduce((t, r) => ({ taxable: round2(t.taxable + r.taxable), exempt: round2(t.exempt + r.exempt), vat_out: round2(t.vat_out + r.vat_out), vat_in: round2(t.vat_in + r.vat_in) }), { taxable: 0, exempt: 0, vat_out: 0, vat_in: 0 });
@@ -465,8 +540,27 @@ router.get('/vat-reports/tds', requireAuth, loadUserPermissions, requirePermissi
         const panById = Object.fromEntries(ledgers.map(l => [l.id, l.vat_pan_number || l.pan_number || null]));
         const rows = lines.map(l => {
             const base = round2(Number(l.debit_amount || 0) || Number(l.credit_amount || 0));
-            return { doc_date: jvById[l.jv_id]?.doc_date, doc_no: jvById[l.jv_id]?.doc_no, party_name: l.ledger_name_snapshot, party_pan: panById[l.ledger_id], base_amount: base, tds_percent: Number(l.tds_percent), tds_amount: round2(base * Number(l.tds_percent) / 100) };
-        }).sort((a, b) => String(a.doc_date).localeCompare(String(b.doc_date)));
+            return { doc_label: 'Journal', doc_date: jvById[l.jv_id]?.doc_date, doc_no: jvById[l.jv_id]?.doc_no, party_name: l.ledger_name_snapshot, party_pan: panById[l.ledger_id], base_amount: base, tds_percent: Number(l.tds_percent), tds_amount: round2(base * Number(l.tds_percent) / 100) };
+        });
+        // Additional expense entries: a "deduct" line with a rate % is TDS withheld from that
+        // line's party; its base is the party's (VAT-exclusive) expense amount in the entry.
+        let eq = tenantClient.from('purchase_additional_expenses').select('id, doc_no, doc_date, vendor_ledger_id, vendor_name_snapshot').eq('tenant_id', tenantId).eq('status', 'posted');
+        if (q.date_from) eq = eq.gte('doc_date', q.date_from);
+        if (q.date_to) eq = eq.lte('doc_date', q.date_to);
+        const { data: exps } = await eq.limit(20000);
+        const expById = Object.fromEntries((exps || []).map(e => [e.id, e]));
+        const expLines = await inChunks((exps || []).map(e => e.id), 200, async chunk => (await tenantClient.from('purchase_additional_expense_lines').select('*').in('expense_id', chunk)).data);
+        const tdsLines = expLines.filter(l => l.entry_sign === 'deduct' && Number(l.rate_percent) > 0);
+        const expPartyIds = [...new Set(tdsLines.map(l => l.party_ledger_id || expById[l.expense_id]?.vendor_ledger_id).filter(Boolean))];
+        const expParties = await inChunks(expPartyIds, 200, async chunk => (await tenantClient.from('ledger_accounts').select('id, account_name, pan_number, vat_pan_number').in('id', chunk)).data);
+        const expPartyById = Object.fromEntries(expParties.map(x => [x.id, x]));
+        tdsLines.forEach(l => {
+            const h = expById[l.expense_id], pid = l.party_ledger_id || h.vendor_ledger_id, party = expPartyById[pid];
+            const base = round2(expLines.filter(x => x.expense_id === l.expense_id && x.entry_sign !== 'deduct' && (x.party_ledger_id || h.vendor_ledger_id) === pid).reduce((a, x) => a + Number(x.amount || 0), 0));
+            rows.push({ doc_label: 'Additional Expense', doc_date: h.doc_date, doc_no: h.doc_no, party_name: party?.account_name || h.vendor_name_snapshot || '', party_pan: party?.vat_pan_number || party?.pan_number || null,
+                base_amount: base, tds_percent: Number(l.rate_percent), tds_amount: round2(l.amount) });
+        });
+        rows.sort((a, b) => String(a.doc_date).localeCompare(String(b.doc_date)));
         const totals = rows.reduce((t, r) => ({ base_amount: round2(t.base_amount + r.base_amount), tds_amount: round2(t.tds_amount + r.tds_amount) }), { base_amount: 0, tds_amount: 0 });
         res.json({ success: true, data: { rows, totals } });
     } catch (error) {

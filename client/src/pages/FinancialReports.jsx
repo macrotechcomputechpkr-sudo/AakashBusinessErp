@@ -127,7 +127,7 @@ function BudgetPanel({ authFetch }) {
 
 export default function FinancialReports() {
     const { authFetch } = useAuth();
-    const [tab, setTab] = useState('pl');
+    const [tab, setTab] = useState(() => new URLSearchParams(window.location.search).get('tab') || 'pl'); // ?tab= deep link from the Report Center
     const [config, setConfig] = useState(defaultConfig());
     const [fyStart, setFyStart] = useState(null);
     const [meta, setMeta] = useState({ stock_methods: {} });

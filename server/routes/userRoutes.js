@@ -14,6 +14,7 @@ const bcrypt = require('bcrypt');
 const crypto = require('crypto');
 const { getTenantClient, logAudit, loadUserPermissions, applyListQuery } = require('../utils/dbHelpers');
 const { requireAuth, requirePermission } = require('../middleware/auth');
+const { provisionLogin, setLoginStatus } = require('../utils/loginProvision');
 
 const SALT_ROUNDS = 10;
 const EMAIL_RE = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
@@ -175,6 +176,12 @@ router.post('/users', requireAuth, loadUserPermissions, requirePermission('user_
             }
             throw error;
         }
+        // the login itself lives in global_users (same id) - without it the new user could never sign in
+        try { await provisionLogin(tenantId, user, password_hash, { active: user.is_active !== false }); }
+        catch (loginErr) {
+            await tenantClient.from('users').delete().eq('id', user.id);
+            return res.status(loginErr.status || 500).json({ success: false, error: `Login could not be created: ${loginErr.message}` });
+        }
         delete user.password_hash;
 
         await logAudit(tenantId, createdBy, 'create_user', 'user', user.id, { new_data: user });
@@ -251,6 +258,8 @@ router.put('/users/:id', requireAuth, loadUserPermissions, requirePermission('us
         const { data: updated, error } = await tenantClient
             .from('users').update(update).eq('id', req.params.id).eq('tenant_id', tenantId).select().single();
         if (error) throw error;
+        try { await provisionLogin(tenantId, updated, update.password_hash || null, { active: updated.is_active !== false, fallbackHash: updated.password_hash }); }
+        catch (loginErr) { console.error('login sync failed:', loginErr.message); }
         delete updated.password_hash;
 
         await logAudit(tenantId, req.auth.userId, 'update_user', 'user', req.params.id, { old_data: existing, new_data: update });
@@ -283,6 +292,7 @@ router.delete('/users/:id', requireAuth, loadUserPermissions, requirePermission(
             .eq('id', req.params.id)
             .eq('tenant_id', tenantId);
         if (error) throw error;
+        try { await setLoginStatus(req.params.id, false); } catch (loginErr) { console.error('login deactivate failed:', loginErr.message); }
 
         await logAudit(tenantId, req.auth.userId, 'delete_user', 'user', req.params.id, { old_data: existing });
         res.json({ success: true, message: 'User deactivated successfully' });

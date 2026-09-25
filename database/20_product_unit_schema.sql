@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS tenant_master.product_units (
     created_by UUID,
     updated_by UUID,
 
-    CONSTRAINT unique_unit_code_per_tenant UNIQUE (tenant_id, unit_code),
+    CONSTRAINT unique_product_unit_code_per_tenant UNIQUE (tenant_id, unit_code),
     CONSTRAINT unique_unit_name_per_tenant UNIQUE (tenant_id, unit_name),
     -- FEATURE (Tally-inspired): a "compound" unit is built by chaining two
     -- simple units (e.g. "1 Dozen-Box = 12 Box", where Box is itself

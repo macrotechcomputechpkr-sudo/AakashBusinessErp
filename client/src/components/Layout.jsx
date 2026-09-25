@@ -7,92 +7,10 @@
 // reachable instead of only being accessible by typing the URL directly.
 // =============================================
 
-import React from 'react';
-import { NavLink, useNavigate } from 'react-router-dom';
+import React, { useEffect, useMemo, useState } from 'react';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
+import { SECTIONS, REPORT_GROUPS } from './menu';
 import { useAuth } from '../contexts/AuthContext';
-
-const navItems = [
-    { to: '/dashboard', label: '🏠 Dashboard' },
-    { to: '/fiscal-years', label: '📅 Fiscal Years' },
-    { to: '/chart-of-accounts', label: '📒 Chart of Accounts' },
-    { to: '/ledger-mapping', label: '🔗 Ledger Mapping' },
-    { to: '/cost-profit-centers', label: '🎯 Cost & Profit Centers' },
-    { to: '/billing-terms', label: '🧾 Billing Terms' },
-    { to: '/sub-ledgers', label: '📑 Sub Ledgers' },
-    { to: '/system-control', label: '⚙️ System Control' },
-    { to: '/entry-field-control', label: '🔒 Entry Field Control' },
-    { to: '/product-units', label: '📏 Product Units' },
-    { to: '/products', label: '🛒 Products' },
-    { to: '/ledger-opening', label: '📖 Ledger Opening Balance' },
-    { to: '/product-opening', label: '📦 Product Opening Stock' },
-    { to: '/product-rate-change', label: '💲 Product Rate Change' },
-    { to: '/product-offer-rate', label: '🏷️ Offer Rate' },
-    { to: '/remarks-terms', label: '📝 Remarks & Terms' },
-    { to: '/user-defined-fields', label: '🧩 User Defined Fields' },
-    { to: '/transport-master', label: '🚚 Transport Master' },
-    // INACTIVE (per request): keep the code, hide from navigation for now.
-    { to: '/sales-quotation', label: '📝 Sales Quotation' },
-    { to: '/sales-order', label: '🧾 Sales Order' },
-    { to: '/sales-delivery', label: '🚚 Sales Delivery/Challan' },
-    { to: '/sales-bill', label: '💵 Sales Bill/Invoice' },
-    { to: '/sales-return', label: '↩️ Sales Return' },
-    { to: '/sales-nonsaleable-return', label: '🗑️ Sales Non-saleable Return' },
-    { to: '/sales-additional-entry', label: '➕ Sales Additional Entry' },
-    // { to: '/purchase-requisition', label: '📋 Purchase Requisition' },
-    { to: '/purchase-order', label: '🛒 Purchase Order' },
-    { to: '/purchase-quotation', label: '📨 Purchase Quotation' },
-    { to: '/purchase-grn', label: '📦 Purchase GRN' },
-    { to: '/purchase-bill', label: '🧾 Purchase Bill' },
-    { to: '/purchase-additional-expense', label: '🧮 Additional Expenses' },
-    { to: '/purchase-return', label: '↩️ Purchase Return' },
-    { to: '/purchase-nonsaleable-return', label: '🚫 Non-saleable Return' },
-    { to: '/bill-wise-ageing-report', label: '📅 Bill-wise Ageing Report' },
-    { to: '/journal-voucher', label: '📗 Journal Voucher' },
-    { to: '/stock-transfer', label: '🔄 Stock Transfer' },
-    { to: '/debit-note', label: '📤 Debit Note' },
-    { to: '/credit-note', label: '📥 Credit Note' },
-    { to: '/pdc-voucher', label: '🏦 PDC' },
-    { to: '/bom-template', label: '📋 BOM Template' },
-    { to: '/production-order', label: '🏭 Production Order' },
-    { to: '/cash-bank-entry', label: '💵 Cash/Bank Entry' },
-    { to: '/grn-outstanding-report', label: '📊 GRN Outstanding Report' },
-    { to: '/purchase-register-report', label: '📈 Purchase Register Report (All)' },
-    { to: '/document-numbering', label: '🔢 Document Numbering' },
-    { to: '/route-sequencing', label: '🚚 Route Sequencing' },
-    { to: '/product-groups', label: '📦 Product Groups' },
-    { to: '/salesman-agents', label: '🧑‍💼 Salesman / Agent' },
-    { to: '/security-groups', label: '🔐 Security Groups' },
-    { to: '/product-rate-history', label: '📜 Rate & Discount History' },
-    { to: '/bulk-cash-settlement', label: '💰 Bulk Cash Settlement' },
-    { to: '/document-designer', label: '🎨 Document Designer' },
-    { to: '/register', label: '📋 Universal Register' },
-    { to: '/outstanding-report', label: '⏳ Outstanding Report' },
-    { to: '/vat-reports', label: '🧾 VAT & Tax Reports' },
-    { to: '/party-summary', label: '👥 Party Summary' },
-    { to: '/financial-reports', label: '📊 Financial Reports' },
-    { to: '/stock-movement', label: '📦 Stock Movement' },
-    { to: '/stock-report', label: '📋 Stock Report' },
-    { to: '/stock-in-out', label: '🔁 Stock In / Out (Qty)' },
-    { to: '/stock-valuation', label: '💰 Stock Valuation' },
-    { to: '/sales-purchase-analysis', label: '📈 Sales / Purchase Analysis' },
-    { to: '/monthly-analysis', label: '🗓 Monthly Analysis' },
-    { to: '/profitability', label: '💹 Profitability' },
-    { to: '/rate-history', label: '🏷 Rate History' },
-    { to: '/loading-sheet', label: '🚚 Loading Sheet' },
-    { to: '/ageing', label: '⏳ Ageing Report' },
-    { to: '/stock-ageing', label: '⌛ Stock Ageing & Expiry' },
-    { to: '/reorder', label: '🔔 Re-order & Over-stock' },
-    { to: '/consignment-cost', label: '🧮 Consignment Cost / Sales' },
-    { to: '/pdc-dashboard', label: '🏦 PDC Dashboard & Report' },
-    { to: '/purchase-bill-import', label: '📷 Purchase Bill from Image / PDF' },
-    { to: '/ledger-report', label: '📒 Ledger Report' },
-    { to: '/lc-register', label: '🏦 LC Register & Mapping' },
-    { to: '/categories', label: '🏷️ Category Management' },
-    { to: '/pricing-masters', label: '💲 Rate Category & Discount Group' },
-    { to: '/branches-warehouses', label: '🏢 Branches & Warehouses' },
-    { to: '/business-units', label: '🏷️ Business Units' },
-    { to: '/users', label: '👤 Users' }
-];
 
 export default function Layout({ children }) {
     const { user, tenant, tenants, isSuperAdmin, logout, switchTenant } = useAuth();
@@ -103,49 +21,78 @@ export default function Layout({ children }) {
         navigate('/login');
     };
 
+    const location = useLocation();
+    const [drawer, setDrawer] = useState(false);
+    const [search, setSearch] = useState('');
+    // open sections are remembered per browser
+    const [open, setOpen] = useState(() => { try { return JSON.parse(localStorage.getItem('nav_open_sections') || 'null') || { home: true }; } catch { return { home: true }; } });
+    useEffect(() => { try { localStorage.setItem('nav_open_sections', JSON.stringify(open)); } catch { /* private mode */ } }, [open]);
+    useEffect(() => { setDrawer(false); }, [location.pathname, location.search]);
+    const sections = useMemo(() => [...SECTIONS, { key: 'reports', title: 'Reports', items: REPORT_GROUPS.flatMap(g => g.items.map(([to, label]) => ({ to, label: `📊 ${label}`, group: g.title }))) }], []);
+    const q = search.trim().toLowerCase();
+    const current = location.pathname + location.search;
+
+    const link = item => {
+        const cls = active => `block px-3 py-1.5 rounded-lg text-sm ${active ? 'bg-blue-50 text-blue-700 font-medium' : 'text-gray-600 hover:bg-gray-100'}`;
+        // links with a query string reload the page so a report opens on the chosen view
+        if (item.to.includes('?')) return <a key={item.to} href={item.to} className={cls(current === item.to)}>{item.label}</a>;
+        return <NavLink key={item.to} to={item.to} className={({ isActive }) => cls(isActive)}>{item.label}</NavLink>;
+    };
+    const nav = (
+        <>
+            <div className="p-4 border-b border-gray-200">
+                <p className="font-bold text-gray-900 truncate">{tenant?.company_name || 'Multi-Tenant System'}</p>
+                <p className="text-xs text-gray-400">{tenant?.tenant_code}</p>
+                <input className="mt-2 w-full border rounded-lg px-2 py-1 text-sm" placeholder="🔍 Find menu / report…" value={search} onChange={e => setSearch(e.target.value)} />
+            </div>
+            <nav className="flex-1 p-2 overflow-y-auto">
+                {sections.map(sec => {
+                    const items = q ? sec.items.filter(i => i.label.toLowerCase().includes(q) || (i.group || '').toLowerCase().includes(q)) : sec.items;
+                    if (!items.length) return null;
+                    const isOpen = q || open[sec.key] || sec.items.some(i => i.to === location.pathname);
+                    return (
+                        <div key={sec.key} className="mb-1">
+                            <button type="button" className="w-full flex justify-between items-center px-2 py-1.5 text-xs font-semibold uppercase tracking-wide text-gray-500 hover:text-gray-800" onClick={() => setOpen(o => ({ ...o, [sec.key]: !isOpen }))}>
+                                <span>{sec.title}{sec.key === 'reports' ? ` (${sec.items.length})` : ''}</span><span>{isOpen ? '▾' : '▸'}</span>
+                            </button>
+                            {isOpen && <div className="space-y-0.5">{items.map(link)}</div>}
+                        </div>
+                    );
+                })}
+            </nav>
+            {tenants.length > 1 && (
+                <div className="p-3 border-t border-gray-200">
+                    <label className="text-xs text-gray-400">Switch company</label>
+                    <select className="w-full mt-1 border rounded-lg px-2 py-1.5 text-sm" value={tenant?.id || ''} onChange={(e) => switchTenant(e.target.value)}>
+                        {tenants.map(t => <option key={t.id} value={t.id}>{t.company_name}</option>)}
+                    </select>
+                </div>
+            )}
+            <div className="p-3 border-t border-gray-200 flex items-center justify-between">
+                <div className="min-w-0">
+                    <p className="text-sm font-medium text-gray-700 truncate">{user?.full_name || user?.email}</p>
+                    {isSuperAdmin && <span className="text-xs text-purple-600">Super Admin</span>}
+                </div>
+                <button onClick={handleLogout} className="text-xs text-red-600 font-medium">Logout</button>
+            </div>
+        </>
+    );
+
     return (
-        <div className="min-h-screen bg-gray-50 flex">
-            <aside className="w-64 bg-white border-r border-gray-200 hidden md:flex md:flex-col">
-                <div className="p-4 border-b border-gray-200">
-                    <p className="font-bold text-gray-900 truncate">{tenant?.company_name || 'Multi-Tenant System'}</p>
-                    <p className="text-xs text-gray-400">{tenant?.tenant_code}</p>
+        <div className="min-h-screen bg-gray-50 md:flex">
+            <aside className="w-64 bg-white border-r border-gray-200 hidden md:flex md:flex-col md:sticky md:top-0 md:h-screen">{nav}</aside>
+            {/* phones / tablets: top bar + drawer */}
+            <div className="md:hidden sticky top-0 z-30 bg-white border-b flex items-center justify-between px-3 py-2 no-print">
+                <button type="button" className="text-2xl leading-none px-2" onClick={() => setDrawer(true)} aria-label="Menu">☰</button>
+                <p className="font-semibold text-sm truncate">{tenant?.company_name || ''}</p>
+                <a href="/mobile" className="text-xs text-blue-600">📱 Mobile</a>
+            </div>
+            {drawer && (
+                <div className="md:hidden fixed inset-0 z-40 flex" onClick={() => setDrawer(false)}>
+                    <aside className="w-72 max-w-[85%] bg-white h-full flex flex-col shadow-xl" onClick={e => e.stopPropagation()}>{nav}</aside>
+                    <div className="flex-1 bg-black/40" />
                 </div>
-                <nav className="flex-1 p-2 space-y-1">
-                    {navItems.map(item => (
-                        <NavLink
-                            key={item.to}
-                            to={item.to}
-                            className={({ isActive }) =>
-                                `block px-3 py-2 rounded-lg text-sm font-medium ${isActive ? 'bg-blue-50 text-blue-700' : 'text-gray-600 hover:bg-gray-100'}`
-                            }
-                        >
-                            {item.label}
-                        </NavLink>
-                    ))}
-                </nav>
-
-                {tenants.length > 1 && (
-                    <div className="p-3 border-t border-gray-200">
-                        <label className="text-xs text-gray-400">Switch company</label>
-                        <select
-                            className="w-full mt-1 border rounded-lg px-2 py-1.5 text-sm"
-                            value={tenant?.id || ''}
-                            onChange={(e) => switchTenant(e.target.value)}
-                        >
-                            {tenants.map(t => <option key={t.id} value={t.id}>{t.company_name}</option>)}
-                        </select>
-                    </div>
-                )}
-
-                <div className="p-3 border-t border-gray-200 flex items-center justify-between">
-                    <div className="min-w-0">
-                        <p className="text-sm font-medium text-gray-700 truncate">{user?.full_name || user?.email}</p>
-                        {isSuperAdmin && <span className="text-xs text-purple-600">Super Admin</span>}
-                    </div>
-                    <button onClick={handleLogout} className="text-xs text-red-600 font-medium">Logout</button>
-                </div>
-            </aside>
-
+            )}
             <div className="flex-1 min-w-0">
                 {children}
             </div>

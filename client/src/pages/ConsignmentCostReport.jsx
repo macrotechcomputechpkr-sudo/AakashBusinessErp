@@ -16,6 +16,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import Layout from '../components/Layout';
 import MultiPick from '../components/MultiPick';
+import { useUdfColumns } from '../components/UdfColumns';
 
 const iso = d => d.toISOString().slice(0, 10);
 const fmt2 = n => (Number(n) ? Number(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '');
@@ -44,6 +45,10 @@ export default function ConsignmentCostReport() {
     useEffect(() => {
         authFetch('/api/ledger-accounts?pageSize=1000&sortBy=account_name&sortDir=asc').then(r => setLedgers((r.data || []).map(l => ({ id: l.id, name: l.account_code ? `${l.account_name} · ${l.account_code}` : l.account_name })))).catch(() => setLedgers([]));
     }, [authFetch]);
+
+    const udf = useUdfColumns(`consignment-${config.side}`, config.side === 'purchase' ? ['purchase_bill', 'purchase_return', 'purchase_nonsaleable_return'] : ['sales_bill', 'sales_return', 'sales_nonsaleable_return']);
+    const udfLoad = udf.load;
+    useEffect(() => { if (data) udfLoad(data.docs); }, [data, udfLoad]);
 
     const run = useCallback(async (cfg = config) => {
         setLoading(true); setError('');
@@ -118,6 +123,7 @@ export default function ConsignmentCostReport() {
                     <div className="flex flex-wrap gap-2 mb-3">
                         <button className="erp-btn primary" onClick={() => run()} disabled={loading}>{loading ? 'Loading…' : '🔍 Show'}</button>
                         {data && <button className="erp-btn" onClick={exportCsv}>⬇ Excel</button>}
+                        {udf.picker}
                         {data && <button className="erp-btn" onClick={() => window.print()}>🖨 Print / PDF</button>}
                         {data && view === 'bill' && <button className="erp-btn" onClick={() => setOpen(open.size ? new Set() : new Set(data.docs.map(d => d.key)))}>{open.size ? '▸ Collapse all' : '▾ Expand all'}</button>}
                     </div>
@@ -145,6 +151,7 @@ export default function ConsignmentCostReport() {
                                         <th className="text-left">Date</th><th className="text-left">Document</th><th className="text-left">{party}</th><th className="text-left">{acctWord}</th>
                                         <th className="text-right">Basic</th><th className="text-right">Discount</th><th className="text-right">Net</th><th className="text-right">Terms</th><th className="text-right">VAT</th>
                                         <th className="text-right">Additional</th><th className="text-right">Bill Total</th><th className="text-right bg-blue-50">{isPurchase ? 'Landed Cost' : 'Net incl. terms'}</th>
+                                        {udf.headers('text-left')}
                                     </tr></thead>
                                     <tbody>
                                         {data.docs.map(d => (
@@ -155,9 +162,10 @@ export default function ConsignmentCostReport() {
                                                     <td>{d.party_name}</td><td className="text-xs">{d.doc_account_name}</td>
                                                     {['basic', 'discount', 'net', 'terms_total', 'vat', 'additional_total', 'bill_total'].map(k => <td key={k} className="text-right tabular-nums">{d[k] ? sg(d) : ''}{fmt2(d[k])}</td>)}
                                                     <td className="text-right tabular-nums font-semibold bg-blue-50">{sg(d)}{fmt2(d.landed)}</td>
+                                                    {udf.cells(d, undefined, '')}
                                                 </tr>
                                                 {open.has(d.key) && (
-                                                    <tr><td colSpan={12} className="p-0 bg-gray-50">
+                                                    <tr><td colSpan={12 + udf.count} className="p-0 bg-gray-50">
                                                         <table className="w-full text-xs">
                                                             <thead><tr className="text-gray-500">
                                                                 <th className="text-left pl-6">Item</th><th className="text-right">Qty</th><th className="text-right">Rate</th><th className="text-right">Basic</th><th className="text-right">Disc</th><th className="text-right">Net</th>

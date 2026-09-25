@@ -20,6 +20,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import Layout from '../components/Layout';
 import MultiPick from '../components/MultiPick';
+import { useUdfColumns } from '../components/UdfColumns';
 
 const iso = d => d.toISOString().slice(0, 10);
 const fmt2 = n => (Number(n) ? Number(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '');
@@ -97,6 +98,9 @@ export default function LoadingSheet() {
         finally { setLoading(false); }
     }, [authFetch, config, params]);
 
+    const udf = useUdfColumns('loading-sheet', ['sales_bill', 'sales_delivery', 'sales_return', 'sales_nonsaleable_return']);
+    const udfLoad = udf.load;
+    useEffect(() => { if (data) udfLoad(data.bills); }, [data, udfLoad]);
     const V = k => config.views.includes(k);
     const R = !!data?.with_returns;
     // Qty cells of one presentation block (load / returned / net).
@@ -119,7 +123,8 @@ export default function LoadingSheet() {
         A('net_amount') && { key: 'net_amount', label: 'Net Amount', get: q => fmt2(q.net_amount), num: true, strong: true }
     ].filter(Boolean);
     // Bill summary columns.
-    const billCols = BILL_FIELDS.filter(f => config.bill_fields.includes(f.key)).flatMap(f => (f.key === 'other' ? termNames.map(n => ({ key: `o:${n}`, label: n, amt: true, get: b => b.other?.[n] })) : [{ ...f, get: b => b[f.key] }]));
+    const billCols = BILL_FIELDS.filter(f => config.bill_fields.includes(f.key)).flatMap(f => (f.key === 'other' ? termNames.map(n => ({ key: `o:${n}`, label: n, amt: true, get: b => b.other?.[n] })) : [{ ...f, get: b => b[f.key] }]))
+        .concat(udf.columns.map(col => ({ key: `udf:${col.key}`, label: col.label, get: b => udf.valueOf(b, col) })));
     const blocks = R ? [['load', 'Loaded'], ['returned', 'Returned'], ['net', 'Net']] : [['load', null]];
 
     const groups = (() => {
@@ -214,6 +219,7 @@ export default function LoadingSheet() {
                         <div className="erp-field mb-2"><label className="erp-label">Bill Summary fields</label>
                             <div className="flex flex-wrap gap-3 text-sm items-center">
                                 {BILL_FIELDS.map(f => <label key={f.key} className="flex items-center gap-1"><input type="checkbox" checked={config.bill_fields.includes(f.key)} onChange={() => toggle('bill_fields', f.key)} /> {f.label}</label>)}
+                                {udf.picker}
                             </div></div>
                     )}
 

@@ -295,6 +295,31 @@ router.get('/ledger-accounts', requireAuth, loadUserPermissions, requirePermissi
         if (req.query.account_type) base = base.eq('account_type', req.query.account_type);
         if (req.query.category_type) base = base.eq('category_type', req.query.category_type);
 
+        // Pickers ask for "everything" (pageSize 500 / 1000 / 5000); the list
+        // helper caps a page at 100, which silently cut ledger pickers short
+        // for companies with more than 100 ledgers. Serve those in full,
+        // 1000 rows per database round trip.
+        const wanted = parseInt(req.query.pageSize, 10) || 0;
+        if (wanted > 100 && !req.query.page) {
+            const cap = Math.min(wanted, 20000), all = [];
+            const search = (req.query.search || '').replace(/[(),]/g, ' ').trim();
+            for (let from = 0; from < cap; from += 1000) {
+                let pq = tenantClient.from('ledger_accounts')
+                    .select('*, account_groups(group_name, category_type, nfrs_category), ledger_account_categories(ledger_category_id)')
+                    .eq('tenant_id', req.auth.tenantId).eq('is_active', true);
+                if (req.query.account_group_id) pq = pq.eq('account_group_id', req.query.account_group_id);
+                if (req.query.account_type) pq = pq.eq('account_type', req.query.account_type);
+                if (req.query.category_type) pq = pq.eq('category_type', req.query.category_type);
+                if (search) pq = pq.or(['account_name', 'account_code', 'pan_number'].map(col => `${col}.ilike.%${search}%`).join(','));
+                const { data: chunk, error: e } = await pq.order('account_name', { ascending: true }).order('id').range(from, Math.min(from + 999, cap - 1));
+                if (e) throw e;
+                all.push(...(chunk || []));
+                if (!chunk || chunk.length < 1000) break;
+            }
+            const rows = all.map(row => ({ ...row, ledger_category_ids: (row.ledger_account_categories || []).map(r => r.ledger_category_id) }));
+            return res.json({ success: true, data: rows, pagination: { page: 1, pageSize: rows.length, total: rows.length, totalPages: 1 } });
+        }
+
         const { q, page, pageSize } = applyListQuery(base, req, {
             searchColumns: ['account_name', 'account_code', 'pan_number'],
             defaultSort: 'account_name',
@@ -324,7 +349,7 @@ router.get('/ledger-accounts', requireAuth, loadUserPermissions, requirePermissi
 // address/area data even if a client sends it anyway.
 const PARTY_ONLY_FIELDS = [
     'pan_number', 'vat_pan_type', 'vat_pan_number', 'contact_person', 'contact_person_phone',
-    'contact_person_mobile', 'street', 'city', 'state', 'zip_code', 'billing_address',
+    'contact_person_mobile', 'street', 'city', 'state', 'zip_code', 'billing_address', 'billing_name',
     'shipping_address', 'area_id', 'route_id', 'agent_id', 'credit_limit', 'credit_days',
     // Registration/compliance details (Other Information tab)
     'tin_number', 'excise_registration_no', 'cst_no', 'dl_no', 'business_category', 'voucher_adjustment_basis',
@@ -483,6 +508,7 @@ router.post('/ledger-accounts', requireAuth, loadUserPermissions, requirePermiss
             country: data.country || 'Nepal',
             zip_code: data.zip_code,
             billing_address: data.billing_address,
+            billing_name: data.billing_name || null,
             shipping_address: data.shipping_address,
             currency: data.currency || 'NPR',
             interest_rate: data.interest_rate || 0,

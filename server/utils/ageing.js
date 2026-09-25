@@ -212,11 +212,11 @@ async function ageing(c, t, q) {
                 const di = info[`${r.source_type}:${r.source_id}`] || {};
                 const date = String(r.source_date).slice(0, 10);
                 if (r.nature === normalNature) {
-                    row.docs.push({ kind: 'bill', doc_type: r.source_type, doc_label: DOC_TABLES[r.source_type]?.[0] || r.source_type, doc_no: r.source_doc_no, doc_date: date,
+                    row.docs.push({ kind: 'bill', doc_type: r.source_type, doc_id: r.source_id, doc_label: DOC_TABLES[r.source_type]?.[0] || r.source_type, doc_no: r.source_doc_no, doc_date: date,
                         due_date: di.due_date, party_bill_no: di.party_bill_no, amount: round2(r.total_amount), settled: round2(allocated[r.id] || 0), remaining });
                 } else {
                     row.on_account = round2(row.on_account + remaining);
-                    row.docs.push({ kind: 'on_account', doc_type: r.source_type, doc_label: DOC_TABLES[r.source_type]?.[0] || r.source_type, doc_no: r.source_doc_no, doc_date: date,
+                    row.docs.push({ kind: 'on_account', doc_type: r.source_type, doc_id: r.source_id, doc_label: DOC_TABLES[r.source_type]?.[0] || r.source_type, doc_no: r.source_doc_no, doc_date: date,
                         amount: round2(r.total_amount), settled: round2(allocated[r.id] || 0), remaining: -remaining });
                 }
             });
@@ -255,7 +255,7 @@ async function ageing(c, t, q) {
                 const remaining = round2(e.amt - take);
                 if (remaining <= 0.005) return;
                 const di = info[`${e.type}:${e.id}`] || {};
-                row.docs.push({ kind: e.type === 'opening' ? 'opening' : 'bill', doc_type: e.type, doc_label: e.type === 'opening' ? 'Opening Balance' : DOC_TABLES[e.type]?.[0] || e.type,
+                row.docs.push({ kind: e.type === 'opening' ? 'opening' : 'bill', doc_type: e.type, doc_id: e.id, doc_label: e.type === 'opening' ? 'Opening Balance' : DOC_TABLES[e.type]?.[0] || e.type,
                     doc_no: e.type === 'opening' ? 'Opening' : di.doc_no || '', doc_date: e.date === '0000-01-01' ? null : e.date, due_date: di.due_date || null, party_bill_no: di.party_bill_no || null,
                     amount: round2(e.amt), settled: round2(take), remaining });
             });
@@ -272,7 +272,7 @@ async function ageing(c, t, q) {
             const l = byId[d.party_id];
             if (l ? !masterOk(l) : (f.areaIds.length || f.routeIds.length || f.agentIds.length || f.groupIds.length || f.search)) return;
             const row = rowFor(d.party_id, d.product_company_id, d.party_name);
-            row.docs.push({ kind: d.kind, doc_type: d.stage, doc_label: d.label, doc_no: d.doc_no, doc_date: d.doc_date, due_date: d.due_date,
+            row.docs.push({ kind: d.kind, doc_type: d.stage, doc_id: d.doc_id, doc_label: d.label, doc_no: d.doc_no, doc_date: d.doc_date, due_date: d.due_date,
                 amount: d.total_amount, settled: round2(d.total_amount - d.pending_value), remaining: d.pending_value, pending_base_qty: d.pending_base_qty, vehicle_no: d.vehicle_no });
         });
         if (docs.length && asOn < new Date().toISOString().slice(0, 10)) warnings.push('Challan / order pending quantities are as of today.');

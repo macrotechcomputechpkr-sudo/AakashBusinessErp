@@ -26,6 +26,7 @@
 // =============================================
 const { parseTradeQuery, loadTradeLines, round2, round4 } = require('./tradeLines');
 const { costRatesOn, METHODS } = require('./stockEngine');
+const { lookupUdf } = require('./documentCatalog');
 
 const DIMS = {
     party: { label: s => (s === 'sales' ? 'Customer' : 'Supplier'), id: 'party_id', name: 'party_name', code: 'party_code' },
@@ -56,7 +57,23 @@ const ITEM_TYPE_LABEL = { raw_material: 'Raw Material', semi_finished: 'Semi-Fin
     fixed_asset: 'Fixed Asset', service: 'Service', non_inventory: 'Non-Inventory' };
 
 const httpError = (msg, status = 400) => { const e = new Error(msg); e.status = status; return e; };
+// User Defined Fields as dimensions: 'udf:<field id>' (value typed on the
+// document, or on the line for a detail field).
+const isUdf = k => /^udf:[0-9a-f-]{8,}$/i.test(k);
+const isDim = k => !!DIMS[k] || isUdf(k);
+async function attachUdf(c, t, lines, fieldIds) {
+    const { data: defs, error } = await c.from('user_defined_fields').select('id, field_label, section').eq('tenant_id', t).in('id', fieldIds);
+    if (error) throw error;
+    const u = await lookupUdf(c, t, { documentIds: lines.map(l => l.doc_id), fieldIds });
+    lines.forEach(l => { l.udf = { ...(u.docs[l.doc_id] || {}), ...(u.lines[l.line_id] || {}) }; });
+    return Object.fromEntries((defs || []).map(d => [d.id, d.field_label]));
+}
+const dimLabel = (k, side, udfLabels) => (isUdf(k) ? udfLabels[k.slice(4)] || 'Custom field' : typeof DIMS[k].label === 'function' ? DIMS[k].label(side) : DIMS[k].label);
 const dimValue = (key, l) => {
+    if (isUdf(key)) {
+        const v = l.udf ? l.udf[key.slice(4)] : null;
+        return { key: v == null || v === '' ? '__none__' : `u:${v}`, label: v == null || v === '' ? '(blank)' : String(v), code: '', sort: null };
+    }
     const d = DIMS[key];
     const id = l[d.id];
     let name = l[d.name];
@@ -132,14 +149,26 @@ async function tradeAnalysis(c, t, q, preset = {}) {
     const f = parseTradeQuery({ ...q, ...preset });
     if (!f.from || !f.to) throw httpError('Choose From and To dates');
     if (f.to < f.from) throw httpError('To date must be on or after From date');
-    const rowDims = String(q.rows || preset.rows || 'party').split(',').map(s => s.trim()).filter(k => DIMS[k]).slice(0, 4);
+    const rowDims = String(q.rows || preset.rows || 'party').split(',').map(s => s.trim()).filter(isDim).slice(0, 4);
     if (!rowDims.length) rowDims.push('party');
-    const colDim = DIMS[q.columns] && !rowDims.includes(q.columns) ? q.columns : null;
+    const colDim = q.columns && isDim(q.columns) && !rowDims.includes(q.columns) ? q.columns : null;
     const withCost = f.side === 'sales' && (preset.withCost || q.with_cost === 'true');
     const method = METHODS[q.cost_method] ? q.cost_method : 'moving_average';
 
-    const { lines, masters } = await loadTradeLines(c, t, f);
+    let { lines, masters } = await loadTradeLines(c, t, f);
     const warnings = [];
+    // UDF: as dimensions, and as a filter (udf_filter=<field id>:<text>, text contained, case-insensitive)
+    const udfFilter = /^([0-9a-f-]{8,}):(.*)$/i.exec(q.udf_filter || '');
+    const udfIds = [...new Set([...rowDims, colDim].filter(k => k && isUdf(k)).map(k => k.slice(4)).concat(udfFilter ? [udfFilter[1]] : []))];
+    let udfLabels = {};
+    if (udfIds.length && lines.length) {
+        const labels = await attachUdf(c, t, lines, udfIds);
+        udfLabels = labels;
+        if (udfFilter) {
+            const want = udfFilter[2].trim().toLowerCase();
+            lines = lines.filter(l => { const v = String(l.udf[udfFilter[1]] ?? '').toLowerCase(); return want === '(blank)' ? !v : v.includes(want); });
+        }
+    }
     if (withCost && lines.length) warnings.push(...await attachCost(c, t, lines, method, masters));
     let displayFactor = null, displayUnit = null;
     if (q.display_unit_id) {
@@ -209,8 +238,8 @@ async function tradeAnalysis(c, t, q, preset = {}) {
     const columns = [...colMap.values()].sort((a, b) => String(a.sort).localeCompare(String(b.sort))).map(({ key, label }) => ({ key, label }));
     return {
         side: f.side, from: f.from, to: f.to, kinds: f.kinds,
-        rows: rowDims.map(k => ({ key: k, label: typeof DIMS[k].label === 'function' ? DIMS[k].label(f.side) : DIMS[k].label })),
-        column_dim: colDim ? { key: colDim, label: typeof DIMS[colDim].label === 'function' ? DIMS[colDim].label(f.side) : DIMS[colDim].label } : null,
+        rows: rowDims.map(k => ({ key: k, label: dimLabel(k, f.side, udfLabels) })),
+        column_dim: colDim ? { key: colDim, label: dimLabel(colDim, f.side, udfLabels) } : null,
         columns, tree, with_cost: withCost, cost_method: withCost ? method : null, cost_method_label: withCost ? METHODS[method] : null,
         display_unit: displayUnit, line_count: lines.length, warnings
     };
@@ -250,7 +279,7 @@ async function rateHistory(c, t, q) {
         change_pct: s.first_net_rate_base ? round2((s.last_net_rate_base - s.first_net_rate_base) * 100 / s.first_net_rate_base) : 0
     })).sort((a, b) => String(a.party_name).localeCompare(String(b.party_name)) || String(a.product_name).localeCompare(String(b.product_name)));
     const history = sorted.map(l => ({
-        doc_type: l.doc_type, doc_label: l.doc_label, kind: l.kind, doc_no: l.doc_no, doc_date: l.doc_date, party_bill_no: l.party_bill_no,
+        doc_type: l.doc_type, doc_label: l.doc_label, kind: l.kind, doc_id: l.doc_id, line_id: l.line_id, doc_no: l.doc_no, doc_date: l.doc_date, party_bill_no: l.party_bill_no,
         party_id: l.party_id, party_name: l.party_name, product_id: l.product_id, product_code: l.product_code, product_name: l.product_name,
         qty: l.qty, unit: l.unit, alt_qty: l.alt_qty, alt_unit: l.alt_unit, free_qty: l.free_base_qty, base_qty: l.base_qty, base_unit: l.base_unit,
         rate: l.rate, rate_basis: l.rate_basis, rate_unit: l.dual && l.alt_qty ? (l.rate_basis === 'primary' ? l.primary_unit : l.base_unit) : l.unit,

@@ -20,7 +20,9 @@ const VOUCHER_TYPES = [
     'sales_order', 'sales_delivery', 'sales_bill', 'sales_return', 'sales_additional',
     'purchase_order', 'purchase_grn', 'purchase_bill', 'purchase_return', 'purchase_additional',
     'journal', 'cash', 'bank', 'pdc', 'production',
-    'purchase_requisition', 'purchase_quotation'
+    'purchase_requisition', 'purchase_quotation',
+    'sales_quotation', 'sales_nonsalable_return', 'purchase_nonsalable_return',
+    'stock_transfer', 'debit_note', 'credit_note'
 ];
 
 // FEATURE/SECURITY: the only tables a Table Reference UDF may point at,
@@ -182,3 +184,5 @@ router.get('/user-defined-fields/:id/options', requireAuth, async (req, res) => 
 });
 
 module.exports = router;
+module.exports.REFERENCE_TABLE_MAP = REFERENCE_TABLE_MAP;
+module.exports.VOUCHER_TYPES = VOUCHER_TYPES;

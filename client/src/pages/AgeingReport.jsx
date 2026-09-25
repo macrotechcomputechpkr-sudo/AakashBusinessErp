@@ -16,6 +16,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import Layout from '../components/Layout';
 import MultiPick from '../components/MultiPick';
+import { useUdfColumns } from '../components/UdfColumns';
 
 const iso = d => d.toISOString().slice(0, 10);
 const fmt2 = n => (Number(n) ? Number(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '');
@@ -111,9 +112,13 @@ export default function AgeingReport() {
             <td className="text-right tabular-nums">{fmt2(d.amount)}</td><td className="text-right tabular-nums">{fmt2(d.settled)}</td>
             <td className="text-right tabular-nums font-semibold">{fmt2(d.remaining)}</td>
             {buckets.map(b => <td key={b.key} className="text-right tabular-nums">{d.bucket === b.key ? fmt2(d.remaining) : ''}</td>)}
+            {udf.cells(d, undefined, 'text-left')}
         </tr>
     ));
     const totalsRow = useMemo(() => data?.totals, [data]);
+    const udf = useUdfColumns(`ageing-${config.type}`, ['sales_bill', 'sales_return', 'sales_delivery', 'sales_order', 'purchase_bill', 'purchase_return', 'purchase_grn', 'purchase_order', 'credit_note', 'debit_note', 'journal_voucher', 'cash_bank_entry', 'pdc_voucher']);
+    const udfLoad = udf.load;
+    useEffect(() => { if (data) udfLoad(data.rows.flatMap(r => r.docs || [])); }, [data, udfLoad]);
 
     return (
         <Layout>
@@ -188,6 +193,7 @@ export default function AgeingReport() {
                         <button className="erp-btn primary" onClick={() => run()} disabled={loading}>{loading ? 'Loading…' : '🔍 Show'}</button>
                         {data && <button className="erp-btn" onClick={exportCsv}>⬇ Excel</button>}
                         {data && <button className="erp-btn" onClick={() => window.print()}>🖨 Print / PDF</button>}
+                        {udf.picker}
                         {data && config.view === 'party' && <button className="erp-btn" onClick={() => setOpen(open.size ? new Set() : new Set(data.rows.map(r => r.key)))}>{open.size ? '▸ Collapse all' : '▾ Expand all'}</button>}
                         <button className="erp-btn" onClick={() => { setConfig(defaultConfig(config.type)); setData(null); }}>↺ Reset</button>
                     </div>
@@ -245,6 +251,7 @@ export default function AgeingReport() {
                                     <th className="text-left min-w-[240px]">Document</th><th className="text-left">Date</th><th className="text-left">Due Date</th><th className="text-right">Days</th>
                                     <th className="text-right">Amount</th><th className="text-right">Settled</th><th className="text-right">Pending</th>
                                     {buckets.map(b => <th key={b.key} className="text-right bg-amber-50 whitespace-nowrap">{b.label}</th>)}
+                                    {udf.headers('text-left')}
                                 </tr></thead>
                                 <tbody>
                                     {data.rows.map(r => (

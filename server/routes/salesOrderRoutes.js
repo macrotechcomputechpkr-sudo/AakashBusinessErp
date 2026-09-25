@@ -6,6 +6,7 @@
 // =============================================
 
 const express = require('express');
+const { checkAccountPurposes } = require('../utils/ledgerPurpose');
 const { bumpAltCounter, moveSourceProgress } = require('../utils/progressCounters');
 const { checkCompulsoryFields, lockProtectedFields } = require('../utils/entryFieldRules');
 const { checkProductCompany } = require('../utils/productCompanyRules');
@@ -164,13 +165,15 @@ router.get('/sales-orders/:id', requireAuth, loadUserPermissions, requirePermiss
     }
 });
 
-router.post('/sales-orders', requireAuth, loadUserPermissions, requirePermission('ledger', 'create'), async (req, res) => {
+async function createSalesOrder(req, res) {
     try {
         const isDraft = req.body.status === 'draft' && req.body.save_as_draft === true;
         const validationError = validateBody(req.body, isDraft);
         if (validationError) return res.status(400).json({ success: false, error: validationError });
         const fieldError = await checkCompulsoryFields(await getTenantClient(req.auth.tenantId), req.auth.tenantId, req.auth.userId, 'sales_order', req.body, isDraft);
         if (fieldError) return res.status(400).json({ success: false, error: fieldError });
+        const acctError = await checkAccountPurposes(await getTenantClient(req.auth.tenantId), req.auth.tenantId, req.body, { sales_account_ledger_id: 'sales_goods' });
+        if (acctError) return res.status(400).json({ success: false, error: acctError });
         const companyError = await checkProductCompany(await getTenantClient(req.auth.tenantId), req.auth.tenantId, 'sales', req.body, isDraft);
         if (companyError) return res.status(400).json({ success: false, error: companyError });
 
@@ -256,7 +259,8 @@ router.post('/sales-orders', requireAuth, loadUserPermissions, requirePermission
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
-});
+}
+router.post('/sales-orders', requireAuth, loadUserPermissions, requirePermission('ledger', 'create'), createSalesOrder);
 
 router.put('/sales-orders/:id', requireAuth, loadUserPermissions, requirePermission('ledger', 'edit'), async (req, res) => {
     try {
@@ -274,6 +278,8 @@ router.put('/sales-orders/:id', requireAuth, loadUserPermissions, requirePermiss
         if (validationError) return res.status(400).json({ success: false, error: validationError });
         const fieldError = await checkCompulsoryFields(await getTenantClient(req.auth.tenantId), req.auth.tenantId, req.auth.userId, 'sales_order', b, isDraft);
         if (fieldError) return res.status(400).json({ success: false, error: fieldError });
+        const acctError = await checkAccountPurposes(await getTenantClient(req.auth.tenantId), req.auth.tenantId, req.body, { sales_account_ledger_id: 'sales_goods' });
+        if (acctError) return res.status(400).json({ success: false, error: acctError });
         const companyError = await checkProductCompany(await getTenantClient(req.auth.tenantId), req.auth.tenantId, 'sales', b, isDraft);
         if (companyError) return res.status(400).json({ success: false, error: companyError });
 
@@ -307,7 +313,7 @@ router.put('/sales-orders/:id', requireAuth, loadUserPermissions, requirePermiss
     }
 });
 
-router.put('/sales-orders/:id/status', requireAuth, loadUserPermissions, requirePermission('ledger', 'edit'), async (req, res) => {
+async function changeSalesOrderStatus(req, res) {
     try {
         const { status, cancellation_reason } = req.body;
         if (!['draft', 'confirmed', 'partially_delivered', 'fully_delivered', 'closed', 'cancelled'].includes(status)) {
@@ -338,7 +344,8 @@ router.put('/sales-orders/:id/status', requireAuth, loadUserPermissions, require
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
-});
+}
+router.put('/sales-orders/:id/status', requireAuth, loadUserPermissions, requirePermission('ledger', 'edit'), changeSalesOrderStatus);
 
 router.delete('/sales-orders/:id', requireAuth, loadUserPermissions, requirePermission('ledger', 'delete'), async (req, res) => {
     try {
@@ -371,3 +378,5 @@ router.get('/sales-orders/:id/audit-trail', requireAuth, loadUserPermissions, re
 });
 
 module.exports = router;
+// reused by mobile ordering and order -> bill conversion (routes/salesmanRoutes.js)
+Object.assign(module.exports, { createSalesOrder, changeSalesOrderStatus });

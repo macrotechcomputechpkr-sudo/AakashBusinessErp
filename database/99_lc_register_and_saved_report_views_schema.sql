@@ -79,6 +79,6 @@ CREATE TABLE IF NOT EXISTS tenant_master.saved_report_views (
     is_default BOOLEAN DEFAULT FALSE,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     updated_at TIMESTAMPTZ DEFAULT NOW(),
-    CONSTRAINT unique_saved_view_name UNIQUE (tenant_id, user_id, report_key, view_name)
+    CONSTRAINT unique_saved_report_view_name UNIQUE (tenant_id, user_id, report_key, view_name)
 );
 CREATE INDEX IF NOT EXISTS idx_saved_views_lookup ON tenant_master.saved_report_views(tenant_id, report_key);

@@ -12,6 +12,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import Layout from '../components/Layout';
 import MultiPick from '../components/MultiPick';
+import { useUdfColumns } from '../components/UdfColumns';
 
 const iso = d => d.toISOString().slice(0, 10);
 const fmt2 = n => (Number(n) ? Number(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '');
@@ -34,6 +35,9 @@ export default function RateHistoryReport() {
     const [error, setError] = useState('');
     const [focus, setFocus] = useState(null);             // summary row -> its history
     const set = (k, v) => setConfig(c => ({ ...c, [k]: v }));
+    const udf = useUdfColumns('rate-history', config.side === 'purchase' ? ['purchase_bill', 'purchase_return', 'purchase_nonsaleable_return'] : ['sales_bill', 'sales_return', 'sales_nonsaleable_return']);
+    const udfLoad = udf.load;
+    useEffect(() => { if (data) udfLoad(data.history); }, [data, udfLoad]);
 
     useEffect(() => { authFetch(`/api/reports/trade-meta?side=${config.side}`).then(r => setMeta(r.data)).catch(e => setError(e.message)); }, [authFetch, config.side]);
 
@@ -62,8 +66,8 @@ export default function RateHistoryReport() {
             head = [partyWord, 'Code', 'Item', 'Bills', 'Qty (base)', 'Base Unit', 'Value', 'Last Date', 'Last Bill', 'Last Rate', 'Rate Unit', 'Last Disc %', 'Last Net Rate (base)', 'Min', 'Max', 'Avg', 'Change %'];
             rows = data.summary.map(s => [s.party_name, s.product_code, s.product_name, s.count, s.qty, s.base_unit, s.value, s.last_date, s.last_doc_no, s.last_rate, s.last_unit, s.last_discount_percent, s.last_net_rate_base, s.min_rate, s.max_rate, s.avg_rate, s.change_pct]);
         } else {
-            head = ['Date', 'Document', 'Bill No', 'Party Bill No', partyWord, 'Code', 'Item', 'Qty', 'Unit', 'Alt Qty', 'Alt Unit', 'Free (base)', 'Base Qty', 'Base Unit', 'Rate', 'Rate per', 'Disc %', 'Gross', 'Discount', 'Net', 'Net Rate (base)', 'Area', 'Agent'];
-            rows = history.map(h => [h.doc_date, h.doc_label, h.doc_no, h.party_bill_no || '', h.party_name, h.product_code, h.product_name, h.qty, h.unit, h.alt_qty || '', h.alt_unit || '', h.free_qty || '', h.base_qty, h.base_unit, h.rate, h.rate_unit, h.discount_percent, h.gross, h.discount, h.net, h.net_rate_base, h.area_name, h.agent_name]);
+            head = ['Date', 'Document', 'Bill No', 'Party Bill No', partyWord, 'Code', 'Item', 'Qty', 'Unit', 'Alt Qty', 'Alt Unit', 'Free (base)', 'Base Qty', 'Base Unit', 'Rate', 'Rate per', 'Disc %', 'Gross', 'Discount', 'Net', 'Net Rate (base)', 'Area', 'Agent', ...udf.columns.map(c => c.label)];
+            rows = history.map(h => [h.doc_date, h.doc_label, h.doc_no, h.party_bill_no || '', h.party_name, h.product_code, h.product_name, h.qty, h.unit, h.alt_qty || '', h.alt_unit || '', h.free_qty || '', h.base_qty, h.base_unit, h.rate, h.rate_unit, h.discount_percent, h.gross, h.discount, h.net, h.net_rate_base, h.area_name, h.agent_name, ...udf.values(h).map(x => x.value)]);
         }
         const esc = v => (/[",\n]/.test(String(v)) ? `"${String(v).replace(/"/g, '""')}"` : v);
         const a = document.createElement('a');
@@ -104,6 +108,7 @@ export default function RateHistoryReport() {
                 <div className="flex flex-wrap gap-2 mb-3">
                     <button className="erp-btn primary" onClick={() => run()} disabled={loading}>{loading ? 'Loading…' : '🔍 Show'}</button>
                     {data && <button className="erp-btn" onClick={exportCsv}>⬇ Excel</button>}
+                    {udf.picker}
                     {data && <button className="erp-btn" onClick={() => window.print()}>🖨 Print / PDF</button>}
                     <button className="erp-btn" onClick={() => { setConfig(defaultConfig()); setData(null); }}>↺ Reset</button>
                 </div>
@@ -153,6 +158,7 @@ export default function RateHistoryReport() {
                                         <th className="text-left">Date</th><th className="text-left">Document</th><th className="text-left">Party Bill</th><th className="text-left">{partyWord}</th><th className="text-left">Item</th>
                                         <th className="text-right">Qty</th><th className="text-right">Alt Qty</th><th className="text-right">Free (base)</th><th className="text-right">Rate</th><th className="text-right">Disc %</th>
                                         <th className="text-right">Net</th><th className="text-right bg-blue-50">Net Rate / base unit</th>
+                                        {udf.headers('text-left')}
                                     </tr></thead>
                                     <tbody>
                                         {history.map((h, i) => (
@@ -166,9 +172,10 @@ export default function RateHistoryReport() {
                                                 <td className="text-right">{h.discount_percent ? `${h.discount_percent}%` : ''}</td>
                                                 <td className="text-right tabular-nums">{fmt2(h.net)}</td>
                                                 <td className="text-right tabular-nums bg-blue-50 font-semibold">{fmt2(h.net_rate_base)} <span className="text-[10px] text-gray-400">/{h.base_unit}</span></td>
+                                                {udf.cells(h, undefined, '')}
                                             </tr>
                                         ))}
-                                        {history.length === 0 && <tr><td colSpan={12} className="text-center text-gray-400 py-4">No lines.</td></tr>}
+                                        {history.length === 0 && <tr><td colSpan={12 + udf.count} className="text-center text-gray-400 py-4">No lines.</td></tr>}
                                     </tbody>
                                 </table>
                             )}
