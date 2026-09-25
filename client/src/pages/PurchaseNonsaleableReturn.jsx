@@ -18,6 +18,7 @@ import NumberingCategorySelector from '../components/NumberingCategorySelector';
 import { resolveDualUomEntryMode, onPrimaryQtyChange, onSecondaryQtyChange, validateFixedSecondary, dualBaseQty } from '../utils/dualUomEntryMode';
 import { useEnterKeyNavigation } from '../hooks/useEnterKeyNavigation';
 import UdfValuesModal from '../components/UdfValuesModal';
+import useLedgerPurposes from '../components/useLedgerPurposes';
 
 const RETURN_REASONS = [
     { value: 'damaged', label: 'Damaged' },
@@ -56,6 +57,7 @@ const EFC_RENDERED_KEYS = ['agent_id', 'business_unit_id', 'cost_center_id', 'cu
 
 export default function PurchaseNonsaleableReturn() {
     const { authFetch } = useAuth();
+    const lp = useLedgerPurposes();
     const efc = useEntryFieldControls('purchase_nonsalable_return', EFC_RENDERED_KEYS);
     const [rows, setRows] = useState([]);
     const [showForm, setShowForm] = useState(false);
@@ -507,7 +509,7 @@ export default function PurchaseNonsaleableReturn() {
                                     listKey="return_goods_account_picker"
                                     columns={[{ key: 'account_code', label: 'Code' }, { key: 'account_name', label: 'Name' }]}
                                     defaultVisibleKeys={['account_name']}
-                                    items={ledgers} getId={l => l.id} getLabel={l => l.account_name}
+                                    items={lp.filter(ledgers, 'purchase_goods', form.goods_account_ledger_id)} getId={l => l.id} getLabel={l => l.account_name}
                                     searchKeys={['account_name', 'account_code']}
                                     value={form.goods_account_ledger_id} onChange={id => setForm({ ...form, goods_account_ledger_id: id })} placeholder="Select Ledger"
                                 />

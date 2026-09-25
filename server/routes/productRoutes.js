@@ -9,6 +9,7 @@
 // =============================================
 
 const express = require('express');
+const { checkAccountPurposes } = require('../utils/ledgerPurpose');
 const router = express.Router();
 const { getTenantClient, loadUserPermissions, logAudit, checkTransactionUsage } = require('../utils/dbHelpers');
 const { requireAuth, requirePermission } = require('../middleware/auth');
@@ -170,6 +171,8 @@ router.post('/products', requireAuth, loadUserPermissions, requirePermission('le
 
         const unitError = validateUnitRates(b.unit_rates, b.base_unit_id);
         if (unitError) return res.status(400).json({ success: false, error: unitError });
+        const acctError = await checkAccountPurposes(await getTenantClient(req.auth.tenantId), req.auth.tenantId, b, { sales_account_ledger_id: 'sales_goods', purchase_account_ledger_id: 'purchase_goods', inventory_account_ledger_id: 'inventory', cogs_account_ledger_id: 'cogs', discount_account_ledger_id: 'discount' });
+        if (acctError) return res.status(400).json({ success: false, error: acctError });
 
         if (['production', 'assembly'].includes(b.replenishment_method) && !['semi_finished', 'finished_good'].includes(b.item_type)) {
             return res.status(400).json({ success: false, error: `Replenishment Method "${b.replenishment_method === 'production' ? 'Production' : 'Assembly'}" requires Item Type to be Semi-Finished or Finished Good` });
@@ -282,6 +285,8 @@ router.put('/products/:id', requireAuth, loadUserPermissions, requirePermission(
         if (!existing) return res.status(404).json({ success: false, error: 'Product not found' });
 
         const b = req.body;
+        const acctError = await checkAccountPurposes(tenantClient, tenantId, b, { sales_account_ledger_id: 'sales_goods', purchase_account_ledger_id: 'purchase_goods', inventory_account_ledger_id: 'inventory', cogs_account_ledger_id: 'cogs', discount_account_ledger_id: 'discount' });
+        if (acctError) return res.status(400).json({ success: false, error: acctError });
         const merged = { ...existing, ...b };
 
         if (b.unit_rates) {

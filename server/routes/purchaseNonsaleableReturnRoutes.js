@@ -10,6 +10,7 @@
 // =============================================
 
 const express = require('express');
+const { checkAccountPurposes } = require('../utils/ledgerPurpose');
 const { bumpAltCounter } = require('../utils/progressCounters');
 const { checkCompulsoryFields, lockProtectedFields } = require('../utils/entryFieldRules');
 const { checkProductCompany } = require('../utils/productCompanyRules');
@@ -338,6 +339,8 @@ router.post('/purchase-nonsaleable-returns', requireAuth, loadUserPermissions, r
         if (validationError) return res.status(400).json({ success: false, error: validationError });
         const fieldError = await checkCompulsoryFields(await getTenantClient(req.auth.tenantId), req.auth.tenantId, req.auth.userId, 'purchase_nonsalable_return', req.body, isDraft);
         if (fieldError) return res.status(400).json({ success: false, error: fieldError });
+        const acctError = await checkAccountPurposes(await getTenantClient(req.auth.tenantId), req.auth.tenantId, req.body, { goods_account_ledger_id: 'purchase_goods' });
+        if (acctError) return res.status(400).json({ success: false, error: acctError });
         const companyError = await checkProductCompany(await getTenantClient(req.auth.tenantId), req.auth.tenantId, 'purchase', req.body, isDraft);
         if (companyError) return res.status(400).json({ success: false, error: companyError });
 
@@ -461,6 +464,8 @@ router.put('/purchase-nonsaleable-returns/:id', requireAuth, loadUserPermissions
         const fieldError = await checkCompulsoryFields(await getTenantClient(req.auth.tenantId), req.auth.tenantId, req.auth.userId, 'purchase_nonsalable_return', b, !!(b.save_as_draft || b.status === 'draft'));
 
         if (fieldError) return res.status(400).json({ success: false, error: fieldError });
+        const acctError = await checkAccountPurposes(await getTenantClient(req.auth.tenantId), req.auth.tenantId, req.body, { goods_account_ledger_id: 'purchase_goods' });
+        if (acctError) return res.status(400).json({ success: false, error: acctError });
         const update = { ...b, ...snapshots, updated_by: req.auth.userId, updated_at: new Date().toISOString() };
         delete update.branch_id;
         delete update.billing_term_ids;

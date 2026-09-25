@@ -8,6 +8,7 @@
 // =============================================
 
 const express = require('express');
+const { checkAccountPurposes } = require('../utils/ledgerPurpose');
 const { checkCompulsoryFields, lockProtectedFields } = require('../utils/entryFieldRules');
 const { checkProductCompany } = require('../utils/productCompanyRules');
 const router = express.Router();
@@ -177,6 +178,8 @@ router.post('/sales-nonsaleable-returns', requireAuth, loadUserPermissions, requ
         if (validationError) return res.status(400).json({ success: false, error: validationError });
         const fieldError = await checkCompulsoryFields(await getTenantClient(req.auth.tenantId), req.auth.tenantId, req.auth.userId, 'sales_nonsalable_return', req.body, isDraft);
         if (fieldError) return res.status(400).json({ success: false, error: fieldError });
+        const acctError = await checkAccountPurposes(await getTenantClient(req.auth.tenantId), req.auth.tenantId, req.body, { sales_account_ledger_id: 'sales_goods' });
+        if (acctError) return res.status(400).json({ success: false, error: acctError });
         const companyError = await checkProductCompany(await getTenantClient(req.auth.tenantId), req.auth.tenantId, 'sales', req.body, isDraft);
         if (companyError) return res.status(400).json({ success: false, error: companyError });
 
@@ -263,6 +266,8 @@ router.put('/sales-nonsaleable-returns/:id', requireAuth, loadUserPermissions, r
         if (validationError) return res.status(400).json({ success: false, error: validationError });
         const fieldError = await checkCompulsoryFields(await getTenantClient(req.auth.tenantId), req.auth.tenantId, req.auth.userId, 'sales_nonsalable_return', b, isDraft);
         if (fieldError) return res.status(400).json({ success: false, error: fieldError });
+        const acctError = await checkAccountPurposes(await getTenantClient(req.auth.tenantId), req.auth.tenantId, req.body, { sales_account_ledger_id: 'sales_goods' });
+        if (acctError) return res.status(400).json({ success: false, error: acctError });
         const companyError = await checkProductCompany(await getTenantClient(req.auth.tenantId), req.auth.tenantId, 'sales', b, isDraft);
         if (companyError) return res.status(400).json({ success: false, error: companyError });
 

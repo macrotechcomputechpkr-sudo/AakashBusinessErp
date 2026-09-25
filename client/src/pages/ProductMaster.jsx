@@ -14,6 +14,7 @@ import { useEnterKeyNavigation } from '../hooks/useEnterKeyNavigation';
 import SearchablePopupSelect from '../components/SearchablePopupSelect';
 import ReportGrid from '../components/ReportGrid';
 import Layout from '../components/Layout';
+import useLedgerPurposes from '../components/useLedgerPurposes';
 
 const emptyUnitRow = () => ({
     unit_id: '', is_base_unit: false, conversion_factor: 1,
@@ -50,10 +51,12 @@ const TABS = [
 ];
 
 // Account field -> its sub-ledger field (product-level posting, see utils/accountResolver).
+const PRODUCT_ACCOUNT_PURPOSE = { sales_account_ledger_id: 'sales_goods', purchase_account_ledger_id: 'purchase_goods', inventory_account_ledger_id: 'inventory', cogs_account_ledger_id: 'cogs', discount_account_ledger_id: 'discount' };
 const ACCOUNT_SUB = { sales_account_ledger_id: 'sales_sub_ledger_id', purchase_account_ledger_id: 'purchase_sub_ledger_id' };
 
 export default function ProductMaster() {
     const { authFetch } = useAuth();
+    const lp = useLedgerPurposes();
     const [rows, setRows] = useState([]);
     const [units, setUnits] = useState([]);
     const [productGroups, setProductGroups] = useState([]);
@@ -464,7 +467,7 @@ export default function ProductMaster() {
                                     listKey={`product_ledger_${key}`}
                                     columns={[{ key: 'account_code', label: 'Code' }, { key: 'account_name', label: 'Name' }]}
                                     defaultVisibleKeys={['account_name']}
-                                    items={ledgers} getId={l => l.id} getLabel={l => l.account_name}
+                                    items={lp.filter(ledgers, PRODUCT_ACCOUNT_PURPOSE[key], form[key])} getId={l => l.id} getLabel={l => l.account_name}
                                     searchKeys={['account_name', 'account_code']}
                                     value={form[key]} onChange={id => setForm({ ...form, [key]: id, ...(ACCOUNT_SUB[key] ? { [ACCOUNT_SUB[key]]: '' } : {}) })}
                                     placeholder="System Control default"

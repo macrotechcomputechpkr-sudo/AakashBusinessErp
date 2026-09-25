@@ -177,20 +177,56 @@ async function postPurchaseReturnEntry(tenantClient, tenantId, ret, userId) {
 // case). Built from the lines themselves so the batch is always
 // balanced, never from a header total that could drift. Skipped for a
 // cash vendor (no vendor ledger), same as the Bill.
-async function postAdditionalExpenseEntry(tenantClient, tenantId, exp, lines, userId) {
-    if (!exp.vendor_ledger_id) return false;
+// Additional expense -> GL lines. Each line may carry its own party (a
+// supplier bill, or the cash / labour ledger for wages, loading /
+// unloading with no bill); lines without one use the entry's vendor.
+//   add line     Dr expense ledger  amount (+ VAT when vat_in_cost)
+//                Dr VAT ledger      VAT (claimable input VAT)
+//                Cr party           amount + VAT
+//   deduct line  Cr expense ledger  amount   (e.g. TDS withheld)
+//                Dr party           amount   (less payable)
+// Parties are netted, so one supplier with several lines gets one line.
+// Throws with a readable message if a line has nobody to pay.
+async function buildAdditionalExpenseGl(tenantClient, tenantId, exp, lines) {
     const round2 = n => Math.round(n * 100) / 100;
+    const { defaultVatLedger } = require('./vatLedger');
+    let fallbackVat;
     const glLines = [];
-    let net = 0;
-    for (const l of (lines || [])) {
-        const amt = round2(Number(l.amount) || 0);
+    const party = {};
+    const addParty = (ledgerId, subLedgerId, amt) => { const k = `${ledgerId}|${subLedgerId || ''}`; party[k] = round2((party[k] || 0) + amt); };
+    for (const [i, l] of (lines || []).entries()) {
+        const amt = round2(Number(l.amount) || 0), vat = l.bill_type === 'taxable' ? round2(Number(l.vat_amount) || 0) : 0;
         if (!l.expense_ledger_id || amt <= 0) continue;
-        if (l.entry_sign === 'deduct') { glLines.push({ ledgerId: l.expense_ledger_id, credit: amt, narration: l.description || undefined }); net -= amt; }
-        else { glLines.push({ ledgerId: l.expense_ledger_id, debit: amt, narration: l.description || undefined }); net += amt; }
+        const payTo = l.party_ledger_id || exp.vendor_ledger_id;
+        const paySub = l.party_ledger_id ? l.party_sub_ledger_id : exp.vendor_sub_ledger_id;
+        if (!payTo) throw new Error(`Line ${i + 1} (${l.description || 'expense'}): choose who is paid - the supplier, or the cash / labour ledger for a no-bill expense`);
+        const text = [l.description, l.party_bill_no ? `Bill ${l.party_bill_no}` : null].filter(Boolean).join(' · ') || undefined;
+        if (l.entry_sign === 'deduct') {
+            glLines.push({ ledgerId: l.expense_ledger_id, credit: amt, narration: text });
+            addParty(payTo, paySub, -amt);
+            continue;
+        }
+        glLines.push({ ledgerId: l.expense_ledger_id, debit: round2(amt + (l.vat_in_cost ? vat : 0)), narration: text });
+        if (vat > 0 && !l.vat_in_cost) {
+            if (fallbackVat === undefined) fallbackVat = await defaultVatLedger(tenantClient, tenantId, 'purchase');
+            const vatLedger = l.vat_ledger_id || fallbackVat;
+            if (!vatLedger) throw new Error(`Line ${i + 1}: no VAT ledger - set one on the line or in System Control`);
+            glLines.push({ ledgerId: vatLedger, debit: vat, narration: text ? `VAT · ${text}` : 'VAT' });
+        }
+        addParty(payTo, paySub, amt + vat);
     }
-    net = round2(net);
-    if (glLines.length === 0 || net === 0) return false;
-    glLines.push(net > 0 ? { ledgerId: exp.vendor_ledger_id, subLedgerId: exp.vendor_sub_ledger_id || null, credit: net } : { ledgerId: exp.vendor_ledger_id, subLedgerId: exp.vendor_sub_ledger_id || null, debit: -net });
+    Object.entries(party).forEach(([k, net]) => {
+        if (!net) return;
+        const [ledgerId, subLedgerId] = k.split('|');
+        glLines.push(net > 0 ? { ledgerId, subLedgerId: subLedgerId || null, credit: net } : { ledgerId, subLedgerId: subLedgerId || null, debit: -net });
+    });
+    const dr = round2(glLines.reduce((s, x) => s + (x.debit || 0), 0)), cr = round2(glLines.reduce((s, x) => s + (x.credit || 0), 0));
+    if (Math.abs(dr - cr) > 0.01) throw new Error(`Expense entry does not balance (Dr ${dr} / Cr ${cr})`);
+    return glLines;
+}
+
+async function postAdditionalExpenseEntry(tenantClient, tenantId, exp, glLines, userId) {
+    if (!glLines || glLines.length === 0) return false;
     await postBatch(tenantClient, tenantId, {
         productCompanyId: exp.product_company_id || null,
         documentType: 'purchase_additional_expense', documentId: exp.id, batchDate: exp.doc_date,
@@ -199,4 +235,4 @@ async function postAdditionalExpenseEntry(tenantClient, tenantId, exp, lines, us
     return true;
 }
 
-module.exports = { postGrnReceiptEntry, postBillPayableEntry, postPurchaseReturnEntry, postAdditionalExpenseEntry, reverseBatch, getGrnClearingLedgerId };
+module.exports = { postGrnReceiptEntry, postBillPayableEntry, postPurchaseReturnEntry, postAdditionalExpenseEntry, buildAdditionalExpenseGl, reverseBatch, getGrnClearingLedgerId };

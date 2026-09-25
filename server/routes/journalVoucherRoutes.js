@@ -13,6 +13,56 @@ const router = express.Router();
 const { getTenantClient, loadUserPermissions, logAudit } = require('../utils/dbHelpers');
 const { requireAuth, requirePermission } = require('../middleware/auth');
 const { resolveDocumentNumber } = require('../utils/documentNumbering');
+const { classifyLedgers, allowed } = require('../utils/ledgerPurpose');
+const { allVatLedgerIds } = require('../utils/vatLedger');
+
+// ---------- JV as a taxable / non-taxable purchase or sale ----------
+const r2 = n => Math.round((Number(n) || 0) * 100) / 100;
+function taxFields(b) {
+    const type = ['purchase', 'sales'].includes(b.tax_entry_type) ? b.tax_entry_type : 'none';
+    if (type === 'none') return { tax_entry_type: 'none', party_ledger_id: null, party_name_snapshot: null, party_pan: null, party_bill_no: null, party_bill_date: null,
+        taxable_amount: 0, non_taxable_amount: 0, vat_percent: null, vat_amount: 0, is_capital: false };
+    return { tax_entry_type: type, party_ledger_id: b.party_ledger_id || null, party_pan: b.party_pan ? String(b.party_pan).trim() : null,
+        party_bill_no: b.party_bill_no ? String(b.party_bill_no).trim() : null, party_bill_date: b.party_bill_date || null,
+        taxable_amount: r2(b.taxable_amount), non_taxable_amount: r2(b.non_taxable_amount), vat_percent: b.vat_percent === '' || b.vat_percent == null ? null : Number(b.vat_percent),
+        vat_amount: r2(b.vat_amount), is_capital: type === 'purchase' && !!b.is_capital };
+}
+// The tax figures must tie to the voucher's own lines: the party carries the
+// bill total on its side, the VAT ledgers carry the VAT, and the other lines
+// on the goods side are a purchase / expense (or sales) ledger by group.
+async function checkJvTax(c, t, b, isDraft) {
+    const f = taxFields(b);
+    if (f.tax_entry_type === 'none' || isDraft) return null;
+    const purchase = f.tax_entry_type === 'purchase';
+    if (!f.party_ledger_id) return `Choose the ${purchase ? 'supplier' : 'customer'}`;
+    if (!(f.taxable_amount + f.non_taxable_amount > 0)) return 'Enter the taxable and / or non-taxable amount';
+    if (f.vat_amount < 0 || f.taxable_amount < 0 || f.non_taxable_amount < 0) return 'Amounts cannot be negative';
+    if (f.vat_amount > 0 && !(f.taxable_amount > 0)) return 'VAT needs a taxable amount';
+    if (purchase && !f.party_bill_no) return "Enter the supplier's bill no";
+    const details = (b.details || []).filter(d => d.ledger_id);
+    const sideOf = d => (Number(d.debit_amount) || 0) - (Number(d.credit_amount) || 0);      // + debit
+    const want = purchase ? -1 : 1;                                                        // party: Cr on purchase, Dr on sales
+    const total = r2(f.taxable_amount + f.non_taxable_amount + f.vat_amount);
+    const partyAmt = r2(details.filter(d => d.ledger_id === f.party_ledger_id).reduce((a, d) => a + sideOf(d), 0) * want);
+    if (Math.abs(partyAmt - total) > 0.01) return `${purchase ? 'Supplier' : 'Customer'} line must be ${purchase ? 'credited' : 'debited'} with the bill total ${total.toFixed(2)} (now ${partyAmt.toFixed(2)})`;
+    const vatIds = new Set(await allVatLedgerIds(c, t));
+    const vatAmt = r2(details.filter(d => vatIds.has(d.ledger_id)).reduce((a, d) => a + sideOf(d), 0) * -want);
+    if (Math.abs(vatAmt - f.vat_amount) > 0.01) return `VAT ledger lines (${vatAmt.toFixed(2)}) must equal the VAT amount ${f.vat_amount.toFixed(2)}`;
+    const cls = await classifyLedgers(c, t, [...new Set(details.map(d => d.ledger_id))]);
+    if (!allowed(cls[f.party_ledger_id], purchase ? 'supplier' : 'customer')) return `${purchase ? 'Supplier' : 'Customer'} must be a Balance Sheet (party) ledger`;
+    for (const d of details) {
+        if (d.ledger_id === f.party_ledger_id || vatIds.has(d.ledger_id) || Math.sign(sideOf(d)) !== -want) continue;
+        const x = cls[d.ledger_id];
+        const ok = purchase ? allowed(x, 'purchase_goods') || allowed(x, 'expense') : allowed(x, 'sales_goods');
+        if (!ok) return `"${x?.name || 'Ledger'}" cannot be the ${purchase ? 'purchase / expense' : 'sales'} account of a taxable ${purchase ? 'purchase' : 'sale'} - it is a ${x?.statement === 'pl' ? 'Profit & Loss' : 'Balance Sheet'} ledger under ${x?.group_name || 'its group'}`;
+    }
+    return null;
+}
+async function partySnapshot(c, f) {
+    if (!f.party_ledger_id) return {};
+    const { data } = await c.from('ledger_accounts').select('account_name, pan_number, vat_pan_number').eq('id', f.party_ledger_id).maybeSingle();
+    return { party_name_snapshot: data?.account_name || null, party_pan: f.party_pan || data?.vat_pan_number || data?.pan_number || null };
+}
 
 function validateBody(b, isDraft) {
     if (!b.doc_date) return 'Date is required';
@@ -137,6 +187,8 @@ router.post('/journal-vouchers', requireAuth, loadUserPermissions, requirePermis
         if (validationError) return res.status(400).json({ success: false, error: validationError });
         const fieldError = await checkCompulsoryFields(await getTenantClient(req.auth.tenantId), req.auth.tenantId, req.auth.userId, 'journal', req.body, isDraft);
         if (fieldError) return res.status(400).json({ success: false, error: fieldError });
+        const taxError = await checkJvTax(await getTenantClient(req.auth.tenantId), req.auth.tenantId, req.body, isDraft);
+        if (taxError) return res.status(400).json({ success: false, error: taxError });
 
         const tenantId = req.auth.tenantId;
         const tenantClient = await getTenantClient(tenantId);
@@ -179,6 +231,7 @@ router.post('/journal-vouchers', requireAuth, loadUserPermissions, requirePermis
                 remarks_id: b.remarks_id || null, remarks_text: b.remarks_text || null, narration: b.narration || null,
                 is_memo: !!b.is_memo,
                 ...snapshots,
+                ...taxFields(b), ...(await partySnapshot(tenantClient, taxFields(b))),
                 status: b.status || 'draft', created_by: req.auth.userId, updated_by: req.auth.userId
             })
             .select().single();
@@ -219,10 +272,12 @@ router.put('/journal-vouchers/:id', requireAuth, loadUserPermissions, requirePer
         if (validationError) return res.status(400).json({ success: false, error: validationError });
         const fieldError = await checkCompulsoryFields(await getTenantClient(req.auth.tenantId), req.auth.tenantId, req.auth.userId, 'journal', b, isDraft);
         if (fieldError) return res.status(400).json({ success: false, error: fieldError });
+        const taxError = await checkJvTax(tenantClient, tenantId, b, isDraft);
+        if (taxError) return res.status(400).json({ success: false, error: taxError });
         // Readonly / disabled header fields keep their stored value (before snapshots + update).
         await lockProtectedFields(await getTenantClient(req.auth.tenantId), req.auth.tenantId, req.auth.userId, 'journal', b, existing);
 
-        const snapshots = (b.cost_center_id || b.business_unit_id) ? await captureMasterSnapshots(tenantClient, b) : {};        const update = { ...b, ...snapshots, updated_by: req.auth.userId, updated_at: new Date().toISOString() };
+        const snapshots = (b.cost_center_id || b.business_unit_id) ? await captureMasterSnapshots(tenantClient, b) : {};        const update = { ...b, ...snapshots, ...(b.tax_entry_type !== undefined ? { ...taxFields(b), ...(await partySnapshot(tenantClient, taxFields(b))) } : {}), updated_by: req.auth.userId, updated_at: new Date().toISOString() };
         delete update.branch_id;
         delete update.details;
         delete update.save_as_draft;
@@ -260,6 +315,8 @@ router.put('/journal-vouchers/:id/status', requireAuth, loadUserPermissions, req
             const { data: existingDetails } = await tenantClient.from('journal_voucher_details').select('*').eq('jv_id', req.params.id);
             const bodyErr = validateBody({ ...existing, details: existingDetails || [] }, false);
             if (bodyErr) return res.status(400).json({ success: false, error: bodyErr });
+            const taxErr = await checkJvTax(tenantClient, tenantId, { ...existing, details: existingDetails || [] }, false);
+            if (taxErr) return res.status(400).json({ success: false, error: taxErr });
         }
 
         const update = { status, updated_by: req.auth.userId };
@@ -338,3 +395,5 @@ router.get('/journal-vouchers/:id/audit-trail', requireAuth, loadUserPermissions
 });
 
 module.exports = router;
+module.exports.checkJvTax = checkJvTax;
+module.exports.taxFields = taxFields;

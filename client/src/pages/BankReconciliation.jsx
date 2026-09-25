@@ -47,6 +47,9 @@ export default function BankReconciliation() {
     const [headerIndex, setHeaderIndex] = useState(-1);
     const [mapping, setMapping] = useState({});
     const [dayFirst, setDayFirst] = useState('auto');
+    const [autoAfterImport, setAutoAfterImport] = useState(true);
+    // match report
+    const [report, setReport] = useState(null);
     const [statements, setStatements] = useState([]);
     // brs
     const [asOn, setAsOn] = useState(iso(new Date()));
@@ -115,15 +118,37 @@ export default function BankReconciliation() {
         ? toLines(rows, headerIndex, mapping, { dayFirst: dayFirst === 'auto' ? null : dayFirst === 'dmy', bsToAd }) : null), [rows, headerIndex, mapping, dayFirst]);
     const doImport = async () => {
         if (!parsed?.lines.length) return;
-        const r = await call('/api/bank-reco/statements', { file_name: file?.name || '', lines: parsed.lines },
-            d => `Imported ${d.imported} line(s) ${d.from} to ${d.to}${d.skipped_duplicates ? ` · ${d.skipped_duplicates} already imported, skipped` : ''}`);
-        if (r) { setRows(null); setFile(null); setTab('reconcile'); }
+        const r = await call('/api/bank-reco/statements', { file_name: file?.name || '', lines: parsed.lines, auto_match: autoAfterImport },
+            d => `Imported ${d.imported} line(s) ${d.from} to ${d.to}${d.skipped_duplicates ? ` · ${d.skipped_duplicates} already imported, skipped` : ''}`
+                + (d.auto_matched !== undefined ? ` · auto-reconciled ${d.auto_matched}, to review ${d.to_review}, not in books ${d.not_in_books}` : ''));
+        if (r) { setRows(null); setFile(null); if (r.from && r.to) setRange({ from: r.from, to: r.to }); setTab(autoAfterImport ? 'report' : 'reconcile'); }
     };
     const delStatement = async id => {
         if (!window.confirm('Delete this statement and its matches?')) return;
         setBusy(true);
         try { await authFetch(`/api/bank-reco/statements/${id}?bank_ledger_id=${bankId}`, { method: 'DELETE' }); await load(); } catch (e) { setError(e.message); }
         setBusy(false);
+    };
+
+    // ---- match report
+    const runReport = useCallback(async () => {
+        if (!bankId) return;
+        try { setReport((await authFetch(`/api/bank-reco/match-report?bank_ledger_id=${bankId}&from=${range.from}&to=${range.to}`)).data); } catch (e) { setError(e.message); }
+    }, [authFetch, bankId, range]);
+    useEffect(() => { if (tab === 'report') runReport(); }, [tab, runReport]);
+    const exportReport = () => {
+        if (!report) return;
+        const rows = [['Section', 'Bank date', 'Bank description', 'Bank ref', 'Book date', 'Document', 'Party / ledger', 'Chq / Ref', 'Deposit', 'Withdrawal', 'Match', 'Score / note']];
+        report.matched.forEach(m => (m.books.length ? m.books : [{}]).forEach((b, i) => rows.push(['Matched', i ? '' : m.statement.txn_date, i ? '' : m.statement.description, i ? '' : m.statement.ref_no || '', b.date || '', b.doc_no || '', b.party || b.counter || '', b.ref_no || '',
+            b.deposit || (i ? '' : m.statement.deposit || ''), b.withdrawal || (i ? '' : m.statement.withdrawal || ''), m.method, m.score ?? ''])));
+        report.bank_only.forEach(x => rows.push(['In bank, not in books', x.txn_date, x.description, x.ref_no || '', '', '', '', '', x.deposit || '', x.withdrawal || '', '', x.suggestion]));
+        report.book_only.forEach(b => rows.push(['In books, not in bank', '', '', '', b.date, b.doc_no, b.party || b.counter, b.ref_no, b.deposit || '', b.withdrawal || '', '', b.cleared_date ? `cleared ${b.cleared_date}` : '']));
+        report.cleared_by_hand.forEach(b => rows.push(['Cleared by hand (no statement line)', '', '', '', b.date, b.doc_no, b.party || b.counter, b.ref_no, b.deposit || '', b.withdrawal || '', 'manual', `cleared ${b.cleared_date}`]));
+        report.ignored.forEach(x => rows.push(['Ignored', x.txn_date, x.description, x.ref_no || '', '', '', '', '', x.deposit || '', x.withdrawal || '', '', x.remarks || '']));
+        const esc = v => (/[",\n]/.test(String(v ?? '')) ? `"${String(v).replace(/"/g, '""')}"` : v ?? '');
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(new Blob(['\ufeff' + rows.map(r => r.map(esc).join(',')).join('\r\n')], { type: 'text/csv;charset=utf-8' }));
+        a.download = `bank_match_report_${range.from}_${range.to}.csv`; a.click(); URL.revokeObjectURL(a.href);
     };
 
     // ---- brs
@@ -158,7 +183,7 @@ export default function BankReconciliation() {
                     <div className="erp-field"><label className="erp-label">From</label><input type="date" className="erp-input" value={range.from} onChange={e => setRange(r => ({ ...r, from: e.target.value }))} /></div>
                     <div className="erp-field"><label className="erp-label">To</label><input type="date" className="erp-input" value={range.to} onChange={e => setRange(r => ({ ...r, to: e.target.value }))} /></div>
                     <div className="flex gap-1 ml-auto">
-                        {[['reconcile', '🔗 Reconcile'], ['upload', '⬆ Upload Statement'], ['brs', '📄 BRS']].map(([k, l]) => (
+                        {[['reconcile', '🔗 Reconcile'], ['upload', '⬆ Upload Statement'], ['report', '📋 Match Report'], ['brs', '📄 BRS']].map(([k, l]) => (
                             <button key={k} className={`px-3 py-2 text-sm rounded ${tab === k ? 'bg-blue-600 text-white' : 'bg-gray-100'}`} onClick={() => setTab(k)}>{l}</button>
                         ))}
                     </div>
@@ -298,6 +323,7 @@ export default function BankReconciliation() {
                                         <div className="text-sm">
                                             {parsed.lines.length} transaction line(s) · withdrawals {fmt2(parsed.lines.reduce((s, l) => s + l.withdrawal, 0))} · deposits {fmt2(parsed.lines.reduce((s, l) => s + l.deposit, 0))}
                                             {parsed.lines.length > 0 && ` · ${parsed.lines[0].txn_date} to ${parsed.lines[parsed.lines.length - 1].txn_date}`}
+                                            <label className="ml-3 inline-flex items-center gap-1"><input type="checkbox" checked={autoAfterImport} onChange={e => setAutoAfterImport(e.target.checked)} /> Auto-reconcile after import</label>
                                             <button className="erp-btn primary ml-3" disabled={busy || !parsed.lines.length} onClick={doImport}>⬆ Import into {banks.find(b => b.id === bankId)?.name}</button>
                                         </div>
                                         {parsed.skipped.length > 0 && <p className="text-xs text-orange-700">Rows not read (no date): {parsed.skipped.slice(0, 5).map(s => `row ${s.row}: ${s.text}`).join(' · ')}{parsed.skipped.length > 5 ? ` … (${parsed.skipped.length})` : ''}</p>}
@@ -325,6 +351,63 @@ export default function BankReconciliation() {
                                 {!statements.length && <tr><td colSpan={7} className="text-center text-gray-400 py-2">None yet.</td></tr>}</tbody>
                             </table>
                         </div>
+                    </div>
+                )}
+
+                {tab === 'report' && bankId && (
+                    <div>
+                        <div className="flex gap-2 items-center mb-3 print:hidden">
+                            <button className="erp-btn primary" onClick={runReport}>🔍 Refresh</button>
+                            {report && <button className="erp-btn" onClick={exportReport}>⬇ Excel</button>}
+                            {report && <button className="erp-btn" onClick={() => window.print()}>🖨 Print / PDF</button>}
+                            <button className="erp-btn" disabled={busy} onClick={async () => { await runAuto('high'); runReport(); }}>⚡ Auto-reconcile again</button>
+                        </div>
+                        {report && (
+                            <>
+                                <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-4 text-sm">
+                                    {[['Matched', `${report.summary.matched} (auto ${report.summary.auto} · manual ${report.summary.manual})`, 'bg-green-50'],
+                                        ['Match rate', report.summary.match_rate === null ? '—' : `${report.summary.match_rate}%`, 'bg-green-50'],
+                                        ['In bank, not in books', `${report.summary.bank_only} · in ${fmt2(report.summary.bank_only_in)} / out ${fmt2(report.summary.bank_only_out)}`, 'bg-orange-50'],
+                                        ['In books, not in bank', `${report.summary.book_only} · in ${fmt2(report.summary.book_only_in)} / out ${fmt2(report.summary.book_only_out)}`, 'bg-orange-50'],
+                                        ['Ignored / cleared by hand', `${report.summary.ignored} / ${report.summary.cleared_by_hand}`, 'bg-gray-50']].map(([l, v, c]) => (
+                                        <div key={l} className={`border rounded p-2 ${c}`}><div className="text-xs text-gray-500">{l}</div><div className="font-semibold">{v}</div></div>
+                                    ))}
+                                </div>
+                                <div className="font-semibold text-sm mb-1">✔ Matched ({report.matched.length})</div>
+                                <table className="erp-grid-table w-full text-xs mb-4">
+                                    <thead><tr><th className="text-left">Bank date</th><th className="text-left">Bank description</th><th className="text-right">Amount</th><th className="text-left">Book entries</th><th className="text-right">Days</th><th className="text-left">How</th><th className="print:hidden" /></tr></thead>
+                                    <tbody>{report.matched.map(m => (
+                                        <tr key={m.statement.id}><td>{m.statement.txn_date}</td><td>{m.statement.description}{m.statement.ref_no ? ` #${m.statement.ref_no}` : ''}</td>
+                                            <td className="text-right tabular-nums">{fmt2(m.amount)}</td>
+                                            <td>{m.books.map(b => `${b.date} ${b.doc_no} ${b.party || b.counter}${b.ref_no ? ` #${b.ref_no}` : ''}`).join(' + ')}</td>
+                                            <td className="text-right">{m.days ?? ''}</td><td>{m.method}{m.score !== null ? ` · ${m.score}` : ''}</td>
+                                            <td className="print:hidden"><button className="text-red-600 underline" onClick={async () => { await call('/api/bank-reco/unmatch', { statement_line_id: m.statement.id }, () => 'Unmatched'); runReport(); }}>undo</button></td></tr>
+                                    ))}{!report.matched.length && <tr><td colSpan={7} className="text-center text-gray-400 py-2">None.</td></tr>}</tbody>
+                                </table>
+                                <div className="grid lg:grid-cols-2 gap-4">
+                                    <div>
+                                        <div className="font-semibold text-sm mb-1 text-orange-700">In bank, not in books ({report.bank_only.length}) - record these entries</div>
+                                        <table className="erp-grid-table w-full text-xs">
+                                            <thead><tr><th className="text-left">Date</th><th className="text-left">Description</th><th className="text-right">Deposit</th><th className="text-right">Withdrawal</th><th className="text-left">Likely</th><th className="print:hidden" /></tr></thead>
+                                            <tbody>{report.bank_only.map(x => (
+                                                <tr key={x.id}><td>{x.txn_date}</td><td>{x.description}{x.ref_no ? ` #${x.ref_no}` : ''}</td><td className="text-right tabular-nums">{x.deposit ? fmt2(x.deposit) : ''}</td><td className="text-right tabular-nums">{x.withdrawal ? fmt2(x.withdrawal) : ''}</td><td>{x.suggestion}</td>
+                                                    <td className="print:hidden"><button className="text-gray-600 underline" onClick={async () => { await call('/api/bank-reco/ignore', { statement_line_ids: [x.id], ignored: true }, () => 'Ignored'); runReport(); }}>ignore</button></td></tr>
+                                            ))}{!report.bank_only.length && <tr><td colSpan={6} className="text-center text-gray-400 py-2">None.</td></tr>}</tbody>
+                                        </table>
+                                    </div>
+                                    <div>
+                                        <div className="font-semibold text-sm mb-1 text-orange-700">In books, not in bank ({report.book_only.length}) - uncleared cheques / deposits</div>
+                                        <table className="erp-grid-table w-full text-xs">
+                                            <thead><tr><th className="text-left">Date</th><th className="text-left">Document</th><th className="text-left">Party / Ledger</th><th className="text-left">Chq / Ref</th><th className="text-right">Deposit</th><th className="text-right">Withdrawal</th></tr></thead>
+                                            <tbody>{report.book_only.map(b => (
+                                                <tr key={b.id}><td>{b.date}</td><td>{b.doc_no}</td><td>{b.party || b.counter}</td><td>{b.ref_no}</td><td className="text-right tabular-nums">{b.deposit ? fmt2(b.deposit) : ''}</td><td className="text-right tabular-nums">{b.withdrawal ? fmt2(b.withdrawal) : ''}</td></tr>
+                                            ))}{!report.book_only.length && <tr><td colSpan={6} className="text-center text-gray-400 py-2">None.</td></tr>}</tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                                {report.cleared_by_hand.length > 0 && <p className="text-xs text-gray-600 mt-3">Cleared by hand without a statement line: {report.cleared_by_hand.map(b => `${b.doc_no} (${fmt2(b.amount)}, ${b.cleared_date})`).join(' · ')}</p>}
+                            </>
+                        )}
                     </div>
                 )}
 

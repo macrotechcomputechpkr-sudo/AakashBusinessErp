@@ -135,14 +135,17 @@ async function bookLines(c, t, bankId, { from = null, to, uncleared = false } = 
     const names = Object.fromEntries((await inChunks(ledgerIds, async ch => {
         const { data } = await c.from('ledger_accounts').select('id, account_name').in('id', ch); return data || [];
     })).map(x => [x.id, x.account_name]));
-    const otherOf = {};
-    others.forEach(o => { const s = otherOf[o.batch_id] = otherOf[o.batch_id] || new Set(); if (names[o.ledger_account_id]) s.add(names[o.ledger_account_id]); });
+    const otherOf = {}, otherIds = {};
+    others.forEach(o => {
+        const s = otherOf[o.batch_id] = otherOf[o.batch_id] || new Set(); if (names[o.ledger_account_id]) s.add(names[o.ledger_account_id]);
+        (otherIds[o.batch_id] = otherIds[o.batch_id] || new Set()).add(o.ledger_account_id);
+    });
     return rows.map(({ l, date, mark }) => {
         const type = l.batch.document_type, h = docs[`${type}:${l.batch.document_id}`] || {};
         const dr = Number(l.debit_amount) || 0, cr = Number(l.credit_amount) || 0;
         return {
             id: l.id, date, document_type: type, doc_label: DOC_TABLE[type]?.[0] || type, document_id: l.batch.document_id, doc_no: h.doc_no || '',
-            party: h.party_name_snapshot || h.customer_name_snapshot || h.vendor_name_snapshot || '', counter: [...(otherOf[l.batch_id] || [])].join(', '),
+            party: h.party_name_snapshot || h.customer_name_snapshot || h.vendor_name_snapshot || '', counter: [...(otherOf[l.batch_id] || [])].join(', '), counter_ids: [...(otherIds[l.batch_id] || [])],
             ref_no: h.cheque_no || h.ref_no || h.instrument_no || '', mode: h.payment_mode || (type === 'pdc' ? 'cheque' : ''),
             narration: l.narration || l.batch.narration || h.narration || '',
             deposit: round2(dr), withdrawal: round2(cr), amount: round2(dr - cr),
@@ -200,7 +203,15 @@ async function importStatement(c, t, userId, body) {
         const { error: e2 } = await c.from('bank_statement_lines').insert(rows.slice(i, i + 500));
         if (e2) throw e2;
     }
-    return { statement_id: st.id, imported: rows.length, skipped_duplicates: lines.length - fresh.length, from: dates[0], to: dates[dates.length - 1] };
+    const out = { statement_id: st.id, imported: rows.length, skipped_duplicates: lines.length - fresh.length, from: dates[0], to: dates[dates.length - 1] };
+    // auto reconciliation right after the upload: apply the high-confidence matches
+    if (body.auto_match && rows.length) {
+        const am = await autoMatch(c, t, userId, { bank_ledger_id: bankId, from: dates[0], to: dates[dates.length - 1], window_days: body.window_days || 7, apply: 'high' });
+        out.auto_matched = am.applied;
+        out.to_review = am.proposals.filter(p => p.confidence !== 'high').length;
+        out.not_in_books = am.unmatched_statement.length;
+    }
+    return out;
 }
 
 async function statementLines(c, t, bankId, { from = null, to = null, status = null } = {}) {
@@ -216,7 +227,9 @@ async function statementLines(c, t, bankId, { from = null, to = null, status = n
 // ---------------------------------------------------------------- matching engine
 const STOP = new Set(['the', 'and', 'for', 'from', 'by', 'chq', 'cheque', 'cq', 'ref', 'trf', 'transfer', 'txn', 'fund', 'neft', 'rtgs', 'ips', 'connectips', 'deposit', 'dep',
     'withdrawal', 'wdl', 'cash', 'clg', 'clearing', 'inward', 'outward', 'being', 'amount', 'paid', 'received', 'payment', 'receipt', 'ltd', 'pvt', 'private', 'limited',
-    'bank', 'acc', 'account', 'with', 'via', 'mobile', 'online', 'branch', 'entry', 'voucher', 'bill', 'against', 'towards', 'sales', 'purchase', 'npr', 'nrs', 'rs']);
+    'bank', 'acc', 'account', 'with', 'via', 'mobile', 'online', 'branch', 'entry', 'voucher', 'bill', 'against', 'towards', 'sales', 'purchase', 'npr', 'nrs', 'rs',
+    'jan', 'feb', 'mar', 'apr', 'may', 'jun', 'jul', 'aug', 'sep', 'sept', 'oct', 'nov', 'dec', 'january', 'february', 'march', 'april', 'june', 'july', 'august', 'september', 'october', 'november', 'december',
+    'baisakh', 'jestha', 'ashadh', 'shrawan', 'bhadra', 'ashwin', 'kartik', 'mangsir', 'poush', 'magh', 'falgun', 'chaitra']);
 const tokens = s => String(s || '').toLowerCase().replace(/[^a-z0-9ऀ-ॿ]+/g, ' ').split(' ').filter(w => w.length >= 3 && !STOP.has(w) && !/^\d+$/.test(w));
 const digitRuns = s => (String(s || '').match(/\d{4,}/g) || []).map(d => d.replace(/^0+/, '')).filter(d => d.length >= 3);
 function dice(a, b) {                                     // bigram similarity 0..1, typo tolerant
@@ -253,12 +266,17 @@ function scorePair(s, b, opts) {
     const st = s._tokens || (s._tokens = tokens(`${s.description} ${s.ref_no || ''}`));
     const ts = Math.max(textScore(b.party, st), textScore(b.counter, st), textScore(`${b.narration} ${b.doc_no}`, st) * 0.8);
     if (ts > 0) { score += 30 * ts; why.push(`text ${Math.round(ts * 100)}%`); }
+    // learned: words of this bank line were confirmed before against this entry's party / ledger
+    if (opts.learned && b.counter_ids && b.counter_ids.length) {
+        const hits = st.reduce((a, w) => a + b.counter_ids.reduce((x, id) => x + ((opts.learned[w] || {})[id] || 0), 0), 0);
+        if (hits > 0) { score += Math.min(20, 8 + 4 * hits); why.push('learned from earlier matches'); }
+    }
     return { score: Math.min(100, Math.round(score)), why, days: d, ref: refHit };
 }
 
 // stmts: statement lines (unmatched), books: book lines (uncleared) -> proposals
-function matchEngine(stmts, books, { window = 7, minScore = 50, groups = true } = {}) {
-    const opts = { window };
+function matchEngine(stmts, books, { window = 7, minScore = 50, groups = true, learned = null } = {}) {
+    const opts = { window, learned };
     const pairs = [];
     const candS = {}, candB = {};
     stmts.forEach(s => books.forEach(b => {
@@ -311,7 +329,8 @@ function suggestNature(s) {
     if (/(tds|tax deducted|withholding)/.test(d)) return 'TDS';
     if (/(loan|emi|installment|instalment)/.test(d)) return 'Loan';
     if (/(return|bounce|dishono|unpaid|insufficient)/.test(d)) return 'Cheque returned';
-    if (/(atm|pos|card)/.test(d)) return 'Card / ATM';
+    if (/\b(atm|pos|card|visa|mastercard)\b/.test(d)) return 'Card / ATM';
+    if (/\b(deposit|dep|slip|cash dep)\b/.test(d) && s.deposit) return 'Deposit - find the book entries';
     return s.deposit ? 'Direct deposit' : 'Direct debit';
 }
 
@@ -322,7 +341,8 @@ async function autoMatch(c, t, userId, body) {
     const minScore = Math.min(100, Math.max(30, parseInt(body.min_score, 10) || 50));
     const stmts = (await statementLines(c, t, bankId, { from: body.from || null, to: body.to || null, status: 'unmatched' }));
     const books = (await bookLines(c, t, bankId, { to: body.to ? addDays(body.to, window) : null })).filter(b => !b.cleared_date);
-    const proposals = matchEngine(stmts, books, { window, minScore, groups: body.groups !== false });
+    const learned = await loadLearning(c, t, bankId);
+    const proposals = matchEngine(stmts, books, { window, minScore, groups: body.groups !== false, learned });
     const sById = Object.fromEntries(stmts.map(s => [s.id, s])), bById = Object.fromEntries(books.map(b => [b.id, b]));
     const detailed = proposals.map(p => ({ ...p, statement: strip(sById[p.statement_line_id]), books: p.book_line_ids.map(id => bById[id]) }));
     let applied = 0;
@@ -337,8 +357,34 @@ async function autoMatch(c, t, userId, body) {
 const strip = s => (s ? (({ _tokens, ...rest }) => rest)(s) : s);
 const addDays = (d, n) => new Date(Date.parse(`${d}T00:00:00Z`) + n * 86400000).toISOString().slice(0, 10);
 
+// ---------------------------------------------------------------- learning
+// token -> { ledgerId: hits } for this bank
+async function loadLearning(c, t, bankId) {
+    const { data, error } = await c.from('bank_reco_learning').select('token, ledger_id, hits').eq('tenant_id', t).eq('bank_ledger_id', bankId);
+    if (error) return null;                                  // table not migrated yet - engine works without it
+    const out = {};
+    (data || []).forEach(r => { (out[r.token] = out[r.token] || {})[r.ledger_id] = Math.min(5, r.hits); });
+    return out;
+}
+// Remember the bank line's words against the ledgers on the other side of the confirmed book entries.
+async function learn(c, t, bankId, description, ledgerIds) {
+    const words = [...new Set(tokens(description))].slice(0, 12);
+    const ids = [...new Set(ledgerIds.filter(Boolean))].slice(0, 5);
+    if (!words.length || !ids.length) return;
+    const { data: existing, error } = await c.from('bank_reco_learning').select('id, token, ledger_id, hits').eq('tenant_id', t).eq('bank_ledger_id', bankId).in('token', words);
+    if (error) return;
+    const have = Object.fromEntries((existing || []).map(r => [`${r.token}|${r.ledger_id}`, r]));
+    const fresh = [];
+    for (const w of words) for (const id of ids) {
+        const r = have[`${w}|${id}`];
+        if (r) await c.from('bank_reco_learning').update({ hits: r.hits + 1, last_seen: new Date().toISOString() }).eq('id', r.id);
+        else fresh.push({ tenant_id: t, bank_ledger_id: bankId, token: w.slice(0, 60), ledger_id: id, hits: 1 });
+    }
+    if (fresh.length) await c.from('bank_reco_learning').insert(fresh);
+}
+
 async function linkLines(c, t, userId, bankId, statementLineId, bookLineIds, method = 'manual', score = null) {
-    const { data: s, error } = await c.from('bank_statement_lines').select('id, txn_date, deposit, withdrawal, bank_ledger_id, status').eq('tenant_id', t).eq('id', statementLineId).maybeSingle();
+    const { data: s, error } = await c.from('bank_statement_lines').select('id, txn_date, deposit, withdrawal, bank_ledger_id, status, description, ref_no').eq('tenant_id', t).eq('id', statementLineId).maybeSingle();
     if (error) throw error;
     if (!s || s.bank_ledger_id !== bankId) throw httpError('Statement line not found for this bank', 404);
     const ids = [...new Set(bookLineIds || [])];
@@ -355,6 +401,14 @@ async function linkLines(c, t, userId, bankId, statementLineId, bookLineIds, met
     if (e3) throw e3;
     const { error: e4 } = await c.from('bank_statement_lines').update({ status: 'matched', match_score: score, matched_at: new Date().toISOString(), matched_by: userId || null }).eq('id', s.id);
     if (e4) throw e4;
+    // learn the ledgers on the other side of these entries
+    const { data: sides } = await c.from('ledger_transaction_lines').select('batch_id').in('id', ids);
+    const batchIds = [...new Set((sides || []).map(x => x.batch_id))];
+    if (batchIds.length) {
+        const { data: other } = await c.from('ledger_transaction_lines').select('ledger_account_id').in('batch_id', batchIds).neq('ledger_account_id', bankId);
+        try { await learn(c, t, bankId, `${s.description || ''} ${s.ref_no || ''}`, (other || []).map(o => o.ledger_account_id)); }
+        catch (e) { /* learning is a bonus - never block a match */ }
+    }
     return { matched: ids.length };
 }
 
@@ -415,6 +469,49 @@ async function statements(c, t, bankId) {
     return data || [];
 }
 
+// ---------------------------------------------------------------- matching report
+// For a period: matched pairs (bank line + book entries, how and how well),
+// bank lines not in the books (with a suggested nature), book entries not
+// in the bank, and ignored lines - with counts and totals.
+async function matchReport(c, t, bankId, { from, to }) {
+    if (!bankId) throw httpError('Choose the bank ledger');
+    const stmts = await statementLines(c, t, bankId, { from, to });
+    const books = await bookLines(c, t, bankId, { from, to, uncleared: true });
+    const bookById = Object.fromEntries(books.map(b => [b.id, b]));
+    const byStmt = {};
+    books.forEach(b => { if (b.statement_line_id) (byStmt[b.statement_line_id] = byStmt[b.statement_line_id] || []).push(b); });
+    // book entries matched to these statement lines but dated outside the period
+    const missing = stmts.filter(s => s.status === 'matched' && !byStmt[s.id]).map(s => s.id);
+    if (missing.length) {
+        const marks = await inChunks(missing, async ids => { const { data } = await c.from('bank_reconciliation_marks').select('statement_line_id, ledger_line_id').eq('tenant_id', t).in('statement_line_id', ids); return data || []; });
+        const extra = marks.length ? await bookLines(c, t, bankId, {}) : [];
+        const exById = Object.fromEntries(extra.map(b => [b.id, b]));
+        marks.forEach(m => { const b = bookById[m.ledger_line_id] || exById[m.ledger_line_id]; if (b) (byStmt[m.statement_line_id] = byStmt[m.statement_line_id] || []).push(b); });
+    }
+    const amt = s => round2(s.deposit - s.withdrawal);
+    const matched = stmts.filter(s => s.status === 'matched').map(s => {
+        const bs = byStmt[s.id] || [];
+        return { statement: s, books: bs, amount: amt(s), days: bs.length ? Math.max(...bs.map(b => Math.abs(dayDiff(b.date, s.txn_date)))) : null,
+            method: bs.some(b => b.method === 'manual') ? 'manual' : 'auto', score: s.match_score ?? bs[0]?.score ?? null };
+    });
+    const bankOnly = stmts.filter(s => s.status === 'unmatched').map(s => ({ ...s, amount: amt(s), suggestion: suggestNature(s) }));
+    const bookOnly = books.filter(b => !b.cleared_date || (to && b.cleared_date > to));
+    const clearedNoStmt = books.filter(b => b.cleared_date && b.cleared_date <= (to || '9999') && !b.statement_line_id && b.date >= (from || '0000'));
+    const ignored = stmts.filter(s => s.status === 'ignored');
+    const sum = (a, f) => round2(a.reduce((x, y) => x + f(y), 0));
+    return {
+        from, to, matched, bank_only: bankOnly, book_only: bookOnly, cleared_by_hand: clearedNoStmt, ignored,
+        summary: {
+            statement_lines: stmts.length, matched: matched.length, matched_amount: sum(matched, m => Math.abs(m.amount)),
+            auto: matched.filter(m => m.method === 'auto').length, manual: matched.filter(m => m.method === 'manual').length,
+            bank_only: bankOnly.length, bank_only_in: sum(bankOnly, s => s.deposit), bank_only_out: sum(bankOnly, s => s.withdrawal),
+            book_only: bookOnly.length, book_only_in: sum(bookOnly, b => b.deposit), book_only_out: sum(bookOnly, b => b.withdrawal),
+            cleared_by_hand: clearedNoStmt.length, ignored: ignored.length,
+            match_rate: stmts.length ? Math.round((matched.length / (stmts.length - ignored.length || 1)) * 100) : null
+        }
+    };
+}
+
 // ---------------------------------------------------------------- BRS
 async function brs(c, t, bankId, asOn) {
     if (!asOn) throw httpError('Choose the As on date');
@@ -449,5 +546,5 @@ async function brs(c, t, bankId, asOn) {
     };
 }
 
-module.exports = { cashBankLedgers, balancesAsOn, bookLines, importStatement, statementLines, statements, deleteStatement, autoMatch, matchEngine, scorePair,
+module.exports = { matchReport, loadLearning, learn, cashBankLedgers, balancesAsOn, bookLines, importStatement, statementLines, statements, deleteStatement, autoMatch, matchEngine, scorePair,
     linkLines, unlinkStatementLine, setIgnored, clearManual, unclear, brs, suggestNature, fingerprintLines, tokens, dice };

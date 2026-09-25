@@ -46,6 +46,7 @@ router.post('/bank-reco/clear', ...edit, send(async (c, t, req) => {
     return out;
 }));
 router.post('/bank-reco/unclear', ...edit, send((c, t, req) => R.unclear(c, t, req.body.bank_ledger_id, req.body.line_ids || [])));
+router.get('/bank-reco/match-report', ...view, send((c, t, req) => R.matchReport(c, t, req.query.bank_ledger_id, { from: req.query.from || null, to: req.query.to || null })));
 router.get('/bank-reco/brs', ...view, send((c, t, req) => R.brs(c, t, req.query.bank_ledger_id, req.query.as_on)));
 
 router.get('/reports/funds-position', requireAuth, loadUserPermissions, requirePermission('reports', 'view'), send((c, t, req) => fundsPosition(c, t, req.query)));

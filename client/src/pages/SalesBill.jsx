@@ -20,6 +20,7 @@ import NumberingCategorySelector from '../components/NumberingCategorySelector';
 import ProductTermBar from '../components/ProductTermBar';
 import { resolveDualUomEntryMode, onPrimaryQtyChange, onSecondaryQtyChange, validateFixedSecondary, dualBaseQty } from '../utils/dualUomEntryMode';
 import UdfValuesModal from '../components/UdfValuesModal';
+import useLedgerPurposes from '../components/useLedgerPurposes';
 
 const emptyDetailRow = () => ({ product_id: '', qty: '', uom_id: '', alt_qty: '', alt_unit_id: '', rate: '', rate_basis: 'primary', discount_percent: '', tax_percent: '', free_qty: '', free_alt_qty: '', warehouse_id: '', batch_no: '', serial_no: '', source_delivery_detail_id: '', source_order_detail_id: '' });
 
@@ -36,6 +37,7 @@ const EFC_RENDERED_KEYS = ['customer_ledger_id', 'doc_date', 'due_date', 'invoic
 
 export default function SalesBill() {
     const { authFetch } = useAuth();
+    const lp = useLedgerPurposes();
     const efc = useEntryFieldControls('sales_bill', EFC_RENDERED_KEYS);
     const [rows, setRows] = useState([]);
     const [showForm, setShowForm] = useState(false);
@@ -381,7 +383,7 @@ export default function SalesBill() {
                                 listKey="sb_sales_account_picker"
                                 columns={[{ key: 'account_code', label: 'Code' }, { key: 'account_name', label: 'Name' }]}
                                 defaultVisibleKeys={['account_name']}
-                                items={customers} getId={l => l.id} getLabel={l => l.account_name}
+                                items={lp.filter(customers, 'sales_goods', form.sales_account_ledger_id)} getId={l => l.id} getLabel={l => l.account_name}
                                 searchKeys={['account_name', 'account_code']}
                                 value={form.sales_account_ledger_id || ''} onChange={id => setForm({ ...form, sales_account_ledger_id: id, sales_sub_ledger_id: '' })} placeholder="System default"
                             />
@@ -400,7 +402,7 @@ export default function SalesBill() {
                                 listKey="sb_sales_account_picker"
                                 columns={[{ key: 'code', label: 'Code' }, { key: 'name', label: 'Name' }]}
                                 defaultVisibleKeys={['name']}
-                                items={customers.map(l => ({ id: l.id, code: l.account_code, name: l.account_name }))} getId={x => x.id} getLabel={x => x.name}
+                                items={lp.filter(customers, 'sales_goods', form.sales_account_ledger_id).map(l => ({ id: l.id, code: l.account_code, name: l.account_name }))} getId={x => x.id} getLabel={x => x.name}
                                 searchKeys={['name', 'code']}
                                 value={form.sales_account_ledger_id} onChange={id => setForm({ ...form, sales_account_ledger_id: id, sales_sub_ledger_id: '' })} placeholder="System default"
                             />

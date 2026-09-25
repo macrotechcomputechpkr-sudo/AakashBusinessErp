@@ -13,7 +13,7 @@ const router = express.Router();
 const { getTenantClient, loadUserPermissions, logAudit } = require('../utils/dbHelpers');
 const { requireAuth, requirePermission } = require('../middleware/auth');
 const { resolveDocumentNumber } = require('../utils/documentNumbering');
-const { postAdditionalExpenseEntry, reverseBatch } = require('../utils/grnAccounting');
+const { postAdditionalExpenseEntry, buildAdditionalExpenseGl, reverseBatch } = require('../utils/grnAccounting');
 
 function validateBody(b, isDraft) {
     if (!b.doc_date) return 'Date is required';
@@ -25,6 +25,14 @@ function validateBody(b, isDraft) {
         if (!l.amount || Number(l.amount) <= 0) return 'Every expense line needs an amount greater than zero';
         if (l.allocation_basis && !['value_wise', 'qty_wise', 'equal', 'none'].includes(l.allocation_basis)) return 'Invalid allocation basis on an expense line';
         if (l.entry_sign && !['add', 'deduct'].includes(l.entry_sign)) return 'Invalid sign on an expense line';
+        const n = b.expense_lines.indexOf(l) + 1;
+        const bt = l.bill_type || 'no_bill';
+        if (!['taxable', 'non_taxable', 'no_bill'].includes(bt)) return `Line ${n}: invalid bill type`;
+        if (bt !== 'taxable' && Number(l.vat_amount) > 0) return `Line ${n}: VAT is only for a taxable bill`;
+        if (Number(l.vat_amount) < 0) return `Line ${n}: VAT cannot be negative`;
+        if (bt !== 'no_bill' && !l.party_ledger_id && !b.vendor_ledger_id) return `Line ${n}: a ${bt === 'taxable' ? 'taxable' : 'non-taxable'} bill needs its supplier (line party or the entry's vendor)`;
+        if (bt !== 'no_bill' && !String(l.party_bill_no || '').trim()) return `Line ${n}: enter the supplier's bill no`;
+        if (bt === 'taxable' && !(Number(l.vat_amount) > 0)) return `Line ${n}: a taxable bill needs its VAT amount`;
     }
     return null;
 }
@@ -91,7 +99,8 @@ function computeAllocations(sourceLines, expenseLines) {
     const totals = sourceLines.map(() => 0);
     for (const line of expenseLines) {
         if (line.allocation_basis === 'none') continue;
-        const signedAmount = (line.entry_sign === 'deduct' ? -1 : 1) * Number(line.amount);
+        // costing: the line's amount, plus its VAT when that VAT cannot be claimed (vat_in_cost)
+        const signedAmount = (line.entry_sign === 'deduct' ? -1 : 1) * (Number(line.amount) + (line.vat_in_cost ? Number(line.vat_amount) || 0 : 0));
         const shares = computeLineShare(sourceLines, signedAmount, line.allocation_basis);
         shares.forEach((share, i) => { totals[i] += share; });
     }
@@ -108,18 +117,30 @@ function computeAllocations(sourceLines, expenseLines) {
 // document's own total_amount / payable, independent of how much of it
 // ends up allocated to landed cost.
 function computeNetPayable(expenseLines) {
-    return Math.round(expenseLines.reduce((s, l) => s + (l.entry_sign === 'deduct' ? -Number(l.amount) : Number(l.amount)), 0) * 100) / 100;
+    return Math.round(expenseLines.reduce((s, l) => s + (l.entry_sign === 'deduct' ? -Number(l.amount) : Number(l.amount) + (Number(l.vat_amount) || 0)), 0) * 100) / 100;
 }
 
 async function syncExpenseLines(tenantClient, tenantId, expenseId, expenseLines) {
     await tenantClient.from('purchase_additional_expense_lines').delete().eq('expense_id', expenseId);
     if (!Array.isArray(expenseLines) || expenseLines.length === 0) return { netPayable: 0, lines: [] };
-    const rows = expenseLines.map((l, i) => ({
-        tenant_id: tenantId, expense_id: expenseId, display_order: i + 1,
-        expense_ledger_id: l.expense_ledger_id, description: l.description || null,
-        allocation_basis: l.allocation_basis || 'value_wise', entry_sign: l.entry_sign || 'add',
-        rate_percent: l.rate_percent || null, amount: Number(l.amount) || 0
-    }));
+    const partyIds = [...new Set(expenseLines.map(l => l.party_ledger_id).filter(Boolean))];
+    const { data: parties } = partyIds.length ? await tenantClient.from('ledger_accounts').select('id, account_name, pan_number, vat_pan_number').in('id', partyIds) : { data: [] };
+    const partyById = Object.fromEntries((parties || []).map(x => [x.id, x]));
+    const rows = expenseLines.map((l, i) => {
+        const bt = l.bill_type || 'no_bill', party = partyById[l.party_ledger_id];
+        return {
+            tenant_id: tenantId, expense_id: expenseId, display_order: i + 1,
+            expense_ledger_id: l.expense_ledger_id, description: l.description || null,
+            allocation_basis: l.allocation_basis || 'value_wise', entry_sign: l.entry_sign || 'add',
+            rate_percent: l.rate_percent || null, amount: Number(l.amount) || 0,
+            party_ledger_id: l.party_ledger_id || null, party_sub_ledger_id: l.party_sub_ledger_id || null,
+            party_name_snapshot: party?.account_name || l.party_name_snapshot || null, party_pan: l.party_pan || party?.vat_pan_number || party?.pan_number || null,
+            bill_type: bt, party_bill_no: bt === 'no_bill' ? (l.party_bill_no || null) : String(l.party_bill_no).trim(), party_bill_date: l.party_bill_date || null,
+            vat_percent: bt === 'taxable' ? (l.vat_percent === '' || l.vat_percent === undefined ? null : Number(l.vat_percent)) : null,
+            vat_amount: bt === 'taxable' ? Math.round((Number(l.vat_amount) || 0) * 100) / 100 : 0,
+            vat_ledger_id: bt === 'taxable' ? l.vat_ledger_id || null : null, vat_in_cost: bt === 'taxable' && !!l.vat_in_cost
+        };
+    });
     const { error } = await tenantClient.from('purchase_additional_expense_lines').insert(rows);
     if (error) throw error;
     return { netPayable: computeNetPayable(rows), lines: rows };
@@ -332,6 +353,13 @@ router.put('/purchase-additional-expenses/:id/status', requireAuth, loadUserPerm
         if (!existing) return res.status(404).json({ success: false, error: 'Additional Expense not found' });
         if (existing.status === 'cancelled') return res.status(400).json({ success: false, error: 'This document is already cancelled' });
         if (status === 'draft' && existing.status === 'posted') return res.status(400).json({ success: false, error: 'A posted document cannot go back to draft - cancel it instead' });
+        let glPlan = null;
+        if (status === 'posted' && existing.status !== 'posted') {
+            const { data: head } = await tenantClient.from('purchase_additional_expenses').select('*').eq('id', req.params.id).maybeSingle();
+            const { data: lines } = await tenantClient.from('purchase_additional_expense_lines').select('*').eq('expense_id', req.params.id).order('display_order');
+            try { glPlan = await buildAdditionalExpenseGl(tenantClient, tenantId, head, lines || []); }
+            catch (planErr) { return res.status(400).json({ success: false, error: planErr.message }); }
+        }
         const update = { status, updated_by: req.auth.userId };
         if (status === 'cancelled') { update.cancellation_reason = cancellation_reason; update.cancelled_at = new Date().toISOString(); update.cancelled_by = req.auth.userId; }
         const { data, error } = await tenantClient.from('purchase_additional_expenses').update(update).eq('id', req.params.id).eq('tenant_id', tenantId).select().single();
@@ -340,8 +368,7 @@ router.put('/purchase-additional-expenses/:id/status', requireAuth, loadUserPerm
         // net to the vendor. Previously this document never reached
         // the ledger at all.
         if (status === 'posted' && existing.status !== 'posted') {
-            const { data: lines } = await tenantClient.from('purchase_additional_expense_lines').select('expense_ledger_id, description, entry_sign, amount').eq('expense_id', req.params.id);
-            await postAdditionalExpenseEntry(tenantClient, tenantId, data, lines || [], req.auth.userId);
+            await postAdditionalExpenseEntry(tenantClient, tenantId, data, glPlan, req.auth.userId);
         } else if (status === 'cancelled' && existing.status === 'posted') {
             await reverseBatch(tenantClient, 'purchase_additional_expense', req.params.id);
         }

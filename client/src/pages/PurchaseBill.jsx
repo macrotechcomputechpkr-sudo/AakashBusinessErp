@@ -20,6 +20,7 @@ import BillWiseSettlementPanel from '../components/BillWiseSettlementPanel';
 import NumberingCategorySelector from '../components/NumberingCategorySelector';
 import { resolveDualUomEntryMode, onPrimaryQtyChange, onSecondaryQtyChange, validateFixedSecondary, dualBaseQty } from '../utils/dualUomEntryMode';
 import UdfValuesModal from '../components/UdfValuesModal';
+import useLedgerPurposes from '../components/useLedgerPurposes';
 
 const emptyDetailRow = () => ({
     product_id: '', qty: '', uom_id: '', alt_qty: '', alt_unit_id: '', alt1_qty: '', alt1_unit_id: '',
@@ -46,6 +47,7 @@ const EFC_RENDERED_KEYS = ['agent_id', 'area_id', 'business_unit_id', 'cost_cent
 
 export default function PurchaseBill() {
     const { authFetch } = useAuth();
+    const lp = useLedgerPurposes();
     // Compulsory check on save (incl. popup pickers, which HTML `required` can't enforce);
     // visibility / required marks on this page come from its own fieldControls.
     const efc = useEntryFieldControls('purchase_bill', EFC_RENDERED_KEYS);
@@ -831,7 +833,7 @@ export default function PurchaseBill() {
                                     listKey="purchase_bill_goods_account_picker"
                                     columns={[{ key: 'account_code', label: 'Code' }, { key: 'account_name', label: 'Name' }]}
                                     defaultVisibleKeys={['account_name']}
-                                    items={ledgers} getId={l => l.id} getLabel={l => l.account_name}
+                                    items={lp.filter(ledgers, 'purchase_goods', form.goods_account_ledger_id)} getId={l => l.id} getLabel={l => l.account_name}
                                     searchKeys={['account_name', 'account_code']}
                                     value={form.goods_account_ledger_id} onChange={id => setForm({ ...form, goods_account_ledger_id: id, goods_sub_ledger_id: '' })} placeholder="Select Ledger"
                                 />

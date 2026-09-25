@@ -17,8 +17,12 @@ import { useEnterKeyNavigation } from '../hooks/useEnterKeyNavigation';
 import { formatDateForDisplay } from '../utils/nepaliDateUtils';
 import { amountToWords } from '../utils/numberToWords';
 import UdfValuesModal from '../components/UdfValuesModal';
+import useLedgerPurposes from '../components/useLedgerPurposes';
 
-const emptyExpenseLine = () => ({ expense_ledger_id: '', description: '', allocation_basis: 'value_wise', entry_sign: 'add', rate_percent: '', amount: '' });
+const emptyExpenseLine = () => ({ expense_ledger_id: '', description: '', allocation_basis: 'value_wise', entry_sign: 'add', rate_percent: '', amount: '',
+    party_ledger_id: '', bill_type: 'no_bill', party_bill_no: '', party_bill_date: '', vat_percent: '', vat_amount: '', vat_in_cost: false });
+const BILL_TYPES = [['taxable', 'Taxable bill (VAT)'], ['non_taxable', 'Non-taxable bill'], ['no_bill', 'No bill (wages, loading ...)']];
+const r2 = n => Math.round((Number(n) || 0) * 100) / 100;
 
 const emptyForm = {
     vendor_sub_ledger_id: '', product_company_id: '', doc_date: new Date().toISOString().slice(0, 10),
@@ -34,6 +38,7 @@ const EFC_RENDERED_KEYS = ['agent_id', 'business_unit_id', 'cost_center_id', 'cu
 
 export default function PurchaseAdditionalExpense() {
     const { authFetch } = useAuth();
+    const lp = useLedgerPurposes();
     const efc = useEntryFieldControls('purchase_additional', EFC_RENDERED_KEYS);
     const [rows, setRows] = useState([]);
     const [showForm, setShowForm] = useState(false);
@@ -98,7 +103,15 @@ export default function PurchaseAdditionalExpense() {
     const resetForm = () => { setForm(emptyForm); setEditingId(null); setAllocationPreview([]); };
     const addExpenseLine = () => setForm(f => ({ ...f, expense_lines: [...f.expense_lines, emptyExpenseLine()] }));
     const removeExpenseLine = (idx) => setForm(f => ({ ...f, expense_lines: f.expense_lines.length > 1 ? f.expense_lines.filter((_, i) => i !== idx) : f.expense_lines }));
-    const updateExpenseLine = (idx, patch) => setForm(f => ({ ...f, expense_lines: f.expense_lines.map((l, i) => i === idx ? { ...l, ...patch } : l) }));
+    const updateExpenseLine = (idx, patch) => setForm(f => ({ ...f, expense_lines: f.expense_lines.map((l, i) => {
+        if (i !== idx) return l;
+        const n = { ...l, ...patch };
+        if (patch.bill_type && patch.bill_type !== 'taxable') { n.vat_percent = ''; n.vat_amount = ''; n.vat_in_cost = false; }
+        if (patch.bill_type === 'taxable' && !n.vat_percent) n.vat_percent = 13;
+        // VAT follows amount x VAT % unless the VAT itself was typed
+        if (n.bill_type === 'taxable' && ('amount' in patch || 'vat_percent' in patch || patch.bill_type) && !('vat_amount' in patch)) n.vat_amount = n.vat_percent === '' ? n.vat_amount : r2((Number(n.amount) || 0) * (Number(n.vat_percent) || 0) / 100);
+        return n;
+    }) }));
 
     // FEATURE: "Rate/Perc." convenience - a VAT or TDS line's amount can
     // be auto-computed as rate_percent% of every OTHER '+' line's total
@@ -116,7 +129,8 @@ export default function PurchaseAdditionalExpense() {
     // adds, every '-' line (a TDS/withholding deduction, the standard
     // case) subtracts. Computed the same way the backend does, so what
     // the form shows while typing matches what gets saved.
-    const netPayable = form.expense_lines.reduce((s, l) => s + (l.entry_sign === 'deduct' ? -(Number(l.amount) || 0) : (Number(l.amount) || 0)), 0);
+    const netPayable = form.expense_lines.reduce((s, l) => s + (l.entry_sign === 'deduct' ? -(Number(l.amount) || 0) : (Number(l.amount) || 0) + (l.bill_type === 'taxable' ? Number(l.vat_amount) || 0 : 0)), 0);
+    const vatTotal = form.expense_lines.reduce((s, l) => s + (l.entry_sign !== 'deduct' && l.bill_type === 'taxable' ? Number(l.vat_amount) || 0 : 0), 0);
 
     // FEATURE: live allocation preview - refetches from the SAME math
     // the backend uses, whenever the source or any line changes. Only
@@ -176,7 +190,7 @@ export default function PurchaseAdditionalExpense() {
                 ...emptyForm, ...res.data,
                 doc_date: res.data.doc_date?.slice(0, 10) || emptyForm.doc_date,
                 party_bill_date: res.data.party_bill_date?.slice(0, 10) || '',
-                expense_lines: (res.data.expense_lines || []).length > 0 ? res.data.expense_lines : [emptyExpenseLine()]
+                expense_lines: (res.data.expense_lines || []).length > 0 ? res.data.expense_lines.map(l => ({ ...emptyExpenseLine(), ...Object.fromEntries(Object.entries(l).filter(([, v]) => v !== null)) })) : [emptyExpenseLine()]
             });
             setShowForm(true);
             window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -421,44 +435,84 @@ export default function PurchaseAdditionalExpense() {
                                 </thead>
                                 <tbody>
                                     {form.expense_lines.map((l, idx) => (
-                                        <tr key={idx}>
+                                        <React.Fragment key={idx}>
+                                        <tr>
                                             <td>
                                                 <SearchablePopupSelect
                                                     listKey="expense_ledger_picker"
                                                     columns={[{ key: 'account_code', label: 'Code' }, { key: 'account_name', label: 'Name' }]}
                                                     defaultVisibleKeys={['account_name']}
-                                                    items={ledgers} getId={x => x.id} getLabel={x => x.account_name}
+                                                    items={lp.filter(ledgers, 'expense', l.expense_ledger_id)} getId={x => x.id} getLabel={x => x.account_name}
                                                     searchKeys={['account_name', 'account_code']}
-                                                    value={l.expense_ledger_id} onChange={id => updateExpenseLine(idx, { expense_ledger_id: id })} placeholder="e.g. Freight, VAT, TDS"
+                                                    value={l.expense_ledger_id} onChange={id => updateExpenseLine(idx, { expense_ledger_id: id })} placeholder="e.g. Freight, Wages, TDS"
                                                 />
                                             </td>
                                             <td className={efc.isVisible('description', 'detail') ? '' : 'hidden'}><input disabled={efc.isReadonly('description', 'detail')} className="erp-input" value={l.description} onChange={e => updateExpenseLine(idx, { description: e.target.value })} placeholder="e.g. Transportation" /></td>
                                             <td className={efc.isVisible('allocation_basis', 'detail') ? '' : 'hidden'}>
                                                 <select disabled={efc.isReadonly('allocation_basis', 'detail')} className="erp-select" value={l.allocation_basis} onChange={e => updateExpenseLine(idx, { allocation_basis: e.target.value })}>
-                                                    <option value="value_wise">Value-wise</option>
-                                                    <option value="qty_wise">Qty-wise</option>
-                                                    <option value="equal">Equal Split</option>
-                                                    <option value="none">Not Allocated</option>
+                                                    <option value="value_wise">In cost · Value-wise</option>
+                                                    <option value="qty_wise">In cost · Qty-wise</option>
+                                                    <option value="equal">In cost · Equal Split</option>
+                                                    <option value="none">Not in costing</option>
                                                 </select>
                                             </td>
                                             <td className={efc.isVisible('entry_sign', 'detail') ? '' : 'hidden'}>
-                                                <select disabled={efc.isReadonly('entry_sign', 'detail')} className="erp-select" value={l.entry_sign} onChange={e => updateExpenseLine(idx, { entry_sign: e.target.value })}>
+                                                <select disabled={efc.isReadonly('entry_sign', 'detail')} className="erp-select" value={l.entry_sign} onChange={e => updateExpenseLine(idx, { entry_sign: e.target.value, ...(e.target.value === 'deduct' ? { bill_type: 'no_bill' } : {}) })}>
                                                     <option value="add">+</option>
                                                     <option value="deduct">−</option>
                                                 </select>
                                             </td>
-                                            <td className={efc.isVisible('rate_percent', 'detail') ? '' : 'hidden'}><input disabled={efc.isReadonly('rate_percent', 'detail')} type="number" step="0.001" className="erp-input" value={l.rate_percent} onChange={e => autoCalcFromRate(idx, e.target.value)} placeholder="e.g. 13" /></td>
+                                            <td className={efc.isVisible('rate_percent', 'detail') ? '' : 'hidden'}><input disabled={efc.isReadonly('rate_percent', 'detail')} type="number" step="0.001" className="erp-input" value={l.rate_percent} onChange={e => autoCalcFromRate(idx, e.target.value)} placeholder={l.entry_sign === 'deduct' ? 'TDS %' : ''} /></td>
                                             <td className={efc.isVisible('amount', 'detail') ? '' : 'hidden'}><input disabled={efc.isReadonly('amount', 'detail')} type="number" step="0.01" className="erp-input" value={l.amount} onChange={e => updateExpenseLine(idx, { amount: e.target.value, rate_percent: '' })} /></td>
                                             <td><button type="button" tabIndex={-1} onClick={() => removeExpenseLine(idx)} className="text-red-500 text-xs">✕</button></td>
                                         </tr>
+                                        <tr className="bg-gray-50">
+                                            <td colSpan={7} className="pb-2">
+                                                <div className="flex flex-wrap gap-2 items-end text-xs">
+                                                    <div className="w-56"><span className="text-gray-500">Paid to (supplier / cash / labour)</span>
+                                                        <SearchablePopupSelect
+                                                            listKey="expense_party_picker"
+                                                            columns={[{ key: 'account_code', label: 'Code' }, { key: 'account_name', label: 'Name' }]}
+                                                            defaultVisibleKeys={['account_name']}
+                                                            items={lp.filter(ledgers, 'supplier', l.party_ledger_id)} getId={x => x.id} getLabel={x => x.account_name}
+                                                            searchKeys={['account_name', 'account_code']}
+                                                            value={l.party_ledger_id} onChange={id => updateExpenseLine(idx, { party_ledger_id: id })} placeholder={form.vendor_ledger_id ? 'Same as entry vendor' : 'Choose'}
+                                                        />
+                                                    </div>
+                                                    {l.entry_sign !== 'deduct' && (
+                                                        <>
+                                                            <label className="flex flex-col"><span className="text-gray-500">Bill</span>
+                                                                <select className="erp-select" value={l.bill_type} onChange={e => updateExpenseLine(idx, { bill_type: e.target.value })}>
+                                                                    {BILL_TYPES.map(([k, t]) => <option key={k} value={k}>{t}</option>)}
+                                                                </select></label>
+                                                            {l.bill_type !== 'no_bill' && (
+                                                                <>
+                                                                    <label className="flex flex-col"><span className="text-gray-500">Bill No *</span><input className="erp-input w-28" value={l.party_bill_no || ''} onChange={e => updateExpenseLine(idx, { party_bill_no: e.target.value })} /></label>
+                                                                    <label className="flex flex-col"><span className="text-gray-500">Bill Date</span><input type="date" className="erp-input" value={l.party_bill_date || ''} onChange={e => updateExpenseLine(idx, { party_bill_date: e.target.value })} /></label>
+                                                                </>
+                                                            )}
+                                                            {l.bill_type === 'taxable' && (
+                                                                <>
+                                                                    <label className="flex flex-col"><span className="text-gray-500">VAT %</span><input type="number" step="0.01" className="erp-input w-16" value={l.vat_percent ?? ''} onChange={e => updateExpenseLine(idx, { vat_percent: e.target.value })} /></label>
+                                                                    <label className="flex flex-col"><span className="text-gray-500">VAT</span><input type="number" step="0.01" className="erp-input w-24" value={l.vat_amount ?? ''} onChange={e => updateExpenseLine(idx, { vat_amount: e.target.value })} /></label>
+                                                                    <label className="flex items-center gap-1 mb-2" title="Tick when this VAT cannot be claimed - it is then added to the cost of the goods and left out of input VAT"><input type="checkbox" checked={!!l.vat_in_cost} onChange={e => updateExpenseLine(idx, { vat_in_cost: e.target.checked })} /> VAT to cost (not claimable)</label>
+                                                                </>
+                                                            )}
+                                                            <span className="mb-2 text-gray-600">Line total {r2(Number(l.amount || 0) + (l.bill_type === 'taxable' ? Number(l.vat_amount || 0) : 0)).toFixed(2)}</span>
+                                                        </>
+                                                    )}
+                                                </div>
+                                            </td>
+                                        </tr>
+                                        </React.Fragment>
                                     ))}
                                 </tbody>
                             </table>
                         </div>
-                        <p className="text-xs text-gray-400 mb-2">Rate % auto-computes this line's Amount from the other "+" lines' total (e.g. a 13% VAT or 1.5% TDS line on a Freight charge) - type an amount directly to override.</p>
+                        <p className="text-xs text-gray-400 mb-2">Each line can be a separate bill: its own supplier (or the cash / labour ledger for wages, loading / unloading with no bill), bill no and VAT. Taxable and non-taxable bills appear in the VAT purchase register and VAT return; "No bill" lines do not. "Not in costing" keeps a line out of landed cost; VAT is left out of cost unless it is marked not claimable. A "−" line with Rate % (e.g. 1.5% TDS) is shown in the TDS report.</p>
                         <div className="flex justify-between items-start mb-1">
                             <button type="button" onClick={addExpenseLine} className="text-xs text-blue-600">➕ Add Line</button>
-                            <span className="text-sm font-semibold">Net Payable: {netPayable.toFixed(2)}</span>
+                            <span className="text-sm font-semibold">{vatTotal ? <span className="font-normal text-gray-600 mr-3">VAT {vatTotal.toFixed(2)}</span> : null}Net Payable: {netPayable.toFixed(2)}</span>
                         </div>
                         {netPayable !== 0 && (
                             <p className="text-xs text-gray-500 text-right mb-4 italic">{amountToWords(netPayable, form.currency === 'NPR' ? 'Nrs' : form.currency)}</p>
