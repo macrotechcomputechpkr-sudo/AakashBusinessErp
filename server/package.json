@@ -1,0 +1,22 @@
+{
+  "name": "multi-tenant-server",
+  "version": "2.0.0",
+  "description": "Multi-Tenant System Backend (consolidated on Express; fixed jwt-import crash, service-key leak, race conditions)",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "nodemon server.js"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "^2.38.0",
+    "bcrypt": "^5.1.1",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1",
+    "express": "^4.18.2",
+    "jsonwebtoken": "^9.0.2",
+    "nepali-date-converter": "^3.0.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.1"
+  }
+}
