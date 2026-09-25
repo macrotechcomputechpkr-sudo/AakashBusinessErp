@@ -18,7 +18,8 @@ const MODULES = [
     ['sales', 'Sales'], ['purchase', 'Purchase'], ['inventory', 'Inventory'],
     ['invoice', 'Invoice'], ['reports', 'Reports'], ['user_management', 'User Management'],
     ['security_groups', 'Security Groups'], ['company_settings', 'Company Settings'],
-    ['tax_settings', 'Tax Settings'], ['ocr_bill', 'OCR Bill'], ['backup', 'Backup'], ['audit_log', 'Audit Log']
+    ['tax_settings', 'Tax Settings'], ['ocr_bill', 'OCR Bill'], ['backup', 'Backup'], ['audit_log', 'Audit Log'],
+    ['data_access', 'Data Access (who sees which ledger / product / area)'], ['darta_chalani', 'Darta / Chalani'], ['tasks', 'Tasks (view = see everyone\'s tasks)']
 ];
 const ACTIONS = ['view', 'create', 'edit', 'delete', 'print', 'export'];
 

@@ -196,6 +196,28 @@ const WIDGETS = {
         const all = [...m.entries()].map(([label, value]) => ({ label, value: round2(value) })).sort((a, b) => b.value - a.value);
         const pts = all.slice(0, 7); const rest = all.slice(7).reduce((s, x) => s + x.value, 0); if (rest) pts.push({ label: 'Other', value: round2(rest) });
         return series('Stock by Group', pts, ['Stock value'], '/stock-report'); } },
+    // ---- tasks & darta / chalani (only what the viewer may see)
+    kpi_my_tasks: { label: 'My Open Tasks', group: 'Tasks & Darta', kind: 'kpi', charts: ['kpi'], async data(c, t) {
+        const d = await work(c, t);
+        return { ...kpi('My Open Tasks', d.kpis.my_open_tasks, null, '/tasks'), unit: 'count' }; } },
+    kpi_overdue_tasks: { label: 'Overdue Tasks', group: 'Tasks & Darta', kind: 'kpi', charts: ['kpi'], async data(c, t) {
+        const d = await work(c, t);
+        return { ...kpi('Overdue Tasks', d.kpis.overdue_tasks, null, '/tasks?view=overdue'), unit: 'count' }; } },
+    kpi_pending_darta: { label: 'Pending Darta / Chalani', group: 'Tasks & Darta', kind: 'kpi', charts: ['kpi'], async data(c, t) {
+        const d = await work(c, t);
+        return { ...kpi('Pending Darta / Chalani', d.kpis.pending_darta, null, '/darta-chalani?status=pending'), unit: 'count' }; } },
+    task_status: { label: 'Tasks by Status', group: 'Tasks & Darta', kind: 'series', charts: ['donut', 'pie', 'hbar', 'bar', 'table'], async data(c, t) {
+        return series('Tasks by Status', (await work(c, t)).charts.task_status, ['Tasks'], '/work-dashboard'); } },
+    task_weekly: { label: 'Tasks Created vs Done (8 weeks)', group: 'Tasks & Darta', kind: 'series', charts: ['bar', 'line', 'area'], async data(c, t) {
+        return series('Tasks Created vs Done', (await work(c, t)).charts.task_weekly, ['Created', 'Done'], '/work-dashboard'); } },
+    darta_monthly: { label: 'Darta vs Chalani (12 months)', group: 'Tasks & Darta', kind: 'series', charts: ['bar', 'line', 'area'], async data(c, t) {
+        return series('Darta vs Chalani', (await work(c, t)).charts.darta_monthly, ['Darta', 'Chalani'], '/darta-chalani'); } },
+    my_tasks: { label: 'My Tasks (by due date)', group: 'Tasks & Darta', kind: 'table', charts: ['table'], async data(c, t) {
+        const rows = (await work(c, t)).lists.my_tasks.map(x => ({ ...x, due: x.due_at ? new Date(x.due_at).toISOString().slice(0, 16).replace('T', ' ') : '', task: `${x.task_no} ${x.title}` }));
+        return table('My Tasks', [{ key: 'task', label: 'Task' }, { key: 'due', label: 'Due' }, { key: 'status_label', label: 'Status' }, { key: 'priority', label: 'Priority' }], rows, '/tasks'); } },
+    pending_darta: { label: 'Pending Darta / Chalani', group: 'Tasks & Darta', kind: 'table', charts: ['table'], async data(c, t) {
+        const rows = (await work(c, t)).lists.pending_darta;
+        return table('Pending Darta / Chalani', [{ key: 'reg_no', label: 'No.' }, { key: 'subject', label: 'Subject' }, { key: 'party_name', label: 'From / To' }, { key: 'due_date', label: 'Due' }, { key: 'assigned_to_name', label: 'With' }], rows, '/darta-chalani'); } },
     // ---- tables
     recent_bills: { label: 'Recent Sales Bills', group: 'Lists', kind: 'table', charts: ['table'], async data(c, t) {
         const { data } = await c.from('sales_bills').select('doc_no, doc_date, customer_name_snapshot, total_amount, status').eq('tenant_id', t).order('doc_date', { ascending: false }).limit(10);
@@ -211,6 +233,11 @@ const WIDGETS = {
         return table('PDC Due', [{ key: 'cheque_date', label: 'Date' }, { key: 'party_name_snapshot', label: 'Party' }, { key: 'voucher_type', label: 'Type' }, { key: 'cheque_no', label: 'Cheque' }, { key: 'amount', label: 'Amount', money: true }],
             rows.sort((a, b) => String(a.cheque_date).localeCompare(String(b.cheque_date))).slice(0, 15).map(r => ({ ...r, cheque_date: String(r.cheque_date).slice(0, 10) })), '/lc-bg-dashboard'); } }
 };
+async function work(c, t) {
+    const { workDashboard, contextRequest } = require('./workDashboard');
+    try { return await workDashboard(c, t, await contextRequest(c, t)); }
+    catch (e) { if (/tasks|darta_chalani/.test(e.message)) throw httpError('Run database/123_darta_chalani_tasks_notifications_schema.sql first', 500); throw e; }
+}
 function kpi(title, value, previous, link) {
     return { title, kind: 'kpi', value: round2(value), previous: previous === null ? null : round2(previous), change_pct: previous ? round2((value - previous) * 100 / Math.abs(previous)) : null, link };
 }

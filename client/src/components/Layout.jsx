@@ -10,6 +10,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import useGlobalEnterNav from '../hooks/useGlobalEnterNav';
 import useExcelTableFilters from '../hooks/useExcelTableFilters';
+import { useNotifications, BellButton, NotificationOverlay } from './NotificationCenter';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { SECTIONS, REPORT_GROUPS } from './menu';
 import { useAuth } from '../contexts/AuthContext';
@@ -28,6 +29,8 @@ export default function Layout({ children }) {
     const contentRef = useRef(null);
     useGlobalEnterNav(contentRef);
     const excelMenu = useExcelTableFilters(contentRef);
+    // 🔔 notifications (bell, list, popups) - polled once for both sidebars
+    const notes = useNotifications();
     const [drawer, setDrawer] = useState(false);
     const [search, setSearch] = useState('');
     // open sections are remembered per browser
@@ -47,7 +50,10 @@ export default function Layout({ children }) {
     const nav = (
         <>
             <div className="p-4 border-b border-gray-200">
-                <p className="font-bold text-gray-900 truncate">{tenant?.company_name || 'Multi-Tenant System'}</p>
+                <div className="flex items-start justify-between gap-1">
+                    <p className="font-bold text-gray-900 truncate">{tenant?.company_name || 'Multi-Tenant System'}</p>
+                    <BellButton api={notes} className="-mt-1" />
+                </div>
                 <p className="text-xs text-gray-400">{tenant?.tenant_code}</p>
                 <input className="mt-2 w-full border rounded-lg px-2 py-1 text-sm" placeholder="🔍 Find menu / report…" value={search} onChange={e => setSearch(e.target.value)} />
             </div>
@@ -91,7 +97,7 @@ export default function Layout({ children }) {
             <div className="md:hidden sticky top-0 z-30 bg-white border-b flex items-center justify-between px-3 py-2 no-print">
                 <button type="button" className="text-2xl leading-none px-2" onClick={() => setDrawer(true)} aria-label="Menu">☰</button>
                 <p className="font-semibold text-sm truncate">{tenant?.company_name || ''}</p>
-                <a href="/mobile" className="text-xs text-blue-600">📱 Mobile</a>
+                <div className="flex items-center gap-1"><BellButton api={notes} /><a href="/mobile" className="text-xs text-blue-600">📱 Mobile</a></div>
             </div>
             {drawer && (
                 <div className="md:hidden fixed inset-0 z-40 flex" onClick={() => setDrawer(false)}>
@@ -103,6 +109,7 @@ export default function Layout({ children }) {
                 {children}
             </div>
             {excelMenu}
+            <NotificationOverlay api={notes} />
         </div>
     );
 }

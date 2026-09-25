@@ -59,6 +59,12 @@ export const SECTIONS: MenuSection[] = [
         { to: '/purchase-nonsaleable-return', label: '🚫 Non-saleable Return' },
         { to: '/lc-register', label: '🏦 LC Register & Mapping' }
     ] },
+    { key: 'office', title: 'Office Work', items: [
+        { to: '/work-dashboard', label: '📊 Work Dashboard' },
+        { to: '/tasks', label: '📝 Tasks' },
+        { to: '/darta-chalani', label: '📨 Darta / Chalani Register' },
+        { to: '/notification-settings', label: '🔔 My Notification Settings' }
+    ] },
     { key: 'accounts', title: 'Accounts', items: [
         { to: '/journal-voucher', label: '📗 Journal Voucher' },
         { to: '/cash-bank-entry', label: '💵 Cash/Bank Entry' },
@@ -90,6 +96,7 @@ export const SECTIONS: MenuSection[] = [
         { to: '/system-control', label: '⚙️ System Control' },
         { to: '/entry-field-control', label: '🔒 Entry Field Control' },
         { to: '/audit-log', label: '🕘 Audit Log (who changed what)' },
+        { to: '/data-access', label: '🔐 Data Access (who sees which ledger / product / area)' },
         { to: '/user-defined-fields', label: '🧩 User Defined Fields' },
         { to: '/document-numbering', label: '🔢 Document Numbering' },
         { to: '/branches-warehouses', label: '🏢 Branches & Warehouses' },
@@ -149,6 +156,10 @@ export const REPORT_GROUPS: ReportGroup[] = [
     ] },
     { title: 'Messaging', items: [
         ['/messaging?tab=log', 'Message Log (sent / failed / pending)'], ['/messaging?tab=reminders', 'Outstanding Reminders (bulk)']
+    ] },
+    { title: 'Office: Tasks & Darta / Chalani', items: [
+        ['/darta-chalani?type=darta', 'Darta Register (incoming)'], ['/darta-chalani?type=chalani', 'Chalani Register (outgoing)'], ['/darta-chalani?status=pending', 'Pending Darta / Chalani'],
+        ['/tasks?view=overdue', 'Overdue Tasks'], ['/tasks?view=all', 'All Tasks (status / assignee)'], ['/work-dashboard', 'Work Dashboard']
     ] },
     { title: 'Control & Registers', items: [
         ['/register', 'Universal Register (all documents)'], ['/control-reports?view=cancelled_docs', 'Cancelled Documents'], ['/control-reports?view=draft_docs', 'Draft (Unposted) Documents'],

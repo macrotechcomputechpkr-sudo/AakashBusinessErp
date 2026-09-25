@@ -70,6 +70,11 @@ import ReportCenter from './pages/ReportCenter';
 import AnalyticsReports from './pages/AnalyticsReports';
 import Messaging from './pages/Messaging';
 import AuditLog from './pages/AuditLog';
+import DataAccess from './pages/DataAccess';
+import DartaChalani from './pages/DartaChalani';
+import Tasks from './pages/Tasks';
+import WorkDashboard from './pages/WorkDashboard';
+import NotificationSettings from './pages/NotificationSettings';
 import LedgerMapping from './pages/LedgerMapping';
 import CostProfitCenters from './pages/CostProfitCenters';
 import BillingTermManagement from './pages/BillingTermManagement';
@@ -203,6 +208,11 @@ function AppRoutes() {
             <Route path="/analytics" element={<PrivateRoute><AnalyticsReports /></PrivateRoute>} />
             <Route path="/messaging" element={<PrivateRoute><Messaging /></PrivateRoute>} />
             <Route path="/audit-log" element={<PrivateRoute><AuditLog /></PrivateRoute>} />
+            <Route path="/data-access" element={<PrivateRoute><DataAccess /></PrivateRoute>} />
+            <Route path="/darta-chalani" element={<PrivateRoute><DartaChalani /></PrivateRoute>} />
+            <Route path="/tasks" element={<PrivateRoute><Tasks /></PrivateRoute>} />
+            <Route path="/work-dashboard" element={<PrivateRoute><WorkDashboard /></PrivateRoute>} />
+            <Route path="/notification-settings" element={<PrivateRoute><NotificationSettings /></PrivateRoute>} />
             <Route path="/ledger-mapping" element={<PrivateRoute><LedgerMapping /></PrivateRoute>} />
             <Route path="/cost-profit-centers" element={<PrivateRoute><CostProfitCenters /></PrivateRoute>} />
             <Route path="/billing-terms" element={<PrivateRoute><BillingTermManagement /></PrivateRoute>} />
