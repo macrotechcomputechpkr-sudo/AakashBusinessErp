@@ -17,7 +17,7 @@
 // search, batch / serial tracking, warehouse, batch no, serial no, party,
 // module, stock status; quantities can be shown in any unit of the item.
 // =============================================
-const { itemMovement, METHODS, MODULE_LABEL } = require('./stockEngine');
+const { itemMovement, METHODS, MODULE_LABEL, TRANSFER_KEYS } = require('./stockEngine');
 
 const round2 = n => Math.round((Number(n) || 0) * 100) / 100;
 const round4 = n => Math.round((Number(n) || 0) * 10000) / 10000;
@@ -52,8 +52,8 @@ const SUMMARY_OF = { opening: 'opening', purchase_grn: 'purchase', purchase_bill
     stock_transfer: 'stock_transfer', transfer_wh: 'stock_transfer', stock_adjustment: 'stock_adjustment' };
 const SUMMARY_LABEL = { opening: 'Opening Stock', purchase: 'Purchase', purchase_return: 'Purchase Return', sales: 'Sales', sales_return: 'Sales Return',
     production: 'Production', stock_adjustment: 'Stock Adjustment', stock_transfer: 'Stock Transfer' };
-const ORDER_IN = ['opening', 'purchase', 'sales_return', 'production', 'stock_adjustment', 'stock_transfer'];
-const ORDER_OUT = ['sales', 'purchase_return', 'production', 'stock_adjustment', 'stock_transfer'];
+const ORDER_IN = ['opening', 'purchase', 'sales_return', 'production', 'stock_adjustment', 'stock_transfer', 'goods_in_transit'];
+const ORDER_OUT = ['sales', 'purchase_return', 'production', 'stock_adjustment', 'stock_transfer', 'goods_in_transit'];
 
 // Source document of each stock_movements.source_type: header table, party side
 // and (sales side only) the detail table carrying serial_no.
@@ -321,7 +321,7 @@ function buildSummary(f, info, ev) {
     rows.forEach(r => {                                  // exact value identity at 2 decimals
         delete r._closing_base;
         const gap = round2(r.opening_value + r.in_value - r.out_value - r.closing_value);
-        if (gap && Object.keys(r.out).length) { const x = Object.keys(r.out).find(y => y !== 'stock_transfer') || Object.keys(r.out)[0]; r.out[x].value = round2(r.out[x].value + gap); r.out_value = round2(r.out_value + gap); }
+        if (gap && Object.keys(r.out).length) { const x = Object.keys(r.out).find(y => !TRANSFER_KEYS.has(y)) || Object.keys(r.out)[0]; r.out[x].value = round2(r.out[x].value + gap); r.out_value = round2(r.out_value + gap); }
     });
     rows.sort((a, b) => a.product_name.localeCompare(b.product_name) || String(a.batch_no || a.warehouse_name || '').localeCompare(String(b.batch_no || b.warehouse_name || '')));
     const sortMods = (set, order) => [...set].sort((a, b) => (order.indexOf(a) + 1 || 99) - (order.indexOf(b) + 1 || 99)).map(key => ({ key, label: SUMMARY_LABEL[key] || MODULE_LABEL[key] || key }));

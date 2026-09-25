@@ -226,7 +226,7 @@ async function postTransferGl(tenantClient, tenantId, transfer, acc, step, userI
 }
 
 // Fields the client may never set directly.
-const PROTECTED = ['gl_posted', 'requires_receipt', 'received_date', 'received_by', 'received_at', 'posted_by', 'posted_at', 'approved_by', 'approved_at',
+const PROTECTED = ['gl_posted', 'requires_receipt', 'received_date', 'received_by', 'received_at', 'receive_remarks', 'posted_by', 'posted_at', 'approved_by', 'approved_at',
     'cancelled_by', 'cancelled_at', 'status', 'doc_no', 'tenant_id', 'id', 'created_by', 'created_at', 'total_amount'];
 
 // Accounts a transfer would post to (for the entry screen).
@@ -376,6 +376,8 @@ router.put('/stock-transfers/:id', requireAuth, loadUserPermissions, requirePerm
         const update = { ...b, ...snapshots, transfer_type: merged.transfer_type, updated_by: req.auth.userId, updated_at: new Date().toISOString() };
         if (merged.transfer_type !== 'branch') update.from_branch_id = null;
         PROTECTED.forEach(k => delete update[k]);
+        // A cleared picker arrives as '' - store NULL (UUID / date columns reject '').
+        Object.keys(update).forEach(k => { if (update[k] === '') update[k] = null; });
         delete update.branch_id;
         delete update.details;
         delete update.save_as_draft;

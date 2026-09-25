@@ -18,6 +18,9 @@
 // quantity. Product opening stock is a receipt on hand at the end of the day
 // before the opening fiscal year starts. Stock transfers move stock between
 // warehouses only: shown in and out at the same value, they net to zero.
+// A two-step branch transfer dispatched but not yet received (or received
+// for a dispatch of an earlier period) leaves its in and out unequal; the
+// difference is still company stock and is shown as "Goods in Transit".
 // =============================================
 
 const round2 = n => Math.round((Number(n) || 0) * 100) / 100;
@@ -41,7 +44,7 @@ const MODULE_LABEL = {
     opening: 'Opening Stock', purchase_grn: 'Purchase (GRN)', purchase_bill: 'Purchase (Direct Bill)', purchase_return: 'Purchase Return',
     purchase_nonsalable_return: 'Purchase Non-saleable Return', sales_delivery: 'Sales (Delivery)', sales_bill: 'Sales (Direct Bill)',
     sales_return: 'Sales Return', sales_nonsalable_return: 'Sales Non-saleable Return', production: 'Production', stock_transfer: 'Stock Transfer',
-    stock_adjustment: 'Stock Adjustment'
+    stock_adjustment: 'Stock Adjustment', goods_in_transit: 'Goods in Transit'
 };
 const PURCHASE_SOURCES = new Set(['opening', 'purchase_grn', 'purchase_bill', 'production']);
 // Normal (summary) view: GRN and direct Purchase Bill are both "Purchase",
@@ -49,9 +52,12 @@ const PURCHASE_SOURCES = new Set(['opening', 'purchase_grn', 'purchase_bill', 'p
 // join their return column. 'detail' keeps every module separate.
 const SUMMARY_OF = { purchase_grn: 'purchase', purchase_bill: 'purchase', purchase_return: 'purchase_return', purchase_nonsalable_return: 'purchase_return',
     sales_delivery: 'sales', sales_bill: 'sales', sales_return: 'sales_return', sales_nonsalable_return: 'sales_return', production: 'production', stock_transfer: 'stock_transfer',
-    stock_adjustment: 'stock_adjustment' };
+    stock_adjustment: 'stock_adjustment', goods_in_transit: 'goods_in_transit' };
 const SUMMARY_LABEL = { purchase: 'Purchase', purchase_return: 'Purchase Return', sales: 'Sales', sales_return: 'Sales Return', production: 'Production', stock_transfer: 'Stock Transfer',
-    stock_adjustment: 'Stock Adjustment' };
+    stock_adjustment: 'Stock Adjustment', goods_in_transit: 'Goods in Transit' };
+
+// Company-level movements that never change stock qty or cost.
+const TRANSFER_KEYS = new Set(['stock_transfer', 'goods_in_transit']);
 
 // Running state of one item under one method.
 function newState() { return { qty: 0, avg: 0, layers: [], sumQ: 0, sumV: 0, last: 0 }; }
@@ -146,10 +152,18 @@ function itemMovement(ev, method, from, to) {
     }
     if (!opening) opening = snap();                     // nothing happened in the period
     const closing = snap();
+    // Transfer out - in = goods that left one warehouse but reached no other in
+    // the period (two-step branch transfer): still company stock, so balance it.
+    const tIn = inBy.stock_transfer || { qty: 0, value: 0 }, tOut = outBy.stock_transfer || { qty: 0, value: 0 };
+    const transitQ = tOut.qty - tIn.qty, transitV = tOut.value - tIn.value;
+    if (Math.abs(transitQ) > 1e-9 || Math.abs(transitV) > 0.005) {
+        if (transitQ > 0 || (transitQ === 0 && transitV > 0)) inBy.goods_in_transit = { qty: transitQ, value: transitV };
+        else outBy.goods_in_transit = { qty: -transitQ, value: -transitV };
+    }
     // Cost of issues so that Opening + In - Out = Closing exactly, spread by natural cost (or qty).
-    const inValue = Object.entries(inBy).filter(([k]) => k !== 'stock_transfer').reduce((s, [, b]) => s + b.value, 0);
+    const inValue = Object.entries(inBy).filter(([k]) => !TRANSFER_KEYS.has(k)).reduce((s, [, b]) => s + b.value, 0);
     const outTotal = opening.value + inValue - closing.value;
-    const srcs = Object.keys(outBy).filter(k => k !== 'stock_transfer');
+    const srcs = Object.keys(outBy).filter(k => !TRANSFER_KEYS.has(k));
     const naturalSum = srcs.reduce((s, k) => s + (outNatural[k] || 0), 0);
     const qtySum = srcs.reduce((s, k) => s + outBy[k].qty, 0);
     srcs.forEach(k => { outBy[k].value = naturalSum > 1e-9 ? outTotal * (outNatural[k] || 0) / naturalSum : (qtySum ? outTotal * outBy[k].qty / qtySum : 0); });
@@ -188,11 +202,11 @@ async function stockMovement(tenantClient, tenantId, { from, to, method = 'weigh
     // Rounding: make each row's value identity exact at 2 decimals by trimming the out figure.
     rows.forEach(r => {
         const gap = round2(r.opening_value + r.in_value - r.out_value - r.closing_value);
-        if (gap && Object.keys(r.out).length) { const k = Object.keys(r.out).find(x => x !== 'stock_transfer') || Object.keys(r.out)[0]; r.out[k].value = round2(r.out[k].value + gap); r.out_value = round2(r.out_value + gap); }
+        if (gap && Object.keys(r.out).length) { const k = Object.keys(r.out).find(x => !TRANSFER_KEYS.has(x)) || Object.keys(r.out)[0]; r.out[k].value = round2(r.out[k].value + gap); r.out_value = round2(r.out_value + gap); }
     });
     rows.sort((a, b) => String(a.product_name).localeCompare(String(b.product_name)));
-    const orderIn = columns === 'detail' ? ['opening', 'purchase_grn', 'purchase_bill', 'sales_return', 'sales_nonsalable_return', 'production', 'stock_adjustment', 'stock_transfer'] : ['purchase', 'sales_return', 'production', 'stock_adjustment', 'stock_transfer'];
-    const orderOut = columns === 'detail' ? ['sales_delivery', 'sales_bill', 'purchase_return', 'purchase_nonsalable_return', 'production', 'stock_adjustment', 'stock_transfer'] : ['sales', 'purchase_return', 'production', 'stock_adjustment', 'stock_transfer'];
+    const orderIn = columns === 'detail' ? ['opening', 'purchase_grn', 'purchase_bill', 'sales_return', 'sales_nonsalable_return', 'production', 'stock_adjustment', 'stock_transfer', 'goods_in_transit'] : ['purchase', 'sales_return', 'production', 'stock_adjustment', 'stock_transfer', 'goods_in_transit'];
+    const orderOut = columns === 'detail' ? ['sales_delivery', 'sales_bill', 'purchase_return', 'purchase_nonsalable_return', 'production', 'stock_adjustment', 'stock_transfer', 'goods_in_transit'] : ['sales', 'purchase_return', 'production', 'stock_adjustment', 'stock_transfer', 'goods_in_transit'];
     const labelOf = k => (columns === 'detail' ? MODULE_LABEL[k] : SUMMARY_LABEL[k]) || MODULE_LABEL[k] || k;
     const sortMods = (set, order) => [...set].sort((a, b) => (order.indexOf(a) + 1 || 99) - (order.indexOf(b) + 1 || 99));
     const sum = k => round2(rows.reduce((s, r) => s + r[k], 0));
@@ -221,4 +235,4 @@ async function closingStock(tenantClient, tenantId, asOf, method, filters = {}) 
     };
 }
 
-module.exports = { stockMovement, closingStock, METHODS, MODULE_LABEL, itemMovement };
+module.exports = { stockMovement, closingStock, METHODS, MODULE_LABEL, TRANSFER_KEYS, itemMovement };

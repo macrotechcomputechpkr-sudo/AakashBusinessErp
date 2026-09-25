@@ -3,7 +3,7 @@
 Multi-tenant ERP for Nepal - Supabase/PostgreSQL, Node/Express, React 18 + Tailwind.
 
 ## Structure
-- `database/` - SQL migrations, run in number order (01 -> 111)
+- `database/` - SQL migrations, run in number order (01 -> 112)
 - `server/` - Express API (`server.js`, `routes/`, `utils/`, `middleware/`)
 - `client/` - React app (`src/pages`, `src/components`, `src/hooks`)
 
