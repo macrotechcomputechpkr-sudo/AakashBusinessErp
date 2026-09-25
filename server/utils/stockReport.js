@@ -17,7 +17,9 @@
 // search, batch / serial tracking, warehouse, batch no, serial no, party,
 // module, stock status; quantities can be shown in any unit of the item.
 // =============================================
-const { itemMovement, METHODS, MODULE_LABEL, TRANSFER_KEYS } = require('./stockEngine');
+const { itemMovement: rawMovement, METHODS, MODULE_LABEL, TRANSFER_KEYS, costingSettings, methodFor, keyEvents } = require('./stockEngine');
+// Batch / serial products are costed per System Control (FIFO / LIFO / average or batch-wise / serial-wise).
+const moveOf = (f, p, events, from, to) => { const e = methodFor(p, f.method, f.cs); return rawMovement(keyEvents(events, e.keyBy), e.method, from, to); };
 
 const round2 = n => Math.round((Number(n) || 0) * 100) / 100;
 const round4 = n => Math.round((Number(n) || 0) * 10000) / 10000;
@@ -190,7 +192,7 @@ async function loadEvents(c, t, f, products) {
     const openingDay = fy?.start_date_eng ? dayBefore(String(fy.start_date_eng).slice(0, 10)) : '0000-01-01';
     const [moves, batches, warehouses] = await Promise.all([
         ids.size ? fetchAll(() => {
-            let q = c.from('stock_movements').select('id, product_id, warehouse_id, batch_no, movement_date, qty_in, qty_out, unit_cost, source_type, source_id, source_detail_id, narration, created_at')
+            let q = c.from('stock_movements').select('*')
                 .eq('tenant_id', t).lte('movement_date', f.to).order('id');
             if (f.productId) q = q.eq('product_id', f.productId);
             if (f.warehouseId) q = q.eq('warehouse_id', f.warehouseId);
@@ -244,7 +246,7 @@ async function loadEvents(c, t, f, products) {
         rowFor(p, m.batch_no, m.warehouse_id).events.push({
             date: String(m.movement_date).slice(0, 10), seq: m.created_at || '', qin: Number(m.qty_in) || 0, qout: Number(m.qty_out) || 0, cost: Number(m.unit_cost) || 0,
             src: m.source_type === 'stock_transfer' && byWh ? 'transfer_wh' : m.source_type || 'other', src_type: m.source_type,
-            id: m.id, source_id: m.source_id, source_detail_id: m.source_detail_id, batch_no: m.batch_no, warehouse_id: m.warehouse_id, narration: m.narration
+            id: m.id, source_id: m.source_id, source_detail_id: m.source_detail_id, batch_no: m.batch_no, serial_no: m.serial_no || null, warehouse_id: m.warehouse_id, narration: m.narration
         });
     });
     rows.forEach(r => r.events.sort((a, b) => a.date.localeCompare(b.date) || String(a.seq).localeCompare(String(b.seq))));
@@ -293,7 +295,7 @@ function buildSummary(f, info, ev) {
     const modulesIn = new Set(), modulesOut = new Set(), warnings = [...ev.warnings];
     let rows = ev.rows.map(r => {
         const p = info[r.product_id], k = p.factor;
-        const m = itemMovement(r.events, f.method, f.from, f.to);
+        const m = moveOf(f, p, r.events, f.from, f.to);
         const label = [p.product_name, r.batch_no, r.warehouse_id && ev.whName[r.warehouse_id]].filter(Boolean).join(' · ');
         if (m.negative) warnings.push(`${label}: negative stock ${round4(m.closing.qty)} - valued at zero`);
         const fold = obj => {
@@ -344,7 +346,7 @@ async function buildDetail(c, t, f, info, ev) {
     const warnings = [...ev.warnings];
     let items = ev.rows.map(r => {
         const p = info[r.product_id], k = p.factor;
-        const m = itemMovement(r.events, f.method, f.from, f.to);
+        const m = moveOf(f, p, r.events, f.from, f.to);
         let bal = m.opening.qty;
         const lines = [];
         r.events.forEach(e => {
@@ -429,7 +431,7 @@ async function buildOpening(c, t, f, info, products, ev) {
     if (f.openingBasis === 'as_on') {
         rows = ev.rows.map(r => {
             const p = info[r.product_id], k = p.factor;
-            const m = itemMovement(r.events, f.method, f.from, f.from);
+            const m = moveOf(f, p, r.events, f.from, f.from);
             const meta = r.batch_no ? ev.batchMeta[`${r.product_id}|${r.batch_no}`] : null;
             return { ...p, key: r.key, batch_no: r.batch_no, mfg_date: meta?.mfg_date || null, exp_date: meta?.exp_date || null,
                 warehouse_name: r.warehouse_id ? ev.whName[r.warehouse_id] || '' : (f.groupBy === 'item_warehouse' ? '(Opening - no warehouse)' : null),
@@ -480,6 +482,7 @@ async function buildOpening(c, t, f, info, products, ev) {
 
 async function stockReport(c, t, query) {
     const f = parseQuery(query);
+    f.cs = await costingSettings(c, t);
     const { products, info } = await loadProducts(c, t, f);
     const ev = await loadEvents(c, t, f, products);
     const base = { mode: f.mode, from: f.from, to: f.to, method: f.method, method_label: METHODS[f.method], group_by: f.groupBy,

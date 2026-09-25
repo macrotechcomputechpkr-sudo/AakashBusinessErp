@@ -10,6 +10,7 @@ const express = require('express');
 const { bumpAltCounter, rollHeaderStatus } = require('../utils/progressCounters');
 const { checkCompulsoryFields, lockProtectedFields } = require('../utils/entryFieldRules');
 const { checkProductCompany } = require('../utils/productCompanyRules');
+const { onDocumentEvent } = require('../utils/messaging');
 const router = express.Router();
 const { getTenantClient, loadUserPermissions, logAudit } = require('../utils/dbHelpers');
 const { requireAuth, requirePermission } = require('../middleware/auth');
@@ -164,7 +165,7 @@ async function postDeliveryStockMovements(tenantClient, tenantId, delivery, deta
     for (const d of details) {
         const wh = d.warehouse_id || delivery.warehouse_id;
         const { baseQty, unitCost } = await resolveBaseQtyAndCost(tenantClient, d);
-        rows.push({ tenant_id: tenantId, product_id: d.product_id, warehouse_id: wh, batch_no: d.batch_no, movement_date: delivery.doc_date, qty_out: baseQty, qty_in: 0, unit_cost: unitCost, source_type: 'sales_delivery', source_id: delivery.id, source_detail_id: d.id, narration: `Delivery ${delivery.doc_no}` });
+        rows.push({ tenant_id: tenantId, product_id: d.product_id, warehouse_id: wh, batch_no: d.batch_no, serial_no: d.serial_no || null, movement_date: delivery.doc_date, qty_out: baseQty, qty_in: 0, unit_cost: unitCost, source_type: 'sales_delivery', source_id: delivery.id, source_detail_id: d.id, narration: `Delivery ${delivery.doc_no}` });
     }
     if (rows.length > 0) {
         const { error } = await tenantClient.from('stock_movements').insert(rows);
@@ -362,6 +363,7 @@ router.put('/sales-deliveries/:id/status', requireAuth, loadUserPermissions, req
             await updateOrderDeliveredProgress(tenantClient, deliveryDetails || [], -1);
         }
 
+        onDocumentEvent(tenantClient, tenantId, 'sales_delivery', status, req.params.id, req.auth.userId); // auto Email / SMS / WhatsApp, never blocks
         await logAudit(tenantId, req.auth.userId, 'change_sales_delivery_status', 'sales_delivery', req.params.id, { new_status: status, cancellation_reason });
         await logDocumentAudit(tenantClient, tenantId, 'sales_delivery', req.params.id, 'status_change', req.auth.userId);
         res.json({ success: true, data, warnings: stockWarnings.length > 0 ? stockWarnings : undefined });

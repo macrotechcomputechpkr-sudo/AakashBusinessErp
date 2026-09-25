@@ -221,7 +221,7 @@ async function loadTradeLines(c, t, f, opts = {}) {
                 gross: round2(net + discount), discount: round2(discount), net: round2(net), tax: round2(tax), amount: round2(amount),
                 net_rate_base: baseQty ? round4(net / baseQty) : 0,
                 discount_percent: Number(d.discount_percent) || (net + discount ? round2(discount * 100 / (net + discount)) : 0),
-                batch_no: d.batch_no || null
+                batch_no: d.batch_no || null, serial_no: d.serial_no || null
             });
         }
     }

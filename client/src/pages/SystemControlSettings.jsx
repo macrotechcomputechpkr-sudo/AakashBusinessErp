@@ -284,6 +284,14 @@ export default function SystemControlSettings() {
                             <SelectField label="Negative Stock Control" value={settings.negative_stock_control} onChange={v => set('negative_stock_control', v)} options={[
                                 { value: 'none', label: 'No Action' }, { value: 'warn', label: 'Warn' }, { value: 'block', label: 'Block' }
                             ]} />
+                            <SelectField label="Costing of Batch-wise Products" value={settings.batch_costing_method || 'same'} onChange={v => set('batch_costing_method', v)} options={[
+                                { value: 'same', label: 'Same as report / statement method' }, { value: 'fifo', label: 'FIFO' }, { value: 'lifo', label: 'LIFO (comparison only - not NFRS)' },
+                                { value: 'moving_average', label: 'Moving Average' }, { value: 'weighted_average', label: 'Weighted Average' }, { value: 'batch_wise', label: 'Batch-wise (actual cost of each batch)' }
+                            ]} />
+                            <SelectField label="Costing of Serial-no Products" value={settings.serial_costing_method || 'same'} onChange={v => set('serial_costing_method', v)} options={[
+                                { value: 'same', label: 'Same as report / statement method' }, { value: 'fifo', label: 'FIFO' }, { value: 'lifo', label: 'LIFO (comparison only - not NFRS)' },
+                                { value: 'moving_average', label: 'Moving Average' }, { value: 'weighted_average', label: 'Weighted Average' }, { value: 'serial_wise', label: 'Serial-wise (actual cost of each serial no)' }
+                            ]} />
                             <CheckField label="Block Cancel if Bill-wise Settled" checked={settings.block_cancel_if_settled} onChange={v => set('block_cancel_if_settled', v)} />
                             <SelectField label="Back-date Entry Control" value={settings.backdate_entry_control} onChange={v => set('backdate_entry_control', v)} options={[
                                 { value: 'none', label: 'No Action' }, { value: 'warn', label: 'Warn' }, { value: 'block', label: 'Block' }

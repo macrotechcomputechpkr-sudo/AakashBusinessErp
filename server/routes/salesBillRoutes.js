@@ -14,6 +14,7 @@ const { checkCompulsoryFields, lockProtectedFields } = require('../utils/entryFi
 const { checkProductCompany } = require('../utils/productCompanyRules');
 const { splitByAccount } = require('../utils/accountResolver');
 const { defaultVatLedger } = require('../utils/vatLedger');
+const { onDocumentEvent } = require('../utils/messaging');
 const router = express.Router();
 const { autoSync: autoSyncIrd } = require('../utils/ird');
 const { getTenantClient, loadUserPermissions, logAudit } = require('../utils/dbHelpers');
@@ -172,7 +173,7 @@ async function postBillStockMovements(tenantClient, tenantId, bill, details) {
             baseQty = await toBaseUnitQty(tenantClient, d.product_id, d.qty, d.uom_id);
             unitCost = d.rate || 0;
         }
-        rows.push({ tenant_id: tenantId, product_id: d.product_id, warehouse_id: wh, batch_no: d.batch_no, movement_date: bill.doc_date, qty_out: baseQty, qty_in: 0, unit_cost: unitCost, source_type: 'sales_bill', source_id: bill.id, source_detail_id: d.id, narration: `Bill ${bill.doc_no} - direct sale` });
+        rows.push({ tenant_id: tenantId, product_id: d.product_id, warehouse_id: wh, batch_no: d.batch_no, serial_no: d.serial_no || null, movement_date: bill.doc_date, qty_out: baseQty, qty_in: 0, unit_cost: unitCost, source_type: 'sales_bill', source_id: bill.id, source_detail_id: d.id, narration: `Bill ${bill.doc_no} - direct sale` });
     }
     if (rows.length > 0) {
         const { error } = await tenantClient.from('stock_movements').insert(rows);
@@ -469,6 +470,7 @@ async function changeSalesBillStatus(req, res) {
         }
 
         if (status === 'posted' && existing.status !== 'posted') autoSyncIrd(tenantClient, tenantId, 'sales_bill', req.params.id); // CBMS push, never blocks posting
+        onDocumentEvent(tenantClient, tenantId, 'sales_bill', status, req.params.id, req.auth.userId); // auto Email / SMS / WhatsApp, never blocks
         await logAudit(tenantId, req.auth.userId, 'change_sales_bill_status', 'sales_bill', req.params.id, { new_status: status, cancellation_reason });
         await logDocumentAudit(tenantClient, tenantId, 'sales_bill', req.params.id, 'status_change', req.auth.userId);
         res.json({ success: true, data });

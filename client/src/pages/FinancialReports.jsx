@@ -254,6 +254,17 @@ export default function FinancialReports() {
                             {tab === 'pl' && <option value="monthly">Month-wise columns</option>}
                             <option value="compare">Compare with another period</option>
                         </select></div>}
+                    {config.mode === 'compare' && ['pl', 'bs'].includes(tab) && <div className="flex items-end gap-1">
+                        <button type="button" className="erp-btn" title="Same number of days just before" onClick={() => {
+                            const d = s2 => Date.parse(`${s2}T00:00:00Z`), iso2 = n => new Date(n).toISOString().slice(0, 10);
+                            const len = d(config.date_to) - d(config.date_from), pTo = d(config.date_from) - 86400000;
+                            setConfig(c => ({ ...c, compare_from: iso2(pTo - len), compare_to: iso2(tab === 'bs' ? d(config.date_to) - (len + 86400000) : pTo) }));
+                        }}>⟲ Previous period</button>
+                        <button type="button" className="erp-btn" onClick={() => {
+                            const back = s2 => { const x = new Date(`${s2}T00:00:00Z`); x.setUTCFullYear(x.getUTCFullYear() - 1); return x.toISOString().slice(0, 10); };
+                            setConfig(c => ({ ...c, compare_from: back(config.date_from), compare_to: back(config.date_to) }));
+                        }}>⟲ Last year</button>
+                    </div>}
                     {config.mode === 'compare' && ['pl', 'bs'].includes(tab) && <>
                         {tab === 'pl' && <div className="erp-field"><label className="erp-label">Compare from</label><input type="date" className="erp-input" value={config.compare_from} onChange={e => set('compare_from', e.target.value)} /></div>}
                         <div className="erp-field"><label className="erp-label">{tab === 'pl' ? 'Compare to' : 'Compare as of'}</label><input type="date" className="erp-input" value={config.compare_to} onChange={e => set('compare_to', e.target.value)} /></div>

@@ -94,7 +94,7 @@ async function postStock(c, t, doc, details) {
     for (const d of details) {
         const baseQty = await toBaseUnitQty(c, d.product_id, d.qty, d.uom_id);
         const unitCost = baseQty > 0 ? Number(d.amount) / baseQty : 0;     // cost per BASE unit
-        rows.push({ tenant_id: t, product_id: d.product_id, warehouse_id: d.warehouse_id || doc.warehouse_id, batch_no: d.batch_no || null, movement_date: doc.doc_date,
+        rows.push({ tenant_id: t, product_id: d.product_id, warehouse_id: d.warehouse_id || doc.warehouse_id, batch_no: d.batch_no || null, serial_no: d.serial_no || null, movement_date: doc.doc_date,
             qty_in: d.direction === 'in' ? baseQty : 0, qty_out: d.direction === 'out' ? baseQty : 0, unit_cost: unitCost,
             source_type: 'stock_adjustment', source_id: doc.id, source_detail_id: d.id, narration: `Adjustment ${doc.doc_no} (${d.line_reason || doc.reason})` });
     }

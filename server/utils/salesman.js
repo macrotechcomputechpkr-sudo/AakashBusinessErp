@@ -198,14 +198,18 @@ async function partyDetail(c, t, ledgerId) {
     const [{ data: led }, bal, { data: refs }, { data: orders }, { data: bills }] = await Promise.all([
         c.from('ledger_accounts').select('id, account_name, account_code, billing_name, pan_number, billing_address, city, phone_office, contact_person_mobile, credit_limit, credit_days').eq('id', ledgerId).eq('tenant_id', t).maybeSingle(),
         partyBalances(c, t, [ledgerId]),
-        c.from('bill_wise_references').select('doc_no, doc_date, total_amount, remaining_amount, due_date').eq('ledger_id', ledgerId).eq('nature', 'dr').gt('remaining_amount', 0).order('doc_date'),
+        c.from('bill_wise_references').select('source_doc_no, source_date, total_amount, remaining_amount').eq('ledger_id', ledgerId).eq('nature', 'dr').gt('remaining_amount', 0).order('source_date'),
         c.from('sales_orders').select('id, doc_no, doc_date, total_amount, status').eq('tenant_id', t).eq('customer_ledger_id', ledgerId).order('doc_date', { ascending: false }).limit(10),
         c.from('sales_bills').select('id, doc_no, doc_date, total_amount, status').eq('tenant_id', t).eq('customer_ledger_id', ledgerId).eq('status', 'posted').order('doc_date', { ascending: false }).limit(10)
     ]);
     if (!led) throw httpError('Party not found', 404);
     const d = today();
     return { ...contact(led), balance: bal[ledgerId] || 0,
-        open_bills: (refs || []).map(r => ({ ...r, overdue_days: r.due_date && String(r.due_date).slice(0, 10) < d ? daysBetween(String(r.due_date).slice(0, 10), d) : 0 })),
+        // due = bill date + the party's credit days (bill_wise_references keeps no due date)
+        open_bills: (refs || []).map(r => {
+            const date = String(r.source_date).slice(0, 10), due = new Date(Date.parse(`${date}T00:00:00Z`) + (Number(led.credit_days) || 0) * 86400000).toISOString().slice(0, 10);
+            return { doc_no: r.source_doc_no, doc_date: date, due_date: due, total_amount: r.total_amount, remaining_amount: r.remaining_amount, overdue_days: due < d ? daysBetween(due, d) : 0 };
+        }),
         recent_orders: orders || [], recent_bills: bills || [] };
 }
 

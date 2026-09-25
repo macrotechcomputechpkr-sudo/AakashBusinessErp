@@ -49,7 +49,8 @@ const DIMS = {
     doc: { label: 'Bill / Document', id: 'doc_id', name: 'doc_no' },
     month: { label: 'Month', id: 'month', name: 'month' },
     date: { label: 'Date', id: 'doc_date', name: 'doc_date' },
-    batch: { label: 'Batch', id: 'batch_no', name: 'batch_no' }
+    batch: { label: 'Batch', id: 'batch_no', name: 'batch_no' },
+    serial: { label: 'Serial No', id: 'serial_no', name: 'serial_no' }
 };
 const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
 const monthLabel = m => (m ? `${MONTHS[Number(m.slice(5, 7)) - 1]} ${m.slice(0, 4)}` : '');
@@ -130,11 +131,12 @@ function finish(m, withCost) {
 // Cost of each sales line (base qty x cost per base unit on its date).
 async function attachCost(c, t, lines, method, masters) {
     const wants = {};
-    lines.forEach(l => { (wants[l.product_id] = wants[l.product_id] || []).push({ date: l.doc_date, qty: l.kind === 'main' ? l.base_qty : 0 }); });
+    // batch / serial carried along: with batch-wise / serial-wise costing (System Control) the line costs its own batch / serial
+    lines.forEach(l => { (wants[l.product_id] = wants[l.product_id] || []).push({ date: l.doc_date, qty: l.kind === 'main' ? l.base_qty : 0, batch: l.batch_no || null, serial: l.serial_no || null }); });
     const rates = await costRatesOn(c, t, wants, method);
     const warnings = new Set();
     lines.forEach(l => {
-        let rate = rates[`${l.product_id}|${l.doc_date}`] || 0;
+        let rate = (l.serial_no && rates[`${l.product_id}|${l.doc_date}|${l.serial_no}`]) || (l.batch_no && rates[`${l.product_id}|${l.doc_date}|${l.batch_no}`]) || rates[`${l.product_id}|${l.doc_date}`] || 0;
         if (!(rate > 0)) {
             rate = masters.purchaseRate[l.product_id] || 0;
             warnings.add(rate > 0 ? `${l.product_name}: no stock cost on ${l.doc_date} - master purchase rate used` : `${l.product_name}: no cost found - cost taken as zero`);
@@ -145,7 +147,52 @@ async function attachCost(c, t, lines, method, masters) {
     return [...warnings].slice(0, 50);
 }
 
+// Comparison period: 'previous' = the same number of days just before,
+// 'last_year' = the same dates one year earlier, 'custom' = compare_from / compare_to.
+function comparePeriod(q, from, to) {
+    const day = 86400000, d = s => Date.parse(`${s}T00:00:00Z`), iso = n => new Date(n).toISOString().slice(0, 10);
+    if (q.compare === 'custom' && q.compare_from && q.compare_to) return { from: q.compare_from, to: q.compare_to, label: `${q.compare_from} to ${q.compare_to}` };
+    if (q.compare === 'last_year') {
+        const shift = s => { const x = new Date(d(s)); x.setUTCFullYear(x.getUTCFullYear() - 1); return iso(x.getTime()); };
+        return { from: shift(from), to: shift(to), label: 'Same period last year' };
+    }
+    if (q.compare === 'previous') {
+        const len = Math.round((d(to) - d(from)) / day);
+        const pTo = iso(d(from) - day);
+        return { from: iso(d(pTo) - len * day), to: pTo, label: 'Previous period' };
+    }
+    return null;
+}
+const CMP_KEYS = ['net_value', 'net_qty', 'main_value', 'return_value', 'amount', 'cost', 'profit', 'margin_pct', 'docs', 'parties'];
+// Put the comparison period's figures on every node of the current tree (matched by the row path).
+function attachCompare(cur, prev) {
+    const walk = (n, p) => {
+        const pm = p ? p.measures : {};
+        n.prev = Object.fromEntries(CMP_KEYS.filter(k => n.measures[k] !== undefined).map(k => [k, pm[k] || 0]));
+        n.change = {}; n.change_pct = {};
+        Object.keys(n.prev).forEach(k => {
+            n.change[k] = Math.round(((n.measures[k] || 0) - n.prev[k]) * 100) / 100;
+            n.change_pct[k] = n.prev[k] ? Math.round(n.change[k] * 10000 / Math.abs(n.prev[k])) / 100 : null;
+        });
+        const byKey = new Map((p ? p.children : []).map(x => [x.key, x]));
+        n.children.forEach(ch => walk(ch, byKey.get(ch.key)));
+        // rows that sold in the comparison period only
+        if (p) {
+            const here = new Set(n.children.map(x => x.key));
+            n.lost = p.children.filter(x => !here.has(x.key) && x.key !== '__others__').map(x => ({ key: x.key, label: x.label, prev: Object.fromEntries(CMP_KEYS.filter(k => x.measures[k] !== undefined).map(k => [k, x.measures[k]])) }));
+        }
+    };
+    walk(cur.tree, prev.tree);
+}
+
 async function tradeAnalysis(c, t, q, preset = {}) {
+    const cmp = comparePeriod(q, q.date_from || q.from, q.date_to || q.to);
+    if (cmp && !q._inner) {
+        const cur = await tradeAnalysis(c, t, { ...q, compare: '', _inner: 1 }, preset);
+        const prev = await tradeAnalysis(c, t, { ...q, compare: '', _inner: 1, date_from: cmp.from, date_to: cmp.to, from: cmp.from, to: cmp.to, columns: '', top: '' }, preset);
+        attachCompare(cur, prev);
+        return { ...cur, compare: { ...cmp, line_count: prev.line_count } };
+    }
     const f = parseTradeQuery({ ...q, ...preset });
     if (!f.from || !f.to) throw httpError('Choose From and To dates');
     if (f.to < f.from) throw httpError('To date must be on or after From date');

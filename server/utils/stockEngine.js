@@ -59,8 +59,40 @@ const SUMMARY_LABEL = { purchase: 'Purchase', purchase_return: 'Purchase Return'
 // Company-level movements that never change stock qty or cost.
 const TRANSFER_KEYS = new Set(['stock_transfer', 'goods_in_transit']);
 
+// Batch / serial products can be costed differently (System Control):
+// FIFO / LIFO / average like everything else, or by SPECIFIC IDENTIFICATION
+// - each batch (or serial number) keeps its own purchase cost and an issue
+// of that batch / serial takes exactly that cost. Internally that method is
+// 'specific': receipt layers carry a key (batch no or serial no) and an issue
+// consumes the layers of its own key first (then FIFO for anything left,
+// e.g. stock received before batches / serials were recorded).
+const COSTING_CHOICES = {
+    batch: { same: 'Same as the valuation method of the report', fifo: 'FIFO', lifo: 'LIFO', moving_average: 'Moving Average', weighted_average: 'Weighted Average', batch_wise: 'Batch-wise (actual cost of each batch)' },
+    serial: { same: 'Same as the valuation method of the report', fifo: 'FIFO', lifo: 'LIFO', moving_average: 'Moving Average', weighted_average: 'Weighted Average', serial_wise: 'Serial-wise (actual cost of each serial no)' }
+};
+async function costingSettings(tenantClient, tenantId) {
+    try {
+        const { data } = await tenantClient.from('system_control_settings').select('batch_costing_method, serial_costing_method').eq('tenant_id', tenantId).maybeSingle();
+        return { batch: COSTING_CHOICES.batch[data?.batch_costing_method] ? data.batch_costing_method : 'same', serial: COSTING_CHOICES.serial[data?.serial_costing_method] ? data.serial_costing_method : 'same' };
+    } catch { return { batch: 'same', serial: 'same' }; }
+}
+// Effective method + which key (batch / serial) identifies a layer for one product.
+function methodFor(product, method, cs) {
+    if (!product || !cs) return { method, keyBy: null };
+    if (product.track_serial_number && cs.serial !== 'same') return cs.serial === 'serial_wise' ? { method: 'specific', keyBy: 'serial' } : { method: cs.serial, keyBy: null };
+    if (product.maintain_batch && cs.batch !== 'same') return cs.batch === 'batch_wise' ? { method: 'specific', keyBy: 'batch' } : { method: cs.batch, keyBy: null };
+    return { method, keyBy: null };
+}
+const splitKeys = k => String(k || '').split(/[,;\s]+/).map(x => x.trim()).filter(Boolean);
+// Attach the costing key to each event of a product.
+function keyEvents(ev, keyBy) {
+    if (!keyBy) return ev;
+    return ev.map(e => ({ ...e, key: keyBy === 'serial' ? e.serial_no || null : e.batch_no || null }));
+}
+const LAYERED = new Set(['fifo', 'lifo', 'specific']);
+
 // Running state of one item under one method.
-function newState() { return { qty: 0, avg: 0, layers: [], sumQ: 0, sumV: 0, last: 0 }; }
+function newState() { return { qty: 0, avg: 0, layers: [], sumQ: 0, sumV: 0, last: 0, keyCost: {} }; }
 function rateOf(st, method) {
     if (method === 'moving_average') return st.avg;
     if (method === 'last_purchase') return st.last || st.avg;
@@ -69,29 +101,52 @@ function rateOf(st, method) {
 }
 function valueOf(st, method) {
     if (st.qty <= 1e-9) return 0;                      // nil or negative stock carries no value
-    if (method === 'fifo' || method === 'lifo') return st.layers.reduce((s, L) => s + L.q * L.c, 0);
+    if (LAYERED.has(method)) return st.layers.reduce((s, L) => s + L.q * L.c, 0);
     return st.qty * rateOf(st, method);
 }
-function receive(st, qty, cost) {
-    const c = cost > 0 ? cost : st.avg;                // a receipt without cost (e.g. a return) comes in at the current average
+function receive(st, qty, cost, key) {
+    // a receipt without cost (e.g. a return) comes in at the cost that key went out at, else the current average
+    const keys = splitKeys(key);
+    const known = keys.length ? keys.map(k => st.keyCost[k]).filter(x => x > 0) : [];
+    const c = cost > 0 ? cost : known.length ? known.reduce((a, b) => a + b, 0) / known.length : st.avg;
     st.avg = st.qty + qty > 0 ? (Math.max(st.qty, 0) * st.avg + qty * c) / (Math.max(st.qty, 0) + qty) : c;
-    st.qty += qty; st.layers.push({ q: qty, c }); st.sumQ += qty; st.sumV += qty * c;
+    st.qty += qty; st.sumQ += qty; st.sumV += qty * c;
+    if (keys.length > 1) keys.forEach(k => { st.layers.push({ q: qty / keys.length, c, key: k }); st.keyCost[k] = c; });
+    else { st.layers.push({ q: qty, c, key: keys[0] || null }); if (keys[0]) st.keyCost[keys[0]] = c; }
     return qty * c;
 }
-function issue(st, qty, method) {                      // returns the natural cost of this issue
+function takeLayers(st, need, pick) {                  // pick(): index of the next layer to use, or -1
     let cost = 0;
-    if (method === 'fifo' || method === 'lifo') {
-        let need = qty;
-        while (need > 1e-9 && st.layers.length) {
-            const L = method === 'lifo' ? st.layers[st.layers.length - 1] : st.layers[0];
-            const take = Math.min(L.q, need); L.q -= take; need -= take; cost += take * L.c;
-            if (L.q <= 1e-9) method === 'lifo' ? st.layers.pop() : st.layers.shift();
-        }
+    while (need > 1e-9) {
+        const i = pick(); if (i < 0) break;
+        const L = st.layers[i], take = Math.min(L.q, need);
+        L.q -= take; need -= take; cost += take * L.c;
+        if (L.key) st.keyCost[L.key] = L.c;
+        if (L.q <= 1e-9) st.layers.splice(i, 1);
+    }
+    return { cost, left: need };
+}
+function issue(st, qty, method, key) {                 // returns the natural cost of this issue
+    let cost = 0;
+    if (method === 'specific') {
+        const keys = splitKeys(key);
+        let left = 0;
+        (keys.length ? keys : [null]).forEach(k => {
+            const part = keys.length ? qty / keys.length : qty;
+            const r = k ? takeLayers(st, part, () => st.layers.findIndex(L => L.key === k)) : { cost: 0, left: part };
+            cost += r.cost; left += r.left;
+        });
+        // anything not identified: the oldest un-keyed stock first, then plain FIFO
+        let r = takeLayers(st, left, () => st.layers.findIndex(L => !L.key));
+        cost += r.cost;
+        r = takeLayers(st, r.left, () => (st.layers.length ? 0 : -1));
+        cost += r.cost;
+    } else if (method === 'fifo' || method === 'lifo') {
+        cost = takeLayers(st, qty, () => (st.layers.length ? (method === 'lifo' ? st.layers.length - 1 : 0) : -1)).cost;
     } else {
         cost = qty * rateOf(st, method);
         // keep FIFO layers in step so rateOf() for non-layer methods is unaffected
-        let need = qty;
-        while (need > 1e-9 && st.layers.length) { const L = st.layers[0]; const take = Math.min(L.q, need); L.q -= take; need -= take; if (L.q <= 1e-9) st.layers.shift(); }
+        takeLayers(st, qty, () => (st.layers.length ? 0 : -1));
     }
     st.qty -= qty;
     return cost;
@@ -99,7 +154,7 @@ function issue(st, qty, method) {                      // returns the natural co
 
 async function loadItems(tenantClient, tenantId, to, filters = {}) {
     let pq = () => {
-        let q = tenantClient.from('products').select('id, product_code, product_name, opening_qty, opening_rate, product_group_id, product_company_id').eq('tenant_id', tenantId);
+        let q = tenantClient.from('products').select('id, product_code, product_name, opening_qty, opening_rate, product_group_id, product_company_id, maintain_batch, track_serial_number').eq('tenant_id', tenantId);
         if (filters.productId) q = q.eq('id', filters.productId);
         if (filters.productGroupId) q = q.eq('product_group_id', filters.productGroupId);
         if (filters.productCompanyId) q = q.eq('product_company_id', filters.productCompanyId);
@@ -110,14 +165,23 @@ async function loadItems(tenantClient, tenantId, to, filters = {}) {
     const openingDay = fy?.start_date_eng ? dayBefore(String(fy.start_date_eng).slice(0, 10)) : '0000-01-01';
     const ids = new Set(products.map(p => p.id));
     const moves = (await fetchAll(() => tenantClient.from('stock_movements')
-        .select('product_id, movement_date, qty_in, qty_out, unit_cost, source_type, created_at').eq('tenant_id', tenantId).lte('movement_date', to)))
+        .select('*').eq('tenant_id', tenantId).lte('movement_date', to)))
         .filter(m => ids.has(m.product_id));
+    // opening batches (with their own rates) make batch-wise costing exact from day one
+    const batchRows = products.some(p => p.maintain_batch) ? await fetchAll(() => tenantClient.from('product_batches').select('product_id, batch_no, qty, rate, is_active').eq('tenant_id', tenantId)).catch(() => []) : [];
     const events = {};
     products.forEach(p => {
         events[p.id] = [];
-        if (Number(p.opening_qty) > 0) events[p.id].push({ date: openingDay, seq: '', qin: Number(p.opening_qty), qout: 0, cost: Number(p.opening_rate) || 0, src: 'opening' });
+        const total = Number(p.opening_qty) || 0;
+        let used = 0;
+        if (p.maintain_batch) batchRows.filter(b => b.product_id === p.id && b.is_active !== false && Number(b.qty) > 0 && used + Number(b.qty) <= total + 1e-9).forEach(b => {
+            used += Number(b.qty);
+            events[p.id].push({ date: openingDay, seq: '', qin: Number(b.qty), qout: 0, cost: Number(b.rate) || Number(p.opening_rate) || 0, src: 'opening', batch_no: b.batch_no });
+        });
+        if (total - used > 1e-9) events[p.id].push({ date: openingDay, seq: '', qin: round4(total - used), qout: 0, cost: Number(p.opening_rate) || 0, src: 'opening' });
     });
-    moves.forEach(m => events[m.product_id].push({ date: String(m.movement_date).slice(0, 10), seq: m.created_at || '', qin: Number(m.qty_in) || 0, qout: Number(m.qty_out) || 0, cost: Number(m.unit_cost) || 0, src: m.source_type || 'other' }));
+    moves.forEach(m => events[m.product_id].push({ date: String(m.movement_date).slice(0, 10), seq: m.created_at || '', qin: Number(m.qty_in) || 0, qout: Number(m.qty_out) || 0, cost: Number(m.unit_cost) || 0,
+        src: m.source_type || 'other', batch_no: m.batch_no || null, serial_no: m.serial_no || null }));
     Object.values(events).forEach(ev => ev.sort((a, b) => a.date.localeCompare(b.date) || String(a.seq).localeCompare(String(b.seq))));
     return { products, events };
 }
@@ -141,12 +205,12 @@ function itemMovement(ev, method, from, to) {
             continue;
         }
         if (e.qin > 0) {
-            const v = receive(st, e.qin, e.cost);
+            const v = receive(st, e.qin, e.cost, e.key);
             if (e.cost > 0 && PURCHASE_SOURCES.has(e.src)) st.last = e.cost;
             if (inPeriod) { const b = (inBy[e.src] = inBy[e.src] || { qty: 0, value: 0 }); b.qty += e.qin; b.value += v; }
         }
         if (e.qout > 0) {
-            const natural = issue(st, e.qout, method);
+            const natural = issue(st, e.qout, method, e.key);
             if (inPeriod) { const b = (outBy[e.src] = outBy[e.src] || { qty: 0, value: 0 }); b.qty += e.qout; outNatural[e.src] = (outNatural[e.src] || 0) + natural; }
         }
     }
@@ -174,9 +238,11 @@ function itemMovement(ev, method, from, to) {
 async function stockMovement(tenantClient, tenantId, { from, to, method = 'weighted_average', productId, productGroupId, productCompanyId, hideZero = true, columns = 'summary' }) {
     if (!METHODS[method]) method = 'weighted_average';
     const { products, events } = await loadItems(tenantClient, tenantId, to, { productId, productGroupId, productCompanyId });
+    const cs = await costingSettings(tenantClient, tenantId);
     const modulesIn = new Set(), modulesOut = new Set(), warnings = [];
     let rows = products.map(p => {
-        const m = itemMovement(events[p.id], method, from, to);
+        const eff = methodFor(p, method, cs);
+        const m = itemMovement(keyEvents(events[p.id], eff.keyBy), eff.method, from, to);
         if (m.negative) warnings.push(`${p.product_name}: negative stock ${round4(m.closing.qty)} - valued at zero`);
         const fold = obj => {
             if (columns === 'detail') return obj;
@@ -195,7 +261,8 @@ async function stockMovement(tenantClient, tenantId, { from, to, method = 'weigh
             opening_qty: round4(m.opening.qty), opening_value: round2(m.opening.value),
             in: inBy, out: outBy, in_qty: round4(inQty), in_value: round2(inVal), out_qty: round4(outQty), out_value: round2(outVal),
             closing_qty: round4(m.closing.qty), closing_value: round2(m.closing.value),
-            closing_rate: m.closing.qty > 1e-9 ? round2(m.closing.value / m.closing.qty) : 0
+            closing_rate: m.closing.qty > 1e-9 ? round2(m.closing.value / m.closing.qty) : 0,
+            costing: eff.method === method ? null : eff.method === 'specific' ? (eff.keyBy === 'serial' ? 'serial_wise' : 'batch_wise') : eff.method
         };
     });
     if (hideZero) rows = rows.filter(r => r.opening_qty || r.in_qty || r.out_qty || r.closing_qty);
@@ -238,40 +305,58 @@ async function closingStock(tenantClient, tenantId, asOf, method, filters = {}) 
 // Cost per BASE unit of the stock issued on given dates under `method`
 // (Profitability's cost of sales). The ledger is replayed to the start of
 // each date plus that day's receipts; FIFO / LIFO then cost the day's issued
-// qty from the layers, the average methods use their rate.
-// wants: { productId: [{ date, qty }] }  ->  { 'productId|date': rate }
+// qty from the layers, the average methods use their rate. Batch / serial
+// products follow System Control's batch / serial costing; with batch-wise /
+// serial-wise costing a want may carry key (its batch or serial no) and gets
+// that batch's own cost under 'productId|date|key'.
+// wants: { productId: [{ date, qty, key? }] }  ->  { 'productId|date': rate, 'productId|date|key': rate }
 async function costRatesOn(tenantClient, tenantId, wants, method = 'moving_average') {
     if (!METHODS[method]) method = 'moving_average';
     const pids = Object.keys(wants).filter(p => wants[p].length);
     if (!pids.length) return {};
     const maxDate = pids.flatMap(p => wants[p].map(w => w.date)).sort().pop();
-    const { events } = await loadItems(tenantClient, tenantId, maxDate, pids.length === 1 ? { productId: pids[0] } : {});
+    const { products, events } = await loadItems(tenantClient, tenantId, maxDate, pids.length === 1 ? { productId: pids[0] } : {});
+    const cs = await costingSettings(tenantClient, tenantId);
+    const P = Object.fromEntries(products.map(p => [p.id, p]));
     const out = {};
-    const apply = (st, e, withIssue) => {
-        if (e.src === 'stock_transfer') return;                // company level: no effect
-        if (e.qin > 0) { receive(st, e.qin, e.cost); if (e.cost > 0 && PURCHASE_SOURCES.has(e.src)) st.last = e.cost; }
-        if (withIssue && e.qout > 0) issue(st, e.qout, method);
-    };
     pids.forEach(pid => {
-        const ev = events[pid] || [], st = newState();
-        const qtyOn = {};
-        wants[pid].forEach(w => { qtyOn[w.date] = (qtyOn[w.date] || 0) + (Number(w.qty) || 0); });
+        const eff = methodFor(P[pid], method, cs), m = eff.method;
+        const apply = (st, e, withIssue) => {
+            if (e.src === 'stock_transfer') return;            // company level: no effect
+            if (e.qin > 0) { receive(st, e.qin, e.cost, e.key); if (e.cost > 0 && PURCHASE_SOURCES.has(e.src)) st.last = e.cost; }
+            if (withIssue && e.qout > 0) issue(st, e.qout, m, e.key);
+        };
+        const ev = keyEvents(events[pid] || [], eff.keyBy), st = newState();
+        const qtyOn = {}, keysOn = {};
+        wants[pid].forEach(w => {
+            qtyOn[w.date] = (qtyOn[w.date] || 0) + (Number(w.qty) || 0);
+            const wk = w.key || (eff.keyBy === 'serial' ? w.serial : eff.keyBy === 'batch' ? w.batch : null);
+            if (eff.keyBy && wk) (keysOn[w.date] = keysOn[w.date] || {})[wk] = ((keysOn[w.date] || {})[wk] || 0) + (Number(w.qty) || 0);
+        });
         let i = 0;
+        const clone = x => ({ ...x, layers: x.layers.map(L => ({ ...L })), keyCost: { ...x.keyCost } });
         Object.keys(qtyOn).sort().forEach(d => {
             for (; i < ev.length && ev[i].date < d; i++) apply(st, ev[i], true);
             // that day's receipts first (not its issues) on a copy of the state
-            const day = { ...st, layers: st.layers.map(L => ({ ...L })) };
+            const day = clone(st);
             for (let j = i; j < ev.length && ev[j].date === d; j++) apply(day, ev[j], false);
             const q = qtyOn[d];
-            let rate = rateOf(day, method);
-            if ((method === 'fifo' || method === 'lifo') && q > 1e-9 && day.layers.length) {
+            let rate = rateOf(day, m);
+            if (LAYERED.has(m) && q > 1e-9 && day.layers.length) {
                 const taken = Math.min(q, day.layers.reduce((s, L) => s + L.q, 0));
-                if (taken > 1e-9) rate = issue({ ...day, layers: day.layers.map(L => ({ ...L })) }, taken, method) / taken;
+                if (taken > 1e-9) rate = issue(clone(day), taken, m === 'specific' ? 'fifo' : m) / taken;
             }
             out[`${pid}|${d}`] = rate;
+            Object.entries(keysOn[d] || {}).forEach(([k, kq]) => {
+                const onHand = day.layers.filter(L => splitKeys(k).includes(L.key)).reduce((s, L) => s + L.q, 0);
+                const want = kq > 1e-9 ? kq : Math.max(onHand, 1e-6);
+                const cp = clone(day);
+                const cost = issue(cp, want, 'specific', k);
+                out[`${pid}|${d}|${k}`] = want > 1e-9 ? cost / want : rate;
+            });
         });
     });
     return out;
 }
 
-module.exports = { stockMovement, closingStock, costRatesOn, METHODS, MODULE_LABEL, TRANSFER_KEYS, itemMovement };
+module.exports = { stockMovement, closingStock, costRatesOn, METHODS, MODULE_LABEL, TRANSFER_KEYS, itemMovement, costingSettings, methodFor, keyEvents, COSTING_CHOICES };
