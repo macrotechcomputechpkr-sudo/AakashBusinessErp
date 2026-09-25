@@ -6,7 +6,11 @@
 // ?preset=) straight to one view of a multi-view report page.
 // =============================================
 
-export const SECTIONS = [
+export interface MenuItem { to: string; label: string; group?: string }
+export interface MenuSection { key: string; title: string; items: MenuItem[] }
+export type ReportGroup = { title: string; items: [string, string][] };
+
+export const SECTIONS: MenuSection[] = [
     { key: 'home', title: 'Home', items: [
         { to: '/dashboard', label: '🏠 Dashboard' },
         { to: '/reports', label: '📚 Report Center (all reports)' },
@@ -94,7 +98,7 @@ export const SECTIONS = [
     ] }
 ];
 
-export const REPORT_GROUPS = [
+export const REPORT_GROUPS: ReportGroup[] = [
     { title: 'Accounts & Finance', items: [
         ['/ledger-report', 'Ledger Report (detail)'], ['/ledger-report?mode=summary', 'Ledger Summary (PDC separate option)'], ['/ledger-report?mode=monthly', 'Ledger Monthly Summary'],
         ['/party-summary', 'Party Summary (PDC separate option)'], ['/control-reports?view=day_book', 'Day Book'], ['/control-reports?view=cash_bank_book', 'Cash & Bank Book'],
