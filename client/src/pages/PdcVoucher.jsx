@@ -15,6 +15,7 @@ import NumberingCategorySelector from '../components/NumberingCategorySelector';
 import { useEnterKeyNavigation } from '../hooks/useEnterKeyNavigation';
 import { formatDateForDisplay } from '../utils/nepaliDateUtils';
 import BillWiseSettlementPanel from '../components/BillWiseSettlementPanel';
+import UdfValuesModal from '../components/UdfValuesModal';
 
 const emptyForm = {
     product_company_id: '', doc_date: new Date().toISOString().slice(0, 10),
@@ -158,6 +159,8 @@ export default function PdcVoucher() {
             showAlert(err.message, 'danger');
         }
     };
+
+    const [udfDoc, setUdfDoc] = useState(null);
 
     const openAuditTrail = async (row) => {
         try {
@@ -379,6 +382,7 @@ export default function PdcVoucher() {
                         {row.status === 'pending' && <button onClick={() => handleEdit(row)} className="px-2 py-1 bg-blue-600 text-white rounded text-xs">Open</button>}
                         {['pending', 'posted'].includes(row.status) && <a href={`/print/pdc_voucher/${row.id}`} target="_blank" rel="noopener noreferrer" className="px-2 py-1 bg-purple-600 text-white rounded text-xs">🖨️ Print</a>}
                         <button onClick={() => openAuditTrail(row)} className="px-2 py-1 bg-gray-500 text-white rounded text-xs">History</button>
+                        <button onClick={() => setUdfDoc(row.id)} className="px-2 py-1 bg-indigo-500 text-white rounded text-xs" title="Custom fields (UDF)">UDF</button>{udfDoc === row.id && <UdfValuesModal docType="pdc_voucher" docId={row.id} onClose={() => setUdfDoc(null)} />}
                         {row.status === 'pending' && <button onClick={() => handlePost(row)} className="px-2 py-1 bg-green-600 text-white rounded text-xs">Post</button>}
                         {['pending', 'posted'].includes(row.status) && <button onClick={() => handleReturn(row)} className="px-2 py-1 bg-orange-600 text-white rounded text-xs">Return</button>}
                         {row.status === 'pending' && <button onClick={() => handleCancel(row)} className="px-2 py-1 bg-red-600 text-white rounded text-xs">Cancel</button>}

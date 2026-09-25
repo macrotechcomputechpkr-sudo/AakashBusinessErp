@@ -10,7 +10,7 @@
 import TermLedgerInfo from '../components/TermLedgerInfo';
 import ProductCompanyField, { filterProductsByCompany } from '../components/ProductCompanyField';
 import { useEntryFieldControls } from '../hooks/useEntryFieldControls';
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import SearchablePopupSelect from '../components/SearchablePopupSelect';
 import ReportGrid from '../components/ReportGrid';
@@ -18,6 +18,7 @@ import Layout from '../components/Layout';
 import NumberingCategorySelector from '../components/NumberingCategorySelector';
 import { resolveDualUomEntryMode, onPrimaryQtyChange, onSecondaryQtyChange, validateFixedSecondary, dualBaseQty } from '../utils/dualUomEntryMode';
 import { useEnterKeyNavigation } from '../hooks/useEnterKeyNavigation';
+import UdfValuesModal from '../components/UdfValuesModal';
 
 const emptyDetailRow = () => ({
     product_id: '', qty: '', uom_id: '', alt_qty: '', alt_unit_id: '', alt1_qty: '', alt1_unit_id: '', rate_basis: 'primary',
@@ -476,6 +477,8 @@ export default function PurchaseGrn() {
             showAlert(err.message, 'danger');
         }
     };
+
+    const [udfDoc, setUdfDoc] = useState(null);
 
     const openAuditTrail = async (row) => {
         try {
@@ -1095,6 +1098,7 @@ export default function PurchaseGrn() {
                             <p className="text-xs text-gray-400 mt-1">Editing an amount here redistributes it proportionally across every line that carries this term, preserving each line's original share.</p>
                         </div>
                     )}
+                    </div>
 
                     <div className="erp-bottombar">
                         <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-3">
@@ -1145,6 +1149,7 @@ export default function PurchaseGrn() {
                         <button onClick={() => handleEdit(row)} className="px-2 py-1 bg-blue-600 text-white rounded text-xs">Open</button>
                         {row.status !== 'draft' && row.status !== 'cancelled' && <a href={`/print/purchase_grn/${row.id}`} target="_blank" rel="noopener noreferrer" className="px-2 py-1 bg-purple-600 text-white rounded text-xs">🖨️ Print</a>}
                         <button onClick={() => openAuditTrail(row)} className="px-2 py-1 bg-gray-500 text-white rounded text-xs">History</button>
+                        <button onClick={() => setUdfDoc(row.id)} className="px-2 py-1 bg-indigo-500 text-white rounded text-xs" title="Custom fields (UDF)">UDF</button>{udfDoc === row.id && <UdfValuesModal docType="purchase_grn" docId={row.id} onClose={() => setUdfDoc(null)} />}
                         {row.status === 'draft' && <button onClick={() => handleStatusChange(row, 'received')} className="px-2 py-1 bg-green-600 text-white rounded text-xs">Mark Received</button>}
                         {!['billed', 'cancelled'].includes(row.status) && <button onClick={() => handleStatusChange(row, 'cancelled')} className="px-2 py-1 bg-red-600 text-white rounded text-xs">Cancel</button>}
                         {row.status === 'draft' && <button onClick={() => handleDeleteDraft(row)} className="px-2 py-1 bg-red-800 text-white rounded text-xs">Delete</button>}

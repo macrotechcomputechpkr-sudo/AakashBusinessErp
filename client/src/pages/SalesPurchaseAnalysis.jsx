@@ -16,6 +16,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import Layout from '../components/Layout';
 import MultiPick from '../components/MultiPick';
+import { useUdfColumns } from '../components/UdfColumns';
 
 const iso = d => d.toISOString().slice(0, 10);
 const fmt2 = n => (Number(n) ? Number(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '');
@@ -76,7 +77,7 @@ const defaultConfig = mode => {
         side: 'sales', date_from: `${d.getFullYear()}-01-01`, date_to: iso(d), kinds: ['main', 'return', 'nonsalable'],
         rows: PRESETS[mode].rows, columns: PRESETS[mode].columns, column_measure: mode === 'profit' ? 'profit' : 'net_value',
         measures: PRESETS[mode].measures, display_unit_id: '', sort_by: 'name', top: '', cost_method: 'moving_average',
-        search: '', doc_no: '', ...Object.fromEntries(FILTERS.map(([k]) => [k, []]))
+        search: '', doc_no: '', udf_field: '', udf_text: '', ...Object.fromEntries(FILTERS.map(([k]) => [k, []]))
     };
 };
 
@@ -90,6 +91,8 @@ export default function SalesPurchaseAnalysis({ mode = 'analysis' }) {
     const [collapsed, setCollapsed] = useState(() => new Set());
     const set = (k, v) => setConfig(c => ({ ...c, [k]: v }));
     const isProfit = mode === 'profit';
+    const udf = useUdfColumns(`analysis-${mode}`, (isProfit ? 'sales' : config.side) === 'purchase'
+        ? ['purchase_bill', 'purchase_return', 'purchase_nonsaleable_return'] : ['sales_bill', 'sales_return', 'sales_nonsaleable_return', 'sales_delivery']);
 
     useEffect(() => { setConfig(defaultConfig(mode)); setData(null); }, [mode]);
     useEffect(() => {
@@ -107,6 +110,7 @@ export default function SalesPurchaseAnalysis({ mode = 'analysis' }) {
             if (cfg.display_unit_id) p.set('display_unit_id', cfg.display_unit_id);
             if (cfg.search) p.set('search', cfg.search);
             if (cfg.doc_no) p.set('doc_no', cfg.doc_no);
+            if (cfg.udf_field && cfg.udf_text.trim()) p.set('udf_filter', `${cfg.udf_field}:${cfg.udf_text.trim()}`);
             if (isProfit) p.set('cost_method', cfg.cost_method);
             FILTERS.forEach(([k]) => { if (cfg[k].length) p.set(k, cfg[k].join(',')); });
             const res = await authFetch(`/api/reports/${isProfit ? 'profitability' : 'trade-analysis'}?${p}`);
@@ -170,7 +174,8 @@ export default function SalesPurchaseAnalysis({ mode = 'analysis' }) {
         a.download = `${mode}_${side}_${config.date_from}_${config.date_to}.csv`; a.click(); URL.revokeObjectURL(a.href);
     };
 
-    const dims = meta?.dimensions || [];
+    // Custom fields (UDF) can be row / column levels too.
+    const dims = [...(meta?.dimensions || []), ...udf.fields.map(f => ({ key: `udf:${f.id}`, label: `UDF: ${f.field_label}${f.section === 'detail' ? ' (line)' : ''}` }))];
     // Choosing "(none)" at a level drops it and every level below it.
     const setRow = (i, v) => setConfig(c => ({ ...c, rows: v ? Object.assign(c.rows.slice(0, 4), { [i]: v }) : c.rows.slice(0, i) }));
     const toggleList = (k, v) => setConfig(c => ({ ...c, [k]: c[k].includes(v) ? c[k].filter(x => x !== v) : [...c[k], v] }));
@@ -242,6 +247,16 @@ export default function SalesPurchaseAnalysis({ mode = 'analysis' }) {
                             <input className="erp-input" value={config.search} onChange={e => set('search', e.target.value)} onKeyDown={e => { if (e.key === 'Enter') run(); }} /></div>
                         <div className="erp-field"><label className="erp-label">Bill No contains</label>
                             <input className="erp-input" value={config.doc_no} onChange={e => set('doc_no', e.target.value)} onKeyDown={e => { if (e.key === 'Enter') run(); }} /></div>
+                        {udf.fields.length > 0 && (
+                            <div className="erp-field"><label className="erp-label">Custom field (UDF) filter</label>
+                                <div className="flex gap-1">
+                                    <select className="erp-select" value={config.udf_field} onChange={e => set('udf_field', e.target.value)}>
+                                        <option value="">—</option>
+                                        {udf.fields.map(f => <option key={f.id} value={f.id}>{f.field_label}</option>)}
+                                    </select>
+                                    <input className="erp-input" placeholder="contains… / (blank)" value={config.udf_text} onChange={e => set('udf_text', e.target.value)} onKeyDown={e => { if (e.key === 'Enter') run(); }} />
+                                </div></div>
+                        )}
                         <div className="erp-field"><label className="erp-label">Show qty in unit</label>
                             <select className="erp-select" value={config.display_unit_id} onChange={e => set('display_unit_id', e.target.value)}>
                                 <option value="">Base unit of each item</option>

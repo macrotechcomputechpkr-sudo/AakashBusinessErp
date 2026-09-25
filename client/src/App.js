@@ -44,6 +44,9 @@ import ReorderReport from './pages/ReorderReport';
 import ConsignmentCostReport from './pages/ConsignmentCostReport';
 import PdcDashboard from './pages/PdcDashboard';
 import PurchaseBillImport from './pages/PurchaseBillImport';
+import ProductionReport from './pages/ProductionReport';
+import ManualDocumentPrinting from './pages/ManualDocumentPrinting';
+import BatchPrint from './pages/BatchPrint';
 import PricingMasters from './pages/PricingMasters';
 import LedgerReport from './pages/LedgerReport';
 import LcRegister from './pages/LcRegister';
@@ -141,6 +144,9 @@ function AppRoutes() {
             <Route path="/consignment-cost" element={<PrivateRoute><ConsignmentCostReport /></PrivateRoute>} />
             <Route path="/pdc-dashboard" element={<PrivateRoute><PdcDashboard /></PrivateRoute>} />
             <Route path="/purchase-bill-import" element={<PrivateRoute><PurchaseBillImport /></PrivateRoute>} />
+            <Route path="/production-report" element={<PrivateRoute><ProductionReport /></PrivateRoute>} />
+            <Route path="/document-printing" element={<PrivateRoute><ManualDocumentPrinting /></PrivateRoute>} />
+            <Route path="/print-batch/:documentType" element={<PrivateRoute><BatchPrint /></PrivateRoute>} />
             <Route path="/pricing-masters" element={<PrivateRoute><PricingMasters /></PrivateRoute>} />
             <Route path="/ledger-report" element={<PrivateRoute><LedgerReport /></PrivateRoute>} />
             <Route path="/lc-register" element={<PrivateRoute><LcRegister /></PrivateRoute>} />

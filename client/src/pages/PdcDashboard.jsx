@@ -16,6 +16,7 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import Layout from '../components/Layout';
 import MultiPick from '../components/MultiPick';
+import { useUdfColumns } from '../components/UdfColumns';
 
 const iso = d => d.toISOString().slice(0, 10);
 const fmt2 = n => Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -40,6 +41,9 @@ export default function PdcDashboard() {
     const [error, setError] = useState('');
     const set = (k, v) => setConfig(c => ({ ...c, [k]: v }));
     const toggle = (k, v) => setConfig(c => ({ ...c, [k]: c[k].includes(v) ? c[k].filter(x => x !== v) : [...c[k], v] }));
+    const udf = useUdfColumns('pdc-dashboard', ['pdc_voucher']);
+    const udfLoad = udf.load;
+    useEffect(() => { if (data) udfLoad(data.rows, { doc: 'id' }); }, [data, udfLoad]);
 
     useEffect(() => {
         authFetch('/api/reports/ageing/meta').then(r => setParties([...(r.data?.customers || []), ...(r.data?.suppliers || [])].sort((a, b) => a.name.localeCompare(b.name)))).catch(() => {});
@@ -121,6 +125,7 @@ export default function PdcDashboard() {
                 {r.view_status === 'partly_adjusted' && <div className="text-[10px] text-orange-700">unadjusted {fmt2(r.unadjusted)}</div>}
                 {(r.return_reason || r.cancellation_reason) && <div className="text-[10px] text-gray-500">{r.return_reason || r.cancellation_reason}</div>}
                 {r.posting_date && <div className="text-[10px] text-gray-500">posted {r.posting_date}</div>}</td>
+            {udf.cells(r, { doc: 'id' }, '')}
             <td className="print:hidden whitespace-nowrap">
                 {r.status === 'pending' && <button className="px-2 py-1 bg-green-600 text-white rounded text-xs mr-1" onClick={() => openAction('post', [r])}>Post</button>}
                 {['pending', 'posted'].includes(r.status) && <button className="px-2 py-1 bg-orange-600 text-white rounded text-xs mr-1" onClick={() => openAction('return', [r])}>{r.status === 'posted' ? 'Bounce' : 'Return'}</button>}
@@ -133,7 +138,7 @@ export default function PdcDashboard() {
             <th className="print:hidden"><input type="checkbox" checked={rows.some(r => r.status === 'pending') && rows.filter(r => r.status === 'pending').every(r => selected.has(r.id))}
                 onChange={e => setSelected(e.target.checked ? new Set(rows.filter(r => r.status === 'pending').map(r => r.id)) : new Set())} /></th>
             <th className="text-left">PDC</th><th className="text-left">Type</th><th className="text-left">Party</th><th className="text-left">Cheque No</th><th className="text-left">Cheque Date</th>
-            <th className="text-right">Maturity</th><th className="text-left">Bank</th><th className="text-right">Amount</th><th className="text-left">Status</th><th className="print:hidden" />
+            <th className="text-right">Maturity</th><th className="text-left">Bank</th><th className="text-right">Amount</th><th className="text-left">Status</th>{udf.headers('text-left')}<th className="print:hidden" />
         </tr></thead>
     );
 
@@ -191,6 +196,7 @@ export default function PdcDashboard() {
                         <button className="erp-btn" disabled={!selRows.length} onClick={() => openAction('post', selRows)}>✔ Post ticked ({selRows.length})</button>
                         <button className="erp-btn" disabled={!selRows.length} onClick={() => openAction('cancel', selRows)}>✕ Cancel ticked</button>
                         {data && <button className="erp-btn" onClick={exportCsv}>⬇ Excel</button>}
+                        {udf.picker}
                         {data && <button className="erp-btn" onClick={() => window.print()}>🖨 Print / PDF</button>}
                         <button className="erp-btn" onClick={() => { const d = defaultConfig(); setConfig(d); run(d); }}>↺ Reset</button>
                     </div>
@@ -211,11 +217,11 @@ export default function PdcDashboard() {
                                 {data.groups ? data.groups.map(g => (
                                     <React.Fragment key={g.key}>
                                         <tr className="bg-gray-100 font-semibold"><td className="print:hidden" /><td colSpan={7}>{g.key} <span className="font-normal text-xs text-gray-500">({g.rows.length})</span></td>
-                                            <td className="text-right tabular-nums">{g.received ? `R ${fmt2(g.received)}` : ''}{g.received && g.issued ? ' / ' : ''}{g.issued ? `I ${fmt2(g.issued)}` : ''}</td><td colSpan={2} /></tr>
+                                            <td className="text-right tabular-nums">{g.received ? `R ${fmt2(g.received)}` : ''}{g.received && g.issued ? ' / ' : ''}{g.issued ? `I ${fmt2(g.issued)}` : ''}</td><td colSpan={2 + udf.count} /></tr>
                                         {g.rows.map(rowView)}
                                     </React.Fragment>
                                 )) : rows.map(rowView)}
-                                {rows.length === 0 && <tr><td colSpan={11} className="text-center text-gray-400 py-4">No PDC for these filters.</td></tr>}
+                                {rows.length === 0 && <tr><td colSpan={11 + udf.count} className="text-center text-gray-400 py-4">No PDC for these filters.</td></tr>}
                             </tbody>
                         </table>
                     </div>

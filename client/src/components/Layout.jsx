@@ -84,6 +84,8 @@ const navItems = [
     { to: '/reorder', label: '🔔 Re-order & Over-stock' },
     { to: '/consignment-cost', label: '🧮 Consignment Cost / Sales' },
     { to: '/pdc-dashboard', label: '🏦 PDC Dashboard & Report' },
+    { to: '/production-report', label: '🏭 Production Reports' },
+    { to: '/document-printing', label: '🖨 Manual Document Printing' },
     { to: '/purchase-bill-import', label: '📷 Purchase Bill from Image / PDF' },
     { to: '/ledger-report', label: '📒 Ledger Report' },
     { to: '/lc-register', label: '🏦 LC Register & Mapping' },

@@ -14,6 +14,7 @@ import NumberingCategorySelector from '../components/NumberingCategorySelector';
 import { useEnterKeyNavigation } from '../hooks/useEnterKeyNavigation';
 import { formatDateForDisplay } from '../utils/nepaliDateUtils';
 import BillWiseSettlementPanel from '../components/BillWiseSettlementPanel';
+import UdfValuesModal from '../components/UdfValuesModal';
 
 const PAYMENT_MODES = [
     { value: 'cash', label: 'Cash' }, { value: 'bank_transfer', label: 'Bank Transfer' },
@@ -177,6 +178,8 @@ export default function CashBankEntry() {
             showAlert(err.message, 'danger');
         }
     };
+
+    const [udfDoc, setUdfDoc] = useState(null);
 
     const openAuditTrail = async (row) => {
         try {
@@ -470,6 +473,7 @@ export default function CashBankEntry() {
                             {row.status === 'draft' && <button onClick={() => handleEdit(row)} className="px-2 py-1 bg-blue-600 text-white rounded text-xs">Open</button>}
                             {row.status === 'posted' && <a href={`/print/cash_bank_entry/${row.id}`} target="_blank" rel="noopener noreferrer" className="px-2 py-1 bg-purple-600 text-white rounded text-xs">🖨️ Print</a>}
                             <button onClick={() => openAuditTrail(row)} className="px-2 py-1 bg-gray-500 text-white rounded text-xs">History</button>
+                            <button onClick={() => setUdfDoc(row.id)} className="px-2 py-1 bg-indigo-500 text-white rounded text-xs" title="Custom fields (UDF)">UDF</button>{udfDoc === row.id && <UdfValuesModal docType="cash_bank_entry" docId={row.id} onClose={() => setUdfDoc(null)} />}
                             {row.status === 'draft' && <button onClick={() => handleStatusChange(row, 'posted')} className="px-2 py-1 bg-green-600 text-white rounded text-xs">Post</button>}
                             {row.status !== 'cancelled' && <button onClick={() => handleStatusChange(row, 'cancelled')} className="px-2 py-1 bg-red-600 text-white rounded text-xs">Cancel</button>}
                             {row.status === 'draft' && <button onClick={() => handleDeleteDraft(row)} className="px-2 py-1 bg-red-800 text-white rounded text-xs">Delete</button>}
