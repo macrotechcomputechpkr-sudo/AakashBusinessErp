@@ -12,6 +12,9 @@
 //              combined via toBaseQtyFromDual, others qty x unit factor)
 //   free_base_qty, gross (qty x rate), discount, net (taxable = gross -
 //   discount), tax, amount (net + tax), rate, net_rate_base (net / base qty)
+// Sales Delivery (GDN, kind 'delivery') is read only when asked for by
+// name (Loading Sheet) - it is never part of the default kinds, since a
+// bill made from a delivery would count the same goods twice.
 // Quantities and values keep their sign as documents: a return line is
 // positive here and carries kind 'return' / 'nonsalable' - callers decide
 // how to add them up.
@@ -42,6 +45,7 @@ const SOURCES = {
     sales_bill: { side: 'sales', kind: 'main', label: 'Sales Bill', header: 'sales_bills', detail: 'sales_bill_details', fk: 'bill_id' },
     sales_return: { side: 'sales', kind: 'return', label: 'Sales Return', header: 'sales_returns', detail: 'sales_return_details', fk: 'return_id' },
     sales_nonsalable_return: { side: 'sales', kind: 'nonsalable', label: 'Sales Non-saleable Return', header: 'sales_nonsaleable_returns', detail: 'sales_nonsaleable_return_details', fk: 'return_id' },
+    sales_delivery: { side: 'sales', kind: 'delivery', label: 'Sales Delivery', header: 'sales_deliveries', detail: 'sales_delivery_details', fk: 'delivery_id' },
     purchase_bill: { side: 'purchase', kind: 'main', label: 'Purchase Bill', header: 'purchase_bills', detail: 'purchase_bill_details', fk: 'bill_id' },
     purchase_return: { side: 'purchase', kind: 'return', label: 'Purchase Return', header: 'purchase_returns', detail: 'purchase_return_details', fk: 'return_id' },
     purchase_nonsalable_return: { side: 'purchase', kind: 'nonsalable', label: 'Purchase Non-saleable Return', header: 'purchase_nonsaleable_returns', detail: 'purchase_nonsaleable_return_details', fk: 'return_id' }
@@ -51,7 +55,7 @@ const KINDS = ['main', 'return', 'nonsalable'];
 // Filters common to every report. Multi-value filters are comma lists.
 function parseTradeQuery(q) {
     const side = q.side === 'purchase' ? 'purchase' : 'sales';
-    const kinds = csv(q.kinds).filter(k => KINDS.includes(k));
+    const kinds = csv(q.kinds).filter(k => KINDS.includes(k) || k === 'delivery');
     return {
         side, from: q.date_from, to: q.date_to,
         kinds: kinds.length ? kinds : KINDS,
@@ -59,7 +63,8 @@ function parseTradeQuery(q) {
         productCompanyIds: csv(q.product_company_ids), productCategoryIds: csv(q.product_category_ids), itemTypes: csv(q.item_types),
         areaIds: csv(q.area_ids), routeIds: csv(q.route_ids), agentIds: csv(q.agent_ids), branchIds: csv(q.branch_ids),
         warehouseIds: csv(q.warehouse_ids), costCenterIds: csv(q.cost_center_ids), businessUnitIds: csv(q.business_unit_ids),
-        search: (q.search || '').trim().toLowerCase(), docNo: (q.doc_no || '').trim().toLowerCase()
+        search: (q.search || '').trim().toLowerCase(), docNo: (q.doc_no || '').trim().toLowerCase(), docIds: csv(q.doc_ids),
+        statuses: q.include_draft === 'true' ? ['posted', 'draft'] : ['posted'], vehicleNo: (q.vehicle_no || '').trim().toLowerCase()
     };
 }
 
@@ -82,14 +87,19 @@ async function loadMasters(c, t) {
     const byId = rows => Object.fromEntries(rows.map(r => [r.id, r]));
     const unitsById = byId(units);
     const factor = {};                                   // `${product}|${unit}` -> base units in one unit
-    rates.forEach(r => { factor[`${r.product_id}|${r.unit_id}`] = r.is_base_unit ? 1 : Number(r.conversion_factor) || 1; });
+    const unitsOf = {};                                  // product -> [{ unit_id, factor }] (base unit included)
+    rates.forEach(r => {
+        const fct = r.is_base_unit ? 1 : Number(r.conversion_factor) || 1;
+        factor[`${r.product_id}|${r.unit_id}`] = fct;
+        (unitsOf[r.product_id] = unitsOf[r.product_id] || []).push({ unit_id: r.unit_id, factor: fct });
+    });
     const catsOf = {};
     links.forEach(l => (catsOf[l.product_id] = catsOf[l.product_id] || []).push(l.product_category_id));
     const purchaseRate = {};
     rates.filter(r => r.is_base_unit).forEach(r => { purchaseRate[r.product_id] = Number(r.last_purchase_rate) || Number(r.purchase_rate) || 0; });
     return {
         products: byId(products), units: unitsById, groups: byId(groups), companies: byId(companies), categories: byId(categories),
-        areas: byId(areas), routes: byId(routes), agents: byId(agents), subLedgers: byId(subLedgers), factor, catsOf, purchaseRate,
+        areas: byId(areas), routes: byId(routes), agents: byId(agents), subLedgers: byId(subLedgers), factor, unitsOf, catsOf, purchaseRate,
         unitName: id => (id && (unitsById[id]?.unit_symbol || unitsById[id]?.unit_name)) || ''
     };
 }
@@ -124,7 +134,7 @@ async function loadTradeLines(c, t, f, opts = {}) {
         && (!f.search || [p.product_name, p.product_code].some(v => v && String(v).toLowerCase().includes(f.search)));
 
     const headersBySource = await Promise.all(sources.map(([, s]) => fetchAll(() => {
-        let q = c.from(s.header).select('*').eq('tenant_id', t).eq('status', 'posted').order('id');
+        let q = c.from(s.header).select('*').eq('tenant_id', t).in('status', f.statuses).order('id');
         if (f.from) q = q.gte('doc_date', f.from);
         if (f.to) q = q.lte('doc_date', f.to);
         if (f.partyIds.length) q = q.in(partyKey, f.partyIds);
@@ -141,7 +151,8 @@ async function loadTradeLines(c, t, f, opts = {}) {
     const lines = [];
     for (let i = 0; i < sources.length; i++) {
         const [docType, s] = sources[i];
-        const headers = headersBySource[i].filter(h => !f.docNo || String(h.doc_no || '').toLowerCase().includes(f.docNo));
+        const headers = headersBySource[i].filter(h => (!f.docNo || String(h.doc_no || '').toLowerCase().includes(f.docNo))
+            && (!f.docIds.length || f.docIds.includes(h.id)) && (!f.vehicleNo || String(h.vehicle_no || '').toLowerCase().includes(f.vehicleNo)));
         if (!headers.length) continue;
         const byHeader = Object.fromEntries(headers.map(h => [h.id, h]));
         const details = await inChunks(headers.map(h => h.id), async ids => {
@@ -177,7 +188,10 @@ async function loadTradeLines(c, t, f, opts = {}) {
             const date = String(h.doc_date).slice(0, 10);
             lines.push({
                 doc_type: docType, doc_label: s.label, kind: s.kind, doc_id: h.id, doc_no: h.doc_no, doc_date: date, month: date.slice(0, 7),
-                party_bill_no: h.party_bill_no || null, line_id: d.id, source_bill_id: h.source_bill_id || null,
+                party_bill_no: h.party_bill_no || null, line_id: d.id, source_bill_id: h.source_bill_id || null, status: h.status,
+                source_delivery_id: h.source_delivery_id || null, source_delivery_detail_id: d.source_delivery_detail_id || null,
+                uom_id: d.uom_id || null, alt_unit_id: d.alt_unit_id || null,
+                vehicle_no: h.vehicle_no || null, driver_name: h.driver_name || null, delivery_address: h.delivery_address || null, doc_total: Number(h.total_amount) || 0,
                 party_id: h[partyKey] || (h.cash_vendor_name ? `cash:${h.cash_vendor_name.trim().toLowerCase()}` : null),
                 party_name: h.customer_name_snapshot || h.vendor_name_snapshot || party?.account_name || (h.cash_vendor_name ? `${h.cash_vendor_name} (cash)` : '(no party)'),
                 party_code: party?.account_code || '',

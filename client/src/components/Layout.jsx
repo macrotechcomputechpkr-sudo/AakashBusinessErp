@@ -78,6 +78,7 @@ const navItems = [
     { to: '/monthly-analysis', label: '🗓 Monthly Analysis' },
     { to: '/profitability', label: '💹 Profitability' },
     { to: '/rate-history', label: '🏷 Rate History' },
+    { to: '/loading-sheet', label: '🚚 Loading Sheet' },
     { to: '/ledger-report', label: '📒 Ledger Report' },
     { to: '/lc-register', label: '🏦 LC Register & Mapping' },
     { to: '/categories', label: '🏷️ Category Management' },
