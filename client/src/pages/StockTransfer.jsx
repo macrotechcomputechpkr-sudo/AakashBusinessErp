@@ -7,6 +7,8 @@
 // dispatches the goods and the receiving branch must Receive them. The
 // accounts panel shows the ledgers the transfer posts to (System Control >
 // Stock Posting) and lets the user change them when that is allowed.
+// Only the receiving branch can Receive. Cost Rate fills from the current
+// stock cost, so a transfer carries value even with account posting off.
 // =============================================
 
 import { useEntryFieldControls } from '../hooks/useEntryFieldControls';
@@ -164,13 +166,24 @@ export default function StockTransfer() {
         const rate = (product?.product_unit_rates || []).find(r => r.unit_id === product?.dual_uom_primary_unit_id);
         return Number(rate?.conversion_factor) || 1;
     };
+    // Cost Rate = current stock cost in the line's unit, unless the user typed one.
+    const fillCost = async (idx, productId, uomId) => {
+        if (!productId) return;
+        try {
+            const q = new URLSearchParams({ product_id: productId, date: form.doc_date || today(), ...(uomId ? { uom_id: uomId } : {}) });
+            const res = await authFetch(`/api/stock/current-cost?${q}`);
+            if (res.data?.rate > 0) setForm(f => ({ ...f, details: f.details.map((d, i) => (i === idx && d.product_id === productId && !d._cost_manual ? { ...d, cost_rate: res.data.rate } : d)) }));
+        } catch { /* no ledger access or no cost: leave blank - posting fills it */ }
+    };
     const handleProductSelect = (idx, productId) => {
         const product = products.find(p => p.id === productId);
+        const uomId = product?.uom_mode === 'fixed_dual' ? product.dual_uom_primary_unit_id || '' : product?.base_unit_id || '';
         if (product?.uom_mode === 'fixed_dual') {
-            updateDetailRow(idx, { product_id: productId, uom_id: product.dual_uom_primary_unit_id || '', alt_unit_id: product.base_unit_id || '', rate_basis: 'primary' });
+            updateDetailRow(idx, { product_id: productId, uom_id: uomId, alt_unit_id: product.base_unit_id || '', rate_basis: 'primary', cost_rate: '', _cost_manual: false });
         } else {
-            updateDetailRow(idx, { product_id: productId, uom_id: product?.base_unit_id || '' });
+            updateDetailRow(idx, { product_id: productId, uom_id: uomId, cost_rate: '', _cost_manual: false });
         }
+        fillCost(idx, productId, uomId);
     };
 
     const lineAmount = (d) => {
@@ -325,8 +338,10 @@ export default function StockTransfer() {
         ) }
     ];
     const listRows = listFilter === 'draft' ? rows.filter(r => r.status === 'draft')
-        : listFilter === 'in_transit' ? rows.filter(isInTransit) : rows;
+        : listFilter === 'in_transit' ? rows.filter(isInTransit)
+        : listFilter === 'to_receive' ? rows.filter(r => isInTransit(r) && r.can_receive) : rows;
     const inTransitCount = rows.filter(isInTransit).length;
+    const toReceiveCount = rows.filter(r => isInTransit(r) && r.can_receive).length;
 
     return (
         <Layout>
@@ -562,7 +577,7 @@ export default function StockTransfer() {
                                                 {productIsFixedDualUom(d.product_id) ? (
                                                     <span className="text-xs text-gray-400">{units.find(u => u.id === d.uom_id)?.unit_name}/{units.find(u => u.id === d.alt_unit_id)?.unit_name}</span>
                                                 ) : (
-                                                    <select disabled={efc.isReadonly('uom_id', 'detail')} className="erp-select" value={d.uom_id} onChange={e => updateDetailRow(idx, { uom_id: e.target.value })}>
+                                                    <select disabled={efc.isReadonly('uom_id', 'detail')} className="erp-select" value={d.uom_id} onChange={e => { updateDetailRow(idx, { uom_id: e.target.value }); fillCost(idx, d.product_id, e.target.value); }}>
                                                         <option value="">UOM</option>
                                                         {units.map(u => <option key={u.id} value={u.id}>{u.unit_name}</option>)}
                                                     </select>
@@ -580,7 +595,7 @@ export default function StockTransfer() {
                                                 ) : <span className="text-gray-300 text-xs">—</span>}
                                             </td>
                                             <td className={efc.isVisible('cost_rate', 'detail') ? '' : 'hidden'}>
-                                                <input disabled={efc.isReadonly('cost_rate', 'detail')} type="number" step="0.01" className="erp-input" value={d.cost_rate} onChange={e => updateDetailRow(idx, { cost_rate: e.target.value })} />
+                                                <input disabled={efc.isReadonly('cost_rate', 'detail')} type="number" step="0.01" className="erp-input" value={d.cost_rate} onChange={e => updateDetailRow(idx, { cost_rate: e.target.value, _cost_manual: e.target.value !== '' })} />
                                                 {productIsFixedDualUom(d.product_id) && (
                                                     <select className="erp-select mt-1" style={{ fontSize: '10px', height: '22px' }} value={d.rate_basis} onChange={e => updateDetailRow(idx, { rate_basis: e.target.value })}>
                                                         <option value="primary">per {units.find(u => u.id === d.uom_id)?.unit_name || 'Primary'}</option>
@@ -628,7 +643,7 @@ export default function StockTransfer() {
                                 <div className="flex flex-wrap justify-between items-center gap-2 mb-2">
                                     <p className="text-xs font-semibold text-gray-500 uppercase">Accounts</p>
                                     <span className="text-xs text-gray-500">
-                                        {accounts.posts ? 'Posts to accounts at qty x cost rate' : 'Stock only - no accounting entry (System Control > Stock Posting)'}
+                                        {accounts.posts ? 'Posts to accounts at qty x cost rate' : 'Stock only, at value (qty x cost rate) - no accounting entry (System Control > Stock Posting)'}
                                         {accounts.two_step && ' · Two-step: Post dispatches (In Transit), the receiving branch must Receive'}
                                     </span>
                                 </div>
@@ -682,7 +697,8 @@ export default function StockTransfer() {
                 <select className="erp-select" style={{ width: 'auto' }} value={listFilter} onChange={e => setListFilter(e.target.value)}>
                     <option value="all">All</option>
                     <option value="draft">Drafts only</option>
-                    <option value="in_transit">In Transit only ({inTransitCount})</option>
+                    <option value="to_receive">Pending receipt at my branch ({toReceiveCount})</option>
+                    <option value="in_transit">All In Transit ({inTransitCount})</option>
                 </select>
             </div>
             <ReportGrid
@@ -698,7 +714,8 @@ export default function StockTransfer() {
                         {row.status === 'draft' && <button onClick={() => handleStatusChange(row, 'approved')} className="px-2 py-1 bg-indigo-600 text-white rounded text-xs">Approve</button>}
                         {row.status === 'approved' && <button onClick={() => handleStatusChange(row, 'posted')} className="px-2 py-1 bg-green-600 text-white rounded text-xs">Post</button>}
                         {!['cancelled', 'posted'].includes(row.status) && <button onClick={() => handleStatusChange(row, 'cancelled')} className="px-2 py-1 bg-red-600 text-white rounded text-xs">Cancel</button>}
-                        {isInTransit(row) && <button onClick={() => setReceiveModal({ row, received_date: today(), receive_remarks: '' })} className="px-2 py-1 bg-orange-600 text-white rounded text-xs">📥 Receive</button>}
+                        {isInTransit(row) && row.can_receive && <button onClick={() => setReceiveModal({ row, received_date: today(), receive_remarks: '' })} className="px-2 py-1 bg-orange-600 text-white rounded text-xs">📥 Receive</button>}
+                        {isInTransit(row) && !row.can_receive && <span className="px-2 py-1 text-orange-600 text-xs">Awaiting {row.to_branch_name_snapshot || 'receiving branch'}</span>}
                         {row.status === 'posted' && <button onClick={() => handleStatusChange(row, 'cancelled')} className="px-2 py-1 bg-red-800 text-white rounded text-xs">Cancel (reverse stock)</button>}
                         {row.status === 'draft' && <button onClick={() => handleDeleteDraft(row)} className="px-2 py-1 bg-red-800 text-white rounded text-xs">Delete</button>}
                     </div>
