@@ -50,12 +50,17 @@ const SIDE_COLUMN = {
     cash_bank_entry: { dr: 'payment', cr: 'receipt' },
     pdc: { dr: 'payment', cr: 'receipt' }
 };
-const COLUMNS = ['purchase', 'sales', 'purchase_return', 'sales_return', 'debit_note', 'credit_note', 'receipt', 'payment', 'others_dr', 'others_cr'];
+const COLUMNS = ['purchase', 'sales', 'purchase_return', 'sales_return', 'debit_note', 'credit_note', 'receipt', 'payment', 'pdc_received', 'pdc_issued', 'others_dr', 'others_cr'];
 // How each column moves the balance (Dr positive) - used to prove the row reconciles.
-const EFFECT = { sales: 1, purchase: -1, sales_return: -1, purchase_return: 1, debit_note: 1, credit_note: -1, receipt: -1, payment: 1, others_dr: 1, others_cr: -1 };
+const EFFECT = { sales: 1, purchase: -1, sales_return: -1, purchase_return: 1, debit_note: 1, credit_note: -1, receipt: -1, payment: 1, pdc_received: -1, pdc_issued: 1, others_dr: 1, others_cr: -1 };
 
-function classify(line, acc) {
+function classify(line, acc, pdcSeparate = false) {
     const type = line.batch.document_type;
+    if (pdcSeparate && type === 'pdc') {                  // matured PDC in its own columns
+        acc.pdc_issued += Number(line.debit_amount) || 0;
+        acc.pdc_received += Number(line.credit_amount) || 0;
+        return;
+    }
     const dr = Number(line.debit_amount) || 0, cr = Number(line.credit_amount) || 0;
     if (NET_COLUMN[type]) {
         const [col, sign] = NET_COLUMN[type];
@@ -141,12 +146,20 @@ router.get('/party-summary', requireAuth, loadUserPermissions, requirePermission
                 return x;
             });
             period.forEach(l => {
-                classify(l, acc[l.ledger_account_id]);
+                classify(l, acc[l.ledger_account_id], q.pdc_separate === 'true');
                 drcr[l.ledger_account_id].dr += Number(l.debit_amount || 0);
                 drcr[l.ledger_account_id].cr += Number(l.credit_amount || 0);
             });
         }
 
+        // Pending (post-dated, not yet in the GL) cheques per party as on To date
+        const pending = {};
+        if (q.pdc_separate === 'true') {
+            for (const part of chunk(ids, 150)) {
+                const { data: pdcs } = await tenantClient.from('pdc_vouchers').select('party_ledger_id, voucher_type, amount').eq('tenant_id', tenantId).eq('status', 'pending').in('party_ledger_id', part).lte('doc_date', q.date_to);
+                (pdcs || []).forEach(x => { const a = (pending[x.party_ledger_id] = pending[x.party_ledger_id] || { received: 0, issued: 0 }); a[x.voucher_type === 'issued' ? 'issued' : 'received'] += Number(x.amount) || 0; });
+            }
+        }
         const { data: groups } = await tenantClient.from('account_groups').select('id, group_name').eq('tenant_id', tenantId);
         const groupName = Object.fromEntries((groups || []).map(g => [g.id, g.group_name]));
         // A company-wise view shows only that company's movement; the master
@@ -163,6 +176,8 @@ router.get('/party-summary', requireAuth, loadUserPermissions, requirePermission
                 ledger_id: l.id, account_code: l.account_code, party_name: l.account_name, group_name: groupName[l.account_group_id] || '',
                 pan: l.vat_pan_number || l.pan_number || null,
                 opening, ...cols, closing, reconciles: Math.abs(fromColumns - closing) < 0.01,
+                pdc_pending_received: round2(pending[l.id]?.received || 0), pdc_pending_issued: round2(pending[l.id]?.issued || 0),
+                closing_after_pdc: round2(closing - (pending[l.id]?.received || 0) + (pending[l.id]?.issued || 0)),
                 has_movement: COLUMNS.some(c => Math.abs(a[c]) > 0.005)
             };
         });
@@ -171,8 +186,8 @@ router.get('/party-summary', requireAuth, loadUserPermissions, requirePermission
         if (q.balance_side === 'cr') rows = rows.filter(r => r.closing < -0.005);
         rows.sort((a, b) => String(a.party_name).localeCompare(String(b.party_name)));
 
-        const totals = { opening: 0, closing: 0, ...Object.fromEntries(COLUMNS.map(c => [c, 0])) };
-        rows.forEach(r => { totals.opening += r.opening; totals.closing += r.closing; COLUMNS.forEach(c => { totals[c] += r[c]; }); });
+        const totals = { opening: 0, closing: 0, pdc_pending_received: 0, pdc_pending_issued: 0, closing_after_pdc: 0, ...Object.fromEntries(COLUMNS.map(c => [c, 0])) };
+        rows.forEach(r => { totals.opening += r.opening; totals.closing += r.closing; ['pdc_pending_received', 'pdc_pending_issued', 'closing_after_pdc'].forEach(k => { totals[k] += r[k]; }); COLUMNS.forEach(c => { totals[c] += r[c]; }); });
         Object.keys(totals).forEach(k => { totals[k] = round2(totals[k]); });
         res.json({ success: true, data: { rows, totals, all_reconcile: rows.every(r => r.reconciles) } });
     } catch (error) {

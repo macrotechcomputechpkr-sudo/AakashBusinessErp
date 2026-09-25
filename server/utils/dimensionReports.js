@@ -54,7 +54,8 @@ const DOCS = {
     cash_bank_entry: ['cash_bank_entries', 'cash_bank_entry', 'Cash / Bank Entry'], pdc: ['pdc_vouchers', 'pdc', 'PDC'], journal_voucher: ['journal_vouchers', 'journal', 'Journal Voucher'],
     credit_note: ['credit_notes', 'credit_note', 'Credit Note'], debit_note: ['debit_notes', 'debit_note', 'Debit Note'], production: ['production_orders', 'production', 'Production'],
     stock_transfer: ['stock_transfers', 'stock_transfer', 'Stock Transfer'], interest_posting: ['interest_runs', null, 'Interest Posting'],
-    depreciation: ['depreciation_runs', null, 'Depreciation'], asset_disposal: ['depreciation_runs', null, 'Asset Disposal']
+    depreciation: ['depreciation_runs', null, 'Depreciation'], asset_disposal: ['depreciation_runs', null, 'Asset Disposal'],
+    agent_commission: ['agent_commission_postings', null, 'Agent Commission']
 };
 // document tables for the doc-class register (all documents, posted or not)
 const CLASS_TABLES = {
@@ -260,7 +261,7 @@ async function exceptions(c, t, q) {
     const checks = [
         ['pl_no_cost_center', 'Profit & Loss entry without Cost Center', l => l.statement === 'pl' && !l.cost_center],
         ['pl_no_unit', 'Profit & Loss entry without Unit', l => l.statement === 'pl' && !l.business_unit],
-        ['no_branch', 'Entry without Branch', l => !l.branch && !['interest_posting', 'depreciation', 'asset_disposal'].includes(l.doc_type)],
+        ['no_branch', 'Entry without Branch', l => !l.branch && !['interest_posting', 'depreciation', 'asset_disposal', 'agent_commission'].includes(l.doc_type)],
         ['sub_ledger_missing', 'Ledger needs a sub-ledger but none posted', l => needSub.has(l.ledger) && !l.sub_ledger],
         ['sub_ledger_wrong_ledger', 'Sub-ledger belongs to another ledger', l => l.sub_ledger && M.subs[l.sub_ledger] && M.subs[l.sub_ledger].main_ledger_id !== l.ledger],
         ['no_doc_class', 'Document number matches no numbering class', l => DOCS[l.doc_type]?.[1] && l.doc_no && !l.doc_class && M.cats.some(cat => cat.voucher_type === DOCS[l.doc_type][1])],
@@ -346,4 +347,4 @@ async function dimensionMeta(c, t) {
     };
 }
 
-module.exports = { pivot, plByDimension, statement, exceptions, docClassRegister, dimensionMeta, classOf, numberOf, DIMS };
+module.exports = { pivot, plByDimension, statement, exceptions, docClassRegister, dimensionMeta, classOf, numberOf, DIMS, masters, dimLines, dimValue };

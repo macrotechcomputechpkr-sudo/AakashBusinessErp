@@ -31,7 +31,7 @@ const defaultConfig = () => {
 
 export default function ProductionReport() {
     const { authFetch } = useAuth();
-    const [config, setConfig] = useState(defaultConfig());
+    const [config, setConfig] = useState(() => { const v = new URLSearchParams(window.location.search).get('view'); return { ...defaultConfig(), ...(VIEWS.some(x => x[0] === v) ? { view: v } : {}) }; });
     const [meta, setMeta] = useState(null);
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(false);

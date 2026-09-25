@@ -58,6 +58,15 @@ import DimensionReports from './pages/DimensionReports';
 import PricingMasters from './pages/PricingMasters';
 import LedgerReport from './pages/LedgerReport';
 import LcRegister from './pages/LcRegister';
+import MobileApp from './pages/MobileApp';
+import RoutePlan from './pages/RoutePlan';
+import OrderBilling from './pages/OrderBilling';
+import SalesmanReports from './pages/SalesmanReports';
+import IrdCompliance from './pages/IrdCompliance';
+import AgentTargets from './pages/AgentTargets';
+import BudgetManager from './pages/BudgetManager';
+import ControlReports from './pages/ControlReports';
+import ReportCenter from './pages/ReportCenter';
 import LedgerMapping from './pages/LedgerMapping';
 import CostProfitCenters from './pages/CostProfitCenters';
 import BillingTermManagement from './pages/BillingTermManagement';
@@ -108,6 +117,19 @@ const PrivateRoute = ({ children }) => {
     return user || token ? children : <Navigate to="/login" replace />;
 };
 
+// A login linked to a salesman lands on the mobile order screen instead of the desk dashboard.
+function SalesmanHome({ children }) {
+    const { authFetch, user } = useAuth();
+    const key = `is_salesman_${user?.id || ''}`;
+    const [state, setState] = React.useState(() => { try { return localStorage.getItem(key); } catch { return null; } });
+    React.useEffect(() => {
+        if (state !== null) return;
+        authFetch('/api/mobile/me').then(r => { const v = r.data?.is_salesman ? '1' : '0'; try { localStorage.setItem(key, v); } catch { /* ignore */ } setState(v); }).catch(() => setState('0'));
+    }, [authFetch, key, state]);
+    if (state === null) return null;
+    return state === '1' ? <Navigate to="/mobile" replace /> : children;
+}
+
 function AppRoutes() {
     const { user, initializing } = useAuth();
     const token = localStorage.getItem('auth_token');
@@ -116,7 +138,7 @@ function AppRoutes() {
     return (
         <Routes>
             <Route path="/login" element={user || token ? <Navigate to="/dashboard" replace /> : <LoginPage />} />
-            <Route path="/dashboard" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
+            <Route path="/dashboard" element={<PrivateRoute><SalesmanHome><Dashboard /></SalesmanHome></PrivateRoute>} />
             <Route path="/company-creation" element={<PrivateRoute><CompanyCreation /></PrivateRoute>} />
             <Route path="/users" element={<PrivateRoute><UserManagement /></PrivateRoute>} />
             <Route path="/fiscal-years" element={<PrivateRoute><FiscalYearManagement /></PrivateRoute>} />
@@ -166,6 +188,15 @@ function AppRoutes() {
             <Route path="/pricing-masters" element={<PrivateRoute><PricingMasters /></PrivateRoute>} />
             <Route path="/ledger-report" element={<PrivateRoute><LedgerReport /></PrivateRoute>} />
             <Route path="/lc-register" element={<PrivateRoute><LcRegister /></PrivateRoute>} />
+            <Route path="/mobile" element={<PrivateRoute><MobileApp /></PrivateRoute>} />
+            <Route path="/route-plan" element={<PrivateRoute><RoutePlan /></PrivateRoute>} />
+            <Route path="/order-billing" element={<PrivateRoute><OrderBilling /></PrivateRoute>} />
+            <Route path="/salesman-reports" element={<PrivateRoute><SalesmanReports /></PrivateRoute>} />
+            <Route path="/ird" element={<PrivateRoute><IrdCompliance /></PrivateRoute>} />
+            <Route path="/agent-targets" element={<PrivateRoute><AgentTargets /></PrivateRoute>} />
+            <Route path="/budgets" element={<PrivateRoute><BudgetManager /></PrivateRoute>} />
+            <Route path="/control-reports" element={<PrivateRoute><ControlReports /></PrivateRoute>} />
+            <Route path="/reports" element={<PrivateRoute><ReportCenter /></PrivateRoute>} />
             <Route path="/ledger-mapping" element={<PrivateRoute><LedgerMapping /></PrivateRoute>} />
             <Route path="/cost-profit-centers" element={<PrivateRoute><CostProfitCenters /></PrivateRoute>} />
             <Route path="/billing-terms" element={<PrivateRoute><BillingTermManagement /></PrivateRoute>} />

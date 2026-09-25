@@ -41,9 +41,11 @@ const VALUE_LIST = { ledger: 'ledgers', sub_ledger: 'sub_ledgers', cost_center: 
 
 export default function DimensionReports() {
     const { authFetch } = useAuth();
-    const [preset, setPreset] = useState('sub_summary');
+    // ?preset= deep link from the Report Center
+    const initial = PRESETS.find(x => x[0] === new URLSearchParams(window.location.search).get('preset')) || PRESETS[0];
+    const [preset, setPreset] = useState(initial[0]);
     const [meta, setMeta] = useState(null);
-    const [cfg, setCfg] = useState(() => ({ ...PRESETS[0][2], from: fyStart(), to: iso(new Date()), value: '', detail: 'ledger', voucher_types: [], ...Object.fromEntries(FILTERS.map(([k]) => [k, []])) }));
+    const [cfg, setCfg] = useState(() => ({ ...initial[2], from: fyStart(), to: iso(new Date()), value: '', detail: 'ledger', voucher_types: [], ...Object.fromEntries(FILTERS.map(([k]) => [k, []])) }));
     const [data, setData] = useState(null);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');

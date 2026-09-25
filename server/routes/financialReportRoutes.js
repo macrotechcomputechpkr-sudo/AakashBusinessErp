@@ -11,6 +11,7 @@ const { getTenantClient, loadUserPermissions } = require('../utils/dbHelpers');
 const { requireAuth, requirePermission } = require('../middleware/auth');
 const fe = require('../utils/financialEngine');
 const stockEngine = require('../utils/stockEngine');
+const { cleanLines } = require('../utils/budgetReports');
 
 const guard = [requireAuth, loadUserPermissions, requirePermission('reports', 'view')];
 const wrap = fn => async (req, res) => {
@@ -133,7 +134,7 @@ router.post('/budgets', requireAuth, loadUserPermissions, requirePermission('led
     const b = req.body || {};
     if (!b.budget_name || !b.date_from || !b.date_to) { const e = new Error('Budget name, From and To are required'); e.status = 400; throw e; }
     if (b.date_to < b.date_from) { const e = new Error('To date must be on or after From date'); e.status = 400; throw e; }
-    const row = { tenant_id: t, budget_name: String(b.budget_name).trim(), date_from: b.date_from, date_to: b.date_to, notes: b.notes || null, created_by: req.auth.userId };
+    const row = { tenant_id: t, budget_name: String(b.budget_name).trim(), date_from: b.date_from, date_to: b.date_to, notes: b.notes || null, split_type: b.split_type === 'monthly' ? 'monthly' : 'total', created_by: req.auth.userId };
     const { data, error } = b.id
         ? await c.from('budgets').update({ ...row, updated_at: new Date().toISOString() }).eq('id', b.id).eq('tenant_id', t).select().single()
         : await c.from('budgets').insert(row).select().single();
@@ -150,20 +151,14 @@ router.get('/budgets/:id/lines', ...guard, wrap(async (req, c, t) => {
 }));
 // Replace all lines of a budget in one save (the grid sends its full state).
 router.put('/budgets/:id/lines', requireAuth, loadUserPermissions, requirePermission('ledger', 'edit'), wrap(async (req, c, t) => {
-    const lines = Array.isArray(req.body?.lines) ? req.body.lines : [];
-    const seen = new Set();
-    for (const [i, l] of lines.entries()) {
-        if (!!l.ledger_id === !!l.account_group_id) { const e = new Error(`Line ${i + 1}: choose either a ledger or a group`); e.status = 400; throw e; }
-        const k = l.ledger_id ? `L:${l.ledger_id}` : `G:${l.account_group_id}`;
-        if (seen.has(k)) { const e = new Error(`Line ${i + 1}: the same ledger/group appears twice`); e.status = 400; throw e; }
-        seen.add(k);
-    }
-    const { data: budget } = await c.from('budgets').select('id').eq('id', req.params.id).eq('tenant_id', t).maybeSingle();
+    const { data: budget } = await c.from('budgets').select('id, date_from, date_to').eq('id', req.params.id).eq('tenant_id', t).maybeSingle();
     if (!budget) { const e = new Error('Budget not found'); e.status = 404; throw e; }
+    // ledger / group + optional sub-ledger, cost center, unit, branch, doc class, month split
+    const lines = cleanLines(Array.isArray(req.body?.lines) ? req.body.lines : [], budget);
     const { error: delErr } = await c.from('budget_lines').delete().eq('budget_id', req.params.id).eq('tenant_id', t);
     if (delErr) throw delErr;
     if (lines.length) {
-        const { error } = await c.from('budget_lines').insert(lines.map(l => ({ tenant_id: t, budget_id: req.params.id, ledger_id: l.ledger_id || null, account_group_id: l.account_group_id || null, amount: Number(l.amount) || 0, remarks: l.remarks || null })));
+        const { error } = await c.from('budget_lines').insert(lines.map(l => ({ tenant_id: t, budget_id: req.params.id, ...l })));
         if (error) throw error;
     }
     return { saved: lines.length };

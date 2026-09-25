@@ -143,7 +143,7 @@ const loadUserPermissions = async (req, res, next) => {
 // broken on anything beyond a handful of rows.
 const applyListQuery = (query, req, { searchColumns = [], defaultSort = 'created_at', allowedSort = [] } = {}) => {
     const page = Math.max(parseInt(req.query.page) || 1, 1);
-    const pageSize = Math.min(Math.max(parseInt(req.query.pageSize) || 20, 1), 100);
+    const pageSize = Math.min(Math.max(parseInt(req.query.pageSize) || 20, 1), 1000);
     const from = (page - 1) * pageSize;
     const to = from + pageSize - 1;
 

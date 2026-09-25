@@ -9,12 +9,13 @@
 const express = require('express');
 const { disposeOnSale, undoSaleDisposals } = require('../utils/fixedAssets');
 const { checkAccountPurposes } = require('../utils/ledgerPurpose');
-const { bumpAltCounter } = require('../utils/progressCounters');
+const { bumpAltCounter, rollHeaderStatus } = require('../utils/progressCounters');
 const { checkCompulsoryFields, lockProtectedFields } = require('../utils/entryFieldRules');
 const { checkProductCompany } = require('../utils/productCompanyRules');
 const { splitByAccount } = require('../utils/accountResolver');
 const { defaultVatLedger } = require('../utils/vatLedger');
 const router = express.Router();
+const { autoSync: autoSyncIrd } = require('../utils/ird');
 const { getTenantClient, loadUserPermissions, logAudit } = require('../utils/dbHelpers');
 const { requireAuth, requirePermission } = require('../middleware/auth');
 const { resolveDocumentNumber } = require('../utils/documentNumbering');
@@ -131,6 +132,27 @@ async function updateBilledProgress(tenantClient, details, delta) {
     }
 }
 
+// A bill made straight from a Sales Order (no Delivery in between) ships
+// the goods itself, so it moves the order's delivered counter - otherwise
+// the order would stay pending forever and could be billed twice.
+async function updateOrderProgressFromBill(tenantClient, details, delta) {
+    const direct = (details || []).filter(d => d.source_order_detail_id && !d.source_delivery_detail_id);
+    for (const d of direct) {
+        const { data: row } = await tenantClient.from('sales_order_details').select('qty_delivered').eq('id', d.source_order_detail_id).maybeSingle();
+        if (!row) continue;
+        await tenantClient.from('sales_order_details').update({ qty_delivered: Math.max(0, Number(row.qty_delivered || 0) + delta * Number(d.qty || 0)) }).eq('id', d.source_order_detail_id);
+        await bumpAltCounter(tenantClient, 'sales_order_details', d.source_order_detail_id, 'alt_qty_delivered', delta * Number(d.alt_qty || 0));
+    }
+    const ids = [...new Set(direct.map(d => d.source_order_detail_id))];
+    if (!ids.length) return;
+    const { data: src } = await tenantClient.from('sales_order_details').select('order_id').in('id', ids);
+    for (const orderId of [...new Set((src || []).map(r => r.order_id))]) {
+        await rollHeaderStatus(tenantClient, { headerTable: 'sales_orders', detailTable: 'sales_order_details', fk: 'order_id', headerId: orderId,
+            counter: 'qty_delivered', altCounter: 'alt_qty_delivered',
+            statuses: { none: 'confirmed', partial: 'partially_delivered', full: 'fully_delivered' }, rollable: ['confirmed', 'partially_delivered', 'fully_delivered'] });
+    }
+}
+
 async function postBillStockMovements(tenantClient, tenantId, bill, details) {
     const rows = [];
     for (const d of details) {
@@ -243,7 +265,7 @@ router.get('/sales-bills/:id', requireAuth, loadUserPermissions, requirePermissi
     }
 });
 
-router.post('/sales-bills', requireAuth, loadUserPermissions, requirePermission('ledger', 'create'), async (req, res) => {
+async function createSalesBill(req, res) {
     try {
         const isDraft = req.body.status === 'draft' && req.body.save_as_draft === true;
         const validationError = validateBody(req.body, isDraft);
@@ -313,7 +335,8 @@ router.post('/sales-bills', requireAuth, loadUserPermissions, requirePermission(
                 credit_check_result: isDraft ? null : creditCheck.result, credit_check_message: creditCheck.message,
                 pending_bill_wise_settlements: b.bill_wise_settlements ? JSON.stringify(b.bill_wise_settlements) : null,
                 ...snapshots,
-                status: b.status || 'draft', created_by: req.auth.userId, updated_by: req.auth.userId
+                // posting (GL, stock, IRD register) happens only through the status route
+                status: 'draft', created_by: req.auth.userId, updated_by: req.auth.userId
             })
             .select().single();
         if (error) throw error;
@@ -335,7 +358,8 @@ router.post('/sales-bills', requireAuth, loadUserPermissions, requirePermission(
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
-});
+}
+router.post('/sales-bills', requireAuth, loadUserPermissions, requirePermission('ledger', 'create'), createSalesBill);
 
 router.put('/sales-bills/:id', requireAuth, loadUserPermissions, requirePermission('ledger', 'edit'), async (req, res) => {
     try {
@@ -366,6 +390,7 @@ router.put('/sales-bills/:id', requireAuth, loadUserPermissions, requirePermissi
         const update = { ...b, ...snapshots, updated_by: req.auth.userId, updated_at: new Date().toISOString() };
         delete update.branch_id;
         delete update.details;
+        delete update.status; // status changes go through the status route
         delete update.save_as_draft;
         delete update.override_credit_block;
         delete update.bill_wise_settlements;
@@ -387,7 +412,7 @@ router.put('/sales-bills/:id', requireAuth, loadUserPermissions, requirePermissi
     }
 });
 
-router.put('/sales-bills/:id/status', requireAuth, loadUserPermissions, requirePermission('ledger', 'edit'), async (req, res) => {
+async function changeSalesBillStatus(req, res) {
     try {
         const { status, cancellation_reason } = req.body;
         if (!['draft', 'posted', 'cancelled'].includes(status)) return res.status(400).json({ success: false, error: 'Invalid status' });
@@ -419,6 +444,7 @@ router.put('/sales-bills/:id/status', requireAuth, loadUserPermissions, requireP
             await postBillToLedger(tenantClient, tenantId, data, req.auth.userId);
             await postBillStockMovements(tenantClient, tenantId, data, billDetails || []);
             await updateBilledProgress(tenantClient, billDetails || [], 1);
+            await updateOrderProgressFromBill(tenantClient, billDetails || [], 1);
             // Fixed assets sold on this bill: depreciation up to the sale date and disposal
             try { data.asset_disposals = await disposeOnSale(tenantClient, tenantId, req.auth.userId, data, billDetails || []); }
             catch (assetErr) { data.asset_disposals = [{ error: assetErr.message }]; }
@@ -438,16 +464,19 @@ router.put('/sales-bills/:id/status', requireAuth, loadUserPermissions, requireP
             await reverseBillGlBatch(tenantClient, req.params.id);
             await reverseBillStockMovements(tenantClient, req.params.id);
             await updateBilledProgress(tenantClient, billDetails || [], -1);
+            await updateOrderProgressFromBill(tenantClient, billDetails || [], -1);
             try { await undoSaleDisposals(tenantClient, tenantId, req.auth.userId, req.params.id); } catch (assetErr) { console.error('asset disposal undo failed:', assetErr.message); }
         }
 
+        if (status === 'posted' && existing.status !== 'posted') autoSyncIrd(tenantClient, tenantId, 'sales_bill', req.params.id); // CBMS push, never blocks posting
         await logAudit(tenantId, req.auth.userId, 'change_sales_bill_status', 'sales_bill', req.params.id, { new_status: status, cancellation_reason });
         await logDocumentAudit(tenantClient, tenantId, 'sales_bill', req.params.id, 'status_change', req.auth.userId);
         res.json({ success: true, data });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
-});
+}
+router.put('/sales-bills/:id/status', requireAuth, loadUserPermissions, requirePermission('ledger', 'edit'), changeSalesBillStatus);
 
 router.delete('/sales-bills/:id', requireAuth, loadUserPermissions, requirePermission('ledger', 'delete'), async (req, res) => {
     try {
@@ -480,3 +509,5 @@ router.get('/sales-bills/:id/audit-trail', requireAuth, loadUserPermissions, req
 });
 
 module.exports = router;
+// reused by mobile ordering and order -> bill conversion (routes/salesmanRoutes.js)
+Object.assign(module.exports, { createSalesBill, changeSalesBillStatus });

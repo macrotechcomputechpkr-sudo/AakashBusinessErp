@@ -24,7 +24,7 @@ const monthStart = () => { const d = new Date(); return `${d.getFullYear()}-${St
 
 export default function BankReconciliation() {
     const { authFetch } = useAuth();
-    const [tab, setTab] = useState('reconcile');
+    const [tab, setTab] = useState(() => new URLSearchParams(window.location.search).get('tab') || 'reconcile'); // ?tab= deep link from the Report Center
     const [banks, setBanks] = useState([]);
     const [bankId, setBankId] = useState('');
     const [range, setRange] = useState({ from: monthStart(), to: iso(new Date()) });

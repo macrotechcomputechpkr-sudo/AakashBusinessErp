@@ -14,6 +14,7 @@ const { checkProductCompany } = require('../utils/productCompanyRules');
 const { splitByAccount } = require('../utils/accountResolver');
 const { defaultVatLedger } = require('../utils/vatLedger');
 const router = express.Router();
+const { autoSync: autoSyncIrd } = require('../utils/ird');
 const { getTenantClient, loadUserPermissions, logAudit } = require('../utils/dbHelpers');
 const { requireAuth, requirePermission } = require('../middleware/auth');
 const { resolveDocumentNumber } = require('../utils/documentNumbering');
@@ -288,7 +289,8 @@ router.post('/sales-returns', requireAuth, loadUserPermissions, requirePermissio
                 cost_center_id: b.cost_center_id || null, business_unit_id: b.business_unit_id || null, area_id: b.area_id || null, route_id: b.route_id || null,
                 pending_bill_wise_settlements: b.bill_wise_settlements ? JSON.stringify(b.bill_wise_settlements) : null,
                 ...snapshots,
-                status: b.status || 'draft', created_by: req.auth.userId, updated_by: req.auth.userId
+                // posting (GL, stock, IRD register) happens only through the status route
+                status: 'draft', created_by: req.auth.userId, updated_by: req.auth.userId
             })
             .select().single();
         if (error) throw error;
@@ -340,6 +342,7 @@ router.put('/sales-returns/:id', requireAuth, loadUserPermissions, requirePermis
         const update = { ...b, ...snapshots, updated_by: req.auth.userId, updated_at: new Date().toISOString() };
         delete update.branch_id;
         delete update.details;
+        delete update.status; // status changes go through the status route
         delete update.save_as_draft;
         delete update.bill_wise_settlements;
         if (b.bill_wise_settlements) update.pending_bill_wise_settlements = JSON.stringify(b.bill_wise_settlements);
@@ -419,6 +422,7 @@ router.put('/sales-returns/:id/status', requireAuth, loadUserPermissions, requir
             await reverseReferenceAndSettlements(tenantClient, 'sales_return', req.params.id);
         }
 
+        if (status === 'posted' && existing.status !== 'posted') autoSyncIrd(tenantClient, tenantId, 'sales_return', req.params.id); // CBMS push, never blocks posting
         await logAudit(tenantId, req.auth.userId, 'change_sales_return_status', 'sales_return', req.params.id, { new_status: status, cancellation_reason });
         await logDocumentAudit(tenantClient, tenantId, 'sales_return', req.params.id, 'status_change', req.auth.userId);
         res.json({ success: true, data });

@@ -155,6 +155,7 @@ export default function SalesmanAgentManagement() {
                 rowActions={(row) => (
                     <div className="flex gap-2 justify-center">
                         <button onClick={() => handleEdit(row)} className="px-2 py-1 bg-blue-600 text-white rounded text-xs">Edit</button>
+                        <a href={`/route-plan?tab=mobile&agent_id=${row.id}`} className="px-2 py-1 bg-emerald-600 text-white rounded text-xs" title="Create the salesman's mobile login, route plan and mobile settings">📱 {row.linked_user_id ? 'Login / Plan' : 'Create Login'}</a>
                         <button onClick={() => handleDelete(row)} className="px-2 py-1 bg-red-600 text-white rounded text-xs">Remove</button>
                     </div>
                 )}

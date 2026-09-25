@@ -295,6 +295,31 @@ router.get('/ledger-accounts', requireAuth, loadUserPermissions, requirePermissi
         if (req.query.account_type) base = base.eq('account_type', req.query.account_type);
         if (req.query.category_type) base = base.eq('category_type', req.query.category_type);
 
+        // Pickers ask for "everything" (pageSize 500 / 1000 / 5000); the list
+        // helper caps a page at 100, which silently cut ledger pickers short
+        // for companies with more than 100 ledgers. Serve those in full,
+        // 1000 rows per database round trip.
+        const wanted = parseInt(req.query.pageSize, 10) || 0;
+        if (wanted > 100 && !req.query.page) {
+            const cap = Math.min(wanted, 20000), all = [];
+            const search = (req.query.search || '').replace(/[(),]/g, ' ').trim();
+            for (let from = 0; from < cap; from += 1000) {
+                let pq = tenantClient.from('ledger_accounts')
+                    .select('*, account_groups(group_name, category_type, nfrs_category), ledger_account_categories(ledger_category_id)')
+                    .eq('tenant_id', req.auth.tenantId).eq('is_active', true);
+                if (req.query.account_group_id) pq = pq.eq('account_group_id', req.query.account_group_id);
+                if (req.query.account_type) pq = pq.eq('account_type', req.query.account_type);
+                if (req.query.category_type) pq = pq.eq('category_type', req.query.category_type);
+                if (search) pq = pq.or(['account_name', 'account_code', 'pan_number'].map(col => `${col}.ilike.%${search}%`).join(','));
+                const { data: chunk, error: e } = await pq.order('account_name', { ascending: true }).order('id').range(from, Math.min(from + 999, cap - 1));
+                if (e) throw e;
+                all.push(...(chunk || []));
+                if (!chunk || chunk.length < 1000) break;
+            }
+            const rows = all.map(row => ({ ...row, ledger_category_ids: (row.ledger_account_categories || []).map(r => r.ledger_category_id) }));
+            return res.json({ success: true, data: rows, pagination: { page: 1, pageSize: rows.length, total: rows.length, totalPages: 1 } });
+        }
+
         const { q, page, pageSize } = applyListQuery(base, req, {
             searchColumns: ['account_name', 'account_code', 'pan_number'],
             defaultSort: 'account_name',

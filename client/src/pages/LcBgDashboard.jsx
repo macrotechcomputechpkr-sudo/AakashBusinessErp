@@ -22,7 +22,7 @@ const emptyBg = { bg_number: '', direction: 'received', bg_type: 'performance', 
 
 export default function LcBgDashboard() {
     const { authFetch } = useAuth();
-    const [tab, setTab] = useState('dash');
+    const [tab, setTab] = useState(() => new URLSearchParams(window.location.search).get('tab') || 'dash'); // ?tab= deep link from the Report Center
     const [asOn, setAsOn] = useState(iso(new Date()));
     const [within, setWithin] = useState(30);
     const [dash, setDash] = useState(null);

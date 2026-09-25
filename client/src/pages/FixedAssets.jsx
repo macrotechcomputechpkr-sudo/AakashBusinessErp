@@ -26,7 +26,7 @@ const TAX_BLOCKS = [['', '—'], ['A', 'A - Buildings (5%)'], ['B', 'B - Compute
 export default function FixedAssets() {
     const { authFetch } = useAuth();
     const lp = useLedgerPurposes();
-    const [tab, setTab] = useState('register');
+    const [tab, setTab] = useState(() => new URLSearchParams(window.location.search).get('tab') || 'register'); // ?tab= deep link from the Report Center
     const [assets, setAssets] = useState([]);
     const [ledgers, setLedgers] = useState([]);
     const [masters, setMasters] = useState({ branches: [], ccs: [], products: [] });

@@ -43,7 +43,7 @@ const defaultConfig = () => ({
 
 export default function VatReports() {
     const { authFetch } = useAuth();
-    const [tab, setTab] = useState('register');
+    const [tab, setTab] = useState(() => new URLSearchParams(window.location.search).get('tab') || 'register'); // ?tab= deep link from the Report Center
     const [meta, setMeta] = useState({ doc_types: [], periods: [], fiscal_years: [], bs_months: [] });
     const [parties, setParties] = useState([]);
     const [config, setConfig] = useState(defaultConfig());

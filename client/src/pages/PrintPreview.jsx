@@ -21,6 +21,11 @@ export default function PrintPreview() {
     const { authFetch } = useAuth();
     const [data, setData] = useState(null);
     const [error, setError] = useState(null);
+    const [prints, setPrints] = useState(0);
+    useEffect(() => {
+        if (!['sales_bill', 'sales_return'].includes(documentType)) return;
+        authFetch(`/api/ird/print-info/${documentType}/${documentId}`).then(r => setPrints(r.data?.print_count || 0)).catch(() => {});
+    }, [authFetch, documentType, documentId]);
 
     useEffect(() => {
         (async () => {
@@ -44,15 +49,24 @@ export default function PrintPreview() {
     if (!data) return <div className="p-8 text-center text-gray-400">Loading…</div>;
 
     const { pageWidthMm, pageHeightMm } = pageSizeOf(data.template);
+    const irdDoc = ['sales_bill', 'sales_return'].includes(documentType);
+    // Every print is logged (IRD: printed flag / count); a re-print says "Copy of Original".
+    const doPrint = () => {
+        window.print();
+        authFetch('/api/document-print/log', { method: 'POST', body: JSON.stringify({ document_type: documentType, document_ids: [documentId], template_id: data.template?.id }) })
+            .then(() => setPrints(n => n + 1)).catch(() => {});
+    };
 
     return (
         <div className="bg-gray-200 min-h-screen py-8 print:bg-white print:py-0">
             <style>{`@media print { @page { size: ${pageWidthMm}mm ${pageHeightMm}mm; margin: 0; } .no-print { display: none !important; } }`}</style>
 
             <div className="no-print text-center mb-4">
-                <button onClick={() => window.print()} className="bg-blue-600 text-white px-5 py-2 rounded-lg font-medium hover:bg-blue-700">🖨️ Print</button>
+                <button onClick={doPrint} className="bg-blue-600 text-white px-5 py-2 rounded-lg font-medium hover:bg-blue-700">🖨️ Print</button>
+                {irdDoc && prints > 0 && <p className="text-xs text-gray-600 mt-1">Printed {prints} time(s) before - this print is marked "Copy of Original".</p>}
             </div>
 
+            {irdDoc && prints > 0 && <div className="text-center font-bold text-sm tracking-wide" style={{ marginBottom: 4 }}>COPY OF ORIGINAL ({prints})</div>}
             <PrintedDocument data={data} />
         </div>
     );

@@ -43,7 +43,8 @@ const GL_DOC_TYPES = {
     production:                 { model: 'production', label: 'Production',              headerTable: 'production_orders',            detailTable: 'production_raw_materials',          fk: 'production_id' },
     interest_posting:           { model: 'journal',   label: 'Interest Posting',         headerTable: 'interest_runs' },
     depreciation:               { model: 'journal',   label: 'Depreciation',             headerTable: 'depreciation_runs' },
-    asset_disposal:             { model: 'journal',   label: 'Asset Disposal',           headerTable: 'depreciation_runs' }
+    asset_disposal:             { model: 'journal',   label: 'Asset Disposal',           headerTable: 'depreciation_runs' },
+    agent_commission:           { model: 'journal',   label: 'Agent Commission',         headerTable: 'agent_commission_postings' }
 };
 const MODELS = { sales: 'Sales', purchase: 'Purchase', cash_bank: 'Cash / Bank', journal: 'Journal / Notes', production: 'Production' };
 // Billing Terms are stored under these same document_type names.
@@ -302,6 +303,14 @@ router.get('/ledger-report', requireAuth, loadUserPermissions, requirePermission
             }
         }
 
+        // PDC shown separately: pending (not yet deposited / not in the GL) cheques per party as on To date
+        const pdcPending = {};
+        if (flag('pdc_separate')) {
+            for (const ids of chunk(ledgerIds, 150)) {
+                const { data: pdcs } = await tenantClient.from('pdc_vouchers').select('party_ledger_id, voucher_type, amount, doc_date, cheque_date').eq('tenant_id', tenantId).eq('status', 'pending').in('party_ledger_id', ids).lte('doc_date', dateTo);
+                (pdcs || []).forEach(x => { const a = (pdcPending[x.party_ledger_id] = pdcPending[x.party_ledger_id] || { received: 0, issued: 0, count: 0 }); a[x.voucher_type === 'issued' ? 'issued' : 'received'] += Number(x.amount) || 0; a.count++; });
+            }
+        }
         const signedOpeningOf = l => (l.opening_balance_type === 'cr' ? -1 : 1) * (Number(l.opening_balance) || 0);
         let outLedgers = ledgers.map(l => {
             const opening = round2(signedOpeningOf(l) + (openingMovement[l.id] || 0));
@@ -332,6 +341,15 @@ router.get('/ledger-report', requireAuth, loadUserPermissions, requirePermission
             }
             const closing = round2(opening + totalDr - totalCr);
             const creditLimit = Number(l.credit_limit) || 0;
+            let pdc;
+            if (flag('pdc_separate')) {
+                const pl = lines.filter(x => x.batch.document_type === 'pdc');
+                const pdr = pl.reduce((t2, x) => t2 + (Number(x.debit_amount) || 0), 0), pcr = pl.reduce((t2, x) => t2 + (Number(x.credit_amount) || 0), 0);
+                const pend = pdcPending[l.id] || { received: 0, issued: 0, count: 0 };
+                pdc = { posted_debit: round2(pdr), posted_credit: round2(pcr), debit_excl_pdc: round2(totalDr - pdr), credit_excl_pdc: round2(totalCr - pcr),
+                    pending_received: round2(pend.received), pending_issued: round2(pend.issued), pending_count: pend.count,
+                    closing_after_pending: round2(closing - pend.received + pend.issued) };
+            }
             return {
                 ledger_id: l.id, account_code: l.account_code, account_name: l.account_name,
                 group_id: l.account_group_id, group_name: l.group_name,
@@ -348,7 +366,8 @@ router.get('/ledger-report', requireAuth, loadUserPermissions, requirePermission
                     bgs: bgByParty[l.id] || [],
                     pdcs: pdcByParty[l.id] || []
                 } : undefined,
-                pending_bills: flag('include_bill_wise') ? (billsByLedger[l.id] || []) : undefined
+                pending_bills: flag('include_bill_wise') ? (billsByLedger[l.id] || []) : undefined,
+                pdc
             };
         });
 
