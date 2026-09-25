@@ -7,6 +7,7 @@
 // =============================================
 
 const express = require('express');
+const { disposeOnSale, undoSaleDisposals } = require('../utils/fixedAssets');
 const { checkAccountPurposes } = require('../utils/ledgerPurpose');
 const { bumpAltCounter } = require('../utils/progressCounters');
 const { checkCompulsoryFields, lockProtectedFields } = require('../utils/entryFieldRules');
@@ -418,6 +419,9 @@ router.put('/sales-bills/:id/status', requireAuth, loadUserPermissions, requireP
             await postBillToLedger(tenantClient, tenantId, data, req.auth.userId);
             await postBillStockMovements(tenantClient, tenantId, data, billDetails || []);
             await updateBilledProgress(tenantClient, billDetails || [], 1);
+            // Fixed assets sold on this bill: depreciation up to the sale date and disposal
+            try { data.asset_disposals = await disposeOnSale(tenantClient, tenantId, req.auth.userId, data, billDetails || []); }
+            catch (assetErr) { data.asset_disposals = [{ error: assetErr.message }]; }
 
             if (data.customer_ledger_id) {
                 const bwEnabled = await isBillWiseTrackingEnabled(tenantClient, tenantId, data.customer_ledger_id);
@@ -434,6 +438,7 @@ router.put('/sales-bills/:id/status', requireAuth, loadUserPermissions, requireP
             await reverseBillGlBatch(tenantClient, req.params.id);
             await reverseBillStockMovements(tenantClient, req.params.id);
             await updateBilledProgress(tenantClient, billDetails || [], -1);
+            try { await undoSaleDisposals(tenantClient, tenantId, req.auth.userId, req.params.id); } catch (assetErr) { console.error('asset disposal undo failed:', assetErr.message); }
         }
 
         await logAudit(tenantId, req.auth.userId, 'change_sales_bill_status', 'sales_bill', req.params.id, { new_status: status, cancellation_reason });

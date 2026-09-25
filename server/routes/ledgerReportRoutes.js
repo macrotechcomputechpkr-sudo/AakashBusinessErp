@@ -40,7 +40,10 @@ const GL_DOC_TYPES = {
     journal_voucher:            { model: 'journal',   label: 'Journal Voucher',          headerTable: 'journal_vouchers' },
     credit_note:                { model: 'journal',   label: 'Credit Note',              headerTable: 'credit_notes' },
     debit_note:                 { model: 'journal',   label: 'Debit Note',               headerTable: 'debit_notes' },
-    production:                 { model: 'production', label: 'Production',              headerTable: 'production_orders',            detailTable: 'production_raw_materials',          fk: 'production_id' }
+    production:                 { model: 'production', label: 'Production',              headerTable: 'production_orders',            detailTable: 'production_raw_materials',          fk: 'production_id' },
+    interest_posting:           { model: 'journal',   label: 'Interest Posting',         headerTable: 'interest_runs' },
+    depreciation:               { model: 'journal',   label: 'Depreciation',             headerTable: 'depreciation_runs' },
+    asset_disposal:             { model: 'journal',   label: 'Asset Disposal',           headerTable: 'depreciation_runs' }
 };
 const MODELS = { sales: 'Sales', purchase: 'Purchase', cash_bank: 'Cash / Bank', journal: 'Journal / Notes', production: 'Production' };
 // Billing Terms are stored under these same document_type names.
@@ -279,6 +282,18 @@ router.get('/ledger-report', requireAuth, loadUserPermissions, requirePermission
                 });
             });
         }
+        // BG register (received from / issued for the party) and PDCs of each party
+        const bgByParty = {}, pdcByParty = {};
+        if (flag('include_lc_bg')) {
+            for (const ids of chunk(ledgerIds, 150)) {
+                const { data: bgs } = await tenantClient.from('bank_guarantees').select('*').eq('tenant_id', tenantId).in('party_ledger_id', ids);
+                (bgs || []).forEach(b => (bgByParty[b.party_ledger_id] = bgByParty[b.party_ledger_id] || []).push({ bg_number: b.bg_number, direction: b.direction, bg_type: b.bg_type, bank: b.bank_name,
+                    amount: round2(b.amount), issue_date: b.issue_date, expiry_date: b.expiry_date, status: b.status, is_expired: !!(b.expiry_date && b.expiry_date < today) }));
+                const { data: pdcs } = await tenantClient.from('pdc_vouchers').select('doc_no, voucher_type, cheque_no, cheque_date, amount, bank_name, status, party_ledger_id').eq('tenant_id', tenantId).in('party_ledger_id', ids);
+                (pdcs || []).forEach(x => (pdcByParty[x.party_ledger_id] = pdcByParty[x.party_ledger_id] || []).push({ doc_no: x.doc_no, voucher_type: x.voucher_type, cheque_no: x.cheque_no,
+                    cheque_date: x.cheque_date, amount: round2(x.amount), bank: x.bank_name, status: x.status, matured: x.status === 'pending' && String(x.cheque_date) <= today }));
+            }
+        }
         let billsByLedger = {};
         if (flag('include_bill_wise')) {
             for (const ids of chunk(ledgerIds, 150)) {
@@ -329,7 +344,9 @@ router.get('/ledger-report', requireAuth, loadUserPermissions, requirePermission
                 lc_bg: flag('include_lc_bg') ? {
                     legacy_lc: l.lc_number ? { lc_number: l.lc_number, bank: l.lc_bank_name, amount: l.lc_amount, issue_date: l.lc_issue_date, expiry_date: l.lc_expiry_date } : null,
                     bg: l.bg_number ? { bg_number: l.bg_number, bank: l.bg_bank_name, amount: l.bg_amount, issue_date: l.bg_issue_date, expiry_date: l.bg_expiry_date, is_expired: !!(l.bg_expiry_date && l.bg_expiry_date < today) } : null,
-                    lcs: lcByVendor[l.id] || []
+                    lcs: lcByVendor[l.id] || [],
+                    bgs: bgByParty[l.id] || [],
+                    pdcs: pdcByParty[l.id] || []
                 } : undefined,
                 pending_bills: flag('include_bill_wise') ? (billsByLedger[l.id] || []) : undefined
             };

@@ -11,7 +11,9 @@
     "tesseract.js": "^7.0.0",
     "@tesseract.js-data/eng": "^1.0.0",
     "pdfjs-dist": "3.11.174",
-    "read-excel-file": "^9.3.10"
+    "read-excel-file": "^9.3.10",
+    "jsbarcode": "^3.12.3",
+    "qrcode": "^1.5.4"
   },
   "scripts": {
     "postinstall": "node scripts/copy-ocr-assets.js",

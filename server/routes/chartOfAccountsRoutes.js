@@ -324,7 +324,7 @@ router.get('/ledger-accounts', requireAuth, loadUserPermissions, requirePermissi
 // address/area data even if a client sends it anyway.
 const PARTY_ONLY_FIELDS = [
     'pan_number', 'vat_pan_type', 'vat_pan_number', 'contact_person', 'contact_person_phone',
-    'contact_person_mobile', 'street', 'city', 'state', 'zip_code', 'billing_address',
+    'contact_person_mobile', 'street', 'city', 'state', 'zip_code', 'billing_address', 'billing_name',
     'shipping_address', 'area_id', 'route_id', 'agent_id', 'credit_limit', 'credit_days',
     // Registration/compliance details (Other Information tab)
     'tin_number', 'excise_registration_no', 'cst_no', 'dl_no', 'business_category', 'voucher_adjustment_basis',
@@ -483,6 +483,7 @@ router.post('/ledger-accounts', requireAuth, loadUserPermissions, requirePermiss
             country: data.country || 'Nepal',
             zip_code: data.zip_code,
             billing_address: data.billing_address,
+            billing_name: data.billing_name || null,
             shipping_address: data.shipping_address,
             currency: data.currency || 'NPR',
             interest_rate: data.interest_rate || 0,

@@ -213,14 +213,20 @@ export default function LedgerReport() {
                     </table>
                 )}
 
-                {isOpen && l.lc_bg && (l.lc_bg.lcs.length > 0 || l.lc_bg.bg || l.lc_bg.legacy_lc) && (
+                {isOpen && l.lc_bg && (l.lc_bg.lcs.length > 0 || l.lc_bg.bg || l.lc_bg.legacy_lc || (l.lc_bg.bgs || []).length > 0 || (l.lc_bg.pdcs || []).length > 0) && (
                     <div className="px-3 py-2 text-xs border-t">
-                        <p className="font-semibold text-gray-500 mb-1">LC / BG</p>
+                        <p className="font-semibold text-gray-500 mb-1">LC / BG / PDC</p>
                         {l.lc_bg.lcs.map((lc, i) => (
                             <p key={i} className={lc.is_expired ? 'text-red-600' : ''}>LC {lc.lc_number} ({lc.bank || '—'}) — Amount {fmt(lc.amount)}, Used {fmt(lc.utilized)}, <b>Remaining {fmt(lc.remaining)}</b>, Expiry {lc.expiry_date || '—'} [{lc.status}{lc.is_expired ? ', expired' : ''}]</p>
                         ))}
                         {l.lc_bg.lcs.length === 0 && l.lc_bg.legacy_lc && <p>LC {l.lc_bg.legacy_lc.lc_number} ({l.lc_bg.legacy_lc.bank || '—'}) — {fmt(l.lc_bg.legacy_lc.amount)}, Expiry {l.lc_bg.legacy_lc.expiry_date || '—'}</p>}
-                        {l.lc_bg.bg && <p className={l.lc_bg.bg.is_expired ? 'text-red-600' : ''}>BG {l.lc_bg.bg.bg_number} ({l.lc_bg.bg.bank || '—'}) — {fmt(l.lc_bg.bg.amount)}, Expiry {l.lc_bg.bg.expiry_date || '—'}{l.lc_bg.bg.is_expired ? ' (expired)' : ''}</p>}
+                        {(l.lc_bg.bgs || []).map((b, i) => (
+                            <p key={`bg${i}`} className={b.is_expired && b.status === 'open' ? 'text-red-600' : ''}>BG {b.bg_number} ({b.direction === 'issued' ? 'issued for us' : 'received'} · {b.bg_type.replace('_', ' ')}, {b.bank || '—'}) — {fmt(b.amount)}, Expiry {b.expiry_date || '—'} [{b.status}{b.is_expired && b.status === 'open' ? ', expired' : ''}]</p>
+                        ))}
+                        {(l.lc_bg.pdcs || []).map((x, i) => (
+                            <p key={`pdc${i}`} className={x.matured ? 'text-orange-700' : x.status === 'pending' ? '' : 'text-gray-400'}>PDC {x.doc_no} {x.voucher_type} · chq {x.cheque_no} {x.bank || ''} dated {x.cheque_date} — {fmt(x.amount)} [{x.status}{x.matured ? ', matured' : ''}]</p>
+                        ))}
+                        {!(l.lc_bg.bgs || []).length && l.lc_bg.bg && <p className={l.lc_bg.bg.is_expired ? 'text-red-600' : ''}>BG {l.lc_bg.bg.bg_number} ({l.lc_bg.bg.bank || '—'}) — {fmt(l.lc_bg.bg.amount)}, Expiry {l.lc_bg.bg.expiry_date || '—'}{l.lc_bg.bg.is_expired ? ' (expired)' : ''}</p>}
                     </div>
                 )}
 
@@ -296,7 +302,7 @@ export default function LedgerReport() {
                     <label className="flex items-center gap-1"><input type="checkbox" checked={config.group_wise} onChange={e => set('group_wise', e.target.checked)} /> Group-wise subtotals</label>
                     <label className="flex items-center gap-1"><input type="checkbox" checked={config.include_items} disabled={config.mode !== 'detail'} onChange={e => set('include_items', e.target.checked)} /> Item details</label>
                     <label className="flex items-center gap-1"><input type="checkbox" checked={config.include_terms} disabled={config.mode !== 'detail'} onChange={e => set('include_terms', e.target.checked)} /> Billing term details</label>
-                    <label className="flex items-center gap-1"><input type="checkbox" checked={config.include_lc_bg} onChange={e => set('include_lc_bg', e.target.checked)} /> LC / BG details</label>
+                    <label className="flex items-center gap-1"><input type="checkbox" checked={config.include_lc_bg} onChange={e => set('include_lc_bg', e.target.checked)} /> LC / BG / PDC details</label>
                     <label className="flex items-center gap-1"><input type="checkbox" checked={config.include_bill_wise} onChange={e => set('include_bill_wise', e.target.checked)} /> Pending bills</label>
                     <label className="flex items-center gap-1"><input type="checkbox" checked={config.hide_zero} onChange={e => set('hide_zero', e.target.checked)} /> Hide zero-balance ledgers</label>
                     <select className="erp-select" style={{ width: 'auto' }} value={config.balance_side || ''} onChange={e => set('balance_side', e.target.value)}>

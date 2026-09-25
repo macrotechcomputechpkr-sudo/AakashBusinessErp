@@ -49,6 +49,12 @@ import ManualDocumentPrinting from './pages/ManualDocumentPrinting';
 import BatchPrint from './pages/BatchPrint';
 import FundsPosition from './pages/FundsPosition';
 import BankReconciliation from './pages/BankReconciliation';
+import ConfirmationLetters from './pages/ConfirmationLetters';
+import InterestPosting from './pages/InterestPosting';
+import LcBgDashboard from './pages/LcBgDashboard';
+import FixedAssets from './pages/FixedAssets';
+import BarcodePrint from './pages/BarcodePrint';
+import DimensionReports from './pages/DimensionReports';
 import PricingMasters from './pages/PricingMasters';
 import LedgerReport from './pages/LedgerReport';
 import LcRegister from './pages/LcRegister';
@@ -151,6 +157,12 @@ function AppRoutes() {
             <Route path="/print-batch/:documentType" element={<PrivateRoute><BatchPrint /></PrivateRoute>} />
             <Route path="/funds-position" element={<PrivateRoute><FundsPosition /></PrivateRoute>} />
             <Route path="/bank-reconciliation" element={<PrivateRoute><BankReconciliation /></PrivateRoute>} />
+            <Route path="/confirmation-letters" element={<PrivateRoute><ConfirmationLetters /></PrivateRoute>} />
+            <Route path="/interest-posting" element={<PrivateRoute><InterestPosting /></PrivateRoute>} />
+            <Route path="/lc-bg-dashboard" element={<PrivateRoute><LcBgDashboard /></PrivateRoute>} />
+            <Route path="/fixed-assets" element={<PrivateRoute><FixedAssets /></PrivateRoute>} />
+            <Route path="/barcode-print" element={<PrivateRoute><BarcodePrint /></PrivateRoute>} />
+            <Route path="/dimension-reports" element={<PrivateRoute><DimensionReports /></PrivateRoute>} />
             <Route path="/pricing-masters" element={<PrivateRoute><PricingMasters /></PrivateRoute>} />
             <Route path="/ledger-report" element={<PrivateRoute><LedgerReport /></PrivateRoute>} />
             <Route path="/lc-register" element={<PrivateRoute><LcRegister /></PrivateRoute>} />
