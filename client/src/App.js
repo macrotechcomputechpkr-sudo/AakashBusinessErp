@@ -7,7 +7,7 @@
 // =============================================
 
 import React from 'react';
-import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import LoginPage from './pages/LoginPage';
 import Dashboard from './pages/Dashboard';
@@ -75,6 +75,7 @@ import DartaChalani from './pages/DartaChalani';
 import Tasks from './pages/Tasks';
 import WorkDashboard from './pages/WorkDashboard';
 import NotificationSettings from './pages/NotificationSettings';
+import ChangePassword from './pages/ChangePassword';
 import LedgerMapping from './pages/LedgerMapping';
 import CostProfitCenters from './pages/CostProfitCenters';
 import BillingTermManagement from './pages/BillingTermManagement';
@@ -120,9 +121,13 @@ import DocumentNumberingManagement from './pages/DocumentNumberingManagement';
 
 const PrivateRoute = ({ children }) => {
     const { user, initializing } = useAuth();
+    const location = useLocation();
     const token = localStorage.getItem('auth_token');
     if (initializing) return null; // avoid a flash-redirect while localStorage loads
-    return user || token ? children : <Navigate to="/login" replace />;
+    if (!(user || token)) return <Navigate to="/login" replace />;
+    // a default / reset password must be replaced before anything else
+    if (user?.must_change_password && location.pathname !== '/change-password') return <Navigate to="/change-password" replace />;
+    return children;
 };
 
 // A login linked to a salesman lands on the mobile order screen instead of the desk dashboard.
@@ -213,6 +218,7 @@ function AppRoutes() {
             <Route path="/tasks" element={<PrivateRoute><Tasks /></PrivateRoute>} />
             <Route path="/work-dashboard" element={<PrivateRoute><WorkDashboard /></PrivateRoute>} />
             <Route path="/notification-settings" element={<PrivateRoute><NotificationSettings /></PrivateRoute>} />
+            <Route path="/change-password" element={<PrivateRoute><ChangePassword /></PrivateRoute>} />
             <Route path="/ledger-mapping" element={<PrivateRoute><LedgerMapping /></PrivateRoute>} />
             <Route path="/cost-profit-centers" element={<PrivateRoute><CostProfitCenters /></PrivateRoute>} />
             <Route path="/billing-terms" element={<PrivateRoute><BillingTermManagement /></PrivateRoute>} />

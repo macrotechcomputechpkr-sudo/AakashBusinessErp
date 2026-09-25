@@ -52,6 +52,8 @@ const CompanyCreation = () => {
         setFormData(prev => ({ ...prev, [name]: value }));
     };
 
+    const [created, setCreated] = useState(null); // { company_code, email, password }
+
     const handleSubmit = async (e) => {
         e.preventDefault();
         setError('');
@@ -85,6 +87,8 @@ const CompanyCreation = () => {
 
             if (!data.success) throw new Error(data.error || 'Company creation failed');
 
+            // super admin: show the new company's admin login once before leaving
+            if (data.admin_login) { setCreated(data.admin_login); return; }
             navigate('/dashboard');
         } catch (err) {
             setError(err.message || 'Failed to create company');
@@ -92,6 +96,28 @@ const CompanyCreation = () => {
             setLoading(false);
         }
     };
+
+    if (created) {
+        return (
+            <div className="min-h-screen bg-gray-50 flex items-center justify-center p-4">
+                <div className="bg-white rounded-xl shadow-lg p-6 max-w-lg w-full">
+                    <h2 className="text-xl font-bold text-green-700 mb-2">✔ Company created</h2>
+                    <p className="text-sm text-gray-600 mb-4">Give these sign-in details to the company. The admin must choose a new password at the first sign-in.</p>
+                    <table className="w-full text-sm border" data-no-excel>
+                        <tbody>
+                            <tr className="border-b"><td className="p-2 text-gray-500">Company code</td><td className="p-2 font-mono font-semibold">{created.company_code}</td></tr>
+                            <tr className="border-b"><td className="p-2 text-gray-500">Email</td><td className="p-2 font-mono font-semibold">{created.email}</td></tr>
+                            <tr><td className="p-2 text-gray-500">Password</td><td className="p-2 font-mono font-semibold">{created.password}</td></tr>
+                        </tbody>
+                    </table>
+                    <div className="flex gap-2 mt-4">
+                        <button type="button" className="px-4 py-2 border rounded-lg" onClick={() => navigator.clipboard && navigator.clipboard.writeText(`Company code: ${created.company_code}\nEmail: ${created.email}\nPassword: ${created.password}`)}>📋 Copy</button>
+                        <button type="button" className="px-4 py-2 bg-blue-600 text-white rounded-lg ml-auto" onClick={() => navigate('/dashboard')}>Done</button>
+                    </div>
+                </div>
+            </div>
+        );
+    }
 
     return (
         <div className="min-h-screen bg-gray-50 py-8">

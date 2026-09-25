@@ -13,6 +13,7 @@ const bcrypt = require('bcrypt');
 const router = express.Router();
 const { createClient } = require('@supabase/supabase-js');
 const { auditFetch } = require('../utils/requestContext');
+const { ensureDefaultAdmin, setupTenantAccess } = require('../utils/tenantSetup');
 const { globalMasterDb, logAudit } = require('../utils/dbHelpers');
 const { requireAuth, requireSuperAdmin } = require('../middleware/auth');
 
@@ -81,19 +82,6 @@ router.post('/company/create', requireAuth, async (req, res) => {
                 if (insertError) throw insertError;
                 tenantId = newTenant.id;
 
-                const tempPassword = 'Admin@' + Math.floor(1000 + Math.random() * 9000);
-                const hashedPassword = await bcrypt.hash(tempPassword, SALT_ROUNDS);
-                await globalMasterDb.from('global_users').insert({
-                    tenant_id: tenantId,
-                    email: `admin@${newTenantCode}.com`,
-                    password_hash: hashedPassword,
-                    full_name: 'Company Administrator',
-                    role: 'admin',
-                    status: 'active'
-                });
-                // NOTE: return the temp password once, out-of-band (e.g. logged for
-                // an ops user to relay securely) - never log/store it in plaintext long-term.
-                console.log(`[company/create] temp admin password for ${newTenantCode}: ${tempPassword}`);
             }
         } else {
             const { data: tenant } = await globalMasterDb
@@ -107,9 +95,12 @@ router.post('/company/create', requireAuth, async (req, res) => {
             }
         }
 
+        // every company gets the same default admin login (utils/tenantSetup.js)
+        const defaultAdmin = await ensureDefaultAdmin(tenantId);
+
         const { data: tenant, error: tenantError } = await globalMasterDb
             .from('tenants')
-            .select('master_db_host, master_db_anon_key')
+            .select('tenant_code, master_db_host, master_db_anon_key')
             .eq('id', tenantId)
             .single();
         if (tenantError || !tenant) {
@@ -186,8 +177,15 @@ router.post('/company/create', requireAuth, async (req, res) => {
             console.error('seed_default_account_groups failed:', seedError);
         }
 
+        // security groups + the admin's users row, or the admin could sign in but have no rights
+        let access = null;
+        try { access = await setupTenantAccess(tenantClient, tenantId, companyProfile.id, userId); }
+        catch (e) { console.error('setupTenantAccess failed:', e.message); }
+
         await logAudit(tenantId, userId, 'create_company', 'company', companyProfile.id, { new_data: companyProfile });
-        res.json({ success: true, message: 'Company created successfully', company: companyProfile, fiscal_year: fiscalYear, tenant_id: tenantId });
+        res.json({ success: true, message: 'Company created successfully', company: companyProfile, fiscal_year: fiscalYear, tenant_id: tenantId, access,
+            // shown once to the super admin who created the company; the admin must change it at first sign-in
+            admin_login: isSuperAdmin ? { company_code: tenant.tenant_code, email: defaultAdmin.email, password: defaultAdmin.created ? defaultAdmin.password : '(unchanged - already set)', must_change_password: true } : undefined });
 
     } catch (error) {
         console.error('Company creation error:', error);

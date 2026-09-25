@@ -36,7 +36,9 @@ const LoginPage = () => {
         setLocalError('');
         try {
             const data = await login(email, password, tenantCode || undefined);
-            if (data.requires_company_creation) {
+            if (data.must_change_password) {
+                navigate('/change-password');
+            } else if (data.requires_company_creation) {
                 navigate('/company-creation');
             } else {
                 navigate('/dashboard');
@@ -107,6 +109,9 @@ const LoginPage = () => {
                         </div>
                     </div>
 
+                    {!needsTenantCode && (
+                        <button type="button" className="text-xs text-blue-700 hover:underline" onClick={() => setNeedsTenantCode(true)}>Have a company code? (needed for admin@businesserp.com.np)</button>
+                    )}
                     {needsTenantCode && (
                         <div>
                             <label className="block text-sm font-medium text-gray-700 mb-1">Company Code</label>
