@@ -18,7 +18,8 @@ const fmtQ = n => (n === null || n === undefined || n === '' ? '' : Number(n).to
 const iso = d => d.toISOString().slice(0, 10);
 const VIEWS = [
     ['register', '📋 Register'], ['details', '📄 Details'], ['output', '📦 Output'], ['consumption', '🧪 Raw Material Consumption'],
-    ['byproduct', '♻ By-products'], ['variance', '⚖ BOM vs Actual']
+    ['byproduct', '♻ By-products'], ['variance', '⚖ BOM vs Actual'], ['cost_trend', '📉 Cost Trend'], ['batch', '🏷 Batch Traceability'],
+    ['bom_cost', '🧾 BOM Standard Cost'], ['pending', '⏳ Pending (Draft)']
 ];
 const GROUPED = ['output', 'consumption', 'byproduct'];
 const LINE_TYPE = { output: 'Output', input: 'Raw material', byproduct: 'By-product' };
@@ -80,6 +81,31 @@ export default function ProductionReport() {
                 ['Variance Qty', r => fmtQ(r.variance_qty), true], ['Variance %', r => (r.variance_pct === null ? '' : `${r.variance_pct}%`), true], ['Rate', r => fmt2(r.rate), true],
                 ['Variance Value', r => fmt2(r.variance_value), true, 'variance_value'], ['Remark', r => r.remark]
             ];
+            case 'cost_trend': return [
+                ['Output Product', r => r.output_product_name], ['Month', r => r.month], ['Orders', r => r.orders, true], ['Qty (base)', r => `${fmtQ(r.base_qty)} ${r.base_unit}`, true],
+                ['Raw Material', r => fmt2(r.raw_material_cost), true, 'raw_material_cost'], ['By-products', r => fmt2(r.byproduct_value), true, 'byproduct_value'],
+                ['Net Cost', r => fmt2(r.net_cost), true, 'net_cost'], ['Unit Cost', r => fmt2(r.unit_cost), true], ['Prev. Month', r => fmt2(r.prev_unit_cost), true],
+                ['Change %', r => (r.change_pct === null ? '' : `${r.change_pct > 0 ? '▲' : r.change_pct < 0 ? '▼' : ''} ${r.change_pct}%`), true]
+            ];
+            case 'batch': return [
+                ['Output Batch', r => r.output_batch_no || '(no batch)'], ['Mfg', r => r.output_mfg_date], ['Expiry', r => r.output_exp_date], ['Date', r => r.doc_date], ['Order No', r => r.doc_no],
+                ['Output', r => `${r.output_product_name} · ${fmtQ(r.output_base_qty)} ${r.base_unit}`],
+                ['Raw materials used (batch · qty)', r => r.inputs.map(x => `${x.product_name}${x.batch_no ? ` [${x.batch_no}]` : ''} ${fmtQ(x.base_qty)} ${x.base_unit}`).join('; ')],
+                ['By-products', r => r.byproducts.map(x => `${x.product_name}${x.batch_no ? ` [${x.batch_no}]` : ''} ${fmtQ(x.base_qty)} ${x.base_unit}`).join('; ')],
+                ['Net Cost', r => fmt2(r.net_output_cost), true, 'net_output_cost']
+            ];
+            case 'bom_cost': return [
+                ['BOM', r => `${r.template}${r.is_active ? '' : ' (inactive)'}`], ['Output', r => r.output_product_name], ['Std Output', r => `${fmtQ(r.standard_output_base_qty)} ${r.base_unit}`, true],
+                ['Raw Material Cost', r => fmt2(r.raw_material_cost), true], ['By-product Recovery', r => fmt2(r.byproduct_recovery), true], ['Standard Cost', r => fmt2(r.standard_cost), true],
+                ['Std Unit Cost', r => fmt2(r.standard_unit_cost), true], ['Actual Unit Cost (period)', r => fmt2(r.actual_unit_cost), true],
+                ['Difference %', r => (r.difference_pct === null ? '' : `${r.difference_pct}%`), true],
+                ['Rates', r => (r.missing_rates.length ? `no rate: ${r.missing_rates.join(', ')}` : r.lines.map(l => `${l.product_name} ${fmtQ(l.base_qty)}×${fmt2(l.rate)}${l.rate_source === 'consumption' ? '*' : ''}`).join('; '))]
+            ];
+            case 'pending': return [
+                ['Date', r => r.doc_date], ['Order No', r => r.doc_no], ['Branch', r => r.branch_name], ['Output Product', r => r.output_product_name],
+                ['Qty', r => `${fmtQ(r.output_qty)} ${r.output_unit}`, true], ['Raw Material Cost', r => fmt2(r.raw_material_cost), true, 'raw_material_cost'],
+                ['Age (days)', r => r.age_days, true], ['Narration', r => r.narration]
+            ];
             default: return [
                 ...(data.group_by || []).map(g => [groupLabel[g] || g, r => r.groups[g]]),
                 ['Orders', r => r.orders, true], ['Qty (base)', r => `${fmtQ(r.base_qty)} ${r.base_unit}`, true], [data.view === 'output' ? 'Net Cost' : 'Amount', r => fmt2(r.amount), true, 'amount'],
@@ -89,7 +115,7 @@ export default function ProductionReport() {
         }
     }, [data, groupLabel]);
     const rows = data ? data.rows || [] : [];
-    const withUdf = data && ['register', 'details', 'variance'].includes(data.view);
+    const withUdf = data && ['register', 'details', 'variance', 'batch', 'pending'].includes(data.view);
 
     const exportCsv = () => {
         if (!data) return;
@@ -116,7 +142,7 @@ export default function ProductionReport() {
                     <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3 mb-3">
                         <div className="erp-field"><label className="erp-label">From</label><input type="date" className="erp-input" value={config.from_date} onChange={e => set('from_date', e.target.value)} /></div>
                         <div className="erp-field"><label className="erp-label">To</label><input type="date" className="erp-input" value={config.to_date} onChange={e => set('to_date', e.target.value)} /></div>
-                        <MultiPick label="Status" items={[{ id: 'posted', name: 'Posted' }, { id: 'draft', name: 'Draft' }, { id: 'cancelled', name: 'Cancelled' }]} value={config.statuses} onChange={v => set('statuses', v.length ? v : ['posted'])} />
+                        {config.view !== 'pending' && <MultiPick label="Status" items={[{ id: 'posted', name: 'Posted' }, { id: 'draft', name: 'Draft' }, { id: 'cancelled', name: 'Cancelled' }]} value={config.statuses} onChange={v => set('statuses', v.length ? v : ['posted'])} />}
                         <MultiPick label="Branch" items={meta?.branches || []} value={config.branch_ids} onChange={v => set('branch_ids', v)} />
                         <MultiPick label="Output Product" items={meta?.products || []} value={config.output_product_ids} onChange={v => set('output_product_ids', v)} />
                         <MultiPick label="Raw Material / By-product" items={meta?.products || []} value={config.product_ids} onChange={v => set('product_ids', v)} />
@@ -153,6 +179,7 @@ export default function ProductionReport() {
                             <span>By-products <b>{fmt2(data.totals.byproduct_value)}</b></span>
                             <span>Net output cost <b>{fmt2(data.totals.net_output_cost)}</b></span>
                             {data.view === 'variance' && <span>Orders without BOM: {data.orders_without_bom}</span>}
+                            {data.view === 'bom_cost' && <span>Standard cost at the latest purchase rate (* = average consumption rate of the period, no purchase rate)</span>}
                         </div>
                         <div className="overflow-x-auto">
                             <table className="erp-grid-table w-full text-sm">

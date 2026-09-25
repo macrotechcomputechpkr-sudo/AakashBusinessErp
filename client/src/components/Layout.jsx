@@ -85,6 +85,8 @@ const navItems = [
     { to: '/consignment-cost', label: '🧮 Consignment Cost / Sales' },
     { to: '/pdc-dashboard', label: '🏦 PDC Dashboard & Report' },
     { to: '/production-report', label: '🏭 Production Reports' },
+    { to: '/funds-position', label: '💰 Net Position of Funds' },
+    { to: '/bank-reconciliation', label: '🏦 Bank Reconciliation' },
     { to: '/document-printing', label: '🖨 Manual Document Printing' },
     { to: '/purchase-bill-import', label: '📷 Purchase Bill from Image / PDF' },
     { to: '/ledger-report', label: '📒 Ledger Report' },

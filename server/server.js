@@ -22,6 +22,7 @@ app.use(cors({
 // Purchase Bill Import sends a whole bill's text - parsed here first, with its own limit.
 app.use('/api/purchase-bill-import', express.json({ limit: '5mb' }));
 app.use('/api/udf-values/lookup', express.json({ limit: '5mb' }));
+app.use('/api/bank-reco/statements', express.json({ limit: '15mb' }));
 app.use(express.json());
 
 const authRoutes = require('./routes/authRoutes');
@@ -86,6 +87,7 @@ const analysisReportRoutes = require('./routes/analysisReportRoutes');
 const purchaseBillImportRoutes = require('./routes/purchaseBillImportRoutes');
 const documentUdfPrintRoutes = require('./routes/documentUdfPrintRoutes');
 const productionReportRoutes = require('./routes/productionReportRoutes');
+const bankRecoRoutes = require('./routes/bankRecoRoutes');
 const ledgerReportRoutes = require('./routes/ledgerReportRoutes');
 const lcRoutes = require('./routes/lcRoutes');
 const savedReportViewRoutes = require('./routes/savedReportViewRoutes');
@@ -163,6 +165,7 @@ app.use('/api', analysisReportRoutes);
 app.use('/api', purchaseBillImportRoutes);
 app.use('/api', documentUdfPrintRoutes);
 app.use('/api', productionReportRoutes);
+app.use('/api', bankRecoRoutes);
 app.use('/api', ledgerReportRoutes);
 app.use('/api', lcRoutes);
 app.use('/api', savedReportViewRoutes);

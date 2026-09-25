@@ -47,6 +47,8 @@ import PurchaseBillImport from './pages/PurchaseBillImport';
 import ProductionReport from './pages/ProductionReport';
 import ManualDocumentPrinting from './pages/ManualDocumentPrinting';
 import BatchPrint from './pages/BatchPrint';
+import FundsPosition from './pages/FundsPosition';
+import BankReconciliation from './pages/BankReconciliation';
 import PricingMasters from './pages/PricingMasters';
 import LedgerReport from './pages/LedgerReport';
 import LcRegister from './pages/LcRegister';
@@ -147,6 +149,8 @@ function AppRoutes() {
             <Route path="/production-report" element={<PrivateRoute><ProductionReport /></PrivateRoute>} />
             <Route path="/document-printing" element={<PrivateRoute><ManualDocumentPrinting /></PrivateRoute>} />
             <Route path="/print-batch/:documentType" element={<PrivateRoute><BatchPrint /></PrivateRoute>} />
+            <Route path="/funds-position" element={<PrivateRoute><FundsPosition /></PrivateRoute>} />
+            <Route path="/bank-reconciliation" element={<PrivateRoute><BankReconciliation /></PrivateRoute>} />
             <Route path="/pricing-masters" element={<PrivateRoute><PricingMasters /></PrivateRoute>} />
             <Route path="/ledger-report" element={<PrivateRoute><LedgerReport /></PrivateRoute>} />
             <Route path="/lc-register" element={<PrivateRoute><LcRegister /></PrivateRoute>} />

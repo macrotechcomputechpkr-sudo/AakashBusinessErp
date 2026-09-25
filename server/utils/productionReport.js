@@ -13,14 +13,21 @@
 //   variance     BOM standard vs actual raw material use (orders made from a
 //                BOM template): standard qty scaled to the actual output,
 //                actual qty, variance qty / % / value at the actual rate
+//   cost_trend   output product x month: qty, net cost, unit cost and its
+//                change from the month before
+//   batch        batch traceability: each output batch (mfg / expiry) with
+//                the raw material batches it consumed and the by-products
+//   bom_cost     each BOM template's standard cost at the latest purchase
+//                rates vs the actual average unit cost of the period
+//   pending      draft (not yet posted) production orders with their age
 // =============================================
 
 const { loadMasters, fetchAll, inChunks, csv, round2, round4 } = require('./tradeLines');
 const { toBaseQtyFromDual, getDualUomMode } = require('./dualUomCalculation');
 
-const VIEWS = ['register', 'details', 'output', 'consumption', 'byproduct', 'variance'];
+const VIEWS = ['register', 'details', 'output', 'consumption', 'byproduct', 'variance', 'cost_trend', 'batch', 'bom_cost', 'pending'];
 const GROUPS = {
-    product: { label: 'Product' }, product_group: { label: 'Product Group' }, month: { label: 'Month' }, branch: { label: 'Branch' },
+    product: { label: 'Product' }, product_group: { label: 'Product Group' }, month: { label: 'Month' }, date: { label: 'Date' }, branch: { label: 'Branch' },
     warehouse: { label: 'Warehouse' }, process: { label: 'Process' }, output_product: { label: 'Output Product' }, doc: { label: 'Production Order' }
 };
 
@@ -29,7 +36,7 @@ function parseProductionQuery(q) {
         view: VIEWS.includes(q.view) ? q.view : 'register',
         groupBy: csv(q.group_by).filter(g => GROUPS[g]).slice(0, 3),
         from: q.from_date || null, to: q.to_date || null,
-        statuses: csv(q.statuses).length ? csv(q.statuses) : ['posted'],
+        statuses: q.view === 'pending' ? ['draft'] : csv(q.statuses).length ? csv(q.statuses) : ['posted'],
         branchIds: csv(q.branch_ids), outputProductIds: csv(q.output_product_ids), productIds: csv(q.product_ids),
         productGroupIds: csv(q.product_group_ids), warehouseIds: csv(q.warehouse_ids), templateIds: csv(q.bom_template_ids),
         search: (q.search || '').trim().toLowerCase()
@@ -120,7 +127,12 @@ function flatten(D, f) {
             output_warehouse: o.output_warehouse_name_snapshot || whName[o.output_warehouse_id] || '', source_warehouse: o.source_warehouse_name_snapshot || whName[o.source_warehouse_id] || '',
             raw_material_lines: rm.length, input_base_qty: round4(inputBase), raw_material_cost: round2(rmCost), term_amount: round2(termAmt), byproduct_lines: bp.length, byproduct_value: round2(bpValue),
             net_output_cost: round2(netCost), unit_cost: outBase ? round4(netCost / outBase) : 0, entry_unit_cost: round4(Number(o.output_unit_cost) || 0),
-            yield_pct: inputBase ? round2((outBase / inputBase) * 100) : null });
+            yield_pct: inputBase ? round2((outBase / inputBase) * 100) : null,
+            output_mfg_date: o.output_mfg_date ? String(o.output_mfg_date).slice(0, 10) : '', output_exp_date: o.output_exp_date ? String(o.output_exp_date).slice(0, 10) : '',
+            inputs: rm.map(r => ({ product_name: M.products[r.product_id]?.product_name || r.product_name_snapshot || '', batch_no: r.batch_no || '', base_qty: round4(baseQty(r.product_id, r.qty, r.uom_id, r.alt_qty)),
+                base_unit: M.unitName(M.products[r.product_id]?.base_unit_id), amount: round2(Number(r.amount) || 0) })),
+            byproducts: bp.map(b => ({ product_name: M.products[b.product_id]?.product_name || b.product_name_snapshot || '', batch_no: b.batch_no || '', base_qty: round4(baseQty(b.product_id, b.qty, b.uom_id, b.alt_qty)),
+                base_unit: M.unitName(M.products[b.product_id]?.base_unit_id), amount: round2(Number(b.amount) || 0) })) });
         const keep = pid => (!groupSet || groupSet.has(M.products[pid]?.product_group_id)) && (!f.productIds.length || f.productIds.includes(pid));
         if (!groupSet || groupSet.has(M.products[o.output_product_id]?.product_group_id)) {
             out.push({ ...head, line_type: 'output', line_id: null, ...productInfo(M, o.output_product_id, o.output_product_name_snapshot), process: '',
@@ -150,6 +162,7 @@ function groupKey(l, g) {
         case 'product': return [l.product_id, `${l.product_name}${l.product_code ? ` (${l.product_code})` : ''}`];
         case 'product_group': return [l.product_group_id || '-', l.product_group || '(no group)'];
         case 'month': return [l.month, l.month];
+        case 'date': return [l.doc_date, l.doc_date];
         case 'branch': return [l.branch_id || '-', l.branch_name || '(no branch)'];
         case 'warehouse': return [l.warehouse_name || '-', l.warehouse_name || '(no warehouse)'];
         case 'process': return [l.process || '-', l.process || '(no process)'];
@@ -217,6 +230,64 @@ function summarizeVariance(rows) {
         .sort((a, b) => Math.abs(b.variance_value) - Math.abs(a.variance_value));
 }
 
+function costTrend(docs) {
+    const m = new Map();
+    docs.forEach(d => {
+        const k = `${d.output_product_id}|${d.month}`;
+        if (!m.has(k)) m.set(k, { key: k, output_product_id: d.output_product_id, output_product_name: d.output_product_name, month: d.month, base_unit: d.base_unit, orders: 0, base_qty: 0, net_cost: 0, raw_material_cost: 0, byproduct_value: 0 });
+        const x = m.get(k);
+        x.orders++; x.base_qty += d.output_base_qty; x.net_cost += d.net_output_cost; x.raw_material_cost += d.raw_material_cost; x.byproduct_value += d.byproduct_value;
+    });
+    const rows = [...m.values()].sort((a, b) => a.output_product_name.localeCompare(b.output_product_name) || a.month.localeCompare(b.month));
+    let prev = null;
+    return rows.map(x => {
+        const unit = x.base_qty ? round4(x.net_cost / x.base_qty) : 0;
+        const same = prev && prev.output_product_id === x.output_product_id;
+        const out = { ...x, base_qty: round4(x.base_qty), net_cost: round2(x.net_cost), raw_material_cost: round2(x.raw_material_cost), byproduct_value: round2(x.byproduct_value),
+            unit_cost: unit, prev_unit_cost: same ? prev.unit_cost : null, change_pct: same && prev.unit_cost ? round2(((unit - prev.unit_cost) / prev.unit_cost) * 100) : null };
+        prev = out;
+        return out;
+    });
+}
+
+async function bomCost(c, t, D, docs, f) {
+    const { M, baseQty } = D;
+    const tpls = await fetchAll(() => {
+        let x = c.from('bom_templates').select('id, template_code, template_name, output_product_id, standard_output_qty, output_uom_id, is_active').eq('tenant_id', t);
+        if (f.templateIds.length) x = x.in('id', f.templateIds);
+        if (f.outputProductIds.length) x = x.in('output_product_id', f.outputProductIds);
+        return x.order('id');
+    });
+    const ids = tpls.map(x => x.id);
+    const [rm, bp] = await Promise.all([
+        inChunks(ids, async ch => { const { data, error } = await c.from('bom_template_raw_materials').select('template_id, product_id, qty, uom_id, process_name').in('template_id', ch); if (error) throw error; return data || []; }),
+        inChunks(ids, async ch => { const { data, error } = await c.from('bom_template_byproducts').select('template_id, product_id, qty, uom_id, recovery_rate').in('template_id', ch); if (error) throw error; return data || []; })
+    ]);
+    // rate: latest purchase rate, else the period's average consumption rate
+    const used = {};
+    Object.values(D.rmBy).flat().forEach(r => { const u = used[r.product_id] = used[r.product_id] || { q: 0, a: 0 }; u.q += baseQty(r.product_id, r.qty, r.uom_id, r.alt_qty); u.a += Number(r.amount) || 0; });
+    const rateOf = pid => M.purchaseRate[pid] || (used[pid] && used[pid].q ? used[pid].a / used[pid].q : 0);
+    const actual = {};
+    docs.forEach(d => { const a = actual[d.output_product_id] = actual[d.output_product_id] || { qty: 0, cost: 0 }; a.qty += d.output_base_qty; a.cost += d.net_output_cost; });
+    return tpls.map(tp => {
+        const outBase = baseQty(tp.output_product_id, tp.standard_output_qty, tp.output_uom_id, null);
+        const lines = rm.filter(r => r.template_id === tp.id).map(r => {
+            const q = baseQty(r.product_id, r.qty, r.uom_id, null), rate = rateOf(r.product_id);
+            const source = M.purchaseRate[r.product_id] ? 'purchase' : rate ? 'consumption' : 'none';
+            return { product_name: M.products[r.product_id]?.product_name || '', process: r.process_name || '', base_qty: round4(q), base_unit: M.unitName(M.products[r.product_id]?.base_unit_id), rate: round4(rate), rate_source: source, amount: round2(q * rate), no_rate: !rate };
+        });
+        const recovery = bp.filter(b => b.template_id === tp.id).reduce((s, b) => s + (Number(b.qty) || 0) * (Number(b.recovery_rate) || 0), 0);
+        const std = lines.reduce((s, l) => s + l.amount, 0) - recovery;
+        const a = actual[tp.output_product_id];
+        const actualUnit = a && a.qty ? a.cost / a.qty : null;
+        const stdUnit = outBase ? std / outBase : 0;
+        return { key: tp.id, template: `${tp.template_code} · ${tp.template_name}`, is_active: tp.is_active !== false, output_product_name: M.products[tp.output_product_id]?.product_name || '',
+            standard_output_base_qty: round4(outBase), base_unit: M.unitName(M.products[tp.output_product_id]?.base_unit_id), raw_material_cost: round2(lines.reduce((s, l) => s + l.amount, 0)),
+            byproduct_recovery: round2(recovery), standard_cost: round2(std), standard_unit_cost: round4(stdUnit), actual_unit_cost: actualUnit === null ? null : round4(actualUnit),
+            difference_pct: actualUnit !== null && stdUnit > 0 && !lines.some(l => l.no_rate) ? round2(((actualUnit - stdUnit) / stdUnit) * 100) : null, missing_rates: lines.filter(l => l.no_rate).map(l => l.product_name), lines };
+    });
+}
+
 async function productionReport(c, t, q) {
     const f = parseProductionQuery(q);
     const D = await loadProduction(c, t, f);
@@ -229,6 +300,13 @@ async function productionReport(c, t, q) {
     if (f.view === 'register') return { ...base, rows: docs };
     if (f.view === 'details') return { ...base, rows: lines.map(l => ({ ...l, base_qty: round4(l.base_qty), amount: round2(l.amount), term_amount: round2(l.term_amount) })) };
     if (f.view === 'variance') return { ...base, ...(await variance(c, t, D, f)) };
+    if (f.view === 'cost_trend') return { ...base, rows: costTrend(docs) };
+    if (f.view === 'batch') return { ...base, rows: docs.map(d => ({ ...d, key: d.doc_id })).sort((a, b) => String(a.output_batch_no).localeCompare(String(b.output_batch_no)) || a.doc_date.localeCompare(b.doc_date)) };
+    if (f.view === 'bom_cost') return { ...base, rows: await bomCost(c, t, D, docs, f) };
+    if (f.view === 'pending') {
+        const today = new Date().toISOString().slice(0, 10);
+        return { ...base, rows: docs.map(d => ({ ...d, age_days: Math.round((Date.parse(today) - Date.parse(d.doc_date)) / 86400000) })) };
+    }
     const type = { output: 'output', consumption: 'input', byproduct: 'byproduct' }[f.view];
     const groupBy = f.groupBy.length ? f.groupBy : ['product'];
     return { ...base, group_by: groupBy, rows: summarize(lines.filter(l => l.line_type === type), groupBy) };
