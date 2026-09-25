@@ -15,6 +15,7 @@ const { bumpAltCounter, moveSourceProgress } = require('../utils/progressCounter
 const { checkCompulsoryFields, lockProtectedFields } = require('../utils/entryFieldRules');
 const { checkProductCompany } = require('../utils/productCompanyRules');
 const { applyTermSubLedgers } = require('../utils/termSubLedgers');
+const { onDocumentEvent } = require('../utils/messaging');
 const router = express.Router();
 const { getTenantClient, loadUserPermissions, logAudit } = require('../utils/dbHelpers');
 const { requireAuth, requirePermission } = require('../middleware/auth');
@@ -524,6 +525,7 @@ router.put('/purchase-orders/:id/status', requireAuth, loadUserPermissions, requ
         if (COUNTING.includes(status) && !COUNTING.includes(existing.status)) await moveSourcesProgress(tenantClient, progressLines, 1);
         if (status === 'cancelled' && COUNTING.includes(existing.status)) await moveSourcesProgress(tenantClient, progressLines, -1);
         if (error) throw error;
+        onDocumentEvent(tenantClient, tenantId, 'purchase_order', status, req.params.id, req.auth.userId); // auto Email / SMS / WhatsApp, never blocks
         await logAudit(tenantId, req.auth.userId, 'change_order_status', 'purchase_order', req.params.id, { new_status: status, cancellation_reason });
         await logDocumentAudit(tenantClient, tenantId, 'purchase_order', req.params.id, 'status_change', req.auth.userId, [{ field_key: 'status', new_value: status }]);
         res.json({ success: true, data });

@@ -8,6 +8,7 @@
 
 const express = require('express');
 const { checkCompulsoryFields, lockProtectedFields } = require('../utils/entryFieldRules');
+const { onDocumentEvent } = require('../utils/messaging');
 const router = express.Router();
 const { getTenantClient, loadUserPermissions, logAudit } = require('../utils/dbHelpers');
 const { requireAuth, requirePermission } = require('../middleware/auth');
@@ -240,6 +241,7 @@ router.put('/cash-bank-entries/:id/status', requireAuth, loadUserPermissions, re
             await reverseReferenceAndSettlements(tenantClient, 'cash_bank_entry', req.params.id);
         }
 
+        onDocumentEvent(tenantClient, tenantId, 'cash_bank_entry', status, req.params.id, req.auth.userId, { entry_type: existing.entry_type }); // auto Email / SMS / WhatsApp, never blocks
         await logAudit(tenantId, req.auth.userId, 'change_cash_bank_entry_status', 'cash_bank_entry', req.params.id, { new_status: status });
         await logDocumentAudit(tenantClient, tenantId, 'cash_bank_entry', req.params.id, 'status_change', req.auth.userId);
         res.json({ success: true, data });

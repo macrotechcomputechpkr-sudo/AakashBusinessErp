@@ -70,7 +70,7 @@ async function postReturnStockMovements(tenantClient, tenantId, returnDoc, detai
             baseQty = await toBaseUnitQty(tenantClient, d.product_id, d.qty, d.uom_id);
             unitCost = d.rate || 0;
         }
-        rows.push({ tenant_id: tenantId, product_id: d.product_id, warehouse_id: wh, batch_no: d.batch_no, movement_date: returnDoc.doc_date, qty_out: baseQty, qty_in: 0, unit_cost: unitCost, source_type: 'purchase_return', source_id: returnDoc.id, source_detail_id: d.id, narration: `Return ${returnDoc.doc_no}` });
+        rows.push({ tenant_id: tenantId, product_id: d.product_id, warehouse_id: wh, batch_no: d.batch_no, serial_no: d.serial_no || null, movement_date: returnDoc.doc_date, qty_out: baseQty, qty_in: 0, unit_cost: unitCost, source_type: 'purchase_return', source_id: returnDoc.id, source_detail_id: d.id, narration: `Return ${returnDoc.doc_no}` });
     }
     if (rows.length > 0) {
         const { error } = await tenantClient.from('stock_movements').insert(rows);
@@ -178,7 +178,7 @@ async function syncDetails(tenantClient, tenantId, returnId, details) {
         return {
             tenant_id: tenantId, return_id: returnId, display_order: i + 1,
             source_bill_detail_id: d.source_bill_detail_id || null,
-            source_doc_no: sourceDocNo, batch_no: d.batch_no || null,
+            source_doc_no: sourceDocNo, batch_no: d.batch_no || null, serial_no: d.serial_no || null,
             product_id: d.product_id, qty, uom_id: d.uom_id || null,
             alt_qty: d.alt_qty || null, alt_unit_id: d.alt_unit_id || null, rate_basis: d.rate_basis || 'primary',
             rate, amount: baseAmount + taxAmount,
@@ -317,7 +317,7 @@ router.get('/purchase-returns/pull-forward', requireAuth, loadUserPermissions, r
                 .map(d => ({
                     source_bill_detail_id: d.id, source_doc_no: bill.doc_no, product_id: d.product_id, qty: d.outstanding, uom_id: d.uom_id,
                     alt_qty: d.alt_outstanding || null, alt_unit_id: d.alt_unit_id || null, rate_basis: d.rate_basis || 'primary',
-                    rate: d.rate, warehouse_id: d.warehouse_id, batch_no: d.batch_no
+                    rate: d.rate, warehouse_id: d.warehouse_id, batch_no: d.batch_no, serial_no: d.serial_no
                 }));
         }
         res.json({ success: true, data: { master, details } });

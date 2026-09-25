@@ -48,7 +48,7 @@ async function postBillStockMovements(tenantClient, tenantId, bill, details) {
             baseQty = await toBaseUnitQty(tenantClient, d.product_id, d.qty, d.uom_id);
             unitCost = d.rate || 0;
         }
-        rows.push({ tenant_id: tenantId, product_id: d.product_id, warehouse_id: wh, batch_no: d.batch_no, movement_date: bill.doc_date, qty_in: baseQty, qty_out: 0, unit_cost: unitCost, source_type: 'purchase_bill', source_id: bill.id, source_detail_id: d.id, narration: `Bill ${bill.doc_no} - direct purchase` });
+        rows.push({ tenant_id: tenantId, product_id: d.product_id, warehouse_id: wh, batch_no: d.batch_no, serial_no: d.serial_no || null, movement_date: bill.doc_date, qty_in: baseQty, qty_out: 0, unit_cost: unitCost, source_type: 'purchase_bill', source_id: bill.id, source_detail_id: d.id, narration: `Bill ${bill.doc_no} - direct purchase` });
     }
     if (rows.length > 0) {
         const { error } = await tenantClient.from('stock_movements').insert(rows);
@@ -176,7 +176,7 @@ async function syncDetails(tenantClient, tenantId, billId, details) {
             source_quotation_detail_id: d.source_quotation_detail_id || null,
             source_order_detail_id: d.source_order_detail_id || null,
             source_grn_detail_id: d.source_grn_detail_id || null,
-            source_doc_no: sourceDocNo, batch_no: d.batch_no || null,
+            source_doc_no: sourceDocNo, batch_no: d.batch_no || null, serial_no: d.serial_no || null,
             product_id: d.product_id, qty, uom_id: d.uom_id || null,
             alt_qty: d.alt_qty || null, alt_unit_id: d.alt_unit_id || null,
             alt1_qty: d.alt1_qty || null, alt1_unit_id: d.alt1_unit_id || null,
@@ -349,7 +349,7 @@ router.get('/purchase-bills/pull-forward', requireAuth, loadUserPermissions, req
                     .filter(d => d.outstanding > 0 || d.alt_outstanding > 0)
                     .map(d => ({
                         source_grn_detail_id: d.id, source_doc_no: grn.doc_no, product_id: d.product_id, qty: d.outstanding, alt_qty: d.alt_outstanding || null, alt_unit_id: d.alt_unit_id || null, rate_basis: d.rate_basis || 'primary', uom_id: d.uom_id,
-                        rate: d.rate, warehouse_id: d.warehouse_id, barcode: d.barcode, batch_no: d.batch_no
+                        rate: d.rate, warehouse_id: d.warehouse_id, barcode: d.barcode, batch_no: d.batch_no, serial_no: d.serial_no
                     })));
             }
         }

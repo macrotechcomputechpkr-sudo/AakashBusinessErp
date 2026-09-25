@@ -6,7 +6,11 @@
 // ?preset=) straight to one view of a multi-view report page.
 // =============================================
 
-export const SECTIONS = [
+export interface MenuItem { to: string; label: string; group?: string }
+export interface MenuSection { key: string; title: string; items: MenuItem[] }
+export type ReportGroup = { title: string; items: [string, string][] };
+
+export const SECTIONS: MenuSection[] = [
     { key: 'home', title: 'Home', items: [
         { to: '/dashboard', label: '🏠 Dashboard' },
         { to: '/reports', label: '📚 Report Center (all reports)' },
@@ -67,7 +71,8 @@ export const SECTIONS = [
         { to: '/budgets', label: '💼 Budgets & Variance' },
         { to: '/confirmation-letters', label: '✉ Account Confirmation Letters' },
         { to: '/lc-bg-dashboard', label: '📑 LC / BG / PDC Dashboard' },
-        { to: '/ird', label: '🏛 IRD Compliance / CBMS' }
+        { to: '/ird', label: '🏛 IRD Compliance / CBMS' },
+        { to: '/messaging', label: '📨 Messaging (Email / SMS / WhatsApp / Viber)' }
     ] },
     { key: 'inventory', title: 'Inventory & Production', items: [
         { to: '/stock-transfer', label: '🔄 Stock Transfer' },
@@ -93,7 +98,7 @@ export const SECTIONS = [
     ] }
 ];
 
-export const REPORT_GROUPS = [
+export const REPORT_GROUPS: ReportGroup[] = [
     { title: 'Accounts & Finance', items: [
         ['/ledger-report', 'Ledger Report (detail)'], ['/ledger-report?mode=summary', 'Ledger Summary (PDC separate option)'], ['/ledger-report?mode=monthly', 'Ledger Monthly Summary'],
         ['/party-summary', 'Party Summary (PDC separate option)'], ['/control-reports?view=day_book', 'Day Book'], ['/control-reports?view=cash_bank_book', 'Cash & Bank Book'],
@@ -133,6 +138,16 @@ export const REPORT_GROUPS = [
         ['/stock-ageing', 'Stock Ageing & Expiry'], ['/reorder', 'Re-order & Over-stock'], ['/control-reports?view=non_moving_items', 'Non-moving Items'], ['/control-reports?view=price_list', 'Product Price List'],
         ['/production-report?view=register', 'Production Register'], ['/production-report?view=consumption', 'Raw Material Consumption'], ['/production-report?view=variance', 'BOM vs Actual'],
         ['/production-report?view=cost_trend', 'Production Cost Trend'], ['/fixed-assets?tab=schedule', 'Fixed Asset Schedule'], ['/fixed-assets?tab=detail', 'Depreciation Detail']
+    ] },
+    { title: 'Forecasting & Inventory Analytics', items: [
+        ['/analytics?view=fsn', 'Fast / Slow / Non-moving (FSN)'], ['/analytics?view=abc', 'ABC Analysis'], ['/analytics?view=xyz', 'XYZ Analysis (demand variability)'],
+        ['/analytics?view=abc_xyz', 'ABC-XYZ Matrix'], ['/analytics?view=stock_cover', 'Stock Cover / Stock-out Forecast'], ['/analytics?view=turnover', 'Inventory Turnover'],
+        ['/analytics?view=dead_stock', 'Dead Stock (no movement)'], ['/analytics?view=sales_forecast', 'Sales / Purchase Forecast'], ['/analytics?view=purchase_plan', 'Purchase Plan (forecast based)'],
+        ['/analytics?view=cash_forecast', 'Cash Flow Forecast (weekly)'], ['/analytics?view=period_compare', 'Period Comparison (vs last year / previous)'], ['/analytics?view=customer_rfm', 'Customer RFM, New & Lost Customers'],
+        ['/analytics?view=expense_compare', 'Income & Expense Comparison'], ['/analytics?view=dso_dpo', 'Collection & Payment Days (DSO / DPO)']
+    ] },
+    { title: 'Messaging', items: [
+        ['/messaging?tab=log', 'Message Log (sent / failed / pending)'], ['/messaging?tab=reminders', 'Outstanding Reminders (bulk)']
     ] },
     { title: 'Control & Registers', items: [
         ['/register', 'Universal Register (all documents)'], ['/control-reports?view=cancelled_docs', 'Cancelled Documents'], ['/control-reports?view=draft_docs', 'Draft (Unposted) Documents'],

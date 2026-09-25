@@ -111,7 +111,7 @@ async function postGrnStockMovements(tenantClient, tenantId, grn, details) {
             baseQty = await toBaseUnitQty(tenantClient, d.product_id, d.qty, d.uom_id);
             unitCost = d.rate || 0;
         }
-        rows.push({ tenant_id: tenantId, product_id: d.product_id, warehouse_id: wh, batch_no: d.batch_no, movement_date: grn.doc_date, qty_in: baseQty, qty_out: 0, unit_cost: unitCost, source_type: 'purchase_grn', source_id: grn.id, source_detail_id: d.id, narration: `GRN ${grn.doc_no} received` });
+        rows.push({ tenant_id: tenantId, product_id: d.product_id, warehouse_id: wh, batch_no: d.batch_no, serial_no: d.serial_no || null, movement_date: grn.doc_date, qty_in: baseQty, qty_out: 0, unit_cost: unitCost, source_type: 'purchase_grn', source_id: grn.id, source_detail_id: d.id, narration: `GRN ${grn.doc_no} received` });
     }
     if (rows.length > 0) {
         const { error } = await tenantClient.from('stock_movements').insert(rows);
@@ -170,7 +170,7 @@ async function syncDetails(tenantClient, tenantId, grnId, details) {
             source_requisition_detail_id: d.source_requisition_detail_id || null,
             source_quotation_detail_id: d.source_quotation_detail_id || null,
             source_order_detail_id: d.source_order_detail_id || null,
-            source_doc_no: sourceDocNo, batch_no: d.batch_no || null,
+            source_doc_no: sourceDocNo, batch_no: d.batch_no || null, serial_no: d.serial_no || null,
             product_id: d.product_id, qty, uom_id: d.uom_id || null,
             alt_qty: d.alt_qty || null, alt_unit_id: d.alt_unit_id || null,
             alt1_qty: d.alt1_qty || null, alt1_unit_id: d.alt1_unit_id || null,

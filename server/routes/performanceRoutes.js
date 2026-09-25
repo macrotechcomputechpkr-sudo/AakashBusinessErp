@@ -17,6 +17,7 @@ const IRD = require('../utils/ird');
 const AT = require('../utils/agentTargets');
 const { budgetReport } = require('../utils/budgetReports');
 const { controlReport } = require('../utils/controlReports');
+const { analyticsReport } = require('../utils/analytics');
 
 const view = [requireAuth, loadUserPermissions, requirePermission('ledger', 'view')];
 const edit = [requireAuth, loadUserPermissions, requirePermission('ledger', 'edit')];
@@ -86,6 +87,8 @@ router.get('/agent-commission/register', ...reports, send((c, t, req) => AT.comm
 
 // ---------------- master / control reports (day book, cash book, masters, exceptions) ----------------
 router.get('/control-reports/:view', ...reports, send((c, t, req) => controlReport(c, t, req.params.view, req.query)));
+// FSN / ABC / XYZ, stock cover, turnover, dead stock, forecasts, period comparison, RFM
+router.get('/analytics/:view', ...reports, send((c, t, req) => analyticsReport(c, t, req.params.view, req.query)));
 
 // ---------------- budgets ----------------
 router.get('/budget-reports/:view', ...reports, send((c, t, req) => budgetReport(c, t, req.params.view, req.query)));

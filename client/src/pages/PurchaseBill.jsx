@@ -25,7 +25,7 @@ import useLedgerPurposes from '../components/useLedgerPurposes';
 const emptyDetailRow = () => ({
     product_id: '', qty: '', uom_id: '', alt_qty: '', alt_unit_id: '', alt1_qty: '', alt1_unit_id: '',
     rate: '', rate_basis: 'primary', discount_percent: '', tax_percent: '', narration: '',
-    free_qty: '', free_alt_qty: '', free_uom_id: '', warehouse_id: '', barcode: '', batch_no: '', source_doc_no: '',
+    free_qty: '', free_alt_qty: '', free_uom_id: '', warehouse_id: '', barcode: '', batch_no: '', serial_no: '', source_doc_no: '',
     item_import_taxable_amount: '', item_import_tax_free_amount: '', billing_term_ids: [], product_company_id: '', term_sub_ledgers: {}
 });
 
@@ -245,6 +245,7 @@ export default function PurchaseBill() {
     // maintain_batch enabled; otherwise show a plain dash, and never
     // require it either way.
     const productMaintainsBatch = (productId) => !!products.find(p => p.id === productId)?.maintain_batch;
+    const productTracksSerial = (productId) => !!products.find(p => p.id === productId)?.track_serial_number;
     // FEATURE: "whatever is ON for the Product, show that in the entry
     // form - like Alt UOM" - a product only has Alt Unit fields worth
     // showing if it actually has more than its base unit configured.
@@ -1153,6 +1154,7 @@ export default function PurchaseBill() {
                                                 {productMaintainsBatch(d.product_id) ? (
                                                     <input disabled={efc.isReadonly('batch_no', 'detail')} className="w-full border rounded px-1.5 py-1" value={d.batch_no} onChange={e => updateDetailRow(idx, { batch_no: e.target.value })} placeholder="Batch" />
                                                 ) : <span className="text-gray-300 text-xs">—</span>}
+                                                {productTracksSerial(d.product_id) && <input className="w-full border rounded px-1.5 py-1 mt-1" value={d.serial_no || ''} onChange={e => updateDetailRow(idx, { serial_no: e.target.value })} placeholder="Serial No(s)" title="Serial numbers, comma separated - used for serial-wise costing" />}
                                             </td>
                                             <td className="px-1 py-1 text-xs text-gray-500">{d.source_doc_no || (d.source_quotation_detail_id || d.source_order_detail_id || d.source_grn_detail_id ? '…' : '—')}</td>
                                             {form.import_detail_mode === 'item_wise' && (

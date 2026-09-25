@@ -12,6 +12,7 @@
 
 const express = require('express');
 const { checkCompulsoryFields, lockProtectedFields } = require('../utils/entryFieldRules');
+const { onDocumentEvent } = require('../utils/messaging');
 const router = express.Router();
 const { getTenantClient, loadUserPermissions, logAudit } = require('../utils/dbHelpers');
 const { requireAuth, requirePermission } = require('../middleware/auth');
@@ -171,6 +172,7 @@ router.post('/pdc-vouchers', requireAuth, loadUserPermissions, requirePermission
             .select().single();
         if (error) throw error;
 
+        if (doc.voucher_type === 'received') onDocumentEvent(tenantClient, tenantId, 'pdc', 'pending', doc.id, req.auth.userId); // acknowledgement to the customer
         await logAudit(tenantId, req.auth.userId, 'create_pdc', 'pdc', doc.id, { doc_no: doc.doc_no });
         await logDocumentAudit(tenantClient, tenantId, 'pdc', doc.id, 'create', req.auth.userId);
         res.json({ success: true, message: `PDC ${doc.doc_no} created`, data: doc });
@@ -284,6 +286,7 @@ router.put('/pdc-vouchers/:id/status', requireAuth, loadUserPermissions, require
             }
         }
 
+        onDocumentEvent(tenantClient, tenantId, 'pdc', status, req.params.id, req.auth.userId); // auto Email / SMS / WhatsApp, never blocks
         await logAudit(tenantId, req.auth.userId, 'change_pdc_status', 'pdc', req.params.id, { new_status: status });
         await logDocumentAudit(tenantClient, tenantId, 'pdc', req.params.id, 'status_change', req.auth.userId);
         res.json({ success: true, data });

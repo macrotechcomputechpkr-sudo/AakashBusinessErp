@@ -24,7 +24,7 @@
 
 import React, { useEffect, useMemo, useRef, useState, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { focusNextInForm } from '../hooks/useEnterKeyNavigation';
+import { focusNextInForm, focusNextInScope, enterScopeOf } from '../hooks/useEnterKeyNavigation';
 
 export default function SearchablePopupSelect({
     listKey,
@@ -127,7 +127,9 @@ export default function SearchablePopupSelect({
         setOpen(false);
         setSearch('');
         const form = inputRef.current?.closest('form');
+        const scope = form ? null : enterScopeOf(inputRef.current);
         if (form) focusNextInForm(form, inputRef.current, onLastField);
+        else if (scope) { inputRef.current?.focus(); setTimeout(() => focusNextInScope(scope, inputRef.current), 0); }
         else inputRef.current?.focus();
     };
 

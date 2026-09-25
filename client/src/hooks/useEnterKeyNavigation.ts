@@ -22,7 +22,10 @@
 //   to the normal submit behavior (i.e. this really was the last tab).
 // =============================================
 
-import { useEffect, useRef } from 'react';
+import { RefObject, useEffect, useRef } from 'react';
+
+type Field = HTMLElement & { select?: () => void; type?: string };
+export interface EnterNavOptions { onLastField?: () => boolean | void }
 
 // FIX: elements marked data-enter-skip are excluded from the tab-order
 // walk entirely - found via deep-check that SearchablePopupSelect's own
@@ -39,8 +42,8 @@ const FOCUSABLE_SELECTOR = [
     '[data-enter-focusable="true"]:not([disabled])'
 ].join(', ');
 
-export function getVisibleFocusable(form) {
-    const all = Array.from(form.querySelectorAll(FOCUSABLE_SELECTOR));
+export function getVisibleFocusable(form: ParentNode): Field[] {
+    const all = Array.from(form.querySelectorAll<Field>(FOCUSABLE_SELECTOR));
     return all.filter(el => el.offsetParent !== null);
 }
 
@@ -48,9 +51,9 @@ export function getVisibleFocusable(form) {
 // submits the form if `fromEl` is the last one. Returns true if it moved
 // focus (within the tab, or to a new tab via onLastField), false if it
 // submitted instead.
-export function focusNextInForm(form, fromEl, onLastField) {
+export function focusNextInForm(form: HTMLFormElement, fromEl: Element | null, onLastField?: () => boolean | void): boolean {
     const visible = getVisibleFocusable(form);
-    const currentIndex = visible.indexOf(fromEl);
+    const currentIndex = visible.indexOf(fromEl as Field);
     if (currentIndex === -1) return false;
 
     if (currentIndex < visible.length - 1) {
@@ -67,7 +70,30 @@ export function focusNextInForm(form, fromEl, onLastField) {
     return false;
 }
 
-export function useEnterKeyNavigation(formRef, options = {}) {
+// Outside a <form> (report filter bars, dashboards): the same "Enter = next
+// field" inside the nearest card; Enter on the last field runs the card's
+// report button (Show / Search / Calculate ...) - never a Save / Post button.
+const RUN_BUTTON = /show|search|calculate|run|refresh|load|apply|filter|🔍/i;
+export function focusNextInScope(scope: HTMLElement, fromEl: Element | null): boolean {
+    const form = fromEl && fromEl.closest ? fromEl.closest('form') : null;
+    if (form && scope.contains(form)) return focusNextInForm(form, fromEl);
+    const visible = getVisibleFocusable(scope);
+    const i = visible.indexOf(fromEl as Field);
+    if (i === -1) return false;
+    if (i < visible.length - 1) {
+        const next = visible[i + 1];
+        next.focus();
+        if (typeof next.select === 'function' && next.tagName === 'INPUT' && !['checkbox', 'radio', 'date'].includes(next.type || '')) next.select();
+        return true;
+    }
+    const btn = Array.from(scope.querySelectorAll<HTMLButtonElement>('button:not([disabled])')).find(b => b.offsetParent !== null && RUN_BUTTON.test(b.textContent || ''));
+    if (btn) btn.click();
+    return false;
+}
+export const enterScopeOf = (el: Element | null | undefined): HTMLElement | null =>
+    (el && el.closest ? el.closest<HTMLElement>('form') || el.closest<HTMLElement>('[data-enter-scope]') || el.closest<HTMLElement>('.erp-card') : null);
+
+export function useEnterKeyNavigation(formRef: RefObject<HTMLFormElement>, options: EnterNavOptions = {}): void {
     // FIX: this used to attach ONCE on mount (useEffect(..., [formRef])).
     // Almost every entry page renders its <form> only after "New"/"Open"
     // ({showForm && <form ref={formRef}>}), so at mount formRef.current was
@@ -79,12 +105,12 @@ export function useEnterKeyNavigation(formRef, options = {}) {
     // stopPropagation keeps working) and always sees the latest onLastField.
     const optionsRef = useRef(options);
     optionsRef.current = options;
-    const attachedRef = useRef(null);
-    const listenerRef = useRef(null);
+    const attachedRef = useRef<HTMLFormElement | null>(null);
+    const listenerRef = useRef<((e: KeyboardEvent) => void) | null>(null);
     if (!listenerRef.current) {
-        listenerRef.current = (e) => {
+        listenerRef.current = (e: KeyboardEvent) => {
             if (e.key !== 'Enter' || e.shiftKey) return;
-            const target = e.target;
+            const target = e.target as Field;
             if (target.tagName === 'TEXTAREA') return; // allow multi-line input
             if (target.tagName === 'BUTTON') return;    // let native button behavior run
             const form = attachedRef.current;
@@ -100,14 +126,15 @@ export function useEnterKeyNavigation(formRef, options = {}) {
     useEffect(() => {
         const form = formRef.current || null;
         if (attachedRef.current === form) return;
-        if (attachedRef.current) attachedRef.current.removeEventListener('keydown', listenerRef.current);
-        if (form) form.addEventListener('keydown', listenerRef.current);
+        const listener = listenerRef.current as (e: KeyboardEvent) => void;
+        if (attachedRef.current) attachedRef.current.removeEventListener('keydown', listener);
+        if (form) form.addEventListener('keydown', listener);
         attachedRef.current = form;
     });
 
     // Detach on unmount.
     useEffect(() => () => {
-        if (attachedRef.current) attachedRef.current.removeEventListener('keydown', listenerRef.current);
+        if (attachedRef.current && listenerRef.current) attachedRef.current.removeEventListener('keydown', listenerRef.current);
         attachedRef.current = null;
     }, []);
 }

@@ -28,6 +28,7 @@
 // =============================================
 
 import React, { useEffect, useMemo, useState } from 'react';
+import ExcelFilterMenu, { distinctValues, cellKey } from './ExcelFilterMenu';
 
 const AGG_LABELS = { sum: 'Sum', avg: 'Average', min: 'Min', max: 'Max', count: 'Count', distinct: 'Distinct', first: 'First', last: 'Last' };
 const NUMERIC_AGGS = ['sum', 'avg', 'min', 'max', 'count', 'distinct'];
@@ -253,6 +254,9 @@ export default function ReportGrid({
     // picking column/operator one at a time.
     const [autoFilterOn, setAutoFilterOn] = useState(false);
     const [autoFilterValues, setAutoFilterValues] = useState({});
+    // Spreadsheet-style value filter per column (▼ in the header): { [colKey]: Set of allowed values }
+    const [valueFilters, setValueFilters] = useState({});
+    const [filterMenu, setFilterMenu] = useState(null); // { key, anchor }
 
     // FEATURE: keyboard cell navigation + opt-in inline editing state.
     const [editingCell, setEditingCell] = useState(null); // { rowId, colKey } | null
@@ -339,8 +343,11 @@ export default function ReportGrid({
                 if (value) out = out.filter(row => applyOperator(row[key], 'contains', value));
             });
         }
+        Object.entries(valueFilters).forEach(([key, allowed]) => {
+            if (allowed) out = out.filter(row => allowed.has(cellKey(row[key])));
+        });
         return out;
-    }, [enrichedRows, search, filters, allColumns, autoFilterOn, autoFilterValues]);
+    }, [enrichedRows, search, filters, allColumns, autoFilterOn, autoFilterValues, valueFilters]);
 
     // Sorting is independent of grouping now - grouping re-partitions rows
     // into its own group-value order at each level; the leaf row order
@@ -631,7 +638,23 @@ export default function ReportGrid({
                 <AddColumnPanel numericColumns={numericColumns} onAdd={addCustomColumn} onClose={() => setPanel(null)} />
             )}
 
-            <div className="overflow-x-auto border border-gray-200 rounded-lg bg-white">
+            {filterMenu && (
+                <ExcelFilterMenu anchor={filterMenu.anchor} title={allColumns.find(c => c.key === filterMenu.key)?.label}
+                    values={distinctValues(enrichedRows.map(r => r[filterMenu.key]))} selected={valueFilters[filterMenu.key] || null}
+                    onApply={allowed => setValueFilters(v => ({ ...v, [filterMenu.key]: allowed }))}
+                    onSort={dir => setSort({ key: filterMenu.key, dir })} onClose={() => setFilterMenu(null)} />
+            )}
+            {Object.values(valueFilters).some(Boolean) && (
+                <div className="flex flex-wrap items-center gap-2 mb-2 text-xs">
+                    <span className="text-gray-500">Column filters:</span>
+                    {Object.entries(valueFilters).filter(([, v]) => v).map(([k, v]) => (
+                        <span key={k} className="bg-blue-50 border border-blue-200 rounded px-2 py-0.5">{allColumns.find(c => c.key === k)?.label || k}: {v.size} value(s)
+                            <button type="button" className="ml-1 text-red-600" onClick={() => setValueFilters(x => ({ ...x, [k]: null }))}>✕</button></span>
+                    ))}
+                    <button type="button" className="text-blue-600 underline" onClick={() => setValueFilters({})}>Clear all</button>
+                </div>
+            )}
+            <div className="overflow-x-auto border border-gray-200 rounded-lg bg-white" data-enter-nav="off" data-excel-managed="true">
                 <table className={autoWidth ? 'w-full' : 'min-w-[900px]'} style={hasWidths ? { tableLayout: 'fixed' } : undefined}>
                     {hasWidths && (
                         <colgroup>
@@ -651,6 +674,9 @@ export default function ReportGrid({
                                     className="px-3 py-2 text-left text-xs font-semibold text-gray-600 uppercase tracking-wide border-b border-gray-200 cursor-pointer select-none whitespace-nowrap"
                                 >
                                     {col.label}{sort.key === col.key && (sort.dir === 'asc' ? ' ▲' : ' ▼')}{groupByKeys.includes(col.key) && ` 📌${groupByKeys.indexOf(col.key) + 1}`}
+                                    <button type="button" data-enter-skip title="Filter / sort this column"
+                                        className={`ml-1 px-1 rounded text-[10px] border ${valueFilters[col.key] ? 'bg-blue-600 text-white border-blue-600' : 'text-gray-400 border-gray-300 hover:text-gray-700'}`}
+                                        onClick={e => { e.stopPropagation(); const r = e.currentTarget.getBoundingClientRect(); setFilterMenu({ key: col.key, anchor: { left: r.left, top: r.top, bottom: r.bottom } }); }}>▾</button>
                                 </th>
                             ))}
                             {rowActions && <th className="px-3 py-2 border-b border-gray-200"></th>}

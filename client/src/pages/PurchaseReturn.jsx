@@ -32,7 +32,7 @@ const RETURN_REASONS = [
 
 const emptyDetailRow = () => ({
     product_id: '', qty: '', uom_id: '', alt_qty: '', alt_unit_id: '', rate_basis: 'primary', rate: '', tax_percent: '', warehouse_id: '',
-    batch_no: '', source_doc_no: '', line_reason: '',
+    batch_no: '', serial_no: '', source_doc_no: '', line_reason: '',
     source_bill_detail_id: '', billing_term_ids: [], product_company_id: '', term_sub_ledgers: {}
 });
 
@@ -157,6 +157,7 @@ export default function PurchaseReturn() {
     };
     const updateDetailRow = (idx, patch) => setForm(f => ({ ...f, details: f.details.map((d, i) => i === idx ? { ...d, ...patch } : d) }));
     const productMaintainsBatch = (productId) => !!products.find(p => p.id === productId)?.maintain_batch;
+    const productTracksSerial = (productId) => !!products.find(p => p.id === productId)?.track_serial_number;
     const productIsFixedDualUom = (productId) => products.find(p => p.id === productId)?.uom_mode === 'fixed_dual';
     const dualConversionFactor = (productId) => {
         const product = products.find(p => p.id === productId);
@@ -712,6 +713,7 @@ export default function PurchaseReturn() {
                                                 {productMaintainsBatch(d.product_id) ? (
                                                     <input disabled={efc.isReadonly('batch_no', 'detail')} className="erp-input" value={d.batch_no} onChange={e => updateDetailRow(idx, { batch_no: e.target.value })} placeholder="Batch" />
                                                 ) : <span className="text-gray-300 text-xs">—</span>}
+                                                {productTracksSerial(d.product_id) && <input className="erp-input mt-1" value={d.serial_no || ''} onChange={e => updateDetailRow(idx, { serial_no: e.target.value })} placeholder="Serial No(s)" title="Serial numbers, comma separated - used for serial-wise costing" />}
                                             </td>
                                             <td className="text-xs text-gray-500">{d.source_doc_no || (d.source_bill_detail_id ? '…' : '—')}</td>
                                             <td className={efc.isVisible('line_reason', 'detail') ? '' : 'hidden'}><input disabled={efc.isReadonly('line_reason', 'detail')} className="erp-input" value={d.line_reason} onChange={e => updateDetailRow(idx, { line_reason: e.target.value })} /></td>

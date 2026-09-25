@@ -10,6 +10,7 @@ const { checkAccountPurposes } = require('../utils/ledgerPurpose');
 const { bumpAltCounter, moveSourceProgress } = require('../utils/progressCounters');
 const { checkCompulsoryFields, lockProtectedFields } = require('../utils/entryFieldRules');
 const { checkProductCompany } = require('../utils/productCompanyRules');
+const { onDocumentEvent } = require('../utils/messaging');
 const router = express.Router();
 const { getTenantClient, loadUserPermissions, logAudit } = require('../utils/dbHelpers');
 const { requireAuth, requirePermission } = require('../middleware/auth');
@@ -338,6 +339,7 @@ async function changeSalesOrderStatus(req, res) {
         if (status === 'cancelled' && COUNTING.includes(existing.status)) await moveSourcesProgress(tenantClient, progressLines, -1);
         if (error) throw error;
 
+        onDocumentEvent(tenantClient, tenantId, 'sales_order', status, req.params.id, req.auth.userId); // auto Email / SMS / WhatsApp, never blocks
         await logAudit(tenantId, req.auth.userId, 'change_sales_order_status', 'sales_order', req.params.id, { new_status: status, cancellation_reason });
         await logDocumentAudit(tenantClient, tenantId, 'sales_order', req.params.id, 'status_change', req.auth.userId);
         res.json({ success: true, data });

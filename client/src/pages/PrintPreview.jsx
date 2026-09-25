@@ -13,6 +13,9 @@ import React, { useEffect, useState } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import PrintedDocument, { pageSizeOf } from '../components/PrintedDocument';
+import SendMessageModal from '../components/SendMessageModal';
+
+const SENDABLE = ['sales_bill', 'sales_order', 'sales_delivery', 'sales_return', 'purchase_order', 'cash_bank_entry', 'pdc'];
 
 export default function PrintPreview() {
     const { documentType, documentId } = useParams();
@@ -22,6 +25,7 @@ export default function PrintPreview() {
     const [data, setData] = useState(null);
     const [error, setError] = useState(null);
     const [prints, setPrints] = useState(0);
+    const [sending, setSending] = useState(false);
     useEffect(() => {
         if (!['sales_bill', 'sales_return'].includes(documentType)) return;
         authFetch(`/api/ird/print-info/${documentType}/${documentId}`).then(r => setPrints(r.data?.print_count || 0)).catch(() => {});
@@ -63,11 +67,13 @@ export default function PrintPreview() {
 
             <div className="no-print text-center mb-4">
                 <button onClick={doPrint} className="bg-blue-600 text-white px-5 py-2 rounded-lg font-medium hover:bg-blue-700">🖨️ Print</button>
+                {SENDABLE.includes(documentType) && <button onClick={() => setSending(true)} className="ml-2 bg-green-600 text-white px-5 py-2 rounded-lg font-medium hover:bg-green-700">📨 Send (WhatsApp / SMS / Email / Viber)</button>}
                 {irdDoc && prints > 0 && <p className="text-xs text-gray-600 mt-1">Printed {prints} time(s) before - this print is marked "Copy of Original".</p>}
             </div>
 
             {irdDoc && prints > 0 && <div className="text-center font-bold text-sm tracking-wide" style={{ marginBottom: 4 }}>COPY OF ORIGINAL ({prints})</div>}
             <PrintedDocument data={data} />
+            {sending && <SendMessageModal documentType={documentType} documentId={documentId} onClose={() => setSending(false)} />}
         </div>
     );
 }

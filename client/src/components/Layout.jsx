@@ -7,7 +7,9 @@
 // reachable instead of only being accessible by typing the URL directly.
 // =============================================
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import useGlobalEnterNav from '../hooks/useGlobalEnterNav';
+import useExcelTableFilters from '../hooks/useExcelTableFilters';
 import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 import { SECTIONS, REPORT_GROUPS } from './menu';
 import { useAuth } from '../contexts/AuthContext';
@@ -22,6 +24,10 @@ export default function Layout({ children }) {
     };
 
     const location = useLocation();
+    // Enter = next field on every screen; spreadsheet filter on every report table
+    const contentRef = useRef(null);
+    useGlobalEnterNav(contentRef);
+    const excelMenu = useExcelTableFilters(contentRef);
     const [drawer, setDrawer] = useState(false);
     const [search, setSearch] = useState('');
     // open sections are remembered per browser
@@ -93,9 +99,10 @@ export default function Layout({ children }) {
                     <div className="flex-1 bg-black/40" />
                 </div>
             )}
-            <div className="flex-1 min-w-0">
+            <div className="flex-1 min-w-0" ref={contentRef}>
                 {children}
             </div>
+            {excelMenu}
         </div>
     );
 }

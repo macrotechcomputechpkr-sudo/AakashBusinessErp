@@ -176,12 +176,13 @@ async function controlReport(c, t, view, q) {
         const [bal, lastDoc, refs] = await Promise.all([
             balancesOf(c, t, ids),
             side === 'customer' ? lastDocDates(c, t, 'sales_bills', 'customer_ledger_id', ids) : lastDocDates(c, t, 'purchase_bills', 'vendor_ledger_id', ids),
-            inChunks(ids, async ch => (await c.from('bill_wise_references').select('ledger_id, due_date, remaining_amount, nature').in('ledger_id', ch).gt('remaining_amount', 0)).data || [])
+            inChunks(ids, async ch => (await c.from('bill_wise_references').select('ledger_id, source_date, remaining_amount, nature').in('ledger_id', ch).gt('remaining_amount', 0)).data || [])
         ]);
         const d = today();
         return { rows: rows.map(l => {
             const open = (Number(l.opening_balance_type === 'cr' ? -1 : 1) * (Number(l.opening_balance) || 0)) + (bal[l.id] || 0);
-            const overdue = refs.filter(r => r.ledger_id === l.id && r.due_date && String(r.due_date).slice(0, 10) < d).reduce((s, r) => s + Number(r.remaining_amount || 0), 0);
+            const dueOf = r => new Date(Date.parse(`${String(r.source_date).slice(0, 10)}T00:00:00Z`) + (Number(l.credit_days) || 0) * 86400000).toISOString().slice(0, 10);
+            const overdue = refs.filter(r => r.ledger_id === l.id && r.nature === (side === 'customer' ? 'dr' : 'cr') && dueOf(r) < d).reduce((s, r) => s + Number(r.remaining_amount || 0), 0);
             return { id: l.id, code: l.account_code, name: l.account_name, billing_name: l.billing_name || '', pan: l.vat_pan_number || l.pan_number || '', vat_type: l.vat_pan_type || '',
                 phone: l.phone_office || l.contact_person_mobile || '', contact_person: l.contact_person || '', email: l.email || '', address: [l.billing_address, l.city].filter(Boolean).join(', '),
                 area: N.areas[l.area_id]?.area_name || '', route: N.routes[l.route_id]?.route_name || '', agent: N.agents[l.agent_id]?.agent_name || '',

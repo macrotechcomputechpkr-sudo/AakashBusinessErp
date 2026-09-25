@@ -68,7 +68,7 @@ const PRESETS = {
     monthly: { rows: ['party'], columns: 'month', measures: ['value'] },
     profit: { rows: ['product'], columns: '', measures: ['qty', 'value', 'profit'] }
 };
-const PROFIT_VIEWS = [['product', 'Product-wise'], ['doc', 'Bill-wise'], ['party', 'Customer-wise'], ['product_group', 'Group-wise'], ['area', 'Area-wise'], ['month', 'Month-wise']];
+const PROFIT_VIEWS = [['product', 'Product-wise'], ['doc', 'Bill-wise'], ['party', 'Customer-wise'], ['product_group', 'Group-wise'], ['area', 'Area-wise'], ['month', 'Month-wise'], ['batch', 'Batch-wise'], ['serial', 'Serial-wise']];
 const TITLES = { analysis: '📈 Sales / Purchase Analysis', monthly: '🗓 Monthly Analysis', profit: '💹 Profitability' };
 
 const defaultConfig = mode => {
@@ -77,7 +77,7 @@ const defaultConfig = mode => {
         side: 'sales', date_from: `${d.getFullYear()}-01-01`, date_to: iso(d), kinds: ['main', 'return', 'nonsalable'],
         rows: PRESETS[mode].rows, columns: PRESETS[mode].columns, column_measure: mode === 'profit' ? 'profit' : 'net_value',
         measures: PRESETS[mode].measures, display_unit_id: '', sort_by: 'name', top: '', cost_method: 'moving_average',
-        search: '', doc_no: '', udf_field: '', udf_text: '', ...Object.fromEntries(FILTERS.map(([k]) => [k, []]))
+        search: '', doc_no: '', udf_field: '', udf_text: '', compare: '', compare_from: '', compare_to: '', ...Object.fromEntries(FILTERS.map(([k]) => [k, []]))
     };
 };
 
@@ -112,6 +112,7 @@ export default function SalesPurchaseAnalysis({ mode = 'analysis' }) {
             if (cfg.doc_no) p.set('doc_no', cfg.doc_no);
             if (cfg.udf_field && cfg.udf_text.trim()) p.set('udf_filter', `${cfg.udf_field}:${cfg.udf_text.trim()}`);
             if (isProfit) p.set('cost_method', cfg.cost_method);
+            if (cfg.compare) { p.set('compare', cfg.compare); if (cfg.compare === 'custom') { p.set('compare_from', cfg.compare_from); p.set('compare_to', cfg.compare_to); } }
             FILTERS.forEach(([k]) => { if (cfg[k].length) p.set(k, cfg[k].join(',')); });
             const res = await authFetch(`/api/reports/${isProfit ? 'profitability' : 'trade-analysis'}?${p}`);
             setData(res.data); setCollapsed(new Set());
@@ -122,6 +123,13 @@ export default function SalesPurchaseAnalysis({ mode = 'analysis' }) {
     const side = data?.side || config.side;
     const defs = measureDefs(side, data?.display_unit).filter(m => config.measures.includes(m.grp) && (m.grp !== 'profit' || data?.with_cost));
     const colMeasure = COLUMN_MEASURES.find(m => m.key === config.column_measure) || COLUMN_MEASURES[0];
+    // comparison columns: previous figure, change and change % for net value / qty (+ profit)
+    const cmpKeys = data?.compare ? [['net_value', 'Net Value', true], ['net_qty', 'Net Qty', false], ...(data.with_cost ? [['profit', 'Profit', true]] : [])] : [];
+    const n2 = (v, money) => (v === null || v === undefined ? '' : money ? Number(v).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : Number(v).toLocaleString('en-IN', { maximumFractionDigits: 3 }));
+    const cmpCells = n => cmpKeys.map(([k, , money]) => [
+        <td key={`${k}p`} className="text-right tabular-nums text-gray-500 bg-amber-50">{n2(n.prev?.[k], money)}</td>,
+        <td key={`${k}c`} className={`text-right tabular-nums bg-amber-50 ${(n.change?.[k] || 0) < 0 ? 'text-red-600' : 'text-green-700'}`}>{n2(n.change?.[k], money)}</td>,
+        <td key={`${k}%`} className={`text-right tabular-nums bg-amber-50 ${(n.change?.[k] || 0) < 0 ? 'text-red-600' : 'text-green-700'}`}>{n.change_pct?.[k] === null || n.change_pct?.[k] === undefined ? (n.prev?.[k] ? '' : 'new') : `${n.change_pct[k]}%`}</td>]);
     const cell = (m, def) => {
         if (!m) return '';
         if (def.render) return def.render(m);
@@ -213,7 +221,8 @@ export default function SalesPurchaseAnalysis({ mode = 'analysis' }) {
                         <div className="erp-field"><label className="erp-label">Cost method</label>
                             <select className="erp-select" value={config.cost_method} onChange={e => set('cost_method', e.target.value)}>
                                 {Object.entries(METHOD_LABELS).map(([k, l]) => <option key={k} value={k}>{l}</option>)}
-                            </select></div>
+                            </select>
+                            <span className="text-[11px] text-gray-500">Batch / serial items follow System Control (FIFO / LIFO / batch-wise / serial-wise).</span></div>
                     )}
                 </div>
 
@@ -230,6 +239,14 @@ export default function SalesPurchaseAnalysis({ mode = 'analysis' }) {
                             <option value="">(none - measures)</option>
                             {dims.filter(d => !config.rows.includes(d.key)).map(d => <option key={d.key} value={d.key}>{d.label}</option>)}
                         </select></div>
+                    <div className="erp-field"><label className="erp-label">Compare with</label>
+                        <select className="erp-select" value={config.compare} onChange={e => set('compare', e.target.value)}>
+                            <option value="">No comparison</option><option value="previous">Previous period (same length)</option><option value="last_year">Same period last year</option><option value="custom">Custom period</option>
+                        </select></div>
+                    {config.compare === 'custom' && <>
+                        <div className="erp-field"><label className="erp-label">Compare from</label><input type="date" className="erp-input" value={config.compare_from} onChange={e => set('compare_from', e.target.value)} /></div>
+                        <div className="erp-field"><label className="erp-label">Compare to</label><input type="date" className="erp-input" value={config.compare_to} onChange={e => set('compare_to', e.target.value)} /></div>
+                    </>}
                     {config.columns && (
                         <div className="erp-field"><label className="erp-label">Column shows</label>
                             <select className="erp-select" value={config.column_measure} onChange={e => set('column_measure', e.target.value)}>
@@ -296,6 +313,8 @@ export default function SalesPurchaseAnalysis({ mode = 'analysis' }) {
                         <p className="text-xs text-gray-500 mb-1">
                             {data.side === 'purchase' ? 'Purchase' : 'Sales'} · {data.from} to {data.to} · {data.kinds.map(k => KINDS.find(x => x.key === k)?.label).join(' + ')}
                             {data.with_cost && ` · Cost: ${data.cost_method_label}`} · {data.line_count} lines · Qty in base unit unless noted
+                            {data.compare && ` · Compared with ${data.compare.label}: ${data.compare.from} to ${data.compare.to}`}
+                            {data.tree?.lost?.length > 0 && <span className="block text-amber-700">Only in the comparison period ({data.tree.lost.length}): {data.tree.lost.slice(0, 15).map(x => x.label).join(', ')}{data.tree.lost.length > 15 ? ' …' : ''}</span>}
                         </p>
                         <table className="erp-grid-table w-full text-sm">
                             <thead>
@@ -305,6 +324,7 @@ export default function SalesPurchaseAnalysis({ mode = 'analysis' }) {
                                     {data.column_dim && data.columns.map(c => <th key={c.key} className="text-right whitespace-nowrap">{c.label}</th>)}
                                     {data.column_dim && <th className="text-right bg-blue-50">Total</th>}
                                     {defs.map(d => <th key={d.key} className={`text-right whitespace-nowrap ${d.grp === 'profit' ? 'bg-green-50' : ''}`}>{d.label}</th>)}
+                                    {cmpKeys.map(([k, label]) => [<th key={`${k}p`} className="text-right whitespace-nowrap bg-amber-50">{label} (prev)</th>, <th key={`${k}c`} className="text-right bg-amber-50">Change</th>, <th key={`${k}%`} className="text-right bg-amber-50">Change %</th>])}
                                 </tr>
                                 {data.column_dim && <tr><th colSpan={2 + data.columns.length + 1 + defs.length} className="text-left text-xs font-normal text-gray-500">Columns: {data.column_dim.label} - {colMeasure.label}</th></tr>}
                             </thead>
@@ -327,6 +347,7 @@ export default function SalesPurchaseAnalysis({ mode = 'analysis' }) {
                                                     {cell(n.measures, d)}{d.unitKey && n.measures[d.unitKey] && Number(n.measures[d.key]) ? <span className="text-[10px] text-gray-400 ml-0.5">{n.measures[d.unitKey]}</span> : null}
                                                 </td>
                                             ))}
+                                            {cmpCells(n)}
                                         </tr>
                                     );
                                 })}
@@ -339,6 +360,7 @@ export default function SalesPurchaseAnalysis({ mode = 'analysis' }) {
                                         {data.column_dim && data.columns.map(c => <td key={c.key} className="text-right tabular-nums">{colCell(data.tree.cols[c.key])}</td>)}
                                         {data.column_dim && <td className="text-right tabular-nums">{colCell(data.tree.measures)}</td>}
                                         {defs.map(d => <td key={d.key} className="text-right tabular-nums whitespace-nowrap">{d.q && d.key !== 'net_qty' && d.key !== 'main_qty' && d.key !== 'return_qty' ? '' : cell(data.tree.measures, d)}</td>)}
+                                        {cmpCells(data.tree)}
                                     </tr>
                                 </tfoot>
                             )}
