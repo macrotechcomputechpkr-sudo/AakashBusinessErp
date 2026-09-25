@@ -130,7 +130,7 @@ const DOCS = {
     cash_bank_entry: { table: 'cash_bank_entries', party: 'party_ledger_id', label: 'Receipt / Payment' },
     pdc: { table: 'pdc_vouchers', party: 'party_ledger_id', label: 'PDC' }
 };
-async function buildContext(c, t, docType, docId, partyId) {
+async function buildContext(c, t, docType, docId, partyId, { allowNoParty = false } = {}) {
     const { data: co } = await c.from('company_profile').select('company_name, contact_phone, contact_mobile').eq('tenant_id', t).maybeSingle();
     const ctx = { company_name: co?.company_name || '', company_phone: co?.contact_mobile || co?.contact_phone || '' };
     let ledgerId = partyId || null;
@@ -155,6 +155,7 @@ async function buildContext(c, t, docType, docId, partyId) {
             ctx.items = (lines || []).slice(0, 25).map(l => `${l.product_name_snapshot || ''} x ${Number(l.qty)} ${l.uom_name_snapshot || ''} = ${fmt(l.amount)}`).join('\n') + ((lines || []).length > 25 ? `\n... +${lines.length - 25} more` : '');
         }
     }
+    if (!ledgerId && allowNoParty) return ctx;            // a message to a staff member (notifications)
     if (!ledgerId) throw httpError('No party for this message');
     const { data: led } = await c.from('ledger_accounts').select('id, account_name, billing_name, email, contact_person_mobile, phone_office').eq('id', ledgerId).maybeSingle();
     Object.assign(ctx, { party_name: led?.billing_name || led?.account_name || '', _email: led?.email || '', _phone: led?.contact_person_mobile || led?.phone_office || '', _ledger: ledgerId });
@@ -219,13 +220,13 @@ async function sendMessage(c, t, userId, b, { fetchImpl = globalThis.fetch, auto
     if (!CHANNELS[b.channel]) throw httpError('Choose Email, SMS, WhatsApp or Viber');
     const s = await settings(c, t);
     const event = b.event || (b.document_type ? Object.keys(EVENTS).find(k => EVENTS[k].doc === b.document_type) : 'custom') || 'custom';
-    const ctx = await buildContext(c, t, b.document_type || (event === 'outstanding_reminder' ? 'party' : null), b.document_id, b.party_id);
+    const ctx = await buildContext(c, t, b.document_type || (event === 'outstanding_reminder' ? 'party' : null), b.document_id, b.party_id, { allowNoParty: !!(b.to && b.body && !b.document_type) });
     const tpl = b.body ? null : await pickTemplate(c, t, event, b.channel, b.template_id);
     if (!b.body && !tpl) throw httpError(`No ${CHANNELS[b.channel]} template for "${EVENTS[event]?.label || event}" - add one under Messaging > Templates`);
     const text = fill(b.body || tpl.body, ctx), subject = b.channel === 'email' ? fill(b.subject || tpl?.subject || `${ctx.doc_type || 'Message'} ${ctx.doc_no || ''} - ${ctx.company_name}`, ctx) : null;
     const cc = s.default_country_code || '977';
     const to = b.channel === 'email' ? String(b.to || ctx._email || '').trim() : normalizePhone(b.to || ctx._phone, cc);
-    const base = { channel: b.channel, event, document_type: b.document_type || null, document_id: b.document_id || null, party_ledger_id: ctx._ledger, recipient: to || null,
+    const base = { channel: b.channel, event, document_type: b.document_type || null, document_id: b.document_id || null, party_ledger_id: ctx._ledger || null, recipient: to || null,
         subject, body: text, template_id: tpl?.id || null, is_auto: !!auto, created_by: userId || null };
     if (!to && !(b.channel === 'viber' && (s.viber_mode || 'link') === 'link')) {
         await log(c, t, { ...base, status: 'failed', error: b.channel === 'email' ? 'Party has no email' : 'Party has no mobile number' });

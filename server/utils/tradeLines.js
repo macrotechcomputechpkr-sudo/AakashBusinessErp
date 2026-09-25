@@ -22,6 +22,7 @@
 // over lines; all figures are the lines' own.
 // =============================================
 const { toBaseQtyFromDual, getDualUomMode } = require('./dualUomCalculation');
+const { reportScope } = require('./dataAccess');
 
 const round2 = n => Math.round((Number(n) || 0) * 100) / 100;
 const round4 = n => Math.round((Number(n) || 0) * 10000) / 10000;
@@ -226,6 +227,12 @@ async function loadTradeLines(c, t, f, opts = {}) {
         }
     }
     lines.sort((a, b) => a.doc_date.localeCompare(b.doc_date) || String(a.doc_no).localeCompare(String(b.doc_no)));
+    // data access rules: reports see (and total) only the user's parties / products
+    const scope = await reportScope();
+    if (scope) {
+        const a = scope.allow;
+        return { lines: lines.filter(l => a.product(l.product_id) && a.ledger(l.party_id) && a.area(l.area_id)), masters: M };
+    }
     return { lines, masters: M };
 }
 

@@ -71,7 +71,7 @@ LANGUAGE sql IMMUTABLE AS $$
         'message_log', 'document_print_log', 'document_numbering_counters',
         'stock_movements', 'nonsaleable_stock_movements', 'ledger_transaction_batches',
         'ledger_transaction_lines', 'bill_wise_references', 'bank_reco_learning',
-        'dashboard_layouts', 'list_view_presets', 'report_saved_views', 'saved_report_views'
+        'dashboard_layouts', 'list_view_presets', 'report_saved_views', 'saved_report_views', 'notifications'
     ])
 $$;
 

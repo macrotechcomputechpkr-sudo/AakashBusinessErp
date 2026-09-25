@@ -150,6 +150,8 @@ export const AuthProvider = ({ children }) => {
         <AuthContext.Provider value={{
             user, tenant, tenants, loading, error, initializing,
             login, logout, switchTenant, authFetch,
+            // after a successful password change (clears the forced-change flag)
+            passwordChanged: () => persist({ user: user ? { ...user, must_change_password: false } : user }),
             isSuperAdmin: user?.is_global_admin || false,
             requiresCompanyCreation
         }}>

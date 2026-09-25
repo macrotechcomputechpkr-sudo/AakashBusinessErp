@@ -96,7 +96,8 @@ router.post('/login', async (req, res) => {
             return res.json({
                 success: true,
                 token,
-                user: { id: user.id, email: user.email, full_name: user.full_name, is_global_admin: true, role: 'super_admin' },
+                user: { id: user.id, email: user.email, full_name: user.full_name, is_global_admin: true, role: 'super_admin', must_change_password: !!user.must_change_password },
+                must_change_password: !!user.must_change_password,
                 is_super_admin: true,
                 tenants: await getUserTenants(user.id, true)
             });
@@ -144,8 +145,10 @@ router.post('/login', async (req, res) => {
                 full_name: user.full_name,
                 is_global_admin: false,
                 role: user.role,
-                tenant_id: tenant.id
+                tenant_id: tenant.id,
+                must_change_password: !!user.must_change_password
             },
+            must_change_password: !!user.must_change_password,
             tenant: {
                 id: tenant.id,
                 tenant_code: tenant.tenant_code,
@@ -159,6 +162,39 @@ router.post('/login', async (req, res) => {
     } catch (error) {
         console.error('Login error:', error);
         res.status(500).json({ success: false, error: 'Login failed. Please try again.' });
+    }
+});
+
+// Change my own password (also the forced change after a default login:
+// superadmin@businesserp.com.np / admin@businesserp.com.np).
+const STRONG = p => typeof p === 'string' && p.length >= 8 && /[A-Za-z]/.test(p) && /\d/.test(p);
+router.post('/change-password', requireAuth, async (req, res) => {
+    try {
+        const { current_password, new_password } = req.body || {};
+        if (!STRONG(new_password)) return res.status(400).json({ success: false, error: 'New password: at least 8 characters with letters and numbers' });
+        if (new_password === current_password) return res.status(400).json({ success: false, error: 'Choose a password different from the current one' });
+        const { data: user, error } = await globalMasterDb.from('global_users').select('id, tenant_id, password_hash').eq('id', req.auth.userId).single();
+        if (error || !user) return res.status(404).json({ success: false, error: 'User not found' });
+        let ok = false;
+        try { ok = await bcrypt.compare(String(current_password || ''), user.password_hash); } catch { ok = false; }
+        if (!ok) return res.status(401).json({ success: false, error: 'The current password is wrong' });
+        const hash = await bcrypt.hash(new_password, 10);
+        const row = { password_hash: hash, must_change_password: false, password_changed_at: new Date().toISOString(), updated_at: new Date().toISOString() };
+        let upd = await globalMasterDb.from('global_users').update(row).eq('id', user.id);
+        if (upd.error && /must_change_password|password_changed_at/.test(upd.error.message)) upd = await globalMasterDb.from('global_users').update({ password_hash: hash }).eq('id', user.id);
+        if (upd.error) throw upd.error;
+        // keep the company's users row in step (it also stores the hash)
+        if (user.tenant_id) {
+            try {
+                const { getTenantClient } = require('../utils/dbHelpers');
+                const c = await getTenantClient(user.tenant_id);
+                await c.from('users').update({ password_hash: hash, force_password_change: false, last_password_change: new Date().toISOString() }).eq('id', user.id);
+            } catch (e) { console.error('tenant users password sync:', e.message); }
+        }
+        await logAudit(user.tenant_id, user.id, 'change_password', 'user', user.id, { ip: req.ip });
+        res.json({ success: true, message: 'Password changed' });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
     }
 });
 

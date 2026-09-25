@@ -18,6 +18,7 @@
 // module, stock status; quantities can be shown in any unit of the item.
 // =============================================
 const { itemMovement: rawMovement, METHODS, MODULE_LABEL, TRANSFER_KEYS, costingSettings, methodFor, keyEvents } = require('./stockEngine');
+const { reportScope } = require('./dataAccess');
 // Batch / serial products are costed per System Control (FIFO / LIFO / average or batch-wise / serial-wise).
 const moveOf = (f, p, events, from, to) => { const e = methodFor(p, f.method, f.cs); return rawMovement(keyEvents(events, e.keyBy), e.method, from, to); };
 
@@ -139,6 +140,8 @@ async function loadProducts(c, t, f) {
         return q;
     });
     if (groupIds) products = products.filter(p => groupIds.has(p.product_group_id));
+    const scope = await reportScope();                  // data access rules (utils/dataAccess.js)
+    if (scope) products = products.filter(p => scope.allow.product(p.id));
     if (f.search) products = products.filter(p => [p.product_name, p.product_code, p.hs_code].some(v => v && String(v).toLowerCase().includes(f.search)));
 
     const [groups, companies, units, categories, links] = await Promise.all([

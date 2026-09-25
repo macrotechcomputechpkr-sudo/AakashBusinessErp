@@ -10,6 +10,8 @@
 
 const jwt = require('jsonwebtoken');
 const { runWithContext } = require('../utils/requestContext');
+// loaded lazily: dataAccess -> dbHelpers would otherwise load before the env is ready in some tests
+let dataAccess = null;
 
 const JWT_SECRET = process.env.JWT_SECRET || 'global-super-secret-key';
 
@@ -31,7 +33,11 @@ function requireAuth(req, res, next) {
         };
         // who / from where - read by the database audit trigger (utils/requestContext.js)
         const ip = String(req.headers['x-forwarded-for'] || req.ip || '').split(',')[0].trim();
-        return runWithContext({ userId: decoded.userId, ip, route: `${req.method} ${String(req.originalUrl || '').split('?')[0]}` }, next);
+        const ctx = { userId: decoded.userId, tenantId: decoded.tenantId || null, isSuperAdmin: !!decoded.isSuperAdmin, method: req.method,
+            ip, route: `${req.method} ${String(req.originalUrl || '').split('?')[0]}` };
+        // data access rules (utils/dataAccess.js): refuse hidden ids, filter responses
+        if (!dataAccess) dataAccess = require('../utils/dataAccess');
+        return runWithContext(ctx, () => dataAccess.guard(req, res, next));
     } catch (err) {
         if (err.name === 'TokenExpiredError') {
             return res.status(401).json({ success: false, error: 'Session expired, please log in again' });
