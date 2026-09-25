@@ -235,6 +235,13 @@ router.put('/pdc-vouchers/:id/status', requireAuth, loadUserPermissions, require
         if (['posted', 'returned', 'cancelled'].includes(existing.status) && !(existing.status === 'posted' && allowedFromPosted)) {
             return res.status(400).json({ success: false, error: `Cannot change a ${existing.status} PDC` });
         }
+        // The Bank Ledger may be chosen at posting time (PDC dashboard) when the PDC has none yet.
+        if (status === 'posted' && req.body.bank_ledger_id && existing.status === 'pending' && req.body.bank_ledger_id !== existing.bank_ledger_id) {
+            const { data: bank } = await tenantClient.from('ledger_accounts').select('account_name').eq('id', req.body.bank_ledger_id).eq('tenant_id', tenantId).maybeSingle();
+            if (!bank) return res.status(400).json({ success: false, error: 'Bank Ledger not found' });
+            await tenantClient.from('pdc_vouchers').update({ bank_ledger_id: req.body.bank_ledger_id, bank_ledger_name_snapshot: bank.account_name }).eq('id', existing.id).eq('tenant_id', tenantId);
+            existing.bank_ledger_id = req.body.bank_ledger_id;
+        }
         if (status === 'posted' && !existing.bank_ledger_id) return res.status(400).json({ success: false, error: 'A Bank Ledger is required before posting this PDC' });
         if (status === 'returned' && existing.status === 'posted') {
             const blockMsg = await checkCanCancelIfSettled(tenantClient, tenantId, 'pdc', req.params.id);

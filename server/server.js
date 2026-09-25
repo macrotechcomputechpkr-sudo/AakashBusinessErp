@@ -19,6 +19,8 @@ app.use(cors({
         callback(new Error('Not allowed by CORS'));
     }
 }));
+// Purchase Bill Import sends a whole bill's text - parsed here first, with its own limit.
+app.use('/api/purchase-bill-import', express.json({ limit: '5mb' }));
 app.use(express.json());
 
 const authRoutes = require('./routes/authRoutes');
@@ -79,6 +81,8 @@ const financialReportRoutes = require('./routes/financialReportRoutes');
 const stockReportRoutes = require('./routes/stockReportRoutes');
 const stockAdjustmentRoutes = require('./routes/stockAdjustmentRoutes');
 const stockPostingRoutes = require('./routes/stockPostingRoutes');
+const analysisReportRoutes = require('./routes/analysisReportRoutes');
+const purchaseBillImportRoutes = require('./routes/purchaseBillImportRoutes');
 const ledgerReportRoutes = require('./routes/ledgerReportRoutes');
 const lcRoutes = require('./routes/lcRoutes');
 const savedReportViewRoutes = require('./routes/savedReportViewRoutes');
@@ -152,6 +156,8 @@ app.use('/api', financialReportRoutes);
 app.use('/api', stockReportRoutes);
 app.use('/api', stockAdjustmentRoutes);
 app.use('/api', stockPostingRoutes);
+app.use('/api', analysisReportRoutes);
+app.use('/api', purchaseBillImportRoutes);
 app.use('/api', ledgerReportRoutes);
 app.use('/api', lcRoutes);
 app.use('/api', savedReportViewRoutes);

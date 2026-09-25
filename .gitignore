@@ -14,3 +14,5 @@ npm-debug.log*
 Thumbs.db
 .vscode/
 .idea/
+# OCR assets copied from node_modules by client/scripts/copy-ocr-assets.js
+client/public/ocr/

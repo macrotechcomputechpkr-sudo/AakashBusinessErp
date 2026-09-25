@@ -8,7 +8,9 @@
 // (branch_warehouse_mapping). With System Control "Branch transfer
 // receipt = In Transit", Post only dispatches (stock leaves the source
 // warehouse) and Receive brings it into the destination on the receiving
-// date. Optional GL posting: utils/stockAccounting.js.
+// date - only by a user of the receiving (To) branch. Optional GL posting
+// (utils/stockAccounting.js) on dispatch and on receipt; with posting off
+// the stock still moves at value (line cost rate, else current cost).
 // =============================================
 
 const express = require('express');
@@ -31,7 +33,50 @@ async function resolveBaseQtyAndCost(tenantClient, d) {
         return { baseQty, unitCost };
     }
     const baseQty = await toBaseUnitQty(tenantClient, d.product_id, d.qty, d.uom_id);
-    return { baseQty, unitCost: d.cost_rate || 0 };
+    // cost_rate is per the line's unit; the stock ledger keeps cost per base unit.
+    const costRate = Number(d.cost_rate) || 0;
+    if (product?.uom_mode === 'fixed_dual' && d.rate_basis === 'secondary') return { baseQty, unitCost: costRate };   // already per base unit
+    return { baseQty, unitCost: baseQty > 0 ? costRate * (Number(d.qty) || 0) / baseQty : costRate };
+}
+
+// A line posted without a cost rate would move stock at zero value (the
+// receiving warehouse would show it free). Fill it with the current cost
+// (moving average on the transfer date, else last purchase rate) and
+// re-total the document. Returns warnings for lines still without cost.
+async function fillMissingCost(tenantClient, tenantId, transfer, details) {
+    const warnings = [];
+    let changed = false;
+    for (const d of details) {
+        if (Number(d.cost_rate) > 0) continue;
+        const { baseQty } = await resolveBaseQtyAndCost(tenantClient, d);
+        const { rate } = await stockAcc.currentCost(tenantClient, tenantId, d.product_id, String(transfer.doc_date).slice(0, 10));
+        if (!(rate > 0)) { warnings.push(`${d.product_name_snapshot || d.product_id}: no cost rate and no stock cost found - moved at zero value`); continue; }
+        const { data: product } = await tenantClient.from('products').select('uom_mode').eq('id', d.product_id).maybeSingle();
+        const patch = product?.uom_mode === 'fixed_dual' && d.alt_qty
+            ? { rate_basis: 'secondary', cost_rate: Math.round(rate * 10000) / 10000 }        // per base (secondary) unit
+            : { cost_rate: Math.round((Number(d.qty) > 0 ? rate * baseQty / Number(d.qty) : rate) * 10000) / 10000,
+                ...(product?.uom_mode === 'fixed_dual' ? { rate_basis: 'primary' } : {}) };                // per the line's unit
+        patch.amount = Math.round(baseQty * rate * 100) / 100;
+        const { error } = await tenantClient.from('stock_transfer_details').update(patch).eq('id', d.id);
+        if (error) throw error;
+        Object.assign(d, patch);
+        changed = true;
+    }
+    if (changed) {
+        const total = Math.round(details.reduce((s, d) => s + (Number(d.amount) || 0), 0) * 100) / 100;
+        const { error } = await tenantClient.from('stock_transfers').update({ total_amount: total }).eq('id', transfer.id);
+        if (error) throw error;
+        transfer.total_amount = total;
+    }
+    return warnings;
+}
+
+// Only the receiving branch receives: a user whose branch is the To Branch.
+// Super admins and users with no branch (head office) may receive for any.
+async function canReceive(tenantClient, auth, doc) {
+    if (auth.isSuperAdmin || !doc.to_branch_id) return true;
+    const { data: user } = await tenantClient.from('users').select('default_branch_id').eq('id', auth.userId).maybeSingle();
+    return !user?.default_branch_id || user.default_branch_id === doc.to_branch_id;
 }
 
 function validateBody(b, isDraft) {
@@ -226,7 +271,7 @@ async function postTransferGl(tenantClient, tenantId, transfer, acc, step, userI
 }
 
 // Fields the client may never set directly.
-const PROTECTED = ['gl_posted', 'requires_receipt', 'received_date', 'received_by', 'received_at', 'posted_by', 'posted_at', 'approved_by', 'approved_at',
+const PROTECTED = ['gl_posted', 'requires_receipt', 'received_date', 'received_by', 'received_at', 'receive_remarks', 'posted_by', 'posted_at', 'approved_by', 'approved_at',
     'cancelled_by', 'cancelled_at', 'status', 'doc_no', 'tenant_id', 'id', 'created_by', 'created_at', 'total_amount'];
 
 // Accounts a transfer would post to (for the entry screen).
@@ -244,6 +289,9 @@ router.get('/stock-transfers', requireAuth, loadUserPermissions, requirePermissi
         const tenantClient = await getTenantClient(req.auth.tenantId);
         const { data, error } = await tenantClient.from('stock_transfers').select('*').eq('tenant_id', req.auth.tenantId).order('doc_date', { ascending: false });
         if (error) throw error;
+        const { data: user } = await tenantClient.from('users').select('default_branch_id').eq('id', req.auth.userId).maybeSingle();
+        const myBranch = req.auth.isSuperAdmin ? null : user?.default_branch_id || null;
+        (data || []).forEach(r => { r.can_receive = !myBranch || !r.to_branch_id || r.to_branch_id === myBranch; });
         res.json({ success: true, data });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
@@ -376,6 +424,8 @@ router.put('/stock-transfers/:id', requireAuth, loadUserPermissions, requirePerm
         const update = { ...b, ...snapshots, transfer_type: merged.transfer_type, updated_by: req.auth.userId, updated_at: new Date().toISOString() };
         if (merged.transfer_type !== 'branch') update.from_branch_id = null;
         PROTECTED.forEach(k => delete update[k]);
+        // A cleared picker arrives as '' - store NULL (UUID / date columns reject '').
+        Object.keys(update).forEach(k => { if (update[k] === '') update[k] = null; });
         delete update.branch_id;
         delete update.details;
         delete update.save_as_draft;
@@ -426,8 +476,8 @@ router.put('/stock-transfers/:id/status', requireAuth, loadUserPermissions, requ
                 if (stockCheck.blocked && !req.body.override_negative_stock_warning) {
                     return res.status(400).json({ success: false, error: 'Insufficient stock to post this transfer', warnings: stockCheck.warnings });
                 }
-                stockWarnings = stockCheck.warnings;
-                if (accounts.posts && !(Number(existing.total_amount) > 0)) stockWarnings.push('No cost rate on the lines, so no GL entry was made - stock moved only');
+                stockWarnings = [...stockCheck.warnings, ...await fillMissingCost(tenantClient, tenantId, existing, detailsForCheck || [])];
+                if (accounts.posts && !(Number(existing.total_amount) > 0)) stockWarnings.push('No value on the lines, so no GL entry was made - stock moved only');
             }
         }
 
@@ -442,6 +492,7 @@ router.put('/stock-transfers/:id/status', requireAuth, loadUserPermissions, requ
             update.approved_at = new Date().toISOString();
         }
         if (status === 'posted') {
+            update.total_amount = existing.total_amount;       // after fillMissingCost
             update.posted_by = req.auth.userId;
             update.posted_at = new Date().toISOString();
             update.requires_receipt = accounts.two_step;
@@ -489,6 +540,9 @@ router.put('/stock-transfers/:id/receive', requireAuth, loadUserPermissions, req
         if (!doc) return res.status(404).json({ success: false, error: 'Stock Transfer not found' });
         if (doc.status !== 'posted' || !doc.requires_receipt) return res.status(400).json({ success: false, error: 'Only a dispatched (In Transit) transfer can be received' });
         if (doc.received_date) return res.status(400).json({ success: false, error: `Already received on ${String(doc.received_date).slice(0, 10)}` });
+        if (!await canReceive(tenantClient, req.auth, doc)) {
+            return res.status(403).json({ success: false, error: `Only ${doc.to_branch_name_snapshot || 'the receiving branch'} can receive this transfer` });
+        }
         const receivedDate = req.body.received_date || new Date().toISOString().slice(0, 10);
         if (receivedDate < String(doc.doc_date).slice(0, 10)) return res.status(400).json({ success: false, error: 'Receiving date cannot be before the dispatch date' });
 

@@ -7,10 +7,16 @@
     "react-dom": "^18.2.0",
     "react-router-dom": "^6.18.0",
     "react-scripts": "5.0.1",
-    "nepali-date-converter": "^3.0.0"
+    "nepali-date-converter": "^3.0.0",
+    "tesseract.js": "^7.0.0",
+    "@tesseract.js-data/eng": "^1.0.0",
+    "pdfjs-dist": "3.11.174"
   },
   "scripts": {
+    "postinstall": "node scripts/copy-ocr-assets.js",
+    "prestart": "node scripts/copy-ocr-assets.js",
     "start": "react-scripts start",
+    "prebuild": "node scripts/copy-ocr-assets.js",
     "build": "react-scripts build",
     "test": "react-scripts test",
     "eject": "react-scripts eject"
