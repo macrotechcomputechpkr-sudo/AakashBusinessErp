@@ -1,0 +1,107 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* =============================================================
+   ERP DESKTOP THEME (own design - NOT a copy of any reference
+   screenshot's HTML/CSS/branding/icon/layout). This is an original
+   interpretation of the common "desktop business application" genre
+   (compact rows, tabbed forms, a top bar for identity fields, a
+   bottom bar for narration + actions) - the same broad genre used by
+   many unrelated ERP products, expressed here with this project's own
+   color palette, spacing, and component structure.
+   ============================================================= */
+@layer components {
+  .erp-shell { @apply bg-slate-100 min-h-screen py-4; }
+  .erp-card { @apply max-w-6xl mx-auto bg-white rounded-md shadow-md border border-slate-300 overflow-hidden; }
+
+  .erp-header {
+    @apply flex items-center justify-between px-4 py-2 border-b-2;
+    background: linear-gradient(to bottom, #2d3f5c, #24334a);
+    border-color: #1a2740;
+  }
+  .erp-header-title { @apply text-white text-sm font-semibold tracking-wide; }
+  .erp-header-actions { @apply flex items-center gap-1.5; }
+  .erp-header-btn { @apply px-3 py-1 text-xs font-medium rounded border border-slate-300 bg-white text-slate-700 hover:bg-slate-100; }
+  .erp-header-btn.primary { @apply bg-blue-700 border-blue-700 text-white hover:bg-blue-800; }
+  .erp-header-btn.danger { @apply text-red-600 hover:bg-red-50 hover:border-red-400; }
+
+  .erp-topbar { @apply grid gap-3 bg-slate-50 border-b border-slate-200 px-4 py-2.5; }
+  .erp-field { @apply flex flex-col gap-0.5; }
+  .erp-label { @apply text-[11px] font-semibold text-slate-500 uppercase tracking-wide; }
+  .erp-label .req { @apply text-red-500 ml-0.5; }
+  .erp-label .hint { @apply text-[10px] font-normal normal-case text-slate-400; }
+  .erp-input, .erp-select {
+    @apply border border-slate-300 rounded px-2.5 py-1.5 text-[13px] bg-white h-8 w-full;
+  }
+  .erp-input:focus, .erp-select:focus { @apply outline-none border-blue-600 ring-2 ring-blue-100; }
+  .erp-input[disabled], .erp-input:read-only { @apply bg-slate-100 text-slate-500; }
+
+  .erp-tabs { @apply flex gap-0 bg-slate-50 border-b border-slate-300 px-4 overflow-x-auto; }
+  .erp-tab { @apply px-3.5 py-2 text-[13px] font-medium text-slate-500 border-b-2 border-transparent hover:text-slate-800 hover:bg-slate-100 whitespace-nowrap; }
+  .erp-tab.active { @apply text-blue-700 border-blue-700 bg-white; }
+
+  .erp-tab-content { @apply p-4 bg-white min-h-[280px]; }
+
+  .erp-grid-table { @apply w-full text-[13px]; }
+  .erp-grid-table thead th { @apply text-left text-[11px] font-semibold text-slate-500 uppercase px-2 py-1.5 bg-slate-50 border-b border-slate-300; }
+  .erp-grid-table tbody td { @apply px-2 py-1 border-b border-slate-100; }
+  .erp-grid-table tbody tr:hover { @apply bg-blue-50/40; }
+
+  .erp-bottombar { @apply flex flex-col md:flex-row gap-3 items-stretch md:items-end justify-between bg-slate-50 border-t border-slate-300 px-4 py-3; }
+  .erp-bottombar-actions { @apply flex items-center gap-2; }
+
+  .erp-btn { @apply px-4 py-2 text-sm font-medium rounded border border-slate-300 bg-white text-slate-700 hover:bg-slate-100; }
+  .erp-btn.primary { @apply bg-blue-700 border-blue-700 text-white hover:bg-blue-800; }
+  .erp-btn.danger { @apply text-red-600 border-red-300 hover:bg-red-50; }
+  .erp-btn.ghost { @apply border-transparent text-blue-700 hover:bg-blue-50; }
+}
+
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen',
+    'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+code {
+  font-family: source-code-pro, Menlo, Monaco, Consolas, 'Courier New', monospace;
+}
+
+/* =============================================
+   DESKTOP-DENSE FORM STYLING
+   FIX: forms across the app used the default airy Tailwind spacing
+   (py-2 inputs, text-base), which reads more like a marketing website
+   than a desktop accounting app. Rather than hand-editing every single
+   input's className across every page (dozens of repeated occurrences),
+   these base-layer overrides tighten every standard form control
+   site-wide: smaller padding, smaller text, tighter focus ring, denser
+   table rows - closer to a Tally/Busy-style dense desktop UI.
+   Per-element classes (px-3 py-2 etc.) still work visually on top of
+   this; these rules just lower the baseline so the whole app feels
+   denser without a page-by-page rewrite. If an even denser, fully
+   custom look is wanted later, this is the place to keep extending it.
+   ============================================= */
+input, select, textarea, button {
+  font-size: 0.8125rem; /* 13px - denser than Tailwind's default text-sm (14px) */
+}
+
+input[type="text"], input[type="email"], input[type="password"], input[type="number"],
+input[type="date"], input[type="tel"], input[type="search"], select, textarea {
+  line-height: 1.25;
+}
+
+table {
+  font-size: 0.8125rem;
+}
+table th, table td {
+  padding-top: 0.375rem !important;
+  padding-bottom: 0.375rem !important;
+}
+
+/* Slightly tighter default label spacing to match a dense desktop form look */
+label {
+  font-size: 0.8125rem;
+}
