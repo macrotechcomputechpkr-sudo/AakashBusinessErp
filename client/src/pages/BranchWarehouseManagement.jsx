@@ -182,6 +182,7 @@ export default function BranchWarehouseManagement() {
                     )}
                     <ReportGrid columns={branchColumns} rows={branches}
                         getId={(r) => r.id} storageKey="branch_grid"
+                auditTable="branches"
                         onCellEdit={handleBranchCellEdit}
                         rowActions={(row) => <button onClick={() => deleteBranch(row)} className="px-2 py-1 bg-red-600 text-white rounded text-xs">Deactivate</button>}
                     />
@@ -214,6 +215,7 @@ export default function BranchWarehouseManagement() {
                     )}
                     <ReportGrid columns={warehouseColumns} rows={warehouses}
                         getId={(r) => r.id} storageKey="warehouse_grid"
+                auditTable="warehouses"
                         onCellEdit={handleWarehouseCellEdit}
                         rowActions={(row) => <button onClick={() => deleteWarehouse(row)} className="px-2 py-1 bg-red-600 text-white rounded text-xs">Deactivate</button>}
                     />

@@ -221,6 +221,7 @@ export default function CostProfitCenters() {
                         </form>
                     )}
                     <ReportGrid columns={costColumns} rows={costCenters} getId={(r) => r.id} storageKey="cost_center_grid"
+                auditTable="cost_centers"
                         rowActions={(row) => (
                             <div className="flex gap-2 justify-center">
                                 <button onClick={() => handleEditCost(row)} className="px-2 py-1 bg-blue-600 text-white rounded text-xs">Edit</button>
@@ -299,6 +300,7 @@ export default function CostProfitCenters() {
                         </form>
                     )}
                     <ReportGrid columns={profitColumns} rows={profitCenters} getId={(r) => r.id} storageKey="profit_center_grid"
+                auditTable="profit_centers"
                         rowActions={(row) => (
                             <div className="flex gap-2 justify-center">
                                 <button onClick={() => handleEditProfit(row)} className="px-2 py-1 bg-blue-600 text-white rounded text-xs">Edit</button>

@@ -119,6 +119,7 @@ export default function ProductUnitManagement() {
                 rows={rows}
                 getId={r => r.id}
                 storageKey="product_unit_grid"
+                auditTable="product_units"
                 onCellEdit={handleCellEdit}
                 rowActions={(row) => (
                     <div className="flex gap-2 justify-center">

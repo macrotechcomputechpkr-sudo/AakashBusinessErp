@@ -22,6 +22,7 @@ import { resolveDualUomEntryMode, onPrimaryQtyChange, onSecondaryQtyChange, vali
 import { useEnterKeyNavigation } from '../hooks/useEnterKeyNavigation';
 import { formatDateForDisplay } from '../utils/nepaliDateUtils';
 import UdfValuesModal from '../components/UdfValuesModal';
+import RecordHistory from '../components/RecordHistory';
 
 const emptyDetailRow = () => ({
     product_id: '', batch_no: '', mfg_date: '', exp_date: '',
@@ -319,14 +320,7 @@ export default function StockTransfer() {
 
     const [udfDoc, setUdfDoc] = useState(null);
 
-    const openAuditTrail = async (row) => {
-        try {
-            const res = await authFetch(`/api/stock-transfers/${row.id}/audit-trail`);
-            setAuditModal({ doc_no: row.doc_no, entries: res.data || [] });
-        } catch (err) {
-            showAlert(err.message, 'danger');
-        }
-    };
+    const openAuditTrail = (row) => setAuditModal({ id: row.id, doc_no: row.doc_no });
 
     const side = (branch, wh) => [branch, wh].filter(Boolean).join(' · ') || '—';
     const columns = [
@@ -782,27 +776,7 @@ export default function StockTransfer() {
             </div>
         )}
 
-        {auditModal && (
-            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                <div className="bg-white rounded-xl p-6 w-full max-w-2xl max-h-[80vh] overflow-y-auto">
-                    <h3 className="font-semibold text-lg mb-4">History — {auditModal.doc_no}</h3>
-                    {auditModal.entries.length === 0 && <p className="text-sm text-gray-400">No history recorded yet.</p>}
-                    <div className="space-y-2">
-                        {auditModal.entries.map(e => (
-                            <div key={e.id} className="border rounded-lg px-3 py-2 text-sm">
-                                <div className="flex justify-between text-xs text-gray-400">
-                                    <span>{e.action}</span>
-                                    <span>{e.performer?.full_name || 'Unknown'} · {new Date(e.performed_at).toLocaleString()}</span>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                    <div className="flex justify-end mt-4">
-                        <button onClick={() => setAuditModal(null)} className="px-4 py-2 border rounded-lg">Close</button>
-                    </div>
-                </div>
-            </div>
-        )}
+        {auditModal && <RecordHistory table="stock_transfers" id={auditModal.id} title={auditModal.doc_no} legacyUrl={`/api/stock-transfers/${auditModal.id}/audit-trail`} onClose={() => setAuditModal(null)} />}
         </div>
         </Layout>
     );

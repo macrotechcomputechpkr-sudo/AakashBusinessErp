@@ -12,6 +12,7 @@ const express = require('express');
 const bcrypt = require('bcrypt');
 const router = express.Router();
 const { createClient } = require('@supabase/supabase-js');
+const { auditFetch } = require('../utils/requestContext');
 const { globalMasterDb, logAudit } = require('../utils/dbHelpers');
 const { requireAuth, requireSuperAdmin } = require('../middleware/auth');
 
@@ -115,7 +116,7 @@ router.post('/company/create', requireAuth, async (req, res) => {
             return res.status(404).json({ success: false, error: 'Tenant database configuration not found' });
         }
 
-        const tenantClient = createClient(tenant.master_db_host, tenant.master_db_anon_key);
+        const tenantClient = createClient(tenant.master_db_host, tenant.master_db_anon_key, { global: { fetch: auditFetch } });
 
         const { data: companyProfile, error: companyError } = await tenantClient
             .from('company_profile')
@@ -210,7 +211,7 @@ router.get('/company/profile', requireAuth, async (req, res) => {
             return res.json({ success: true, is_company_created: false, message: 'Company profile not created yet' });
         }
 
-        const tenantClient = createClient(tenant.master_db_host, tenant.master_db_anon_key);
+        const tenantClient = createClient(tenant.master_db_host, tenant.master_db_anon_key, { global: { fetch: auditFetch } });
         const { data: profile, error: profileError } = await tenantClient
             .from('company_profile')
             .select('*')

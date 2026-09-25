@@ -69,6 +69,7 @@ import ControlReports from './pages/ControlReports';
 import ReportCenter from './pages/ReportCenter';
 import AnalyticsReports from './pages/AnalyticsReports';
 import Messaging from './pages/Messaging';
+import AuditLog from './pages/AuditLog';
 import LedgerMapping from './pages/LedgerMapping';
 import CostProfitCenters from './pages/CostProfitCenters';
 import BillingTermManagement from './pages/BillingTermManagement';
@@ -201,6 +202,7 @@ function AppRoutes() {
             <Route path="/reports" element={<PrivateRoute><ReportCenter /></PrivateRoute>} />
             <Route path="/analytics" element={<PrivateRoute><AnalyticsReports /></PrivateRoute>} />
             <Route path="/messaging" element={<PrivateRoute><Messaging /></PrivateRoute>} />
+            <Route path="/audit-log" element={<PrivateRoute><AuditLog /></PrivateRoute>} />
             <Route path="/ledger-mapping" element={<PrivateRoute><LedgerMapping /></PrivateRoute>} />
             <Route path="/cost-profit-centers" element={<PrivateRoute><CostProfitCenters /></PrivateRoute>} />
             <Route path="/billing-terms" element={<PrivateRoute><BillingTermManagement /></PrivateRoute>} />

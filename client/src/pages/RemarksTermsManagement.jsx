@@ -174,6 +174,7 @@ export default function RemarksTermsManagement() {
                     rows={remarks}
                     getId={r => r.id}
                     storageKey="remarks_grid"
+                auditTable="remarks_master"
                     rowActions={(row) => (
                         <div className="flex gap-2 justify-center">
                             <button onClick={() => handleEditRemark(row)} className="px-2 py-1 bg-blue-600 text-white rounded text-xs">Edit</button>
@@ -187,6 +188,7 @@ export default function RemarksTermsManagement() {
                     rows={terms}
                     getId={r => r.id}
                     storageKey="terms_grid"
+                auditTable="terms_conditions_master"
                     rowActions={(row) => (
                         <div className="flex gap-2 justify-center">
                             <button onClick={() => handleEditTerm(row)} className="px-2 py-1 bg-blue-600 text-white rounded text-xs">Edit</button>

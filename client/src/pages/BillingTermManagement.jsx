@@ -482,6 +482,7 @@ export default function BillingTermManagement() {
                 rows={rows}
                 getId={r => r.id}
                 storageKey="billing_term_grid"
+                auditTable="billing_terms"
                 rowActions={(row) => (
                     <div className="flex gap-2 justify-center">
                         <button onClick={() => handleEdit(row)} className="px-2 py-1 bg-blue-600 text-white rounded text-xs">Edit</button>
