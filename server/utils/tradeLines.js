@@ -144,7 +144,7 @@ async function loadTradeLines(c, t, f, opts = {}) {
     // Party master: name, and area / route / agent when the document has none.
     const partyIds = [...new Set(headersBySource.flat().map(h => h[partyKey]).filter(Boolean))];
     const parties = Object.fromEntries((await inChunks(partyIds, async ids => {
-        const { data, error } = await c.from('ledger_accounts').select('id, account_code, account_name, area_id, route_id, agent_id').eq('tenant_id', t).in('id', ids);
+        const { data, error } = await c.from('ledger_accounts').select('id, account_code, account_name, area_id, route_id, agent_id, billing_address, street, city, phone_office, contact_person_mobile, contact_person_phone').eq('tenant_id', t).in('id', ids);
         if (error) throw error; return data || [];
     })).map(p => [p.id, p]));
 
@@ -191,7 +191,11 @@ async function loadTradeLines(c, t, f, opts = {}) {
                 party_bill_no: h.party_bill_no || null, line_id: d.id, source_bill_id: h.source_bill_id || null, status: h.status,
                 source_delivery_id: h.source_delivery_id || null, source_delivery_detail_id: d.source_delivery_detail_id || null,
                 uom_id: d.uom_id || null, alt_unit_id: d.alt_unit_id || null,
-                vehicle_no: h.vehicle_no || null, driver_name: h.driver_name || null, delivery_address: h.delivery_address || null, doc_total: Number(h.total_amount) || 0,
+                vehicle_no: h.vehicle_no || null, driver_name: h.driver_name || null, delivery_address: h.delivery_address || null,
+                doc_total: Number(h.total_amount) || 0, doc_tax: Number(h.total_tax_amount) || 0,
+                party_address: party ? party.billing_address || [party.street, party.city].filter(Boolean).join(', ') : '',
+                party_phone: party ? [party.phone_office, party.contact_person_mobile || party.contact_person_phone].filter(Boolean).join(', ') : '',
+                uom_mode: p.uom_mode || 'single',
                 party_id: h[partyKey] || (h.cash_vendor_name ? `cash:${h.cash_vendor_name.trim().toLowerCase()}` : null),
                 party_name: h.customer_name_snapshot || h.vendor_name_snapshot || party?.account_name || (h.cash_vendor_name ? `${h.cash_vendor_name} (cash)` : '(no party)'),
                 party_code: party?.account_code || '',

@@ -7,9 +7,14 @@
 // delivery is not counted twice); returns optional (own column, deducted
 // from Net). Filters: date range, customer, bill, agent, area, route, item,
 // group, company, branch, warehouse, vehicle, draft.
-// Qty shown as chosen: base unit, as entered (5 Box + 12 Pcs), split into
-// chosen units (2 Ctn 3 Box 4 Pcs), one chosen unit, alt qty, dual qty,
-// free qty separate or added.
+// Qty shown as chosen: by the item's UOM mode (fixed dual "5 Crt 2 Pcs ·
+// Total 62 Pcs", flexible "5 Crt = 10 Pcs"), base unit, as entered, split
+// into chosen units (2 Ctn 3 Box 4 Pcs), one chosen unit, alt qty, dual
+// qty, free qty separate or added.
+// Amounts per item: basic, discount, VAT, each bill-level term (Sales
+// Additional Entries of the bill, spread over its lines), term total and
+// net amount - item net amounts add up to the bill totals. Optional Bill
+// Summary with the fields the user picks.
 // =============================================
 import React, { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
@@ -22,9 +27,20 @@ const fmtQ = n => (Number(n) ? (Math.round(Number(n) * 10000) / 10000).toLocaleS
 const parts = list => (list || []).map(p => `${fmtQ(p.qty)} ${p.unit}`).join(' + ');
 
 const QTY_VIEWS = [
-    { key: 'breakdown', label: 'Split into units (2 Ctn 3 Box 4 Pcs)' }, { key: 'entered', label: 'As entered (5 Box + 12 Pcs)' },
-    { key: 'base', label: 'Base unit qty' }, { key: 'in_unit', label: 'Qty in one unit' }, { key: 'alt', label: 'Alt qty' },
-    { key: 'dual', label: 'Dual qty (Crt + Pcs)' }, { key: 'free', label: 'Free qty' }, { key: 'value', label: 'Value' }
+    { key: 'uom', label: 'By UOM mode (5 Crt 2 Pcs · Total 62 Pcs / 5 Crt = 10 Pcs)' }, { key: 'breakdown', label: 'Split into units (2 Ctn 3 Box 4 Pcs)' },
+    { key: 'entered', label: 'As entered (5 Box + 12 Pcs)' }, { key: 'base', label: 'Base unit qty' }, { key: 'in_unit', label: 'Qty in one unit' },
+    { key: 'alt', label: 'Alt qty' }, { key: 'dual', label: 'Dual qty (Crt + Pcs)' }, { key: 'free', label: 'Free qty' }
+];
+const AMOUNT_VIEWS = [
+    { key: 'basic', label: 'Basic Amount' }, { key: 'discount', label: 'Discount' }, { key: 'vat', label: 'VAT' },
+    { key: 'other', label: 'Bill terms (each)' }, { key: 'term', label: 'Term Amount (total)' }, { key: 'net_amount', label: 'Net Amount' }
+];
+const BILL_FIELDS = [
+    { key: 'doc_no', label: 'Bill No' }, { key: 'doc_date', label: 'Date' }, { key: 'party_name', label: 'Customer' }, { key: 'agent_name', label: 'Agent' },
+    { key: 'party_address', label: 'Address' }, { key: 'party_phone', label: 'Phone' }, { key: 'route_name', label: 'Route' }, { key: 'area_name', label: 'Area' },
+    { key: 'vehicle_no', label: 'Vehicle' }, { key: 'items', label: 'Items' }, { key: 'basic', label: 'Basic Amount', amt: true },
+    { key: 'discount', label: 'Discount', amt: true }, { key: 'vat', label: 'VAT', amt: true }, { key: 'other', label: 'Bill terms (each)', amt: true },
+    { key: 'term', label: 'Term Amount', amt: true }, { key: 'net_amount', label: 'Net Amount', amt: true }, { key: 'sign', label: 'Received / Sign' }
 ];
 const FILTERS = [
     ['party_ids', 'Customer', m => m.customers], ['agent_ids', 'Salesman / Agent', m => m.agents], ['area_ids', 'Area (+ sub)', m => m.areas],
@@ -34,8 +50,9 @@ const FILTERS = [
 const defaultConfig = () => ({
     date_from: iso(new Date()), date_to: iso(new Date()), sources: ['bill'], include_returns: false, include_draft: false,
     doc_ids: [], vehicle_no: '', search: '', ...Object.fromEntries(FILTERS.map(([k]) => [k, []])),
-    views: ['breakdown', 'entered', 'free'], breakdown_unit_ids: [], display_unit_id: '', free: 'separate',
-    group_by: 'none', sort_by: 'name', sections: ['items', 'bills']
+    views: ['uom', 'free'], amounts: ['basic', 'term', 'net_amount'], breakdown_unit_ids: [], display_unit_id: '', free: 'separate',
+    group_by: 'none', sort_by: 'name', sections: ['items', 'bills'],
+    bill_fields: ['doc_no', 'doc_date', 'party_name', 'agent_name', 'party_address', 'party_phone', 'route_name', 'area_name', 'basic', 'term', 'net_amount', 'sign']
 });
 
 export default function LoadingSheet() {
@@ -83,16 +100,26 @@ export default function LoadingSheet() {
     const V = k => config.views.includes(k);
     const R = !!data?.with_returns;
     // Qty cells of one presentation block (load / returned / net).
+    const A = k => config.amounts.includes(k);
+    const termNames = data?.term_names || [];
     const qtyCols = [
-        V('breakdown') && { key: 'breakdown', label: `Qty${data?.breakdown_units?.length ? ` (${data.breakdown_units.join(' / ')})` : ''}`, get: q => q.breakdown, strong: true },
+        V('uom') && { key: 'uom', label: 'Qty (UOM)', get: q => q.uom, strong: true },
+        V('breakdown') && { key: 'breakdown', label: `Qty${data?.breakdown_units?.length ? ` (${data.breakdown_units.join(' / ')})` : ' (split)'}`, get: q => q.breakdown, strong: !V('uom') },
         V('entered') && { key: 'entered', label: 'As entered', get: q => parts(q.entered) },
         V('base') && { key: 'base', label: 'Base Qty', get: q => `${fmtQ(q.base_qty)} ${q.base_unit}` },
         V('in_unit') && data?.display_unit && { key: 'in_unit', label: `Qty (${data.display_unit})`, get: q => (q.in_unit ? `${fmtQ(q.in_unit.qty)}${q.in_unit.fallback ? ` ${q.in_unit.unit}` : ''}` : '') },
         V('alt') && { key: 'alt', label: 'Alt Qty', get: q => parts(q.alt) },
         V('dual') && { key: 'dual', label: 'Dual Qty', get: q => q.dual || '' },
         V('free') && data?.free === 'separate' && { key: 'free', label: 'Free (base)', get: q => fmtQ(q.free) },
-        V('value') && { key: 'value', label: 'Value', get: q => fmt2(q.value), num: true }
+        A('basic') && { key: 'basic', label: 'Basic Amt', get: q => fmt2(q.basic), num: true },
+        A('discount') && { key: 'discount', label: 'Discount', get: q => fmt2(q.discount), num: true },
+        A('vat') && { key: 'vat', label: 'VAT', get: q => fmt2(q.vat), num: true },
+        ...(A('other') ? termNames.map(n => ({ key: `o:${n}`, label: n, get: q => fmt2(q.other?.[n]), num: true })) : []),
+        A('term') && { key: 'term', label: 'Term Amt', get: q => fmt2(q.term), num: true },
+        A('net_amount') && { key: 'net_amount', label: 'Net Amount', get: q => fmt2(q.net_amount), num: true, strong: true }
     ].filter(Boolean);
+    // Bill summary columns.
+    const billCols = BILL_FIELDS.filter(f => config.bill_fields.includes(f.key)).flatMap(f => (f.key === 'other' ? termNames.map(n => ({ key: `o:${n}`, label: n, amt: true, get: b => b.other?.[n] })) : [{ ...f, get: b => b[f.key] }]));
     const blocks = R ? [['load', 'Loaded'], ['returned', 'Returned'], ['net', 'Net']] : [['load', null]];
 
     const groups = (() => {
@@ -108,8 +135,9 @@ export default function LoadingSheet() {
         const head = ['Code', 'Item', ...(data.group_by !== 'none' ? ['Group'] : []), ...blocks.flatMap(([, bl]) => qtyCols.map(c => (bl ? `${bl} ${c.label}` : c.label))), 'Bills'];
         const rows = data.items.map(r => [r.product_code, r.product_name, ...(data.group_by !== 'none' ? [r.group_name] : []), ...blocks.flatMap(([k]) => qtyCols.map(c => c.get(r[k]))), r.docs]);
         rows.push([]);
-        rows.push(['Document', 'No', 'Date', 'Customer', 'Area', 'Route', 'Agent', 'Vehicle', 'Items', 'Amount']);
-        data.bills.forEach(b => rows.push([b.doc_label, b.doc_no, b.doc_date, b.party_name, b.area_name, b.route_name, b.agent_name, b.vehicle_no || '', b.items, b.kind === 'main' || b.kind === 'delivery' ? b.amount : -b.amount]));
+        const bc = billCols.filter(f => f.key !== 'sign');
+        rows.push(['Document', ...bc.map(f => f.label)]);
+        data.bills.forEach(b => { const sg = b.kind === 'main' || b.kind === 'delivery' ? 1 : -1; rows.push([b.doc_label, ...bc.map(f => (f.amt ? sg * (Number(f.get(b)) || 0) : f.get(b) ?? ''))]); });
         const esc = v => (/[",\n]/.test(String(v ?? '')) ? `"${String(v).replace(/"/g, '""')}"` : v ?? '');
         const a = document.createElement('a');
         a.href = URL.createObjectURL(new Blob(['﻿' + [head, ...rows].map(r => r.map(esc).join(',')).join('\r\n')], { type: 'text/csv;charset=utf-8' }));
@@ -153,6 +181,10 @@ export default function LoadingSheet() {
                         <div className="flex flex-wrap gap-3 text-sm items-center">
                             {QTY_VIEWS.map(v => <label key={v.key} className="flex items-center gap-1"><input type="checkbox" checked={V(v.key)} onChange={() => toggle('views', v.key)} /> {v.label}</label>)}
                         </div></div>
+                    <div className="erp-field mb-2"><label className="erp-label">Item amounts</label>
+                        <div className="flex flex-wrap gap-3 text-sm items-center">
+                            {AMOUNT_VIEWS.map(v => <label key={v.key} className="flex items-center gap-1"><input type="checkbox" checked={config.amounts.includes(v.key)} onChange={() => toggle('amounts', v.key)} /> {v.label}</label>)}
+                        </div></div>
                     <div className="grid grid-cols-2 md:grid-cols-6 gap-3 mb-2">
                         {meta && V('breakdown') && <MultiPick label="Split into units" allLabel="All units of each item" items={meta.units || []} value={config.breakdown_unit_ids} onChange={v => set('breakdown_unit_ids', v)} />}
                         {meta && V('in_unit') && (
@@ -174,9 +206,16 @@ export default function LoadingSheet() {
                             <select className="erp-select" value={config.sort_by} onChange={e => set('sort_by', e.target.value)}><option value="name">Name</option><option value="code">Code</option></select></div>
                         <div className="erp-field"><label className="erp-label">Print sections</label>
                             <div className="flex flex-wrap gap-2 text-sm items-center min-h-9">
-                                {[['items', 'Items'], ['bills', 'Bills'], ['detail', 'Bill x Item']].map(([k, l]) => <label key={k} className="flex items-center gap-1"><input type="checkbox" checked={config.sections.includes(k)} onChange={() => toggle('sections', k)} /> {l}</label>)}
+                                {[['items', 'Items'], ['bills', 'Bill Summary'], ['detail', 'Bill x Item']].map(([k, l]) => <label key={k} className="flex items-center gap-1"><input type="checkbox" checked={config.sections.includes(k)} onChange={() => toggle('sections', k)} /> {l}</label>)}
                             </div></div>
                     </div>
+
+                    {config.sections.includes('bills') && (
+                        <div className="erp-field mb-2"><label className="erp-label">Bill Summary fields</label>
+                            <div className="flex flex-wrap gap-3 text-sm items-center">
+                                {BILL_FIELDS.map(f => <label key={f.key} className="flex items-center gap-1"><input type="checkbox" checked={config.bill_fields.includes(f.key)} onChange={() => toggle('bill_fields', f.key)} /> {f.label}</label>)}
+                            </div></div>
+                    )}
 
                     <div className="flex gap-2 mb-3">
                         <button className="erp-btn primary" onClick={() => run()} disabled={loading}>{loading ? 'Loading…' : '🔍 Show'}</button>
@@ -199,7 +238,7 @@ export default function LoadingSheet() {
                                 {config.route_ids.length > 0 && ` · Route: ${nameOf(meta?.routes, config.route_ids)}`}
                                 {data.vehicles.length > 0 && ` · Vehicle: ${data.vehicles.join(', ')}`}
                             </p>
-                            <p className="text-xs text-gray-600">{data.totals.bills} documents · {data.totals.customers} customers · {data.totals.items} items · Amount {fmt2(data.totals.amount)}{data.with_returns ? ` · Returns ${data.totals.returns} (${fmt2(data.totals.return_amount)})` : ''}</p>
+                            <p className="text-xs text-gray-600">{data.totals.bills} documents · {data.totals.customers} customers · {data.totals.items} items · Net Amount {fmt2(data.totals.load.net_amount)}{data.with_returns ? ` · Returns ${data.totals.returns} (${fmt2(data.totals.returned.net_amount)}) · Net after returns ${fmt2(data.totals.net_amount)}` : ''}</p>
                         </div>
 
                         {config.sections.includes('items') && (
@@ -230,18 +269,29 @@ export default function LoadingSheet() {
                                         ))}
                                         {data.items.length === 0 && <tr><td colSpan={4 + blocks.length * qtyCols.length} className="text-center text-gray-400 py-4">Nothing to load for these filters.</td></tr>}
                                     </tbody>
+                                    {data.items.length > 0 && qtyCols.some(c => c.num) && (
+                                        <tfoot><tr className="font-bold bg-blue-50">
+                                            <td colSpan={3} className="text-right">Total</td>
+                                            {blocks.map(([k]) => qtyCols.map(c => {
+                                                if (!c.num) return <td key={`${k}${c.key}`} />;
+                                                const field = c.key.startsWith('o:') ? null : c.key;
+                                                const v = data.items.reduce((s, r) => s + (Number(field ? r[k]?.[field] : r[k]?.other?.[c.key.slice(2)]) || 0), 0);
+                                                return <td key={`${k}${c.key}`} className="text-right tabular-nums">{fmt2(v)}</td>;
+                                            }))}
+                                            <td />
+                                        </tr></tfoot>
+                                    )}
                                 </table>
                             </div>
                         )}
 
                         {config.sections.includes('bills') && (
                             <div className="overflow-x-auto mb-4">
-                                <p className="font-semibold mb-1">Bills</p>
+                                <p className="font-semibold mb-1">Bill Summary</p>
                                 <table className="erp-grid-table w-full">
                                     <thead><tr>
-                                        <th className="text-left w-8">#</th><th className="text-left">Document</th><th className="text-left">Date</th><th className="text-left">Customer</th>
-                                        <th className="text-left">Area / Route</th><th className="text-left">Agent</th><th className="text-left">Vehicle</th><th className="text-right">Items</th>
-                                        <th className="text-right">Amount</th><th className="text-left w-28">Received / Sign</th>
+                                        <th className="text-left w-8">#</th>
+                                        {billCols.map(f => <th key={f.key} className={`${f.amt ? 'text-right' : 'text-left'} whitespace-nowrap ${f.key === 'sign' ? 'w-28' : ''}`}>{f.label}</th>)}
                                     </tr></thead>
                                     <tbody>
                                         {data.bills.map((b, i) => {
@@ -249,15 +299,26 @@ export default function LoadingSheet() {
                                             return (
                                                 <tr key={b.doc_id} className={ret ? 'text-red-700' : ''}>
                                                     <td className="text-gray-400">{i + 1}</td>
-                                                    <td>{b.doc_no} <span className="text-[10px] text-gray-500">{b.kind === 'delivery' ? 'GDN' : ret ? b.doc_label : ''}{b.status === 'draft' ? ' (draft)' : ''}</span></td>
-                                                    <td>{b.doc_date}</td><td>{b.party_name}{b.delivery_address ? <div className="text-[10px] text-gray-500">{b.delivery_address}</div> : null}</td>
-                                                    <td>{[b.area_name, b.route_name].filter(Boolean).join(' / ')}</td><td>{b.agent_name}</td><td>{b.vehicle_no || ''}</td>
-                                                    <td className="text-right">{b.items}</td><td className="text-right tabular-nums">{ret ? '-' : ''}{fmt2(b.amount)}</td><td />
+                                                    {billCols.map(f => (
+                                                        <td key={f.key} className={f.amt ? 'text-right tabular-nums whitespace-nowrap' : ''}>
+                                                            {f.key === 'sign' ? '' : f.amt ? `${ret && Number(f.get(b)) ? '-' : ''}${fmt2(f.get(b))}` : f.get(b) ?? ''}
+                                                            {f.key === 'doc_no' && <span className="text-[10px] text-gray-500 ml-1">{b.kind === 'delivery' ? 'GDN' : ret ? b.doc_label : ''}{b.status === 'draft' ? ' (draft)' : ''}</span>}
+                                                        </td>
+                                                    ))}
                                                 </tr>
                                             );
                                         })}
                                     </tbody>
-                                    <tfoot><tr className="font-bold bg-blue-50"><td colSpan={8} className="text-right">Total</td><td className="text-right tabular-nums">{fmt2(data.totals.amount - (data.with_returns ? data.totals.return_amount : 0))}</td><td /></tr></tfoot>
+                                    {billCols.some(f => f.amt) && (
+                                        <tfoot><tr className="font-bold bg-blue-50">
+                                            <td />
+                                            {billCols.map((f, i) => {
+                                                if (!f.amt) return <td key={f.key} className="text-right">{i === billCols.findIndex(x => x.amt) - 1 ? 'Total' : ''}</td>;
+                                                const v = data.bills.reduce((s, b) => s + (b.kind === 'return' || b.kind === 'nonsalable' ? -1 : 1) * (Number(f.get(b)) || 0), 0);
+                                                return <td key={f.key} className="text-right tabular-nums">{fmt2(v)}</td>;
+                                            })}
+                                        </tr></tfoot>
+                                    )}
                                 </table>
                             </div>
                         )}
@@ -273,11 +334,11 @@ export default function LoadingSheet() {
                                                 {b.lines.map((l, i) => (
                                                     <tr key={i}>
                                                         <td className="w-1/3">{l.product_name}</td>
-                                                        <td>{fmtQ(l.qty)} {l.unit}{l.alt_qty ? ` + ${fmtQ(l.alt_qty)} ${l.alt_unit}` : ''}</td>
-                                                        <td className="text-gray-500">{l.dual || `${fmtQ(l.base_qty)} ${l.base_unit}`}</td>
+                                                        <td>{l.uom}</td>
                                                         <td className="text-gray-500">{l.free_qty ? `Free ${fmtQ(l.free_qty)}` : ''}</td>
                                                         <td className="text-gray-500">{l.batch_no || ''}</td>
-                                                        <td className="text-right tabular-nums">{fmt2(l.amount)}</td>
+                                                        <td className="text-right tabular-nums text-gray-500">{fmt2(l.basic)}</td>
+                                                        <td className="text-right tabular-nums font-semibold">{fmt2(l.net_amount)}</td>
                                                     </tr>
                                                 ))}
                                             </tbody>
