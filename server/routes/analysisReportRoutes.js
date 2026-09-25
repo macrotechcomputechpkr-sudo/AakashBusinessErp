@@ -7,6 +7,8 @@
 //   GET /reports/trade-meta          filter pickers + dimension list
 //   GET /reports/loading-sheet       utils/loadingSheet.js (+ /docs for the bill picker)
 //   GET /reports/ageing              utils/ageing.js (+ /meta)
+//   GET /reports/stock-ageing, /reports/stock-expiry, /reports/reorder   utils/stockHealth.js
+//   GET /reports/consignment-cost    utils/consignmentCost.js
 // =============================================
 const express = require('express');
 const router = express.Router();
@@ -17,6 +19,8 @@ const { tradeAnalysis, profitability, rateHistory, dimensionList } = require('..
 const { tradeMeta } = require('../utils/tradeLines');
 const { loadingSheet, loadingSheetDocs } = require('../utils/loadingSheet');
 const { ageing, ageingMeta } = require('../utils/ageing');
+const { stockAgeing, expiryReport, reorderReport } = require('../utils/stockHealth');
+const { consignmentCost } = require('../utils/consignmentCost');
 
 const guard = [requireAuth, loadUserPermissions, requirePermission('reports', 'view')];
 const wrap = fn => async (req, res) => {
@@ -36,6 +40,10 @@ router.get('/reports/loading-sheet', ...guard, wrap((c, t, q) => loadingSheet(c,
 router.get('/reports/loading-sheet/docs', ...guard, wrap((c, t, q) => loadingSheetDocs(c, t, q)));
 router.get('/reports/ageing', ...guard, wrap((c, t, q) => ageing(c, t, q)));
 router.get('/reports/ageing/meta', ...guard, wrap((c, t) => ageingMeta(c, t)));
+router.get('/reports/stock-ageing', ...guard, wrap((c, t, q) => stockAgeing(c, t, q)));
+router.get('/reports/stock-expiry', ...guard, wrap((c, t, q) => expiryReport(c, t, q)));
+router.get('/reports/reorder', ...guard, wrap((c, t, q) => reorderReport(c, t, q)));
+router.get('/reports/consignment-cost', ...guard, wrap((c, t, q) => consignmentCost(c, t, q)));
 router.get('/reports/trade-meta', ...guard, wrap(async (c, t, q) => ({
     ...(await tradeMeta(c, t)),
     dimensions: dimensionList(q.side === 'purchase' ? 'purchase' : 'sales'),

@@ -340,4 +340,4 @@ async function ageingMeta(c, t) {
         areas: list(areas, 'area_name'), routes: list(routes, 'route_name'), agents: list(agents, 'agent_name'), companies: list(companies, 'company_name') };
 }
 
-module.exports = { ageing, ageingMeta, parseBuckets };
+module.exports = { ageing, ageingMeta, parseBuckets, docInfo };
