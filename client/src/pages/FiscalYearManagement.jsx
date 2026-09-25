@@ -143,6 +143,7 @@ export default function FiscalYearManagement() {
                     rows={rows}
                     getId={(r) => r.id}
                     storageKey="fiscal_year_grid"
+                auditTable="fiscal_years"
                     rowActions={(row) => (
                         <div className="flex gap-2 justify-center">
                             {!row.is_current && !row.is_closed && (

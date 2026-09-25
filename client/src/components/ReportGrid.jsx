@@ -29,6 +29,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import ExcelFilterMenu, { distinctValues, cellKey } from './ExcelFilterMenu';
+import RecordHistory from './RecordHistory';
 
 const AGG_LABELS = { sum: 'Sum', avg: 'Average', min: 'Min', max: 'Max', count: 'Count', distinct: 'Distinct', first: 'First', last: 'Last' };
 const NUMERIC_AGGS = ['sum', 'avg', 'min', 'max', 'count', 'distinct'];
@@ -228,9 +229,21 @@ export default function ReportGrid({
     rows,
     getId,
     storageKey = 'report_grid',
-    rowActions,
+    rowActions: ownActions,
+    auditTable,     // optional tenant table name - adds a 🕘 History button (audit log, field-level changes)
+    auditTitle,     // optional row => title for that history
     onCellEdit  // optional (row, columnKey, newValue) => void - enables inline editing for columns marked `editable: true`
 }) {
+    const [historyOf, setHistoryOf] = useState(null); // { id, title } | null
+    const rowActions = auditTable
+        ? (row) => (
+            <div className="flex gap-2 justify-center items-center">
+                {ownActions && ownActions(row)}
+                <button type="button" data-enter-skip title="History - who changed what (audit log)" className="px-1.5 py-1 border rounded text-xs text-gray-600 hover:bg-gray-100"
+                    onClick={e => { e.stopPropagation(); setHistoryOf({ id: getId(row), title: auditTitle ? auditTitle(row) : String(row[columns[0]?.key] ?? '') || undefined }); }}>🕘</button>
+            </div>
+        )
+        : ownActions;
     const [search, setSearch] = useState('');
     const [sort, setSort] = useState({ key: null, dir: 'asc' });
     // FEATURE: multiple, ordered group-by keys (drag column headers into the
@@ -638,6 +651,7 @@ export default function ReportGrid({
                 <AddColumnPanel numericColumns={numericColumns} onAdd={addCustomColumn} onClose={() => setPanel(null)} />
             )}
 
+            {historyOf && <RecordHistory table={auditTable} id={historyOf.id} title={historyOf.title} onClose={() => setHistoryOf(null)} />}
             {filterMenu && (
                 <ExcelFilterMenu anchor={filterMenu.anchor} title={allColumns.find(c => c.key === filterMenu.key)?.label}
                     values={distinctValues(enrichedRows.map(r => r[filterMenu.key]))} selected={valueFilters[filterMenu.key] || null}

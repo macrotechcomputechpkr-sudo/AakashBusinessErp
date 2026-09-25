@@ -9,6 +9,7 @@
 // =============================================
 
 const jwt = require('jsonwebtoken');
+const { runWithContext } = require('../utils/requestContext');
 
 const JWT_SECRET = process.env.JWT_SECRET || 'global-super-secret-key';
 
@@ -28,7 +29,9 @@ function requireAuth(req, res, next) {
             isSuperAdmin: !!decoded.isSuperAdmin,
             tenantId: decoded.tenantId || null
         };
-        return next();
+        // who / from where - read by the database audit trigger (utils/requestContext.js)
+        const ip = String(req.headers['x-forwarded-for'] || req.ip || '').split(',')[0].trim();
+        return runWithContext({ userId: decoded.userId, ip, route: `${req.method} ${String(req.originalUrl || '').split('?')[0]}` }, next);
     } catch (err) {
         if (err.name === 'TokenExpiredError') {
             return res.status(401).json({ success: false, error: 'Session expired, please log in again' });

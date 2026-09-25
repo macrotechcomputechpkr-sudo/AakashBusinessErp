@@ -368,6 +368,7 @@ export default function ProductGroupManagement() {
                         rows={groups}
                         getId={(r) => r.id}
                         storageKey="product_group_grid"
+                auditTable="product_groups"
                         rowActions={(row) => (
                             <div className="flex gap-2 justify-center">
                                 <button onClick={() => handleEditGroup(row)} className="px-2 py-1 bg-blue-600 text-white rounded text-xs">Edit</button>
@@ -499,6 +500,7 @@ export default function ProductGroupManagement() {
                         rows={companies}
                         getId={(r) => r.id}
                         storageKey="product_company_grid"
+                auditTable="product_companies"
                         rowActions={(row) => (
                             <div className="flex gap-2 justify-center">
                                 <button onClick={() => handleEditCompany(row)} className="px-2 py-1 bg-blue-600 text-white rounded text-xs">Edit</button>

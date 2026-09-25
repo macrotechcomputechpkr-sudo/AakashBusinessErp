@@ -59,3 +59,27 @@ export interface DashboardTile {
     period: string;
     title?: string;
 }
+
+/** One row of tenant_master.audit_log as returned by /api/audit-log. */
+export interface AuditEntry {
+    id: number;
+    table_name: string;
+    table_label: string;
+    module: string;
+    record_id: string | null;
+    record_label: string | null;
+    parent_table: string | null;
+    parent_id: string | null;
+    parent_label: string | null;
+    action: 'I' | 'U' | 'D';
+    action_label: string;
+    changed_fields: string[] | null;
+    old_data: Record<string, unknown> | null;
+    new_data: Record<string, unknown> | null;
+    user_id: string | null;
+    user_name: string;
+    ip_address: string | null;
+    api_route: string | null;
+    source: 'api' | 'db';
+    changed_at: string;
+}

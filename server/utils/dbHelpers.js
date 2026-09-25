@@ -10,6 +10,7 @@
 // =============================================
 
 const { createClient } = require('@supabase/supabase-js');
+const { auditFetch } = require('./requestContext');
 
 const GLOBAL_MASTER_URL = process.env.GLOBAL_MASTER_URL;
 const GLOBAL_MASTER_KEY = process.env.GLOBAL_MASTER_KEY;
@@ -32,7 +33,9 @@ const getTenantClient = async (tenantId) => {
         throw new Error('Tenant not found');
     }
 
-    const client = createClient(tenant.master_db_host, tenant.master_db_anon_key);
+    // auditFetch tags every call with the current user / IP / route for the
+    // audit log trigger (database/121_audit_log_schema.sql)
+    const client = createClient(tenant.master_db_host, tenant.master_db_anon_key, { global: { fetch: auditFetch } });
     tenantClientCache.set(tenantId, client);
     clientTenantIds.set(client, tenantId);
     return client;

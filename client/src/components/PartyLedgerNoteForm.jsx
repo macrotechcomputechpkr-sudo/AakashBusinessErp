@@ -18,6 +18,7 @@ import { amountToWords } from '../utils/numberToWords';
 import BillWiseSettlementPanel from './BillWiseSettlementPanel';
 import NumberingCategorySelector from './NumberingCategorySelector';
 import UdfValuesModal from './UdfValuesModal';
+import RecordHistory from './RecordHistory';
 
 const emptyDetailRow = () => ({ ledger_id: '', sub_ledger_id: '', product_company_id: '', amount: '', narration: '' });
 
@@ -187,14 +188,7 @@ export default function PartyLedgerNoteForm({ title, icon, apiBase, voucherType,
 
     const [udfDoc, setUdfDoc] = useState(null);
 
-    const openAuditTrail = async (row) => {
-        try {
-            const res = await authFetch(`/api/${apiBase}/${row.id}/audit-trail`);
-            setAuditModal({ doc_no: row.doc_no, entries: res.data || [] });
-        } catch (err) {
-            showAlert(err.message, 'danger');
-        }
-    };
+    const openAuditTrail = (row) => setAuditModal({ id: row.id, doc_no: row.doc_no });
 
     const columns = [
         { key: 'doc_no', label: 'No.', type: 'text' },
@@ -450,27 +444,7 @@ export default function PartyLedgerNoteForm({ title, icon, apiBase, voucherType,
             </div>
         )}
 
-        {auditModal && (
-            <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                <div className="bg-white rounded-xl p-6 w-full max-w-2xl max-h-[80vh] overflow-y-auto">
-                    <h3 className="font-semibold text-lg mb-4">History — {auditModal.doc_no}</h3>
-                    {auditModal.entries.length === 0 && <p className="text-sm text-gray-400">No history recorded yet.</p>}
-                    <div className="space-y-2">
-                        {auditModal.entries.map(e => (
-                            <div key={e.id} className="border rounded-lg px-3 py-2 text-sm">
-                                <div className="flex justify-between text-xs text-gray-400">
-                                    <span>{e.action}</span>
-                                    <span>{e.performer?.full_name || 'Unknown'} · {new Date(e.performed_at).toLocaleString()}</span>
-                                </div>
-                            </div>
-                        ))}
-                    </div>
-                    <div className="flex justify-end mt-4">
-                        <button onClick={() => setAuditModal(null)} className="px-4 py-2 border rounded-lg">Close</button>
-                    </div>
-                </div>
-            </div>
-        )}
+        {auditModal && <RecordHistory table={apiBase.replace(/-/g, '_')} id={auditModal.id} title={auditModal.doc_no} legacyUrl={`/api/${apiBase}/${auditModal.id}/audit-trail`} onClose={() => setAuditModal(null)} />}
         </div>
         </Layout>
     );

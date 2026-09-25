@@ -89,6 +89,7 @@ export const SECTIONS: MenuSection[] = [
         { to: '/ledger-mapping', label: '🔗 Ledger Mapping' },
         { to: '/system-control', label: '⚙️ System Control' },
         { to: '/entry-field-control', label: '🔒 Entry Field Control' },
+        { to: '/audit-log', label: '🕘 Audit Log (who changed what)' },
         { to: '/user-defined-fields', label: '🧩 User Defined Fields' },
         { to: '/document-numbering', label: '🔢 Document Numbering' },
         { to: '/branches-warehouses', label: '🏢 Branches & Warehouses' },
@@ -152,7 +153,7 @@ export const REPORT_GROUPS: ReportGroup[] = [
     { title: 'Control & Registers', items: [
         ['/register', 'Universal Register (all documents)'], ['/control-reports?view=cancelled_docs', 'Cancelled Documents'], ['/control-reports?view=draft_docs', 'Draft (Unposted) Documents'],
         ['/control-reports?view=master_exceptions', 'Master Data Exceptions'], ['/lc-bg-dashboard', 'LC / BG / PDC Dashboard'], ['/pdc-dashboard', 'PDC Dashboard & Report'],
-        ['/document-printing', 'Document Print Status']
+        ['/document-printing', 'Document Print Status'], ['/audit-log', 'Audit Log - all changes (old / new values)'], ['/audit-log?tab=coverage', 'Audit Coverage (tables audited)']
     ] }
 ];
 

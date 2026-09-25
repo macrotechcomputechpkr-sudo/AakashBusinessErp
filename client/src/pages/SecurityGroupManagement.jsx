@@ -200,6 +200,7 @@ export default function SecurityGroupManagement() {
                 rows={rows}
                 getId={r => r.id}
                 storageKey="security_group_grid"
+                auditTable="security_rights_groups"
                 rowActions={(row) => (
                     <div className="flex gap-2 justify-center">
                         <button onClick={() => handleEdit(row)} className="px-2 py-1 bg-blue-600 text-white rounded text-xs">

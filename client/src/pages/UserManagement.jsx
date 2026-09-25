@@ -573,6 +573,7 @@ export default function UserManagement() {
                 rows={rows}
                 getId={(r) => r.id}
                 storageKey="user_management_grid"
+                auditTable="users"
                 rowActions={(row) => (
                     <div className="flex gap-2 justify-center">
                         <button onClick={() => handleEdit(row)} className="px-2 py-1 bg-blue-600 text-white rounded text-xs">Edit</button>

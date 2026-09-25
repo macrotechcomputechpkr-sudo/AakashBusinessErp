@@ -170,6 +170,7 @@ export default function BusinessUnitManagement() {
                 rows={rows}
                 getId={(r) => r.id}
                 storageKey="business_unit_grid"
+                auditTable="business_units"
                 onCellEdit={handleCellEdit}
                 rowActions={(row) => <button onClick={() => handleDelete(row)} className="px-2 py-1 bg-red-600 text-white rounded text-xs">Deactivate</button>}
             />

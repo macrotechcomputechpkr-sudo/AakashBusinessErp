@@ -161,6 +161,7 @@ export default function ProductOfferRate() {
                 rows={rows}
                 getId={r => r.id}
                 storageKey="offer_rate_grid"
+                auditTable="product_offer_rates"
                 rowActions={(row) => <button onClick={() => handleDelete(row)} className="px-2 py-1 bg-red-600 text-white rounded text-xs">Remove</button>}
             />
         </div>
