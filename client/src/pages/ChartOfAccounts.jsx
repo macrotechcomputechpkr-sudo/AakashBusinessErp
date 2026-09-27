@@ -25,6 +25,7 @@ import { useEnterKeyNavigation } from '../hooks/useEnterKeyNavigation';
 import ReportGrid from '../components/ReportGrid';
 import Layout from '../components/Layout';
 import SearchablePopupSelect from '../components/SearchablePopupSelect';
+import useMasterCode from '../hooks/useMasterCode';
 
 const CATEGORY_OPTIONS = [
     { value: 'sales', label: 'Sales (Customer)' },
@@ -129,6 +130,14 @@ export default function ChartOfAccounts() {
     const [showAccountForm, setShowAccountForm] = useState(false);
     const [accountForm, setAccountForm] = useState(emptyAccountForm);
     const [editingAccountId, setEditingAccountId] = useState(null);
+    const [codeTick, setCodeTick] = useState(0);
+    // short name: suggested from the name until the user types their own
+    const shortTouched = useRef(false);
+    const nextCode = useMasterCode('ledger', accountForm.account_name, showAccountForm && !editingAccountId, codeTick);
+    useEffect(() => { if (!accountForm.account_name) shortTouched.current = false; }, [accountForm.account_name]);
+    useEffect(() => {
+        if (!editingAccountId && !shortTouched.current && nextCode.shortName) setAccountForm(f => ({ ...f, short_name: nextCode.shortName }));
+    }, [nextCode.shortName, editingAccountId]);
     const [ledgerFormTab, setLedgerFormTab] = useState('basic');
     const [shippingSameAsBilling, setShippingSameAsBilling] = useState(true);
     const accountFormRef = useRef(null);
@@ -251,8 +260,9 @@ export default function ChartOfAccounts() {
                 await authFetch(`/api/ledger-accounts/${editingAccountId}`, { method: 'PUT', body: JSON.stringify(accountForm) });
                 showAlert('Ledger account updated', 'success');
             } else {
-                await authFetch('/api/ledger-accounts', { method: 'POST', body: JSON.stringify(accountForm) });
-                showAlert('Ledger account created', 'success');
+                const created = await authFetch('/api/ledger-accounts', { method: 'POST', body: JSON.stringify(accountForm) });
+                showAlert(`Ledger account created${created?.data?.account_code ? ` - code ${created.data.account_code}` : ''}`, 'success');
+                setCodeTick(k => k + 1);
             }
             resetAccountForm();
             setShowAccountForm(false);
@@ -612,18 +622,8 @@ export default function ChartOfAccounts() {
                             {/* ==================== BASIC INFORMATION ==================== */}
                             <div className={ledgerFormTab === 'basic' ? 'grid grid-cols-1 md:grid-cols-2 gap-4' : 'hidden'}>
                                 <div>
-                                    <label className="erp-label">Code {!editingAccountId && <span className="text-xs text-gray-400">(preview only)</span>}</label>
-                                    <input
-                                        className="erp-input"
-                                        disabled
-                                        value={
-                                            editingAccountId
-                                                ? (accountForm.account_code || '')
-                                                : accountForm.account_group_id
-                                                    ? `${currentFyPrefix ? currentFyPrefix + '-' : ''}${groups.find(g => g.id === accountForm.account_group_id)?.group_code || '...'}-#### (auto-generated on save)`
-                                                    : 'Pick an Account Group to preview'
-                                        }
-                                    />
+                                    <label className="erp-label">Code <span className="text-xs text-gray-400">(automatic, read-only{currentFyPrefix ? ` · FY ${currentFyPrefix}` : ''})</span></label>
+                                    <input className="erp-input nav-input code" readOnly tabIndex={-1} value={editingAccountId ? (accountForm.account_code || '') : (nextCode.code || '…')} />
                                 </div>
 
                                 <div>
@@ -633,9 +633,9 @@ export default function ChartOfAccounts() {
                                 </div>
 
                                 <div>
-                                    <label className="erp-label">Short Name (Alias) <span className="text-xs text-gray-400">{editingAccountId ? '(editable)' : `(leave blank to auto-generate ${nameInitials(accountForm.account_name)}##### on save)`}</span></label>
+                                    <label className="erp-label">Short Name (Alias) <span className="text-xs text-gray-400">(filled from the name - you can change it)</span></label>
                                     <input className="erp-input" value={accountForm.short_name}
-                                        onChange={e => setAccountForm({ ...accountForm, short_name: e.target.value })}
+                                        onChange={e => { shortTouched.current = true; setAccountForm({ ...accountForm, short_name: e.target.value }); }}
                                         placeholder={!editingAccountId ? `e.g. ${nameInitials(accountForm.account_name)}00001` : ''} />
                                 </div>
 
@@ -857,14 +857,14 @@ export default function ChartOfAccounts() {
                                             <input type="number" step="0.01" min="0" className="erp-input" value={accountForm.interest_rate ?? 0} onChange={e => setAccountForm({ ...accountForm, interest_rate: e.target.value })} />
                                         </div>
                                         <div>
-                                            <label className="erp-label">Rate Category <span className="hint">(which sales rate tier this customer sees)</span></label>
+                                            <label className="erp-label">Rate Category <span className="hint">(rates this customer gets)</span></label>
                                             <select className="border rounded-lg px-2 py-2 w-full" value={accountForm.rate_category_id} onChange={e => setAccountForm({ ...accountForm, rate_category_id: e.target.value })}>
                                                 <option value="">— None —</option>
                                                 {rateCategories.map(rc => <option key={rc.id} value={rc.id}>{rc.category_name}</option>)}
                                             </select>
                                         </div>
                                         <div>
-                                            <label className="erp-label">Discount Group <span className="hint">(for company-wise auto-discount)</span></label>
+                                            <label className="erp-label">Discount Category <span className="hint">(discount rules / company-wise discount)</span></label>
                                             <select className="border rounded-lg px-2 py-2 w-full" value={accountForm.discount_group_id} onChange={e => setAccountForm({ ...accountForm, discount_group_id: e.target.value })}>
                                                 <option value="">— None —</option>
                                                 {discountGroups.map(dg => <option key={dg.id} value={dg.id}>{dg.group_name}</option>)}

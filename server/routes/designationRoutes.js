@@ -6,6 +6,7 @@
 // =============================================
 
 const express = require('express');
+const masterCodes = require('../utils/masterCodes');
 const router = express.Router();
 const { getTenantClient, loadUserPermissions, logAudit } = require('../utils/dbHelpers');
 const { requireAuth, requirePermission } = require('../middleware/auth');
@@ -45,7 +46,7 @@ router.post('/designations', requireAuth, loadUserPermissions, requirePermission
         if (dup) return res.status(409).json({ success: false, error: 'A designation with this name already exists' });
 
         const prefix = designation_name.trim().split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0, 4);
-        const { data: codeRow, error: codeErr } = await tenantClient.rpc('next_designation_code', { prefix });
+        const { data: codeRow, error: codeErr } = await masterCodes.nextRpc(tenantClient, req.auth.tenantId, 'designation');
         if (codeErr) throw codeErr;
 
         const { data, error } = await tenantClient

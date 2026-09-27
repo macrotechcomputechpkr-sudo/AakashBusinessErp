@@ -15,6 +15,7 @@ import SearchablePopupSelect from '../components/SearchablePopupSelect';
 import ReportGrid from '../components/ReportGrid';
 import Layout from '../components/Layout';
 import useLedgerPurposes from '../components/useLedgerPurposes';
+import useMasterCode from '../hooks/useMasterCode';
 
 const emptyUnitRow = () => ({
     unit_id: '', is_base_unit: false, conversion_factor: 1,
@@ -76,6 +77,22 @@ export default function ProductMaster() {
     const [showForm, setShowForm] = useState(false);
     const [form, setForm] = useState(emptyForm);
     const [editingId, setEditingId] = useState(null);
+    const [codeTick, setCodeTick] = useState(0);
+    const shortTouched = useRef(false);
+    const nextCode = useMasterCode('product', form.product_name, !editingId, codeTick);
+    useEffect(() => { if (!form.product_name) shortTouched.current = false; }, [form.product_name]);
+    useEffect(() => {
+        if (!editingId && !shortTouched.current && nextCode.shortName) setForm(f => ({ ...f, short_name: nextCode.shortName }));
+    }, [nextCode.shortName, editingId]);
+    // Multiple Rate Type: only the enabled Sr columns, labelled with their caption (System Control / Pricing)
+    const rateTypes = (sysControl?.rate_types?.length ? sysControl.rate_types : [1, 2, 3, 4, 5].map(sr => ({ sr, caption: `Sr${sr}`, enabled: true }))).filter(rt => rt.enabled);
+    const unitNameOf = id => units.find(un => un.id === id)?.unit_name || '';
+    const conversionText = u => {
+        const base = unitNameOf(form.base_unit_id) || 'base';
+        if (u.is_base_unit) return `1 ${base} = 1 ${base}`;
+        const f = Number(u.conversion_factor);
+        return f > 0 ? `1 ${unitNameOf(u.unit_id) || 'unit'} = ${f} ${base}` : '1 = ?';
+    };
     const [tab, setTab] = useState('basic');
     const [alert, setAlert] = useState(null);
     const formRef = useRef(null);
@@ -134,8 +151,9 @@ export default function ProductMaster() {
                 await authFetch(`/api/products/${editingId}`, { method: 'PUT', body: JSON.stringify(form) });
                 showAlert('Product updated', 'success');
             } else {
-                await authFetch('/api/products', { method: 'POST', body: JSON.stringify(form) });
-                showAlert('Product created', 'success');
+                const created = await authFetch('/api/products', { method: 'POST', body: JSON.stringify(form) });
+                showAlert(`Product created${created?.data?.product_code ? ` - code ${created.data.product_code}` : ''}`, 'success');
+                setCodeTick(k => k + 1);
             }
             resetForm();
             setShowForm(false);
@@ -268,12 +286,12 @@ export default function ProductMaster() {
                             <input className="erp-input" value={form.product_name} onChange={e => setForm({ ...form, product_name: e.target.value })} required />
                         </div>
                         <div>
-                            <label className="erp-label">Short Name</label>
-                            <input className="erp-input" value={form.short_name} onChange={e => setForm({ ...form, short_name: e.target.value })} />
+                            <label className="erp-label">Short Name <span className="text-xs text-gray-400">(filled from the name - you can change it)</span></label>
+                            <input className="erp-input" value={form.short_name} onChange={e => { shortTouched.current = true; setForm({ ...form, short_name: e.target.value }); }} />
                         </div>
                         <div>
-                            <label className="erp-label">Code <span className="text-xs text-gray-400">(preview only)</span></label>
-                            <input className="erp-input" disabled value={editingId ? (form.product_code || '') : 'Auto-generated on save'} />
+                            <label className="erp-label">Code <span className="text-xs text-gray-400">(automatic, read-only)</span></label>
+                            <input className="erp-input nav-input code" readOnly tabIndex={-1} value={editingId ? (form.product_code || '') : (nextCode.code || '…')} />
                         </div>
                         <div>
                             <label className="erp-label">Item Type *</label>
@@ -407,14 +425,11 @@ export default function ProductMaster() {
                                     <tr>
                                         <th className="px-2 py-2 text-left">Base?</th>
                                         <th className="px-2 py-2 text-left">Unit</th>
-                                        <th className="px-2 py-2 text-left">Conv. Factor</th>
+                                        <th className="px-2 py-2 text-left">Conversion</th>
+                                        <th className="px-2 py-2 text-left">1 Unit =</th>
                                         <th className="px-2 py-2 text-left">Purchase Rate</th>
                                         <th className="px-2 py-2 text-left">MRP</th>
-                                        <th className="px-2 py-2 text-left">Sr1</th>
-                                        <th className="px-2 py-2 text-left">Sr2</th>
-                                        <th className="px-2 py-2 text-left">Sr3</th>
-                                        <th className="px-2 py-2 text-left">Sr4</th>
-                                        <th className="px-2 py-2 text-left">Sr5</th>
+                                        {rateTypes.map(rt => <th key={rt.sr} className="px-2 py-2 text-left whitespace-nowrap" title={`Sr${rt.sr}`}>{rt.caption}</th>)}
                                         <th className="px-2 py-2 text-left">Barcode</th>
                                         <th className="px-2 py-2 text-left">Purch.</th>
                                         <th className="px-2 py-2 text-left">Sale</th>
@@ -432,13 +447,10 @@ export default function ProductMaster() {
                                                 </select>
                                             </td>
                                             <td className="px-2 py-1"><input type="number" step="0.0001" className="w-20 border rounded px-1 py-1" value={u.conversion_factor} onChange={e => updateUnitRow(idx, { conversion_factor: e.target.value })} disabled={u.is_base_unit} /></td>
+                                            <td className="px-2 py-1 whitespace-nowrap"><input readOnly tabIndex={-1} className="w-40 border rounded px-1 py-1 bg-gray-50 text-gray-600" value={conversionText(u)} /></td>
                                             <td className="px-2 py-1"><input type="number" step="0.01" className="w-20 border rounded px-1 py-1" value={u.purchase_rate} onChange={e => updateUnitRow(idx, { purchase_rate: e.target.value })} /></td>
                                             <td className="px-2 py-1"><input type="number" step="0.01" className="w-20 border rounded px-1 py-1" value={u.mrp} onChange={e => updateUnitRow(idx, { mrp: e.target.value })} /></td>
-                                            <td className="px-2 py-1"><input type="number" step="0.01" className="w-16 border rounded px-1 py-1" value={u.sales_rate_sr1} onChange={e => updateUnitRow(idx, { sales_rate_sr1: e.target.value })} /></td>
-                                            <td className="px-2 py-1"><input type="number" step="0.01" className="w-16 border rounded px-1 py-1" value={u.sales_rate_sr2} onChange={e => updateUnitRow(idx, { sales_rate_sr2: e.target.value })} /></td>
-                                            <td className="px-2 py-1"><input type="number" step="0.01" className="w-16 border rounded px-1 py-1" value={u.sales_rate_sr3} onChange={e => updateUnitRow(idx, { sales_rate_sr3: e.target.value })} /></td>
-                                            <td className="px-2 py-1"><input type="number" step="0.01" className="w-16 border rounded px-1 py-1" value={u.sales_rate_sr4} onChange={e => updateUnitRow(idx, { sales_rate_sr4: e.target.value })} /></td>
-                                            <td className="px-2 py-1"><input type="number" step="0.01" className="w-16 border rounded px-1 py-1" value={u.sales_rate_sr5} onChange={e => updateUnitRow(idx, { sales_rate_sr5: e.target.value })} /></td>
+                                            {rateTypes.map(rt => <td key={rt.sr} className="px-2 py-1"><input type="number" step="0.01" className="w-20 border rounded px-1 py-1" value={u[`sales_rate_sr${rt.sr}`]} onChange={e => updateUnitRow(idx, { [`sales_rate_sr${rt.sr}`]: e.target.value })} /></td>)}
                                             <td className="px-2 py-1"><input className="w-24 border rounded px-1 py-1" value={u.barcode} onChange={e => updateUnitRow(idx, { barcode: e.target.value })} /></td>
                                             <td className="px-2 py-1 text-center"><input type="checkbox" checked={u.purchase_eligible} onChange={e => updateUnitRow(idx, { purchase_eligible: e.target.checked })} /></td>
                                             <td className="px-2 py-1 text-center"><input type="checkbox" checked={u.sales_eligible} onChange={e => updateUnitRow(idx, { sales_eligible: e.target.checked })} /></td>

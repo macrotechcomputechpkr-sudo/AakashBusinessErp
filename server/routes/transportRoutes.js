@@ -6,6 +6,7 @@
 // =============================================
 
 const express = require('express');
+const masterCodes = require('../utils/masterCodes');
 const router = express.Router();
 const { getTenantClient, loadUserPermissions, logAudit } = require('../utils/dbHelpers');
 const { requireAuth, requirePermission } = require('../middleware/auth');
@@ -42,7 +43,7 @@ router.post('/transport-master', requireAuth, loadUserPermissions, requirePermis
         const tenantId = req.auth.tenantId;
         const tenantClient = await getTenantClient(tenantId);
         const prefix = transport_name.trim().slice(0, 4).toUpperCase();
-        const { data: codeRow, error: codeErr } = await tenantClient.rpc('next_transport_code', { prefix });
+        const { data: codeRow, error: codeErr } = await masterCodes.nextRpc(tenantClient, req.auth.tenantId, 'transport');
         if (codeErr) throw codeErr;
 
         const b = req.body;

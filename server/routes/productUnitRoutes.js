@@ -3,6 +3,7 @@
 // =============================================
 
 const express = require('express');
+const masterCodes = require('../utils/masterCodes');
 const router = express.Router();
 const { getTenantClient, loadUserPermissions, logAudit } = require('../utils/dbHelpers');
 const { requireAuth, requirePermission } = require('../middleware/auth');
@@ -27,7 +28,7 @@ router.post('/product-units', requireAuth, loadUserPermissions, requirePermissio
         const tenantId = req.auth.tenantId;
         const tenantClient = await getTenantClient(tenantId);
         const prefix = unit_name.trim().slice(0, 3).toUpperCase();
-        const { data: codeRow, error: codeErr } = await tenantClient.rpc('next_product_unit_code', { prefix });
+        const { data: codeRow, error: codeErr } = await masterCodes.nextRpc(tenantClient, req.auth.tenantId, 'product_unit');
         if (codeErr) throw codeErr;
 
         const { data, error } = await tenantClient

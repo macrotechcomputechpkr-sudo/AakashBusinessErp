@@ -53,6 +53,7 @@ router.put('/system-control', requireAuth, loadUserPermissions, requirePermissio
             const pf = update.poultry_features || {};
             update.poultry_features = { broiler: pf.broiler !== false, hatchery: !!pf.hatchery };
         }
+        if ('rate_types' in update) update.rate_types = require('../utils/pricing').cleanRateTypes(update.rate_types);
         delete update.tenant_id; // never let the client move a settings row to a different tenant
 
         const { data, error } = await tenantClient

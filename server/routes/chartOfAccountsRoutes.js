@@ -19,6 +19,7 @@
 // =============================================
 
 const express = require('express');
+const masterCodes = require('../utils/masterCodes');
 const router = express.Router();
 const { getTenantClient, loadUserPermissions, applyListQuery, logAudit, checkTransactionUsage } = require('../utils/dbHelpers');
 const { requireAuth, requirePermission } = require('../middleware/auth');
@@ -440,17 +441,9 @@ router.post('/ledger-accounts', requireAuth, loadUserPermissions, requirePermiss
         const { data: dupName } = await tenantClient.from('ledger_accounts').select('id').eq('tenant_id', tenantId).ilike('account_name', data.account_name.trim()).maybeSingle();
         if (dupName) return res.status(409).json({ success: false, error: 'A ledger account with this name already exists' });
 
-        // FEATURE: Code carries the CREATED fiscal year as its prefix -
-        // look up whichever FY is currently marked is_current.
-        const { data: currentFy } = await tenantClient.from('fiscal_years').select('fiscal_year_name').eq('tenant_id', tenantId).eq('is_current', true).maybeSingle();
-        const fyPrefix = currentFy ? currentFy.fiscal_year_name.replace(/[^0-9]/g, '') : '';
-
-        let account_code = data.account_code;
-        if (!account_code) {
-            const { data: codeRow, error: codeErr } = await tenantClient.rpc('next_ledger_account_code', { group_code: group.group_code, fy_prefix: fyPrefix });
-            if (codeErr) throw codeErr;
-            account_code = codeRow;
-        }
+        // the code is always system generated (read-only on the form): <FY><TYPE><number>, e.g. 8182LDG000001
+        const { data: account_code, error: codeErr } = await masterCodes.nextRpc(tenantClient, tenantId, 'ledger');
+        if (codeErr) throw codeErr;
 
         // FEATURE: Short Name (Alias) auto-generates from the Name's
         // initials + a true sequential number (e.g. "Tanka Prasad
@@ -714,7 +707,7 @@ router.post('/cost-centers', requireAuth, loadUserPermissions, requirePermission
         const tenantId = req.auth.tenantId;
         const tenantClient = await getTenantClient(tenantId);
         const prefix = cost_center_name.trim().split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0, 3);
-        const { data: codeRow, error: codeErr } = await tenantClient.rpc('next_cost_center_code', { prefix });
+        const { data: codeRow, error: codeErr } = await masterCodes.nextRpc(tenantClient, req.auth.tenantId, 'cost_center');
         if (codeErr) throw codeErr;
 
         // FEATURE: Short Name auto-generates from Name's initials + a
@@ -804,7 +797,7 @@ router.post('/profit-centers', requireAuth, loadUserPermissions, requirePermissi
         const tenantId = req.auth.tenantId;
         const tenantClient = await getTenantClient(tenantId);
         const prefix = profit_center_name.trim().split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0, 3);
-        const { data: codeRow, error: codeErr } = await tenantClient.rpc('next_profit_center_code', { prefix });
+        const { data: codeRow, error: codeErr } = await masterCodes.nextRpc(tenantClient, req.auth.tenantId, 'profit_center');
         if (codeErr) throw codeErr;
 
         // FEATURE: Short Name auto-generates from Name's initials + a

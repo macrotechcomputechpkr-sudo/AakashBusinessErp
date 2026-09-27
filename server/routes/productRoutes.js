@@ -9,6 +9,7 @@
 // =============================================
 
 const express = require('express');
+const masterCodes = require('../utils/masterCodes');
 const { checkAccountPurposes } = require('../utils/ledgerPurpose');
 const router = express.Router();
 const { getTenantClient, loadUserPermissions, logAudit, checkTransactionUsage } = require('../utils/dbHelpers');
@@ -181,7 +182,7 @@ router.post('/products', requireAuth, loadUserPermissions, requirePermission('le
         const tenantId = req.auth.tenantId;
         const tenantClient = await getTenantClient(tenantId);
         const prefix = b.product_name.trim().slice(0, 4).toUpperCase();
-        const { data: codeRow, error: codeErr } = await tenantClient.rpc('next_product_code', { prefix });
+        const { data: codeRow, error: codeErr } = await masterCodes.nextRpc(tenantClient, req.auth.tenantId, 'product');
         if (codeErr) throw codeErr;
 
         const { data: product, error } = await tenantClient
@@ -190,7 +191,7 @@ router.post('/products', requireAuth, loadUserPermissions, requirePermission('le
                 tenant_id: tenantId,
                 product_code: codeRow,
                 product_name: b.product_name.trim(),
-                short_name: b.short_name || null,
+                short_name: (b.short_name && String(b.short_name).trim()) || await masterCodes.shortNamePreview(tenantClient, tenantId, 'product', b.product_name),
                 item_type: b.item_type || 'trading_item',
                 product_group_id: b.product_group_id || null,
                 product_company_id: b.product_company_id || null,

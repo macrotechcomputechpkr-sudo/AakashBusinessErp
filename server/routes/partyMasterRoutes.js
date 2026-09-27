@@ -13,6 +13,7 @@
 // =============================================
 
 const express = require('express');
+const masterCodes = require('../utils/masterCodes');
 const router = express.Router();
 const { getTenantClient, loadUserPermissions, logAudit } = require('../utils/dbHelpers');
 const { requireAuth, requirePermission } = require('../middleware/auth');
@@ -64,7 +65,7 @@ router.post('/areas', requireAuth, loadUserPermissions, requirePermission('ledge
         const tenantId = req.auth.tenantId;
         const tenantClient = await getTenantClient(tenantId);
         const prefix = area_name.trim().slice(0, 3).toUpperCase();
-        const { data: codeRow, error: codeErr } = await tenantClient.rpc('next_area_code', { prefix });
+        const { data: codeRow, error: codeErr } = await masterCodes.nextRpc(tenantClient, req.auth.tenantId, 'area');
         if (codeErr) throw codeErr;
 
         const { data, error } = await tenantClient
@@ -141,7 +142,7 @@ router.post('/routes', requireAuth, loadUserPermissions, requirePermission('ledg
         if (!area) return res.status(404).json({ success: false, error: 'Selected area not found' });
 
         const prefix = route_name.trim().slice(0, 3).toUpperCase();
-        const { data: codeRow, error: codeErr } = await tenantClient.rpc('next_route_code', { prefix });
+        const { data: codeRow, error: codeErr } = await masterCodes.nextRpc(tenantClient, req.auth.tenantId, 'route');
         if (codeErr) throw codeErr;
 
         const { data, error } = await tenantClient
@@ -182,7 +183,7 @@ router.post('/salesman-agents', requireAuth, loadUserPermissions, requirePermiss
         const tenantId = req.auth.tenantId;
         const tenantClient = await getTenantClient(tenantId);
         const prefix = agent_name.trim().slice(0, 3).toUpperCase();
-        const { data: codeRow, error: codeErr } = await tenantClient.rpc('next_agent_code', { prefix });
+        const { data: codeRow, error: codeErr } = await masterCodes.nextRpc(tenantClient, req.auth.tenantId, 'agent');
         if (codeErr) throw codeErr;
         const { data, error } = await tenantClient
             .from('salesman_agents')

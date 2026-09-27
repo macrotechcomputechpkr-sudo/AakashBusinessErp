@@ -18,6 +18,7 @@ import ProductTermBar from '../components/ProductTermBar';
 import { resolveDualUomEntryMode, onPrimaryQtyChange, onSecondaryQtyChange, validateFixedSecondary, dualBaseQty } from '../utils/dualUomEntryMode';
 import UdfValuesModal from '../components/UdfValuesModal';
 import RecordHistory from '../components/RecordHistory';
+import { priceUrl, lineUnitOf, useSlabRepricing } from '../utils/salesPricing';
 
 const emptyDetailRow = () => ({ product_id: '', qty: '', uom_id: '', alt_qty: '', alt_unit_id: '', rate_basis: 'primary', rate: '', discount_percent: '', tax_percent: '', warehouse_id: '', batch_no: '' });
 
@@ -102,7 +103,10 @@ export default function SalesQuotation() {
         setForm(f => ({ ...f, details: f.details.length > 1 ? f.details.filter((_, i) => i !== idx) : f.details }));
         setSelectedRowIndexes(cur => cur.filter(i => i !== idx).map(i => i > idx ? i - 1 : i));
     };
-    const updateDetailRow = (idx, patch) => setForm(f => ({ ...f, details: f.details.map((d, i) => i === idx ? { ...d, ...patch } : d) }));
+    const setDetailRow = (idx, patch) => setForm(f => ({ ...f, details: f.details.map((d, i) => i === idx ? { ...d, ...patch } : d) }));
+    // qty / value slab discounts: re-price the line when its qty or unit changes
+    const reprice = useSlabRepricing(authFetch, form, setDetailRow);
+    const updateDetailRow = (idx, patch) => { setDetailRow(idx, patch); reprice.onChange(idx, patch); };
     const productMaintainsBatch = (productId) => !!products.find(p => p.id === productId)?.maintain_batch;
     const productIsFixedDualUom = (productId) => products.find(p => p.id === productId)?.uom_mode === 'fixed_dual';
     const dualConversionFactor = (productId) => {
@@ -120,8 +124,9 @@ export default function SalesQuotation() {
         }
         if (!form.customer_ledger_id) { updateDetailRow(idx, { rate: product?.sales_rate_sr1 || 0 }); return; }
         try {
-            const res = await authFetch(`/api/resolve-sales-price?customer_ledger_id=${form.customer_ledger_id}&product_id=${productId}`);
-            updateDetailRow(idx, { rate: res.data.rate, discount_percent: res.data.discount_percent });
+            const res = await authFetch(priceUrl(form.customer_ledger_id, productId, { unit_id: lineUnitOf(product), qty: form.details[idx]?.qty, payment_term: form.payment_term }));
+            setDetailRow(idx, { rate: res.data.rate, discount_percent: res.data.discount_percent });
+            reprice.mark(idx, res.data);
         } catch {
             updateDetailRow(idx, { rate: product?.sales_rate_sr1 || 0 });
         }

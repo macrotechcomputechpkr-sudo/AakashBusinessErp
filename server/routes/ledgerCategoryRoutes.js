@@ -11,6 +11,7 @@
 // =============================================
 
 const express = require('express');
+const masterCodes = require('../utils/masterCodes');
 const router = express.Router();
 const { getTenantClient, loadUserPermissions, logAudit } = require('../utils/dbHelpers');
 const { requireAuth, requirePermission } = require('../middleware/auth');
@@ -53,7 +54,7 @@ router.put('/company/ledger-category-setting', requireAuth, loadUserPermissions,
                 const defaults = ['Regular', 'Wholesale', 'Corporate', 'VIP', 'Walk-in'];
                 for (let i = 0; i < defaults.length; i++) {
                     const prefix = defaults[i].slice(0, 4).toUpperCase();
-                    const { data: codeRow } = await tenantClient.rpc('next_ledger_category_code', { prefix });
+                    const { data: codeRow } = await masterCodes.nextRpc(tenantClient, req.auth.tenantId, 'ledger_category');
                     await tenantClient.from('ledger_categories').insert({
                         tenant_id: tenantId, category_code: codeRow, category_name: defaults[i],
                         display_order: i + 1, created_by: req.auth.userId, updated_by: req.auth.userId
@@ -91,7 +92,7 @@ router.post('/ledger-categories', requireAuth, loadUserPermissions, requirePermi
         const tenantId = req.auth.tenantId;
         const tenantClient = await getTenantClient(tenantId);
         const prefix = category_name.trim().slice(0, 4).toUpperCase();
-        const { data: codeRow, error: codeErr } = await tenantClient.rpc('next_ledger_category_code', { prefix });
+        const { data: codeRow, error: codeErr } = await masterCodes.nextRpc(tenantClient, req.auth.tenantId, 'ledger_category');
         if (codeErr) throw codeErr;
 
         const { data, error } = await tenantClient

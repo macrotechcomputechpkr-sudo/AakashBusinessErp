@@ -12,9 +12,13 @@ import { useEnterKeyNavigation } from '../hooks/useEnterKeyNavigation';
 import SearchablePopupSelect from '../components/SearchablePopupSelect';
 import Layout from '../components/Layout';
 import { refreshAppFeatures } from '../hooks/useAppFeatures';
+import MasterCodesEditor from '../components/MasterCodesEditor';
+import { RateTypesEditor } from '../components/pricing/PricingEditors';
 
 const TABS = [
     { key: 'business', label: '🏢 Business Nature' },
+    { key: 'codes', label: '🔢 Master Codes' },
+    { key: 'rateTypes', label: '📊 Rate Types' },
     { key: 'regional', label: '🌐 Regional & Format' },
     { key: 'ledgerMapping', label: '📒 Ledger Mapping' },
     { key: 'inventory', label: '📦 Inventory & UOM' },
@@ -174,6 +178,9 @@ export default function SystemControlSettings() {
             </div>
 
             <div className="erp-tab-content">
+
+                {tab === 'codes' && <MasterCodesEditor />}
+                {tab === 'rateTypes' && <RateTypesEditor />}
 
                 {tab === 'business' && (() => {
                     const nature = settings.business_nature || 'trading';
@@ -471,7 +478,7 @@ export default function SystemControlSettings() {
                             <SelectField label="Purchase Bill Type" hint="same on return" value={settings.purchase_bill_type} onChange={v => set('purchase_bill_type', v)}
                                 options={[{ value: 'cash', label: 'Cash' }, { value: 'credit', label: 'Credit' }]} />
                             <SelectField label="Auto Billing Rate Type" value={settings.auto_billing_rate_type} onChange={v => set('auto_billing_rate_type', v)}
-                                options={[{ value: 'sr1', label: 'Sr1' }, { value: 'sr2', label: 'Sr2' }, { value: 'mrp', label: 'MRP' }]} />
+                                options={[...(settings.rate_types || [1, 2, 3, 4, 5].map(sr => ({ sr, caption: `Sr${sr}`, enabled: sr <= 2 }))).filter(r => r.enabled).map(r => ({ value: `sr${r.sr}`, label: r.caption })), { value: 'mrp', label: 'MRP' }]} />
                             <SelectField label="Sub-Ledger Popup" value={settings.sub_ledger_popup_mode} onChange={v => set('sub_ledger_popup_mode', v)}
                                 options={[{ value: 'single', label: 'Single' }, { value: 'multiple', label: 'Multiple' }]} />
                             <SelectField label="Amount Wise Qty Change" value={settings.amount_wise_qty_change} onChange={v => set('amount_wise_qty_change', v)}

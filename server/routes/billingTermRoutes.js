@@ -10,6 +10,7 @@
 // =============================================
 
 const express = require('express');
+const masterCodes = require('../utils/masterCodes');
 const { loadTermSubLedgers } = require('../utils/termSubLedgers');
 const router = express.Router();
 const { getTenantClient, loadUserPermissions, logAudit } = require('../utils/dbHelpers');
@@ -103,7 +104,7 @@ router.post('/billing-terms', requireAuth, loadUserPermissions, requirePermissio
         if (subErr) return res.status(400).json({ success: false, error: subErr });
         const tenantClient = await getTenantClient(tenantId);
         const prefix = term_name.trim().slice(0, 4).toUpperCase();
-        const { data: codeRow, error: codeErr } = await tenantClient.rpc('next_billing_term_code', { prefix });
+        const { data: codeRow, error: codeErr } = await masterCodes.nextRpc(tenantClient, req.auth.tenantId, 'billing_term');
         if (codeErr) throw codeErr;
 
         const b = req.body;

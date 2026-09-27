@@ -7,6 +7,7 @@
 // =============================================
 
 const express = require('express');
+const masterCodes = require('../utils/masterCodes');
 const router = express.Router();
 const { getTenantClient, loadUserPermissions, logAudit, checkTransactionUsage } = require('../utils/dbHelpers');
 const { requireAuth, requirePermission } = require('../middleware/auth');
@@ -43,7 +44,7 @@ router.post('/branches', requireAuth, loadUserPermissions, requirePermission('co
         const tenantClient = await getTenantClient(tenantId);
 
         const prefix = branch_name.trim().split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0, 3);
-        const { data: codeRow, error: codeErr } = await tenantClient.rpc('next_branch_code', { prefix });
+        const { data: codeRow, error: codeErr } = await masterCodes.nextRpc(tenantClient, req.auth.tenantId, 'branch');
         if (codeErr) throw codeErr;
 
         const { data, error } = await tenantClient
@@ -140,7 +141,7 @@ router.post('/warehouses', requireAuth, loadUserPermissions, requirePermission('
         const tenantClient = await getTenantClient(tenantId);
 
         const prefix = warehouse_name.trim().split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0, 3);
-        const { data: codeRow, error: codeErr } = await tenantClient.rpc('next_warehouse_code', { prefix });
+        const { data: codeRow, error: codeErr } = await masterCodes.nextRpc(tenantClient, req.auth.tenantId, 'warehouse');
         if (codeErr) throw codeErr;
 
         const { data, error } = await tenantClient

@@ -6,6 +6,7 @@
 // =============================================
 
 const express = require('express');
+const masterCodes = require('../utils/masterCodes');
 const router = express.Router();
 const { getTenantClient, loadUserPermissions, logAudit } = require('../utils/dbHelpers');
 const { requireAuth, requirePermission } = require('../middleware/auth');
@@ -106,7 +107,7 @@ router.post('/bom-templates', requireAuth, loadUserPermissions, requirePermissio
         const tenantClient = await getTenantClient(tenantId);
         const b = req.body;
 
-        const { data: codeRow, error: codeErr } = await tenantClient.rpc('next_master_code', { seq_name: 'tenant_master.seq_bom_template_code', type_prefix: 'BOM' });
+        const { data: codeRow, error: codeErr } = await masterCodes.nextRpc(tenantClient, req.auth.tenantId, 'bom_template');
         if (codeErr) throw codeErr;
 
         const snap = await captureLineSnapshot(tenantClient, b.output_product_id, b.output_uom_id);
