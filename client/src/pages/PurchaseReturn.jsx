@@ -21,6 +21,11 @@ import BillWiseSettlementPanel from '../components/BillWiseSettlementPanel';
 import UdfValuesModal from '../components/UdfValuesModal';
 import useLedgerPurposes from '../components/useLedgerPurposes';
 import RecordHistory from '../components/RecordHistory';
+import useEntrySettings, { termColumns } from '../components/entry/useEntrySettings';
+import DocNumberField from '../components/entry/DocNumberField';
+import PendingDocsPanel, { mergePulled } from '../components/entry/PendingDocsPanel';
+import { PartyDetailsPanel, emptyPartyInfo, savePartyInfo, partyInfoFromDoc } from '../components/entry/PartyFooterTabs';
+import { CodeCell } from '../components/entry/SalesLineGrid';
 
 const RETURN_REASONS = [
     { value: 'defective', label: 'Defective' },
@@ -56,6 +61,11 @@ export default function PurchaseReturn() {
     const { authFetch } = useAuth();
     const lp = useLedgerPurposes();
     const efc = useEntryFieldControls('purchase_return', EFC_RENDERED_KEYS);
+    const settings = useEntrySettings();
+    const termCols = termColumns(settings, 'purchase');
+    const inlineTerms = !!settings && !settings.popupTerms.includes('purchase_return') && termCols.length > 0;
+    const [partyInfo, setPartyInfo] = useState(emptyPartyInfo());
+    const [pulledDocs, setPulledDocs] = useState([]);
     const [rows, setRows] = useState([]);
     const [showForm, setShowForm] = useState(false);
     const [form, setForm] = useState(emptyForm);
@@ -150,7 +160,7 @@ export default function PurchaseReturn() {
     }, [authFetch]);
     useEffect(() => { load(); }, [load]);
 
-    const resetForm = () => { setForm(emptyForm); setEditingId(null); setPullBillId(''); setSummaryOverrides({}); setSelectedRowIndexes([]); };
+    const resetForm = () => { setForm(emptyForm); setEditingId(null); setPullBillId(''); setSummaryOverrides({}); setSelectedRowIndexes([]); setPartyInfo(emptyPartyInfo()); setPulledDocs([]); };
     const addDetailRow = () => setForm(f => ({ ...f, details: [...f.details, emptyDetailRow()] }));
     const removeDetailRow = (idx) => {
         setForm(f => ({ ...f, details: f.details.length > 1 ? f.details.filter((_, i) => i !== idx) : f.details }));
@@ -165,12 +175,12 @@ export default function PurchaseReturn() {
         const rate = (product?.product_unit_rates || []).find(r => r.unit_id === product?.dual_uom_primary_unit_id);
         return Number(rate?.conversion_factor) || 1;
     };
-    const handleProductSelect = (idx, productId) => {
+    const handleProductSelect = (idx, productId, unitId) => {
         const product = products.find(p => p.id === productId);
         if (product?.uom_mode === 'fixed_dual') {
             updateDetailRow(idx, { product_id: productId, uom_id: product.dual_uom_primary_unit_id || '', alt_unit_id: product.base_unit_id || '', rate_basis: 'primary' });
         } else {
-            updateDetailRow(idx, { product_id: productId, uom_id: product?.base_unit_id || '' });
+            updateDetailRow(idx, { product_id: productId, uom_id: unitId || product?.base_unit_id || '' });
         }
     };
 
@@ -303,6 +313,7 @@ export default function PurchaseReturn() {
         }
         const validDetails = form.details.filter(d => d.product_id && (Number(d.qty) > 0 || Number(d.alt_qty) > 0));
         if (!saveAsDraft && validDetails.length === 0) return showAlert('At least one complete line item (Product + Qty) is required', 'danger');
+        let savedId = editingId;
         try {
             const payload = {
                 ...form, details: validDetails, summary_overrides: summaryOverrides,
@@ -313,9 +324,10 @@ export default function PurchaseReturn() {
                 await authFetch(`/api/purchase-returns/${editingId}`, { method: 'PUT', body: JSON.stringify(payload) });
                 showAlert(saveAsDraft ? 'Draft saved' : 'Return updated', 'success');
             } else {
-                const res = await authFetch('/api/purchase-returns', { method: 'POST', body: JSON.stringify(payload) });
+                const res = await authFetch('/api/purchase-returns', { method: 'POST', body: JSON.stringify(payload) }); savedId = res.data?.id;
                 showAlert(saveAsDraft ? `Draft ${res.data.doc_no} saved` : `Return ${res.data.doc_no} created`, 'success');
             }
+            try { await savePartyInfo(authFetch, 'purchase_return', savedId, partyInfo); } catch (pe) { showAlert(`Saved, but the vendor details were not: ${pe.message}`, 'warning'); }
             resetForm();
             setShowForm(false);
             load();
@@ -328,6 +340,7 @@ export default function PurchaseReturn() {
         try {
             const res = await authFetch(`/api/purchase-returns/${row.id}`);
             setEditingId(row.id);
+            setPartyInfo(res.data.party_billing_address || res.data.party_pan ? partyInfoFromDoc(res.data, res.data.vendor_ledger_id) : emptyPartyInfo());
             setForm({
                 ...emptyForm, ...res.data,
                 doc_date: res.data.doc_date?.slice(0, 10) || emptyForm.doc_date,
@@ -428,6 +441,7 @@ export default function PurchaseReturn() {
             {showForm && (
                 <form onSubmit={handleSubmit} ref={formRef}>
                     {!editingId && (
+                        <details className="mx-3 mt-2 text-xs"><summary className="cursor-pointer text-[#1a4a8a]">Pull from any earlier document (any party)</summary>
                         <div className="erp-topbar grid-cols-1 md:grid-cols-3" style={{ background: '#eff6ff' }}>
                             <div className="erp-field md:col-span-2">
                                 <label className="erp-label">Pull From Bill</label>
@@ -441,9 +455,11 @@ export default function PurchaseReturn() {
                             </div>
                             <p className="text-xs text-gray-400 md:col-span-3">Only what's still genuinely returnable (qty minus already-returned) gets offered - and the server rejects anything beyond that even if typed in manually.</p>
                         </div>
+                        </details>
                     )}
 
                     <div className="erp-topbar grid-cols-1 md:grid-cols-4">
+                        <DocNumberField voucherType="purchase_return" categoryId={form.numbering_category_id} docNo={editingId ? form.doc_no : ''} value={form.doc_no} onChange={v => setForm({ ...form, doc_no: v })} label="Doc No" />
                         <div className={efc.isVisible('doc_date') ? 'erp-field' : 'erp-field hidden'}>
                             <label className="erp-label">Date <span className="req">*</span> {efc.isRequired('doc_date') && <span className="req">*</span>}</label>
                             <input disabled={efc.isReadonly('doc_date')} type="date" className="erp-input" value={form.doc_date} onChange={e => setForm({ ...form, doc_date: e.target.value })} required />
@@ -476,6 +492,7 @@ export default function PurchaseReturn() {
                             <NumberingCategorySelector voucherType="purchase_return" value={form.numbering_category_id} onChange={id => setForm({ ...form, numbering_category_id: id })} />
                         )}
                     </div>
+                    <PendingDocsPanel target="purchase_return" partyId={form.vendor_ledger_id} efc={efc} disabled={!!editingId} pulled={pulledDocs} onPull={data => { setForm(f => mergePulled(f, data, emptyDetailRow)); setPulledDocs(p => [...p, ...data.documents.map(x => x.id)]); showAlert(`Pulled ${data.lines.length} line(s) from ${data.documents.map(x => x.doc_no).join(', ')}`, 'success'); }} />
 
                     <div className="erp-tab-content">
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
@@ -485,7 +502,7 @@ export default function PurchaseReturn() {
                                     {RETURN_REASONS.map(r => <option key={r.value} value={r.value}>{r.label}</option>)}
                                 </select>
                             </div>
-                            <div className={efc.isVisible('warehouse_id') ? 'erp-field' : 'erp-field hidden'}>
+                            <div className={(settings?.multiWarehouse && efc.isVisible('warehouse_id')) ? 'erp-field' : 'erp-field hidden'}>
                                 <label className="erp-label">Warehouse {efc.isRequired('warehouse_id') && <span className="req">*</span>}</label>
                                 <SearchablePopupSelect
                                     listKey="return_warehouse_picker"
@@ -605,17 +622,18 @@ export default function PurchaseReturn() {
                                 <thead>
                                     <tr>
                                         <th className="w-6"></th>
+                                        <th className="text-left px-1 py-1">Code / Barcode</th>
                                         <th className="w-56">Product</th>
+                                        <th className={`w-40 ${(settings?.multiWarehouse && efc.isVisible('warehouse_id', 'detail')) ? '' : 'hidden'}`}>Details Warehouse</th>
+                                        <th className={`w-28 ${efc.isVisible('batch_no', 'detail') ? '' : 'hidden'}`}>Batch No</th>
                                         <th className={`w-24 ${efc.isVisible('qty', 'detail') ? '' : 'hidden'}`}>Qty</th>
                                         <th className={`w-32 ${efc.isVisible('uom_id', 'detail') ? '' : 'hidden'}`}>UOM</th>
                                         <th className={`w-24 ${efc.isVisible('rate', 'detail') ? '' : 'hidden'}`}>Rate</th>
                                         <th className={`w-20 ${efc.isVisible('tax_percent', 'detail') ? '' : 'hidden'}`}>Tax %</th>
                                         <th className="w-24">Amount</th>
-                                        <th className={`w-40 ${efc.isVisible('warehouse_id', 'detail') ? '' : 'hidden'}`}>Details Warehouse</th>
-                                        <th className={`w-28 ${efc.isVisible('batch_no', 'detail') ? '' : 'hidden'}`}>Batch No</th>
                                         <th className="w-32">Ref No</th>
                                         <th className={`w-40 ${efc.isVisible('line_reason', 'detail') ? '' : 'hidden'}`}>Line Reason</th>
-                                        <th className="w-20">Term</th>
+                                        {inlineTerms ? termCols.map(c => <th key={c.key} className="text-left px-1 py-1">{c.label}</th>) : <th className="w-20">Term</th>}
                                         <th></th>
                                     </tr>
                                 </thead>
@@ -629,6 +647,19 @@ export default function PurchaseReturn() {
                                                     onChange={e => setSelectedRowIndexes(cur => e.target.checked ? [...cur, idx] : cur.filter(i => i !== idx))}
                                                 />
                                             </td>
+                                            <td className="px-1 py-1"><CodeCell products={filterProductsByCompany(products, form.product_company_id)} product={products.find(p => p.id === d.product_id)} onPick={(pid, uid) => handleProductSelect(idx, pid, uid)} /></td>
+                                            <td className={(settings?.multiWarehouse && efc.isVisible('warehouse_id', 'detail')) ? '' : 'hidden'}>
+                                                <select disabled={efc.isReadonly('warehouse_id', 'detail')} className="erp-select" value={d.warehouse_id} onChange={e => updateDetailRow(idx, { warehouse_id: e.target.value })}>
+                                                    <option value="">Warehouse</option>
+                                                    {warehouses.map(w => <option key={w.id} value={w.id}>{w.warehouse_name}</option>)}
+                                                </select>
+                                            </td>
+                                            <td className={efc.isVisible('batch_no', 'detail') ? '' : 'hidden'}>
+                                                {productMaintainsBatch(d.product_id) ? (
+                                                    <input disabled={efc.isReadonly('batch_no', 'detail')} className="erp-input" value={d.batch_no} onChange={e => updateDetailRow(idx, { batch_no: e.target.value })} placeholder="Batch" />
+                                                ) : <span className="text-gray-300 text-xs">—</span>}
+                                                {productTracksSerial(d.product_id) && <input className="erp-input mt-1" value={d.serial_no || ''} onChange={e => updateDetailRow(idx, { serial_no: e.target.value })} placeholder="Serial No(s)" title="Serial numbers, comma separated - used for serial-wise costing" />}
+                                            </td>
                                             <td onKeyDown={e => handleProductRowKeyDown(e, d.product_id)}>
                                                 <div className="flex items-center gap-1">
                                                     <div className="flex-1">
@@ -637,8 +668,8 @@ export default function PurchaseReturn() {
                                                             columns={[{ key: 'product_code', label: 'Code' }, { key: 'product_name', label: 'Name' }]}
                                                             defaultVisibleKeys={['product_name']}
                                                             items={filterProductsByCompany(products, form.product_company_id)} getId={p => p.id} getLabel={p => p.product_name}
-                                                            searchKeys={['product_name', 'product_code']}
-                                                            value={d.product_id} onChange={id => handleProductSelect(idx, id)} placeholder="Product (F1/F2=history)"
+                                                            searchKeys={settings?.searchBy === 'code' ? ['product_code', 'short_name'] : ['product_name', 'short_name', 'product_code']}
+                                                            value={d.product_id} onChange={id => handleProductSelect(idx, id, null)} placeholder="Product (F1/F2=history)"
                                                         />
                                                     </div>
                                                     <button type="button" tabIndex={-1} onClick={() => openProductHistory(d.product_id, false)} title="Last Purchase History (F1)" className="text-gray-400 hover:text-blue-600 text-sm px-1">🕐</button>
@@ -673,7 +704,7 @@ export default function PurchaseReturn() {
                                                         )}
                                                     </div>
                                                 ) : (
-                                                    <input disabled={efc.isReadonly('qty', 'detail')} type="number" step="0.0001" className="erp-input" value={d.qty} onChange={e => updateDetailRow(idx, { qty: e.target.value })} />
+                                                    <input disabled={efc.isReadonly('qty', 'detail')} type="number" step="0.0001" className="erp-input" data-qty value={d.qty} onChange={e => updateDetailRow(idx, { qty: e.target.value })} />
                                                 )}
                                             </td>
                                             <td className={efc.isVisible('uom_id', 'detail') ? '' : 'hidden'}>
@@ -697,23 +728,11 @@ export default function PurchaseReturn() {
                                             </td>
                                             <td className={efc.isVisible('tax_percent', 'detail') ? '' : 'hidden'}><input disabled={efc.isReadonly('tax_percent', 'detail')} type="number" step="0.01" className="erp-input" value={d.tax_percent} onChange={e => updateDetailRow(idx, { tax_percent: e.target.value })} /></td>
                                             <td className="text-gray-500">{lineAmount(d).toFixed(2)}</td>
-                                            <td className={efc.isVisible('warehouse_id', 'detail') ? '' : 'hidden'}>
-                                                <select disabled={efc.isReadonly('warehouse_id', 'detail')} className="erp-select" value={d.warehouse_id} onChange={e => updateDetailRow(idx, { warehouse_id: e.target.value })}>
-                                                    <option value="">Warehouse</option>
-                                                    {warehouses.map(w => <option key={w.id} value={w.id}>{w.warehouse_name}</option>)}
-                                                </select>
-                                            </td>
-                                            <td className={efc.isVisible('batch_no', 'detail') ? '' : 'hidden'}>
-                                                {productMaintainsBatch(d.product_id) ? (
-                                                    <input disabled={efc.isReadonly('batch_no', 'detail')} className="erp-input" value={d.batch_no} onChange={e => updateDetailRow(idx, { batch_no: e.target.value })} placeholder="Batch" />
-                                                ) : <span className="text-gray-300 text-xs">—</span>}
-                                                {productTracksSerial(d.product_id) && <input className="erp-input mt-1" value={d.serial_no || ''} onChange={e => updateDetailRow(idx, { serial_no: e.target.value })} placeholder="Serial No(s)" title="Serial numbers, comma separated - used for serial-wise costing" />}
-                                            </td>
                                             <td className="text-xs text-gray-500">{d.source_doc_no || (d.source_bill_detail_id ? '…' : '—')}</td>
                                             <td className={efc.isVisible('line_reason', 'detail') ? '' : 'hidden'}><input disabled={efc.isReadonly('line_reason', 'detail')} className="erp-input" value={d.line_reason} onChange={e => updateDetailRow(idx, { line_reason: e.target.value })} /></td>
-                                            <td><button type="button" tabIndex={-1} onClick={() => setProductTermModalIndexes([idx])} className="text-blue-600 text-xs underline">
-                                                {(d.billing_term_ids || []).length > 0 ? `Term (${d.billing_term_ids.length})` : 'Term'}
-                                            </button></td>
+                                            {inlineTerms ? termCols.map(c => { const on = (d.billing_term_ids || []).includes(c.term_id); const pos = (d.billing_term_ids || []).indexOf(c.term_id); const amt = on ? lineTermPreviews[idx]?.lines?.[pos]?.amount : null; return (<td key={c.key} className="px-1 py-1 whitespace-nowrap"><input type="checkbox" checked={on} onChange={() => updateDetailRow(idx, { billing_term_ids: on ? d.billing_term_ids.filter(x => x !== c.term_id) : [...(d.billing_term_ids || []), c.term_id] })} /> <span className="text-xs">{amt !== null && amt !== undefined ? Number(amt).toFixed(2) : ''}</span></td>); }) : (<td><button type="button" tabIndex={-1} onClick={() => setProductTermModalIndexes([idx])} className="text-blue-600 text-xs underline">
+{(d.billing_term_ids || []).length > 0 ? `Term (${d.billing_term_ids.length})` : 'Term'}
+</button></td>)}
                                             <td><button type="button" tabIndex={-1} onClick={() => removeDetailRow(idx)} className="text-red-500 text-xs">✕</button></td>
                                         </tr>
                                     ))}
@@ -789,6 +808,7 @@ export default function PurchaseReturn() {
                         onSettlementsChange={setBillWiseSettlements}
                     />
 
+                    <div className="p-3 border-t border-[#aca899]"><p className="nav-label font-semibold mb-1">🏠 Vendor Details</p><PartyDetailsPanel partyId={form.vendor_ledger_id} partyLabel="Vendor" info={partyInfo} onChange={setPartyInfo} /></div>
                     <div className="erp-bottombar">
                         <div />
                         <div className="erp-bottombar-actions">

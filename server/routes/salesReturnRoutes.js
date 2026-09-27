@@ -7,6 +7,7 @@
 // =============================================
 
 const express = require('express');
+const { cleanLineTerms, exciseOf } = require('../utils/lineTerms');
 const { checkAccountPurposes } = require('../utils/ledgerPurpose');
 const { bumpAltCounter } = require('../utils/progressCounters');
 const { checkCompulsoryFields, lockProtectedFields } = require('../utils/entryFieldRules');
@@ -100,7 +101,7 @@ async function lineAmount(tenantClient, d) {
     const discountAmount = d.discount_amount ? Number(d.discount_amount) : gross * (Number(d.discount_percent) || 0) / 100;
     const afterDiscount = gross - discountAmount;
     const taxAmount = d.tax_amount ? Number(d.tax_amount) : afterDiscount * (Number(d.tax_percent) || 0) / 100;
-    return { discountAmount, taxAmount, amount: afterDiscount + taxAmount };
+    return { discountAmount, taxAmount, amount: afterDiscount + exciseOf(d) + taxAmount };
 }
 
 async function syncDetails(tenantClient, tenantId, returnId, details) {
@@ -115,7 +116,7 @@ async function syncDetails(tenantClient, tenantId, returnId, details) {
             product_id: d.product_id, qty: Number(d.qty), uom_id: d.uom_id || null,
             alt_qty: d.alt_qty || null, alt_unit_id: d.alt_unit_id || null, rate_basis: d.rate_basis || 'primary',
             rate: Number(d.rate) || 0, amount, discount_percent: d.discount_percent || 0, discount_amount: discountAmount,
-            tax_percent: d.tax_percent || 0, tax_amount: taxAmount,
+            tax_percent: d.tax_percent || 0, tax_amount: taxAmount, excise_amount: exciseOf(d), line_terms: cleanLineTerms(d.line_terms),
             warehouse_id: d.warehouse_id || null, batch_no: d.batch_no || null, serial_no: d.serial_no || null,
             ...snapshots
         };

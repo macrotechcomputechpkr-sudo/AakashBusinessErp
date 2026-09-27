@@ -85,6 +85,18 @@ ALTER TABLE tenant_master.sales_delivery_details
     ADD COLUMN IF NOT EXISTS free_qty DECIMAL(15, 4) DEFAULT 0,
     ADD COLUMN IF NOT EXISTS free_uom_id UUID REFERENCES tenant_master.product_units(id);
 
+-- 6b. inline product terms on sales lines: each mapped term's % / amount
+--     (discount 1-5, excise, VAT) - discount_amount / tax_amount keep the totals
+DO $$
+DECLARE t TEXT;
+BEGIN
+  FOREACH t IN ARRAY ARRAY['sales_quotation_details', 'sales_order_details', 'sales_bill_details', 'sales_return_details']
+  LOOP
+    EXECUTE format('ALTER TABLE tenant_master.%I ADD COLUMN IF NOT EXISTS line_terms JSONB, ADD COLUMN IF NOT EXISTS excise_amount DECIMAL(15, 2) DEFAULT 0', t);
+  END LOOP;
+END $$;
+ALTER TABLE tenant_master.sales_bills ADD COLUMN IF NOT EXISTS total_excise_amount DECIMAL(15, 2) DEFAULT 0;
+
 -- 7 ------------------------------------------------------------------------
 ALTER TABLE tenant_master.cash_bank_entries ALTER COLUMN party_ledger_id DROP NOT NULL;
 ALTER TABLE tenant_master.cash_bank_entries

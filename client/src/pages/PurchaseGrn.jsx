@@ -21,6 +21,11 @@ import { useEnterKeyNavigation } from '../hooks/useEnterKeyNavigation';
 import UdfValuesModal from '../components/UdfValuesModal';
 import useLedgerPurposes from '../components/useLedgerPurposes';
 import RecordHistory from '../components/RecordHistory';
+import useEntrySettings, { termColumns } from '../components/entry/useEntrySettings';
+import DocNumberField from '../components/entry/DocNumberField';
+import PendingDocsPanel, { mergePulled } from '../components/entry/PendingDocsPanel';
+import { PartyDetailsPanel, emptyPartyInfo, savePartyInfo, partyInfoFromDoc } from '../components/entry/PartyFooterTabs';
+import { CodeCell } from '../components/entry/SalesLineGrid';
 
 const emptyDetailRow = () => ({
     product_id: '', qty: '', uom_id: '', alt_qty: '', alt_unit_id: '', alt1_qty: '', alt1_unit_id: '', rate_basis: 'primary',
@@ -48,6 +53,11 @@ export default function PurchaseGrn() {
     // Compulsory check on save (incl. popup pickers, which HTML `required` can't enforce);
     // visibility / required marks on this page come from its own fieldControls.
     const efc = useEntryFieldControls('purchase_grn', EFC_RENDERED_KEYS);
+    const settings = useEntrySettings();
+    const termCols = termColumns(settings, 'purchase');
+    const inlineTerms = !!settings && !settings.popupTerms.includes('purchase') && termCols.length > 0;
+    const [partyInfo, setPartyInfo] = useState(emptyPartyInfo());
+    const [pulledDocs, setPulledDocs] = useState([]);
     const [rows, setRows] = useState([]);
     const [showDraftsOnly, setShowDraftsOnly] = useState(false);
     const [showCopyModal, setShowCopyModal] = useState(false);
@@ -182,7 +192,7 @@ export default function PurchaseGrn() {
     }, [authFetch]);
     useEffect(() => { load(); }, [load]);
 
-    const resetForm = () => { setForm(emptyForm); setEditingId(null); setPullRequisitionId(''); setPullQuotationId(''); setPullOrderId(''); };
+    const resetForm = () => { setForm(emptyForm); setEditingId(null); setPullRequisitionId(''); setPullQuotationId(''); setPullOrderId(''); setPartyInfo(emptyPartyInfo()); setPulledDocs([]); };
 
     // FEATURE: fetches the shared pull-forward endpoint and populates the
     // Master + Details with whatever it returns - user can still edit
@@ -222,12 +232,12 @@ export default function PurchaseGrn() {
         setForm(f => ({ ...f, details: f.details.length > 1 ? f.details.filter((_, i) => i !== idx) : f.details }));
         setSelectedRowIndexes(cur => cur.filter(i => i !== idx).map(i => i > idx ? i - 1 : i));
     };
-    const handleProductSelect = (idx, productId) => {
+    const handleProductSelect = (idx, productId, unitId) => {
         const product = products.find(p => p.id === productId);
         if (product?.uom_mode === 'fixed_dual') {
             updateDetailRow(idx, { product_id: productId, uom_id: product.dual_uom_primary_unit_id || '', alt_unit_id: product.base_unit_id || '', rate_basis: 'primary' });
         } else {
-            updateDetailRow(idx, { product_id: productId, uom_id: product?.base_unit_id || '' });
+            updateDetailRow(idx, { product_id: productId, uom_id: unitId || product?.base_unit_id || '' });
         }
     };
     const updateDetailRow = (idx, patch) => setForm(f => ({ ...f, details: f.details.map((d, i) => i === idx ? { ...d, ...patch } : d) }));
@@ -388,6 +398,7 @@ export default function PurchaseGrn() {
         }
         const validDetails = form.details.filter(d => d.product_id && (Number(d.qty) > 0 || Number(d.alt_qty) > 0));
         if (!saveAsDraft && validDetails.length === 0) return showAlert('At least one complete line item (Product + Qty) is required', 'danger');
+        let savedId = editingId;
         try {
             const payload = {
                 ...form, details: validDetails, summary_overrides: summaryOverrides,
@@ -397,9 +408,10 @@ export default function PurchaseGrn() {
                 await authFetch(`/api/purchase-grns/${editingId}`, { method: 'PUT', body: JSON.stringify(payload) });
                 showAlert(saveAsDraft ? 'Draft saved' : 'GRN updated', 'success');
             } else {
-                const res = await authFetch('/api/purchase-grns', { method: 'POST', body: JSON.stringify(payload) });
+                const res = await authFetch('/api/purchase-grns', { method: 'POST', body: JSON.stringify(payload) }); savedId = res.data?.id;
                 showAlert(saveAsDraft ? `Draft ${res.data.doc_no} saved` : `GRN ${res.data.doc_no} created`, 'success');
             }
+            try { await savePartyInfo(authFetch, 'purchase_grn', savedId, partyInfo); } catch (pe) { showAlert(`Saved, but the vendor details were not: ${pe.message}`, 'warning'); }
             resetForm();
             setShowForm(false);
             load();
@@ -412,6 +424,7 @@ export default function PurchaseGrn() {
         try {
             const res = await authFetch(`/api/purchase-grns/${row.id}`);
             setEditingId(row.id);
+            setPartyInfo(res.data.party_billing_address || res.data.party_pan ? partyInfoFromDoc(res.data, res.data.vendor_ledger_id) : emptyPartyInfo());
             setForm({
                 ...emptyForm, ...res.data,
                 doc_date: res.data.doc_date?.slice(0, 10) || emptyForm.doc_date,
@@ -594,6 +607,7 @@ export default function PurchaseGrn() {
                 <form onSubmit={handleSubmit} ref={formRef}>
                     {/* ==================== PULL FORWARD (universal - any earlier stage) ==================== */}
                     {!editingId && (
+                        <details className="mx-3 mt-2 text-xs"><summary className="cursor-pointer text-[#1a4a8a]">Pull from any earlier document (any party)</summary>
                         <div className="erp-topbar grid-cols-1 md:grid-cols-4" style={{ background: '#eff6ff' }}>
                             <div className="erp-field">
                                 <label className="erp-label">Pull From Requisition</label>
@@ -621,14 +635,12 @@ export default function PurchaseGrn() {
                             </div>
                             <p className="text-xs text-gray-400 md:col-span-4">Pick any combination - all their lines get merged in. Order lines only bring in what's still outstanding (not yet received).</p>
                         </div>
+                        </details>
                     )}
 
                     {/* ==================== TOP BAR (identity fields, Cash/Credit up front) ==================== */}
                     <div className="erp-topbar grid-cols-1 md:grid-cols-6">
-                        <div className="erp-field">
-                            <label className="erp-label">Doc No <span className="hint">(auto)</span></label>
-                            <input className="erp-input" disabled value={editingId ? (form.doc_no || '') : 'Auto on save'} />
-                        </div>
+                        <DocNumberField voucherType="purchase_grn" categoryId={form.numbering_category_id} docNo={editingId ? form.doc_no : ''} value={form.doc_no} onChange={v => setForm({ ...form, doc_no: v })} label="Doc No" />
                         <div className="erp-field">
                             <label className="erp-label">Date {isRequired('doc_date') && <span className="req">*</span>}</label>
                             <input type="date" className="erp-input" value={form.doc_date} onChange={e => setForm({ ...form, doc_date: e.target.value })}
@@ -694,14 +706,271 @@ export default function PurchaseGrn() {
                             </select>
                         </div>
                     </div>
+                    <PendingDocsPanel target="purchase_grn" partyId={form.vendor_ledger_id} efc={efc} disabled={!!editingId} pulled={pulledDocs} onPull={data => { setForm(f => mergePulled(f, data, emptyDetailRow)); setPulledDocs(p => [...p, ...data.documents.map(x => x.id)]); showAlert(`Pulled ${data.lines.length} line(s) from ${data.documents.map(x => x.doc_no).join(', ')}`, 'success'); }} />
+
+
+                    <div className="px-4">
+
+                    {/* ==================== DETAILS PART ==================== */}
+                    <div className="border-t pt-4">
+                        <h2 className="font-semibold text-sm text-gray-500 uppercase mb-3">Details</h2>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-sm min-w-[1400px]">
+                                <thead>
+                                    <tr className="text-xs text-gray-500 uppercase">
+                                        <th className="text-left px-1 py-1 w-6"></th>
+                                        <th className="text-left px-1 py-1">Code / Barcode</th>
+                                        <th className="text-left px-1 py-1 w-56">Product {isRequired('product_id', 'detail') && <span className="text-red-500">*</span>}</th>
+                                        <th className={`text-left px-1 py-1 w-40 ${(settings?.multiWarehouse && isVisible('warehouse_id', 'detail')) ? '' : 'hidden'}`}>Details Warehouse</th>
+                                        <th className={`text-left px-1 py-1 w-28 ${isVisible('batch_no', 'detail') ? '' : 'hidden'}`}>Batch No</th>
+                                        <th className="text-left px-1 py-1 w-24">Qty {isRequired('qty', 'detail') && <span className="text-red-500">*</span>}</th>
+                                        <th className={`text-left px-1 py-1 w-32 ${isVisible('uom_id', 'detail') ? '' : 'hidden'}`}>UOM</th>
+                                        <th className={`text-left px-1 py-1 w-20 ${isVisible('free_qty', 'detail') ? '' : 'hidden'}`}>Free Qty</th>
+                                        <th className={`text-left px-1 py-1 w-32 ${isVisible('free_uom_id', 'detail') ? '' : 'hidden'}`}>Free UOM</th>
+                                        <th className={`text-left px-1 py-1 w-20 ${isVisible('alt_qty', 'detail') ? '' : 'hidden'}`}>Alt Qty</th>
+                                        <th className={`text-left px-1 py-1 w-32 ${isVisible('alt_unit_id', 'detail') ? '' : 'hidden'}`}>Alt Unit</th>
+                                        <th className={`text-left px-1 py-1 w-20 ${isVisible('alt1_qty', 'detail') ? '' : 'hidden'}`}>Alt1 Qty</th>
+                                        <th className={`text-left px-1 py-1 w-32 ${isVisible('alt1_unit_id', 'detail') ? '' : 'hidden'}`}>Alt1 Unit</th>
+                                        <th className={`text-left px-1 py-1 w-24 ${isVisible('rate', 'detail') ? '' : 'hidden'}`}>Rate</th>
+                                        <th className={`text-left px-1 py-1 w-20 ${isVisible('discount_percent', 'detail') ? '' : 'hidden'}`}>Disc %</th>
+                                        <th className={`text-left px-1 py-1 w-20 ${isVisible('tax_percent', 'detail') ? '' : 'hidden'}`}>Tax %</th>
+                                        <th className="text-left px-1 py-1 w-24">Amount</th>
+                                        <th className={`text-left px-1 py-1 w-28 ${isVisible('barcode', 'detail') ? '' : 'hidden'}`}>Barcode</th>
+                                        <th className="text-left px-1 py-1 w-32">Ref No <span className="text-gray-400 normal-case">(source doc)</span></th>
+                                        <th className={`text-left px-1 py-1 w-40 ${isVisible('narration', 'detail') ? '' : 'hidden'}`}>Narration</th>
+                                        {inlineTerms ? termCols.map(c => <th key={c.key} className="text-left px-1 py-1">{c.label}</th>) : <th className="text-left px-1 py-1 w-20">Term</th>}
+                                        <th></th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {form.details.map((d, idx) => (
+                                        <tr key={idx} className="border-t border-gray-100">
+                                            <td className="px-1 py-1">
+                                                <input
+                                                    type="checkbox"
+                                                    checked={selectedRowIndexes.includes(idx)}
+                                                    onChange={e => setSelectedRowIndexes(cur => e.target.checked ? [...cur, idx] : cur.filter(i => i !== idx))}
+                                                />
+                                            </td>
+                                            <td className="px-1 py-1"><CodeCell products={filterProductsByCompany(products, form.product_company_id)} product={products.find(p => p.id === d.product_id)} onPick={(pid, uid) => handleProductSelect(idx, pid, uid)} /></td>
+                                            <td className={`px-1 py-1 ${(settings?.multiWarehouse && isVisible('warehouse_id', 'detail')) ? '' : 'hidden'}`}>
+                                                <select disabled={efc.isReadonly('warehouse_id', 'detail')} className="w-full border rounded px-1.5 py-1" value={d.warehouse_id} onChange={e => updateDetailRow(idx, { warehouse_id: e.target.value })}>
+                                                    <option value="">Warehouse</option>
+                                                    {warehouses.map(w => <option key={w.id} value={w.id}>{w.warehouse_name}</option>)}
+                                                </select>
+                                            </td>
+                                            <td className={`px-1 py-1 ${isVisible('batch_no', 'detail') ? '' : 'hidden'}`}>
+                                                {productMaintainsBatch(d.product_id) ? (
+                                                    <input disabled={efc.isReadonly('batch_no', 'detail')} className="w-full border rounded px-1.5 py-1" value={d.batch_no} onChange={e => updateDetailRow(idx, { batch_no: e.target.value })} placeholder="Batch" />
+                                                ) : <span className="text-gray-300 text-xs">—</span>}
+                                                {productTracksSerial(d.product_id) && <input className="w-full border rounded px-1.5 py-1 mt-1" value={d.serial_no || ''} onChange={e => updateDetailRow(idx, { serial_no: e.target.value })} placeholder="Serial No(s)" title="Serial numbers, comma separated - used for serial-wise costing" />}
+                                            </td>
+                                            <td className="px-1 py-1" onKeyDown={e => handleProductRowKeyDown(e, d.product_id)}>
+                                                <div className="flex items-center gap-1">
+                                                    <div className="flex-1">
+                                                        <SearchablePopupSelect
+                                                            listKey="purchase_grn_product_picker"
+                                                            columns={[{ key: 'product_code', label: 'Code' }, { key: 'product_name', label: 'Name' }]}
+                                                            defaultVisibleKeys={['product_name']}
+                                                            items={filterProductsByCompany(products, form.product_company_id)} getId={p => p.id} getLabel={p => p.product_name}
+                                                            searchKeys={settings?.searchBy === 'code' ? ['product_code', 'short_name'] : ['product_name', 'short_name', 'product_code']}
+                                                            value={d.product_id} onChange={id => handleProductSelect(idx, id, null)} placeholder="Product (F1/F2=history)"
+                                                            onAddNew={() => openMasterModal('product')}
+                                                        />
+                                                    </div>
+                                                    <button type="button" tabIndex={-1} onClick={() => openProductHistory(d.product_id, false)} title="Last Purchase History (F1)" className="text-gray-400 hover:text-blue-600 text-sm px-1">🕐</button>
+                                                </div>
+                                            </td>
+                                            <td className="px-1 py-1">
+                                                {productIsFixedDualUom(d.product_id) ? (
+                                                    <div className="flex flex-col gap-1">
+                                                        <div className="flex items-center gap-1">
+                                                            <input disabled={efc.isReadonly('qty', 'detail')}
+                                                                type="number" step="0.0001" className="w-full border rounded px-1.5 py-1" style={{ width: '60px' }} value={d.qty}
+                                                                onChange={e => updateDetailRow(idx, dualUomEntryMode.mode === 'auto_convert' ? onPrimaryQtyChange(e.target.value, dualConversionFactor(d.product_id)) : { qty: e.target.value })}
+                                                            />
+                                                            <span className="text-[10px] text-gray-400">{units.find(u => u.id === d.uom_id)?.unit_name || 'Primary'}</span>
+                                                        </div>
+                                                        <div className="flex items-center gap-1">
+                                                            <input disabled={efc.isReadonly('alt_qty', 'detail')}
+                                                                type="number" step="0.0001" className="w-full border rounded px-1.5 py-1" style={{ width: '60px' }} value={d.alt_qty} placeholder="0"
+                                                                onChange={e => {
+                                                                    if (dualUomEntryMode.mode === 'auto_convert') {
+                                                                        updateDetailRow(idx, onSecondaryQtyChange(e.target.value, dualConversionFactor(d.product_id), dualUomEntryMode.reverseEnabled));
+                                                                    } else {
+                                                                        const { value } = validateFixedSecondary(e.target.value, dualConversionFactor(d.product_id));
+                                                                        updateDetailRow(idx, { alt_qty: value });
+                                                                    }
+                                                                }}
+                                                            />
+                                                            <span className="text-[10px] text-gray-400">{units.find(u => u.id === d.alt_unit_id)?.unit_name || 'Secondary'}</span>
+                                                        </div>
+                                                        {dualUomEntryMode.mode !== 'auto_convert' && validateFixedSecondary(d.alt_qty, dualConversionFactor(d.product_id)).error && (
+                                                            <span className="text-[9px] text-red-500 leading-tight">{validateFixedSecondary(d.alt_qty, dualConversionFactor(d.product_id)).error}</span>
+                                                        )}
+                                                    </div>
+                                                ) : (
+                                                    <input disabled={efc.isReadonly('qty', 'detail')} type="number" step="0.0001" className="w-full border rounded px-1.5 py-1" data-qty value={d.qty} onChange={e => updateDetailRow(idx, { qty: e.target.value })} />
+                                                )}
+                                            </td>
+                                            <td className={`px-1 py-1 ${isVisible('uom_id', 'detail') ? '' : 'hidden'}`}>
+                                                {productIsFixedDualUom(d.product_id) ? (
+                                                    <span className="text-xs text-gray-400">{units.find(u => u.id === d.uom_id)?.unit_name}/{units.find(u => u.id === d.alt_unit_id)?.unit_name}</span>
+                                                ) : (
+                                                    <select disabled={efc.isReadonly('uom_id', 'detail')} className="w-full border rounded px-1.5 py-1" value={d.uom_id} onChange={e => updateDetailRow(idx, { uom_id: e.target.value })}>
+                                                        <option value="">UOM</option>
+                                                        {units.map(u => <option key={u.id} value={u.id}>{u.unit_name}</option>)}
+                                                    </select>
+                                                )}
+                                            </td>
+                                            <td className={`px-1 py-1 ${isVisible('free_qty', 'detail') ? '' : 'hidden'}`}><input disabled={efc.isReadonly('free_qty', 'detail')} type="number" step="0.0001" className="w-full border rounded px-1.5 py-1" value={d.free_qty} onChange={e => updateDetailRow(idx, { free_qty: e.target.value })} /></td>
+                                            <td className={`px-1 py-1 ${isVisible('free_uom_id', 'detail') ? '' : 'hidden'}`}>
+                                                <select disabled={efc.isReadonly('free_uom_id', 'detail')} className="w-full border rounded px-1.5 py-1" value={d.free_uom_id} onChange={e => updateDetailRow(idx, { free_uom_id: e.target.value })}>
+                                                    <option value="">UOM</option>
+                                                    {units.map(u => <option key={u.id} value={u.id}>{u.unit_name}</option>)}
+                                                </select>
+                                            </td>
+                                            <td className={`px-1 py-1 ${isVisible('alt_qty', 'detail') ? '' : 'hidden'}`}>
+                                                {productIsFixedDualUom(d.product_id) ? <span className="text-gray-300 text-xs">(above)</span> : productHasAltUnits(d.product_id) ? <input disabled={efc.isReadonly('alt_qty', 'detail')} type="number" step="0.0001" className="w-full border rounded px-1.5 py-1" value={d.alt_qty} onChange={e => updateDetailRow(idx, { alt_qty: e.target.value })} /> : <span className="text-gray-300 text-xs">—</span>}
+                                            </td>
+                                            <td className={`px-1 py-1 ${isVisible('alt_unit_id', 'detail') ? '' : 'hidden'}`}>
+                                                {productIsFixedDualUom(d.product_id) ? <span className="text-gray-300 text-xs">(above)</span> : productHasAltUnits(d.product_id) ? (
+                                                <select disabled={efc.isReadonly('alt_unit_id', 'detail')} className="w-full border rounded px-1.5 py-1" value={d.alt_unit_id} onChange={e => updateDetailRow(idx, { alt_unit_id: e.target.value })}>
+                                                    <option value="">Unit</option>
+                                                    {units.map(u => <option key={u.id} value={u.id}>{u.unit_name}</option>)}
+                                                </select>
+                                                ) : <span className="text-gray-300 text-xs">—</span>}
+                                            </td>
+                                            <td className={`px-1 py-1 ${isVisible('alt1_qty', 'detail') ? '' : 'hidden'}`}>
+                                                {productHasAltUnits(d.product_id) ? <input type="number" step="0.0001" className="w-full border rounded px-1.5 py-1" value={d.alt1_qty} onChange={e => updateDetailRow(idx, { alt1_qty: e.target.value })} /> : <span className="text-gray-300 text-xs">—</span>}
+                                            </td>
+                                            <td className={`px-1 py-1 ${isVisible('alt1_unit_id', 'detail') ? '' : 'hidden'}`}>
+                                                {productHasAltUnits(d.product_id) ? (
+                                                <select className="w-full border rounded px-1.5 py-1" value={d.alt1_unit_id} onChange={e => updateDetailRow(idx, { alt1_unit_id: e.target.value })}>
+                                                    <option value="">Unit</option>
+                                                    {units.map(u => <option key={u.id} value={u.id}>{u.unit_name}</option>)}
+                                                </select>
+                                                ) : <span className="text-gray-300 text-xs">—</span>}
+                                            </td>
+                                            <td className={`px-1 py-1 ${isVisible('rate', 'detail') ? '' : 'hidden'}`}>
+                                                <input disabled={efc.isReadonly('rate', 'detail')} type="number" step="0.0001" className="w-full border rounded px-1.5 py-1" value={d.rate} onChange={e => updateDetailRow(idx, { rate: e.target.value })} />
+                                                {productIsFixedDualUom(d.product_id) && (
+                                                    <select className="w-full border rounded px-1 py-0.5 mt-1" style={{ fontSize: '10px' }} value={d.rate_basis} onChange={e => updateDetailRow(idx, { rate_basis: e.target.value })}>
+                                                        <option value="primary">per {units.find(u => u.id === d.uom_id)?.unit_name || 'Primary'}</option>
+                                                        <option value="secondary">per {units.find(u => u.id === d.alt_unit_id)?.unit_name || 'Secondary'}</option>
+                                                    </select>
+                                                )}
+                                            </td>
+                                            <td className={`px-1 py-1 ${isVisible('discount_percent', 'detail') ? '' : 'hidden'}`}><input disabled={efc.isReadonly('discount_percent', 'detail')} type="number" step="0.01" className="w-full border rounded px-1.5 py-1" value={d.discount_percent} onChange={e => updateDetailRow(idx, { discount_percent: e.target.value })} /></td>
+                                            <td className={`px-1 py-1 ${isVisible('tax_percent', 'detail') ? '' : 'hidden'}`}><input disabled={efc.isReadonly('tax_percent', 'detail')} type="number" step="0.01" className="w-full border rounded px-1.5 py-1" value={d.tax_percent} onChange={e => updateDetailRow(idx, { tax_percent: e.target.value })} /></td>
+                                            <td className="px-1 py-1 text-gray-500">{lineAmount(d).toFixed(2)}</td>
+                                            <td className={`px-1 py-1 ${isVisible('barcode', 'detail') ? '' : 'hidden'}`}><input disabled={efc.isReadonly('barcode', 'detail')} className="w-full border rounded px-1.5 py-1" value={d.barcode} onChange={e => updateDetailRow(idx, { barcode: e.target.value })} /></td>
+                                            <td className="px-1 py-1 text-xs text-gray-500">{d.source_doc_no || (d.source_requisition_detail_id || d.source_quotation_detail_id || d.source_order_detail_id ? '…' : '—')}</td>
+                                            <td className={`px-1 py-1 ${isVisible('narration', 'detail') ? '' : 'hidden'}`}><input disabled={efc.isReadonly('narration', 'detail')} className="w-full border rounded px-1.5 py-1" value={d.narration} onChange={e => updateDetailRow(idx, { narration: e.target.value })} /></td>
+                                            {inlineTerms ? termCols.map(c => { const on = (d.billing_term_ids || []).includes(c.term_id); const pos = (d.billing_term_ids || []).indexOf(c.term_id); const amt = on ? lineTermPreviews[idx]?.lines?.[pos]?.amount : null; return (<td key={c.key} className="px-1 py-1 whitespace-nowrap"><input type="checkbox" checked={on} onChange={() => updateDetailRow(idx, { billing_term_ids: on ? d.billing_term_ids.filter(x => x !== c.term_id) : [...(d.billing_term_ids || []), c.term_id] })} /> <span className="text-xs">{amt !== null && amt !== undefined ? Number(amt).toFixed(2) : ''}</span></td>); }) : (<td className="px-1 py-1"><button type="button" tabIndex={-1} onClick={() => setProductTermModalIndexes([idx])} className="text-blue-600 text-xs underline">
+{(d.billing_term_ids || []).length > 0 ? `Term (${d.billing_term_ids.length})` : 'Term'}
+</button></td>)}
+                                            <td className="px-1 py-1"><button type="button" tabIndex={-1} onClick={() => removeDetailRow(idx)} className="text-red-500 text-xs">✕</button></td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                        <div className="flex justify-between items-center mt-2">
+                            <div className="flex items-center gap-3">
+                                <button type="button" onClick={addDetailRow} className="text-xs text-blue-600">➕ Add Line (or press Enter on the last field)</button>
+                                <button
+                                    type="button"
+                                    onClick={() => setProductTermModalIndexes(selectedRowIndexes.length > 0 ? selectedRowIndexes : form.details.map((_, i) => i))}
+                                    className="text-xs text-purple-600"
+                                >
+                                    🏷️ Product Term ({selectedRowIndexes.length > 0 ? `${selectedRowIndexes.length} selected` : 'all rows'})
+                                </button>
+                            </div>
+                            <span className="text-sm font-semibold">Total: {grandTotal.toFixed(2)}</span>
+                        </div>
+                    </div>
+
+                    {/* ==================== BILLING TERMS ==================== */}
+                    {billingTerms.length > 0 && (
+                        <div className="border-t pt-4">
+                            <h2 className="font-semibold text-sm text-gray-500 uppercase mb-3">Billing Terms</h2>
+                            <p className="text-xs text-gray-400 mb-2">Same calculation engine as Billing Term Management's own Test Formula - pick any that apply, the adjustment previews live below.</p>
+                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-3">
+                                {billingTerms.map(t => (
+                                    <label key={t.id} className="flex flex-wrap items-center gap-2 text-sm border rounded-lg px-3 py-2">
+                                        <input type="checkbox" data-enter-skip="true" checked={form.billing_term_ids.includes(t.id)} onChange={() => toggleBillingTerm(t.id)} />
+                                        {t.term_name} <span className="text-xs text-gray-400">({t.term_code})</span>
+                                        <TermLedgerInfo term={t} isReturn={false} subLedgers={subLedgers} value={(form.term_sub_ledgers || {})[t.id]} onChange={v => setForm(f => ({ ...f, term_sub_ledgers: { ...(f.term_sub_ledgers || {}), [t.id]: v } }))} />
+                                    </label>
+                                ))}
+                            </div>
+                            {billingPreview && (
+                                <div className="bg-gray-50 rounded-lg p-3 text-sm space-y-1">
+                                    {billingPreview.lines.map((line, i) => (
+                                        <div key={i} className="flex justify-between text-xs text-gray-600">
+                                            <span>{line.term_code}{line.suppressed ? ' (suppressed, zero)' : line.skipped ? ' (disabled)' : ''}</span>
+                                            <span>{line.free_quantity !== undefined ? `+${line.free_quantity} free unit(s)` : (line.amount ?? 0).toFixed(2)}</span>
+                                        </div>
+                                    ))}
+                                    <div className="flex justify-between font-semibold border-t pt-1 mt-1">
+                                        <span>Final Total (Lines + Terms)</span>
+                                        <span>{billingPreview.total.toFixed(2)}</span>
+                                    </div>
+                                </div>
+                            )}
+                        </div>
+                    )}
+
+                    {/* ==================== SUMMARY (aggregated Product Term amounts) ==================== */}
+                    {/* FEATURE: "product wise term amount should show in
+                        summary automatically" - each line's own applied
+                        terms (set via the "Term" button per row) roll up
+                        here by term code. Editing a Summary amount
+                        redistributes proportionally back down to the
+                        exact lines it came from (their ORIGINAL relative
+                        share is preserved), matching "if changed in
+                        Summary, it goes to product level, portion-based". */}
+                    {summaryRows.length > 0 && (
+                        <div className="border-t pt-4">
+                            <h2 className="font-semibold text-sm text-gray-500 uppercase mb-3">Summary (Overall Term Totals)</h2>
+                            <table className="erp-grid-table max-w-lg">
+                                <thead>
+                                    <tr><th>Term</th><th>Amount</th></tr>
+                                </thead>
+                                <tbody>
+                                    {summaryRows.map(r => (
+                                        <tr key={r.billing_term_id}>
+                                            <td>{r.term_name} <span className="text-xs text-gray-400">({r.term_code})</span></td>
+                                            <td>
+                                                <input
+                                                    type="number" step="0.01" className="erp-input w-32"
+                                                    value={summaryOverrides[r.billing_term_id] !== undefined ? summaryOverrides[r.billing_term_id] : r.original_total.toFixed(2)}
+                                                    onChange={e => setSummaryOverrides(o => ({ ...o, [r.billing_term_id]: e.target.value }))}
+                                                />
+                                            </td>
+                                        </tr>
+                                    ))}
+                                    <tr className="font-semibold border-t">
+                                        <td>Total</td>
+                                        <td>{summaryGrandTotal.toFixed(2)}</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                            <p className="text-xs text-gray-400 mt-1">Editing an amount here redistributes it proportionally across every line that carries this term, preserving each line's original share.</p>
+                        </div>
+                    )}
+                    </div>
 
                     {/* ==================== TABS ==================== */}
                     <div className="erp-tabs">
                         <button type="button" className={`erp-tab ${activeTab === 'general' ? 'active' : ''}`} onClick={() => setActiveTab('general')}>General</button>
                         <button type="button" className={`erp-tab ${activeTab === 'accounts' ? 'active' : ''}`} onClick={() => setActiveTab('accounts')}>Accounts &amp; Allocation</button>
+                        <button type="button" className={`erp-tab ${activeTab === 'party' ? 'active' : ''}`} onClick={() => setActiveTab('party')}>🏠 Vendor Details</button>
                         <button type="button" className={`erp-tab ${activeTab === 'additional' ? 'active' : ''}`} onClick={() => setActiveTab('additional')}>Additional</button>
                     </div>
                     <div className="erp-tab-content">
+                        {activeTab === 'party' && <PartyDetailsPanel partyId={form.vendor_ledger_id} partyLabel="Vendor" info={partyInfo} onChange={setPartyInfo} />}
                         <div className={activeTab === 'general' ? 'grid grid-cols-1 md:grid-cols-4 gap-3' : 'hidden'}>
                             <div className={isVisible('agent_id') ? 'erp-field' : 'erp-field hidden'}>
                                 <label className="erp-label">Agent</label>
@@ -728,7 +997,7 @@ export default function PurchaseGrn() {
                                 <label className="erp-label">Due Days</label>
                                 <input type="number" className="erp-input" value={form.due_days} onChange={e => setForm({ ...form, due_days: e.target.value })} />
                             </div>
-                            <div className={isVisible('warehouse_id') ? 'erp-field' : 'erp-field hidden'}>
+                            <div className={(settings?.multiWarehouse && isVisible('warehouse_id')) ? 'erp-field' : 'erp-field hidden'}>
                                 <label className="erp-label">Master Warehouse</label>
                                 <SearchablePopupSelect
                                     listKey="purchase_grn_warehouse_picker"
@@ -846,258 +1115,6 @@ export default function PurchaseGrn() {
                             </div>
                         </div>
                     </div>
-
-                    <div className="px-4">
-
-                    {/* ==================== DETAILS PART ==================== */}
-                    <div className="border-t pt-4">
-                        <h2 className="font-semibold text-sm text-gray-500 uppercase mb-3">Details</h2>
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-sm min-w-[1400px]">
-                                <thead>
-                                    <tr className="text-xs text-gray-500 uppercase">
-                                        <th className="text-left px-1 py-1 w-6"></th>
-                                        <th className="text-left px-1 py-1 w-56">Product {isRequired('product_id', 'detail') && <span className="text-red-500">*</span>}</th>
-                                        <th className="text-left px-1 py-1 w-24">Qty {isRequired('qty', 'detail') && <span className="text-red-500">*</span>}</th>
-                                        <th className={`text-left px-1 py-1 w-32 ${isVisible('uom_id', 'detail') ? '' : 'hidden'}`}>UOM</th>
-                                        <th className={`text-left px-1 py-1 w-20 ${isVisible('alt_qty', 'detail') ? '' : 'hidden'}`}>Alt Qty</th>
-                                        <th className={`text-left px-1 py-1 w-32 ${isVisible('alt_unit_id', 'detail') ? '' : 'hidden'}`}>Alt Unit</th>
-                                        <th className={`text-left px-1 py-1 w-20 ${isVisible('alt1_qty', 'detail') ? '' : 'hidden'}`}>Alt1 Qty</th>
-                                        <th className={`text-left px-1 py-1 w-32 ${isVisible('alt1_unit_id', 'detail') ? '' : 'hidden'}`}>Alt1 Unit</th>
-                                        <th className={`text-left px-1 py-1 w-24 ${isVisible('rate', 'detail') ? '' : 'hidden'}`}>Rate</th>
-                                        <th className={`text-left px-1 py-1 w-20 ${isVisible('discount_percent', 'detail') ? '' : 'hidden'}`}>Disc %</th>
-                                        <th className={`text-left px-1 py-1 w-20 ${isVisible('tax_percent', 'detail') ? '' : 'hidden'}`}>Tax %</th>
-                                        <th className="text-left px-1 py-1 w-24">Amount</th>
-                                        <th className={`text-left px-1 py-1 w-20 ${isVisible('free_qty', 'detail') ? '' : 'hidden'}`}>Free Qty</th>
-                                        <th className={`text-left px-1 py-1 w-32 ${isVisible('free_uom_id', 'detail') ? '' : 'hidden'}`}>Free UOM</th>
-                                        <th className={`text-left px-1 py-1 w-40 ${isVisible('warehouse_id', 'detail') ? '' : 'hidden'}`}>Details Warehouse</th>
-                                        <th className={`text-left px-1 py-1 w-28 ${isVisible('barcode', 'detail') ? '' : 'hidden'}`}>Barcode</th>
-                                        <th className={`text-left px-1 py-1 w-28 ${isVisible('batch_no', 'detail') ? '' : 'hidden'}`}>Batch No</th>
-                                        <th className="text-left px-1 py-1 w-32">Ref No <span className="text-gray-400 normal-case">(source doc)</span></th>
-                                        <th className={`text-left px-1 py-1 w-40 ${isVisible('narration', 'detail') ? '' : 'hidden'}`}>Narration</th>
-                                        <th className="text-left px-1 py-1 w-20">Term</th>
-                                        <th></th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {form.details.map((d, idx) => (
-                                        <tr key={idx} className="border-t border-gray-100">
-                                            <td className="px-1 py-1">
-                                                <input
-                                                    type="checkbox"
-                                                    checked={selectedRowIndexes.includes(idx)}
-                                                    onChange={e => setSelectedRowIndexes(cur => e.target.checked ? [...cur, idx] : cur.filter(i => i !== idx))}
-                                                />
-                                            </td>
-                                            <td className="px-1 py-1" onKeyDown={e => handleProductRowKeyDown(e, d.product_id)}>
-                                                <div className="flex items-center gap-1">
-                                                    <div className="flex-1">
-                                                        <SearchablePopupSelect
-                                                            listKey="purchase_grn_product_picker"
-                                                            columns={[{ key: 'product_code', label: 'Code' }, { key: 'product_name', label: 'Name' }]}
-                                                            defaultVisibleKeys={['product_name']}
-                                                            items={filterProductsByCompany(products, form.product_company_id)} getId={p => p.id} getLabel={p => p.product_name}
-                                                            searchKeys={['product_name', 'product_code']}
-                                                            value={d.product_id} onChange={id => handleProductSelect(idx, id)} placeholder="Product (F1/F2=history)"
-                                                            onAddNew={() => openMasterModal('product')}
-                                                        />
-                                                    </div>
-                                                    <button type="button" tabIndex={-1} onClick={() => openProductHistory(d.product_id, false)} title="Last Purchase History (F1)" className="text-gray-400 hover:text-blue-600 text-sm px-1">🕐</button>
-                                                </div>
-                                            </td>
-                                            <td className="px-1 py-1">
-                                                {productIsFixedDualUom(d.product_id) ? (
-                                                    <div className="flex flex-col gap-1">
-                                                        <div className="flex items-center gap-1">
-                                                            <input disabled={efc.isReadonly('qty', 'detail')}
-                                                                type="number" step="0.0001" className="w-full border rounded px-1.5 py-1" style={{ width: '60px' }} value={d.qty}
-                                                                onChange={e => updateDetailRow(idx, dualUomEntryMode.mode === 'auto_convert' ? onPrimaryQtyChange(e.target.value, dualConversionFactor(d.product_id)) : { qty: e.target.value })}
-                                                            />
-                                                            <span className="text-[10px] text-gray-400">{units.find(u => u.id === d.uom_id)?.unit_name || 'Primary'}</span>
-                                                        </div>
-                                                        <div className="flex items-center gap-1">
-                                                            <input disabled={efc.isReadonly('alt_qty', 'detail')}
-                                                                type="number" step="0.0001" className="w-full border rounded px-1.5 py-1" style={{ width: '60px' }} value={d.alt_qty} placeholder="0"
-                                                                onChange={e => {
-                                                                    if (dualUomEntryMode.mode === 'auto_convert') {
-                                                                        updateDetailRow(idx, onSecondaryQtyChange(e.target.value, dualConversionFactor(d.product_id), dualUomEntryMode.reverseEnabled));
-                                                                    } else {
-                                                                        const { value } = validateFixedSecondary(e.target.value, dualConversionFactor(d.product_id));
-                                                                        updateDetailRow(idx, { alt_qty: value });
-                                                                    }
-                                                                }}
-                                                            />
-                                                            <span className="text-[10px] text-gray-400">{units.find(u => u.id === d.alt_unit_id)?.unit_name || 'Secondary'}</span>
-                                                        </div>
-                                                        {dualUomEntryMode.mode !== 'auto_convert' && validateFixedSecondary(d.alt_qty, dualConversionFactor(d.product_id)).error && (
-                                                            <span className="text-[9px] text-red-500 leading-tight">{validateFixedSecondary(d.alt_qty, dualConversionFactor(d.product_id)).error}</span>
-                                                        )}
-                                                    </div>
-                                                ) : (
-                                                    <input disabled={efc.isReadonly('qty', 'detail')} type="number" step="0.0001" className="w-full border rounded px-1.5 py-1" value={d.qty} onChange={e => updateDetailRow(idx, { qty: e.target.value })} />
-                                                )}
-                                            </td>
-                                            <td className={`px-1 py-1 ${isVisible('uom_id', 'detail') ? '' : 'hidden'}`}>
-                                                {productIsFixedDualUom(d.product_id) ? (
-                                                    <span className="text-xs text-gray-400">{units.find(u => u.id === d.uom_id)?.unit_name}/{units.find(u => u.id === d.alt_unit_id)?.unit_name}</span>
-                                                ) : (
-                                                    <select disabled={efc.isReadonly('uom_id', 'detail')} className="w-full border rounded px-1.5 py-1" value={d.uom_id} onChange={e => updateDetailRow(idx, { uom_id: e.target.value })}>
-                                                        <option value="">UOM</option>
-                                                        {units.map(u => <option key={u.id} value={u.id}>{u.unit_name}</option>)}
-                                                    </select>
-                                                )}
-                                            </td>
-                                            <td className={`px-1 py-1 ${isVisible('alt_qty', 'detail') ? '' : 'hidden'}`}>
-                                                {productIsFixedDualUom(d.product_id) ? <span className="text-gray-300 text-xs">(above)</span> : productHasAltUnits(d.product_id) ? <input disabled={efc.isReadonly('alt_qty', 'detail')} type="number" step="0.0001" className="w-full border rounded px-1.5 py-1" value={d.alt_qty} onChange={e => updateDetailRow(idx, { alt_qty: e.target.value })} /> : <span className="text-gray-300 text-xs">—</span>}
-                                            </td>
-                                            <td className={`px-1 py-1 ${isVisible('alt_unit_id', 'detail') ? '' : 'hidden'}`}>
-                                                {productIsFixedDualUom(d.product_id) ? <span className="text-gray-300 text-xs">(above)</span> : productHasAltUnits(d.product_id) ? (
-                                                <select disabled={efc.isReadonly('alt_unit_id', 'detail')} className="w-full border rounded px-1.5 py-1" value={d.alt_unit_id} onChange={e => updateDetailRow(idx, { alt_unit_id: e.target.value })}>
-                                                    <option value="">Unit</option>
-                                                    {units.map(u => <option key={u.id} value={u.id}>{u.unit_name}</option>)}
-                                                </select>
-                                                ) : <span className="text-gray-300 text-xs">—</span>}
-                                            </td>
-                                            <td className={`px-1 py-1 ${isVisible('alt1_qty', 'detail') ? '' : 'hidden'}`}>
-                                                {productHasAltUnits(d.product_id) ? <input type="number" step="0.0001" className="w-full border rounded px-1.5 py-1" value={d.alt1_qty} onChange={e => updateDetailRow(idx, { alt1_qty: e.target.value })} /> : <span className="text-gray-300 text-xs">—</span>}
-                                            </td>
-                                            <td className={`px-1 py-1 ${isVisible('alt1_unit_id', 'detail') ? '' : 'hidden'}`}>
-                                                {productHasAltUnits(d.product_id) ? (
-                                                <select className="w-full border rounded px-1.5 py-1" value={d.alt1_unit_id} onChange={e => updateDetailRow(idx, { alt1_unit_id: e.target.value })}>
-                                                    <option value="">Unit</option>
-                                                    {units.map(u => <option key={u.id} value={u.id}>{u.unit_name}</option>)}
-                                                </select>
-                                                ) : <span className="text-gray-300 text-xs">—</span>}
-                                            </td>
-                                            <td className={`px-1 py-1 ${isVisible('rate', 'detail') ? '' : 'hidden'}`}>
-                                                <input disabled={efc.isReadonly('rate', 'detail')} type="number" step="0.0001" className="w-full border rounded px-1.5 py-1" value={d.rate} onChange={e => updateDetailRow(idx, { rate: e.target.value })} />
-                                                {productIsFixedDualUom(d.product_id) && (
-                                                    <select className="w-full border rounded px-1 py-0.5 mt-1" style={{ fontSize: '10px' }} value={d.rate_basis} onChange={e => updateDetailRow(idx, { rate_basis: e.target.value })}>
-                                                        <option value="primary">per {units.find(u => u.id === d.uom_id)?.unit_name || 'Primary'}</option>
-                                                        <option value="secondary">per {units.find(u => u.id === d.alt_unit_id)?.unit_name || 'Secondary'}</option>
-                                                    </select>
-                                                )}
-                                            </td>
-                                            <td className={`px-1 py-1 ${isVisible('discount_percent', 'detail') ? '' : 'hidden'}`}><input disabled={efc.isReadonly('discount_percent', 'detail')} type="number" step="0.01" className="w-full border rounded px-1.5 py-1" value={d.discount_percent} onChange={e => updateDetailRow(idx, { discount_percent: e.target.value })} /></td>
-                                            <td className={`px-1 py-1 ${isVisible('tax_percent', 'detail') ? '' : 'hidden'}`}><input disabled={efc.isReadonly('tax_percent', 'detail')} type="number" step="0.01" className="w-full border rounded px-1.5 py-1" value={d.tax_percent} onChange={e => updateDetailRow(idx, { tax_percent: e.target.value })} /></td>
-                                            <td className="px-1 py-1 text-gray-500">{lineAmount(d).toFixed(2)}</td>
-                                            <td className={`px-1 py-1 ${isVisible('free_qty', 'detail') ? '' : 'hidden'}`}><input disabled={efc.isReadonly('free_qty', 'detail')} type="number" step="0.0001" className="w-full border rounded px-1.5 py-1" value={d.free_qty} onChange={e => updateDetailRow(idx, { free_qty: e.target.value })} /></td>
-                                            <td className={`px-1 py-1 ${isVisible('free_uom_id', 'detail') ? '' : 'hidden'}`}>
-                                                <select disabled={efc.isReadonly('free_uom_id', 'detail')} className="w-full border rounded px-1.5 py-1" value={d.free_uom_id} onChange={e => updateDetailRow(idx, { free_uom_id: e.target.value })}>
-                                                    <option value="">UOM</option>
-                                                    {units.map(u => <option key={u.id} value={u.id}>{u.unit_name}</option>)}
-                                                </select>
-                                            </td>
-                                            <td className={`px-1 py-1 ${isVisible('warehouse_id', 'detail') ? '' : 'hidden'}`}>
-                                                <select disabled={efc.isReadonly('warehouse_id', 'detail')} className="w-full border rounded px-1.5 py-1" value={d.warehouse_id} onChange={e => updateDetailRow(idx, { warehouse_id: e.target.value })}>
-                                                    <option value="">Warehouse</option>
-                                                    {warehouses.map(w => <option key={w.id} value={w.id}>{w.warehouse_name}</option>)}
-                                                </select>
-                                            </td>
-                                            <td className={`px-1 py-1 ${isVisible('barcode', 'detail') ? '' : 'hidden'}`}><input disabled={efc.isReadonly('barcode', 'detail')} className="w-full border rounded px-1.5 py-1" value={d.barcode} onChange={e => updateDetailRow(idx, { barcode: e.target.value })} /></td>
-                                            <td className={`px-1 py-1 ${isVisible('batch_no', 'detail') ? '' : 'hidden'}`}>
-                                                {productMaintainsBatch(d.product_id) ? (
-                                                    <input disabled={efc.isReadonly('batch_no', 'detail')} className="w-full border rounded px-1.5 py-1" value={d.batch_no} onChange={e => updateDetailRow(idx, { batch_no: e.target.value })} placeholder="Batch" />
-                                                ) : <span className="text-gray-300 text-xs">—</span>}
-                                                {productTracksSerial(d.product_id) && <input className="w-full border rounded px-1.5 py-1 mt-1" value={d.serial_no || ''} onChange={e => updateDetailRow(idx, { serial_no: e.target.value })} placeholder="Serial No(s)" title="Serial numbers, comma separated - used for serial-wise costing" />}
-                                            </td>
-                                            <td className="px-1 py-1 text-xs text-gray-500">{d.source_doc_no || (d.source_requisition_detail_id || d.source_quotation_detail_id || d.source_order_detail_id ? '…' : '—')}</td>
-                                            <td className={`px-1 py-1 ${isVisible('narration', 'detail') ? '' : 'hidden'}`}><input disabled={efc.isReadonly('narration', 'detail')} className="w-full border rounded px-1.5 py-1" value={d.narration} onChange={e => updateDetailRow(idx, { narration: e.target.value })} /></td>
-                                            <td className="px-1 py-1"><button type="button" tabIndex={-1} onClick={() => setProductTermModalIndexes([idx])} className="text-blue-600 text-xs underline">
-                                                {(d.billing_term_ids || []).length > 0 ? `Term (${d.billing_term_ids.length})` : 'Term'}
-                                            </button></td>
-                                            <td className="px-1 py-1"><button type="button" tabIndex={-1} onClick={() => removeDetailRow(idx)} className="text-red-500 text-xs">✕</button></td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                        <div className="flex justify-between items-center mt-2">
-                            <div className="flex items-center gap-3">
-                                <button type="button" onClick={addDetailRow} className="text-xs text-blue-600">➕ Add Line (or press Enter on the last field)</button>
-                                <button
-                                    type="button"
-                                    onClick={() => setProductTermModalIndexes(selectedRowIndexes.length > 0 ? selectedRowIndexes : form.details.map((_, i) => i))}
-                                    className="text-xs text-purple-600"
-                                >
-                                    🏷️ Product Term ({selectedRowIndexes.length > 0 ? `${selectedRowIndexes.length} selected` : 'all rows'})
-                                </button>
-                            </div>
-                            <span className="text-sm font-semibold">Total: {grandTotal.toFixed(2)}</span>
-                        </div>
-                    </div>
-
-                    {/* ==================== BILLING TERMS ==================== */}
-                    {billingTerms.length > 0 && (
-                        <div className="border-t pt-4">
-                            <h2 className="font-semibold text-sm text-gray-500 uppercase mb-3">Billing Terms</h2>
-                            <p className="text-xs text-gray-400 mb-2">Same calculation engine as Billing Term Management's own Test Formula - pick any that apply, the adjustment previews live below.</p>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-3">
-                                {billingTerms.map(t => (
-                                    <label key={t.id} className="flex flex-wrap items-center gap-2 text-sm border rounded-lg px-3 py-2">
-                                        <input type="checkbox" data-enter-skip="true" checked={form.billing_term_ids.includes(t.id)} onChange={() => toggleBillingTerm(t.id)} />
-                                        {t.term_name} <span className="text-xs text-gray-400">({t.term_code})</span>
-                                        <TermLedgerInfo term={t} isReturn={false} subLedgers={subLedgers} value={(form.term_sub_ledgers || {})[t.id]} onChange={v => setForm(f => ({ ...f, term_sub_ledgers: { ...(f.term_sub_ledgers || {}), [t.id]: v } }))} />
-                                    </label>
-                                ))}
-                            </div>
-                            {billingPreview && (
-                                <div className="bg-gray-50 rounded-lg p-3 text-sm space-y-1">
-                                    {billingPreview.lines.map((line, i) => (
-                                        <div key={i} className="flex justify-between text-xs text-gray-600">
-                                            <span>{line.term_code}{line.suppressed ? ' (suppressed, zero)' : line.skipped ? ' (disabled)' : ''}</span>
-                                            <span>{line.free_quantity !== undefined ? `+${line.free_quantity} free unit(s)` : (line.amount ?? 0).toFixed(2)}</span>
-                                        </div>
-                                    ))}
-                                    <div className="flex justify-between font-semibold border-t pt-1 mt-1">
-                                        <span>Final Total (Lines + Terms)</span>
-                                        <span>{billingPreview.total.toFixed(2)}</span>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-                    )}
-
-                    {/* ==================== SUMMARY (aggregated Product Term amounts) ==================== */}
-                    {/* FEATURE: "product wise term amount should show in
-                        summary automatically" - each line's own applied
-                        terms (set via the "Term" button per row) roll up
-                        here by term code. Editing a Summary amount
-                        redistributes proportionally back down to the
-                        exact lines it came from (their ORIGINAL relative
-                        share is preserved), matching "if changed in
-                        Summary, it goes to product level, portion-based". */}
-                    {summaryRows.length > 0 && (
-                        <div className="border-t pt-4">
-                            <h2 className="font-semibold text-sm text-gray-500 uppercase mb-3">Summary (Overall Term Totals)</h2>
-                            <table className="erp-grid-table max-w-lg">
-                                <thead>
-                                    <tr><th>Term</th><th>Amount</th></tr>
-                                </thead>
-                                <tbody>
-                                    {summaryRows.map(r => (
-                                        <tr key={r.billing_term_id}>
-                                            <td>{r.term_name} <span className="text-xs text-gray-400">({r.term_code})</span></td>
-                                            <td>
-                                                <input
-                                                    type="number" step="0.01" className="erp-input w-32"
-                                                    value={summaryOverrides[r.billing_term_id] !== undefined ? summaryOverrides[r.billing_term_id] : r.original_total.toFixed(2)}
-                                                    onChange={e => setSummaryOverrides(o => ({ ...o, [r.billing_term_id]: e.target.value }))}
-                                                />
-                                            </td>
-                                        </tr>
-                                    ))}
-                                    <tr className="font-semibold border-t">
-                                        <td>Total</td>
-                                        <td>{summaryGrandTotal.toFixed(2)}</td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                            <p className="text-xs text-gray-400 mt-1">Editing an amount here redistributes it proportionally across every line that carries this term, preserving each line's original share.</p>
-                        </div>
-                    )}
-                    </div>
-
                     <div className="erp-bottombar">
                         <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-3">
                             <div className="erp-field">

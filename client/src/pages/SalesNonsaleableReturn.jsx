@@ -16,9 +16,16 @@ import { formatDateForDisplay } from '../utils/nepaliDateUtils';
 import BillWiseSettlementPanel from '../components/BillWiseSettlementPanel';
 import NumberingCategorySelector from '../components/NumberingCategorySelector';
 import ProductTermBar from '../components/ProductTermBar';
-import { resolveDualUomEntryMode, onPrimaryQtyChange, onSecondaryQtyChange, validateFixedSecondary, dualBaseQty } from '../utils/dualUomEntryMode';
+import { resolveDualUomEntryMode, dualBaseQty } from '../utils/dualUomEntryMode';
 import UdfValuesModal from '../components/UdfValuesModal';
 import RecordHistory from '../components/RecordHistory';
+import useEntrySettings from '../components/entry/useEntrySettings';
+import DocNumberField from '../components/entry/DocNumberField';
+import PendingDocsPanel, { mergePulled } from '../components/entry/PendingDocsPanel';
+import PartyFooterTabs, { emptyPartyInfo, savePartyInfo, partyInfoFromDoc } from '../components/entry/PartyFooterTabs';
+import SalesLineGrid from '../components/entry/SalesLineGrid';
+
+import { dualHelpers } from '../components/entry/dualHelpers';
 
 const emptyDetailRow = () => ({ product_id: '', qty: '', uom_id: '', alt_qty: '', alt_unit_id: '', rate_basis: 'primary', rate: '', discount_percent: '', warehouse_id: '', batch_no: '', source_bill_detail_id: '' });
 
@@ -41,6 +48,12 @@ const EFC_RENDERED_KEYS = ['customer_ledger_id', 'doc_date', 'return_reason', 's
 export default function SalesNonsaleableReturn() {
     const { authFetch } = useAuth();
     const efc = useEntryFieldControls('sales_nonsalable_return', EFC_RENDERED_KEYS);
+    const settings = useEntrySettings();
+    const termCols = [];
+    const popupTerms = !!settings?.popupTerms?.includes('sales_return');
+    const [partyInfo, setPartyInfo] = useState(emptyPartyInfo());
+    const [pulledDocs, setPulledDocs] = useState([]);
+
     const [rows, setRows] = useState([]);
     const [showForm, setShowForm] = useState(false);
     const [form, setForm] = useState(emptyForm);
@@ -98,7 +111,7 @@ export default function SalesNonsaleableReturn() {
     }, [authFetch]);
     useEffect(() => { load(); }, [load]);
 
-    const resetForm = () => { setForm(emptyForm); setEditingId(null); setBillWiseSettlements(null); };
+    const resetForm = () => { setForm(emptyForm); setEditingId(null); setBillWiseSettlements(null); setPartyInfo(emptyPartyInfo()); setPulledDocs([]); };
     const addDetailRow = () => setForm(f => ({ ...f, details: [...f.details, emptyDetailRow()] }));
     const removeDetailRow = (idx) => {
         setForm(f => ({ ...f, details: f.details.length > 1 ? f.details.filter((_, i) => i !== idx) : f.details }));
@@ -113,12 +126,12 @@ export default function SalesNonsaleableReturn() {
         return Number(rate?.conversion_factor) || 1;
     };
 
-    const handleProductSelect = (idx, productId) => {
+    const handleProductSelect = async (idx, productId, unitId) => {
         const product = products.find(p => p.id === productId);
         if (product?.uom_mode === 'fixed_dual') {
             updateDetailRow(idx, { product_id: productId, uom_id: product.dual_uom_primary_unit_id || '', alt_unit_id: product.base_unit_id || '', rate_basis: 'primary', rate: product?.sales_rate_sr1 || 0 });
         } else {
-            updateDetailRow(idx, { product_id: productId, uom_id: product?.base_unit_id || '', rate: product?.sales_rate_sr1 || 0 });
+            updateDetailRow(idx, { product_id: productId, uom_id: unitId || product?.base_unit_id || '', rate: product?.sales_rate_sr1 || 0 });
         }
     };
 
@@ -182,15 +195,17 @@ export default function SalesNonsaleableReturn() {
             if (!form.warehouse_id) return showAlert('Warehouse is required', 'danger');
             if (validDetails.length === 0) return showAlert('At least one complete line item is required', 'danger');
         }
+        let savedId = editingId;
         try {
             const payload = { ...form, details: validDetails, ...(billWiseSettlements ? { bill_wise_settlements: billWiseSettlements } : {}), ...(saveAsDraft ? { status: 'draft', save_as_draft: true } : {}) };
             if (editingId) {
                 await authFetch(`/api/sales-nonsaleable-returns/${editingId}`, { method: 'PUT', body: JSON.stringify(payload) });
                 showAlert(saveAsDraft ? 'Draft saved' : 'Sales Non-saleable Return updated', 'success');
             } else {
-                const res = await authFetch('/api/sales-nonsaleable-returns', { method: 'POST', body: JSON.stringify(payload) });
+                const res = await authFetch('/api/sales-nonsaleable-returns', { method: 'POST', body: JSON.stringify(payload) }); savedId = res.data?.id;
                 showAlert(saveAsDraft ? `Draft ${res.data.doc_no} saved` : `Sales Non-saleable Return ${res.data.doc_no} created`, 'success');
             }
+            try { await savePartyInfo(authFetch, 'sales_nonsalable_return', savedId, partyInfo); } catch (pe) { showAlert(`Saved, but the party details were not: ${pe.message}`, 'warning'); }
             resetForm();
             setShowForm(false);
             load();
@@ -203,6 +218,7 @@ export default function SalesNonsaleableReturn() {
         try {
             const res = await authFetch(`/api/sales-nonsaleable-returns/${row.id}`);
             setEditingId(row.id);
+            setPartyInfo(res.data.party_billing_address || res.data.party_pan ? partyInfoFromDoc(res.data, res.data.customer_ledger_id) : emptyPartyInfo());
             setForm({ ...emptyForm, ...res.data, doc_date: res.data.doc_date?.slice(0, 10) || emptyForm.doc_date, details: (res.data.details || []).length > 0 ? res.data.details : [emptyDetailRow()] });
             setShowForm(true);
             window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -279,6 +295,7 @@ export default function SalesNonsaleableReturn() {
                         ⚠️ These goods are tracked separately from regular sellable stock and will NOT be available for future sales.
                     </p>
                     <div className="erp-topbar grid-cols-1 md:grid-cols-4">
+                        <DocNumberField voucherType="sales_nonsalable_return" categoryId={form.numbering_category_id} docNo={editingId ? form.doc_no : ''} value={form.doc_no} onChange={v => setForm({ ...form, doc_no: v })} />
                         <div className={efc.isVisible('doc_date') ? 'erp-field' : 'erp-field hidden'}>
                             <label className="erp-label">Date <span className="req">*</span> {form.doc_date && <span className="hint">({formatDateForDisplay(form.doc_date, 'nepali')} BS)</span>} {efc.isRequired('doc_date') && <span className="req">*</span>}</label>
                             <input disabled={efc.isReadonly('doc_date')} type="date" className="erp-input" value={form.doc_date} onChange={e => setForm({ ...form, doc_date: e.target.value })} required />
@@ -295,6 +312,7 @@ export default function SalesNonsaleableReturn() {
                             />
                         </div>
                         <ProductCompanyField side="sales" form={form} setForm={setForm} products={products} emptyRow={emptyDetailRow} />
+                        {settings?.multiWarehouse && (
                         <div className={efc.isVisible('warehouse_id') ? 'erp-field' : 'erp-field hidden'}>
                             <label className="erp-label">Warehouse <span className="req">*</span> {efc.isRequired('warehouse_id') && <span className="req">*</span>}</label>
                             <SearchablePopupSelect
@@ -306,6 +324,7 @@ export default function SalesNonsaleableReturn() {
                                 value={form.warehouse_id} onChange={id => setForm({ ...form, warehouse_id: id })} placeholder="Select Warehouse"
                             />
                         </div>
+                        )}
                         <div className={efc.isVisible('return_reason') ? 'erp-field' : 'erp-field hidden'}>
                             <label className="erp-label">Return Reason {efc.isRequired('return_reason') && <span className="req">*</span>}</label>
                             <select disabled={efc.isReadonly('return_reason')} className="erp-select" value={form.return_reason} onChange={e => setForm({ ...form, return_reason: e.target.value })}>
@@ -316,6 +335,8 @@ export default function SalesNonsaleableReturn() {
                             <NumberingCategorySelector voucherType="sales_nonsalable_return" value={form.numbering_category_id} onChange={id => setForm({ ...form, numbering_category_id: id })} />
                         )}
                     </div>
+
+                    <PendingDocsPanel target="sales_nonsalable_return" partyId={form.customer_ledger_id} efc={efc} disabled={!!editingId} pulled={pulledDocs} onPull={data => { setForm(f => mergePulled(f, data, emptyDetailRow)); setPulledDocs(p => [...p, ...data.documents.map(x => x.id)]); showAlert(`Pulled ${data.lines.length} line(s) from ${data.documents.map(x => x.doc_no).join(', ')}`, 'success'); }} />
 
                     <div className="erp-tab-content">
                         {form.source_bill_id && (
@@ -383,112 +404,14 @@ export default function SalesNonsaleableReturn() {
                             lineGross={lineGross}
                             onApply={applyProductTerm}
                         />
-                        <div className="overflow-x-auto">
-                            <table className="erp-grid-table min-w-[1000px]">
-                                <thead>
-                                    <tr>
-                                        <th className="w-6"></th>
-                                        <th className="w-56">Product</th>
-                                        <th className={`w-24 ${efc.isVisible('qty', 'detail') ? '' : 'hidden'}`}>Qty</th>
-                                        <th className="w-28">UOM</th>
-                                        <th className="w-24">Rate</th>
-                                        <th className="w-20">Disc %</th>
-                                        <th className="w-24">Amount</th>
-                                        <th className="w-40">Warehouse</th>
-                                        <th className="w-32">Batch</th>
-                                        <th></th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {form.details.map((d, idx) => (
-                                        <tr key={idx}>
-                                            <td>
-                                                <input
-                                                    type="checkbox"
-                                                    checked={selectedRowIndexes.includes(idx)}
-                                                    onChange={e => setSelectedRowIndexes(cur => e.target.checked ? [...cur, idx] : cur.filter(i => i !== idx))}
-                                                />
-                                            </td>
-                                            <td>
-                                                <SearchablePopupSelect
-                                                    listKey="snsr_product_picker"
-                                                    columns={[{ key: 'product_code', label: 'Code' }, { key: 'product_name', label: 'Name' }]}
-                                                    defaultVisibleKeys={['product_name']}
-                                                    items={filterProductsByCompany(products, form.product_company_id)} getId={p => p.id} getLabel={p => p.product_name}
-                                                    searchKeys={['product_name', 'product_code']}
-                                                    value={d.product_id} onChange={id => handleProductSelect(idx, id)} placeholder="Product"
-                                                />
-                                            </td>
-                                            <td className={efc.isVisible('qty', 'detail') ? '' : 'hidden'}>
-                                                {productIsFixedDualUom(d.product_id) ? (
-                                                    <div className="flex flex-col gap-1">
-                                                        <div className="flex items-center gap-1">
-                                                            <input disabled={efc.isReadonly('qty', 'detail')}
-                                                                type="number" step="0.0001" className="erp-input" style={{ width: '60px' }} value={d.qty}
-                                                                onChange={e => updateDetailRow(idx, dualUomEntryMode.mode === 'auto_convert' ? onPrimaryQtyChange(e.target.value, dualConversionFactor(d.product_id)) : { qty: e.target.value })}
-                                                            />
-                                                            <span className="text-[10px] text-gray-400">{units.find(u => u.id === d.uom_id)?.unit_name || 'Primary'}</span>
-                                                        </div>
-                                                        <div className="flex items-center gap-1">
-                                                            <input
-                                                                type="number" step="0.0001" className="erp-input" style={{ width: '60px' }} value={d.alt_qty} placeholder="0"
-                                                                onChange={e => {
-                                                                    if (dualUomEntryMode.mode === 'auto_convert') {
-                                                                        updateDetailRow(idx, onSecondaryQtyChange(e.target.value, dualConversionFactor(d.product_id), dualUomEntryMode.reverseEnabled));
-                                                                    } else {
-                                                                        const { value } = validateFixedSecondary(e.target.value, dualConversionFactor(d.product_id));
-                                                                        updateDetailRow(idx, { alt_qty: value });
-                                                                    }
-                                                                }}
-                                                            />
-                                                            <span className="text-[10px] text-gray-400">{units.find(u => u.id === d.alt_unit_id)?.unit_name || 'Secondary'}</span>
-                                                        </div>
-                                                        {dualUomEntryMode.mode !== 'auto_convert' && validateFixedSecondary(d.alt_qty, dualConversionFactor(d.product_id)).error && (
-                                                            <span className="text-[9px] text-red-500 leading-tight">{validateFixedSecondary(d.alt_qty, dualConversionFactor(d.product_id)).error}</span>
-                                                        )}
-                                                    </div>
-                                                ) : (
-                                                    <input disabled={efc.isReadonly('qty', 'detail')} type="number" step="0.0001" className="erp-input" value={d.qty} onChange={e => updateDetailRow(idx, { qty: e.target.value })} />
-                                                )}
-                                            </td>
-                                            <td>
-                                                {productIsFixedDualUom(d.product_id) ? (
-                                                    <span className="text-xs text-gray-400">{units.find(u => u.id === d.uom_id)?.unit_name}/{units.find(u => u.id === d.alt_unit_id)?.unit_name}</span>
-                                                ) : (
-                                                    <select className="erp-select" value={d.uom_id} onChange={e => updateDetailRow(idx, { uom_id: e.target.value })}>
-                                                        <option value="">UOM</option>
-                                                        {units.map(u => <option key={u.id} value={u.id}>{u.unit_name}</option>)}
-                                                    </select>
-                                                )}
-                                            </td>
-                                            <td>
-                                                <input type="number" step="0.01" className="erp-input" value={d.rate} onChange={e => updateDetailRow(idx, { rate: e.target.value })} />
-                                                {productIsFixedDualUom(d.product_id) && (
-                                                    <select className="erp-select mt-1" style={{ fontSize: '10px', height: '22px' }} value={d.rate_basis} onChange={e => updateDetailRow(idx, { rate_basis: e.target.value })}>
-                                                        <option value="primary">per {units.find(u => u.id === d.uom_id)?.unit_name || 'Primary'}</option>
-                                                        <option value="secondary">per {units.find(u => u.id === d.alt_unit_id)?.unit_name || 'Secondary'}</option>
-                                                    </select>
-                                                )}
-                                            </td>
-                                            <td><input type="number" step="0.01" className="erp-input" value={d.discount_percent} onChange={e => updateDetailRow(idx, { discount_percent: e.target.value })} /></td>
-                                            <td className="text-gray-500">{lineAmount(d).toFixed(2)}</td>
-                                            <td>
-                                                <select className="erp-select" value={d.warehouse_id} onChange={e => updateDetailRow(idx, { warehouse_id: e.target.value })}>
-                                                    <option value="">(document default)</option>
-                                                    {warehouses.map(w => <option key={w.id} value={w.id}>{w.warehouse_name}</option>)}
-                                                </select>
-                                            </td>
-                                            <td><input className="erp-input" value={d.batch_no} onChange={e => updateDetailRow(idx, { batch_no: e.target.value })} placeholder="Batch" /></td>
-                                            <td><button type="button" tabIndex={-1} onClick={() => removeDetailRow(idx)} className="text-red-500 text-xs">✕</button></td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                        <div className="flex justify-between items-center mt-2 mb-4">
-                            <button type="button" onClick={addDetailRow} className="text-xs text-blue-600">➕ Add Line</button>
-                            <span className="text-sm font-semibold">Total: {grandTotal.toFixed(2)}</span>
-                        </div>
+                        <SalesLineGrid
+                            listKey="snr" details={form.details} onRow={updateDetailRow} onRemove={removeDetailRow} onAdd={addDetailRow}
+                            products={filterProductsByCompany(products, form.product_company_id)} allProducts={products} units={units} warehouses={warehouses}
+                            settings={settings} termCols={termCols} popupTerms={popupTerms} efc={efc} onProductSelect={handleProductSelect}
+                            docWarehouseId={form.warehouse_id} selected={selectedRowIndexes} onSelected={setSelectedRowIndexes}
+                            features={{ free: false, batch: true, expiry: false, terms: true, tax: false }} dual={dualHelpers(products, dualUomEntryMode).dual} lineGross={lineGross}
+                        />
+                        <div className="flex justify-end mt-2"><span className="text-sm font-semibold">Total: {grandTotal.toFixed(2)}</span></div>
 
                         {form.settlement_type === 'credit_note' && (
                             <BillWiseSettlementPanel
@@ -500,6 +423,8 @@ export default function SalesNonsaleableReturn() {
                             />
                         )}
                     </div>
+
+                    <PartyFooterTabs partyId={form.customer_ledger_id} partyLabel="Customer" info={partyInfo} onChange={setPartyInfo} />
 
                     <div className="erp-bottombar">
                         <div />
