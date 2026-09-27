@@ -114,9 +114,10 @@ const isDamage = reason => reason === 'damage' || reason === 'expiry';
 // The ledgers actually used at posting. The entry's own ledgers win when
 // changing them is allowed; otherwise a damage / expiry line goes to the
 // Damage ledger and any other decrease to the Shortage ledger.
-async function finalAdjustmentAccounts(c, t, doc) {
+async function finalAdjustmentAccounts(c, t, doc, { forceOwn = false } = {}) {
     const auto = await adjustmentAccounts(c, t);
-    const own = k => auto.allow_change && doc[k];
+    // forceOwn: the module that made the entry chose its ledgers (e.g. poultry consumption)
+    const own = k => (auto.allow_change || forceOwn) && doc[k];
     return {
         ...auto,
         lossFor: line => own('loss_ledger_id') || (isDamage(line.line_reason || doc.reason) ? auto.damage_ledger_id : auto.loss_ledger_id),

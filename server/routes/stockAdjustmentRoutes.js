@@ -19,7 +19,7 @@ const { toBaseUnitQty } = require('../utils/unitConversion');
 const stockAcc = require('../utils/stockAccounting');
 
 const round2 = n => Math.round((Number(n) || 0) * 100) / 100;
-const REASONS = ['physical_count', 'shortage', 'damage', 'expiry', 'excess', 'other'];
+const REASONS = ['physical_count', 'shortage', 'damage', 'expiry', 'excess', 'other', 'consumption', 'production'];
 const PROTECTED = ['gl_posted', 'posted_by', 'posted_at', 'approved_by', 'approved_at', 'cancelled_by', 'cancelled_at', 'status', 'doc_no', 'tenant_id', 'id',
     'created_by', 'created_at', 'total_in_amount', 'total_out_amount', 'branch_id', 'details', 'save_as_draft', 'numbering_category_id'];
 const fail = (res, msg, status = 400) => res.status(status).json({ success: false, error: msg });
@@ -173,45 +173,52 @@ router.get('/stock-adjustments/:id', requireAuth, loadUserPermissions, requirePe
     } catch (error) { res.status(500).json({ success: false, error: error.message }); }
 });
 
+// Create a stock adjustment (draft). Also used by other modules (poultry)
+// so their stock effects are ordinary adjustments. Throws { status } errors.
+async function createAdjustment(c, t, userId, b) {
+    const isDraft = b.save_as_draft === true;
+    const err = validateBody(b, isDraft);
+    if (err) throw Object.assign(new Error(err), { status: 400 });
+    const { data: user } = await c.from('users').select('default_branch_id').eq('id', userId).maybeSingle();
+    const { data: branch } = user?.default_branch_id ? await c.from('branches').select('branch_name').eq('id', user.default_branch_id).maybeSingle() : { data: null };
+    const { data: fy } = await c.from('fiscal_years').select('id, fiscal_year_name').eq('tenant_id', t).eq('is_current', true).maybeSingle();
+    let docNo;
+    try {
+        docNo = await resolveDocumentNumber(c, { tenantId: t, voucherType: 'stock_adjustment', userId, categoryId: b.numbering_category_id, manualNumber: b.doc_no,
+            tableName: 'stock_adjustments', currentFiscalYearId: fy?.id, currentFiscalYearName: fy?.fiscal_year_name, userDefaultBranchId: user?.default_branch_id });
+    } catch (numErr) { throw Object.assign(new Error(numErr.message), { status: 400 }); }
+    if (!docNo) {
+        const { data: code, error: codeErr } = await c.rpc('next_master_code', { seq_name: 'tenant_master.seq_stock_adjustment_code', type_prefix: 'STAD' });
+        if (codeErr) throw codeErr;
+        docNo = code;
+    }
+    const { data: doc, error } = await c.from('stock_adjustments').insert({
+        tenant_id: t, branch_id: user?.default_branch_id || null, branch_name_snapshot: branch?.branch_name || null,
+        doc_no: docNo, doc_date: b.doc_date, fiscal_year_id: fy?.id || null, warehouse_id: b.warehouse_id || null, reason: b.reason || 'physical_count',
+        narration: b.narration || null, cost_center_id: b.cost_center_id || null,
+        loss_ledger_id: b.loss_ledger_id || null, gain_ledger_id: b.gain_ledger_id || null, contra_ledger_id: b.contra_ledger_id || null,
+        ...(b.source_module ? { source_module: b.source_module } : {}),
+        ...(await snapshotsFor(c, b)), status: 'draft', created_by: userId, updated_by: userId
+    }).select().single();
+    if (error) throw error;
+    try {
+        const tot = await syncDetails(c, t, doc.id, doc, b.details || []);
+        await c.from('stock_adjustments').update({ total_in_amount: tot.in, total_out_amount: tot.out }).eq('id', doc.id);
+        Object.assign(doc, { total_in_amount: tot.in, total_out_amount: tot.out });
+    } catch (syncErr) {
+        await c.from('stock_adjustments').delete().eq('id', doc.id);
+        throw Object.assign(new Error(syncErr.message || 'Could not save adjustment lines'), { status: 400 });
+    }
+    await logAudit(t, userId, 'create_stock_adjustment', 'stock_adjustment', doc.id, { doc_no: doc.doc_no });
+    await audit(c, t, doc.id, 'create', userId);
+    return doc;
+}
+
 router.post('/stock-adjustments', requireAuth, loadUserPermissions, requirePermission('ledger', 'create'), async (req, res) => {
     try {
-        const t = req.auth.tenantId, c = await getTenantClient(t), b = req.body;
-        const isDraft = b.save_as_draft === true;
-        const err = validateBody(b, isDraft);
-        if (err) return fail(res, err);
-
-        const { data: user } = await c.from('users').select('default_branch_id').eq('id', req.auth.userId).single();
-        const { data: branch } = user?.default_branch_id ? await c.from('branches').select('branch_name').eq('id', user.default_branch_id).maybeSingle() : { data: null };
-        const { data: fy } = await c.from('fiscal_years').select('id, fiscal_year_name').eq('tenant_id', t).eq('is_current', true).maybeSingle();
-        let docNo;
-        try {
-            docNo = await resolveDocumentNumber(c, { tenantId: t, voucherType: 'stock_adjustment', userId: req.auth.userId, categoryId: b.numbering_category_id, manualNumber: b.doc_no,
-                tableName: 'stock_adjustments', currentFiscalYearId: fy?.id, currentFiscalYearName: fy?.fiscal_year_name, userDefaultBranchId: user?.default_branch_id });
-        } catch (numErr) { return fail(res, numErr.message); }
-        if (!docNo) {
-            const { data: code, error: codeErr } = await c.rpc('next_master_code', { seq_name: 'tenant_master.seq_stock_adjustment_code', type_prefix: 'STAD' });
-            if (codeErr) throw codeErr;
-            docNo = code;
-        }
-        const { data: doc, error } = await c.from('stock_adjustments').insert({
-            tenant_id: t, branch_id: user?.default_branch_id || null, branch_name_snapshot: branch?.branch_name || null,
-            doc_no: docNo, doc_date: b.doc_date, fiscal_year_id: fy?.id || null, warehouse_id: b.warehouse_id || null, reason: b.reason || 'physical_count',
-            narration: b.narration || null, cost_center_id: b.cost_center_id || null,
-            loss_ledger_id: b.loss_ledger_id || null, gain_ledger_id: b.gain_ledger_id || null, contra_ledger_id: b.contra_ledger_id || null,
-            ...(await snapshotsFor(c, b)), status: 'draft', created_by: req.auth.userId, updated_by: req.auth.userId
-        }).select().single();
-        if (error) throw error;
-        try {
-            const tot = await syncDetails(c, t, doc.id, doc, b.details || []);
-            await c.from('stock_adjustments').update({ total_in_amount: tot.in, total_out_amount: tot.out }).eq('id', doc.id);
-        } catch (syncErr) {
-            await c.from('stock_adjustments').delete().eq('id', doc.id);
-            return fail(res, syncErr.message || 'Could not save adjustment lines');
-        }
-        await logAudit(t, req.auth.userId, 'create_stock_adjustment', 'stock_adjustment', doc.id, { doc_no: doc.doc_no });
-        await audit(c, t, doc.id, 'create', req.auth.userId);
+        const doc = await createAdjustment(await getTenantClient(req.auth.tenantId), req.auth.tenantId, req.auth.userId, req.body);
         res.json({ success: true, message: `Stock Adjustment ${doc.doc_no} saved`, data: doc });
-    } catch (error) { res.status(500).json({ success: false, error: error.message }); }
+    } catch (error) { res.status(error.status || 500).json({ success: false, error: error.message }); }
 });
 
 router.put('/stock-adjustments/:id', requireAuth, loadUserPermissions, requirePermission('ledger', 'edit'), async (req, res) => {
@@ -237,61 +244,65 @@ router.put('/stock-adjustments/:id', requireAuth, loadUserPermissions, requirePe
     } catch (error) { res.status(500).json({ success: false, error: error.message }); }
 });
 
-router.put('/stock-adjustments/:id/status', requireAuth, loadUserPermissions, requirePermission('ledger', 'edit'), async (req, res) => {
-    try {
-        const { status, cancellation_reason } = req.body;
-        if (!['draft', 'approved', 'posted', 'cancelled'].includes(status)) return fail(res, 'Invalid status');
-        if (status === 'cancelled' && !cancellation_reason) return fail(res, 'A cancellation reason is required');
-        const t = req.auth.tenantId, c = await getTenantClient(t);
-        const { data: existing } = await c.from('stock_adjustments').select('*').eq('id', req.params.id).eq('tenant_id', t).single();
-        if (!existing) return fail(res, 'Stock Adjustment not found', 404);
-        if (existing.status === 'cancelled') return fail(res, 'This adjustment is already cancelled');
-        if (existing.status === 'posted' && status !== 'cancelled') return fail(res, 'A posted adjustment can only be cancelled');
-        const { data: details } = await c.from('stock_adjustment_details').select('*').eq('adjustment_id', existing.id).order('display_order');
+// Approve / post / cancel. Also used by other modules (poultry).
+async function setAdjustmentStatus(c, t, userId, id, { status, cancellation_reason, override_negative_stock_warning } = {}, opts = {}) {
+    if (!['draft', 'approved', 'posted', 'cancelled'].includes(status)) throw Object.assign(new Error('Invalid status'), { status: 400 });
+    if (status === 'cancelled' && !cancellation_reason) throw Object.assign(new Error('A cancellation reason is required'), { status: 400 });
+    const { data: existing } = await c.from('stock_adjustments').select('*').eq('id', id).eq('tenant_id', t).maybeSingle();
+    if (!existing) throw Object.assign(new Error('Stock Adjustment not found'), { status: 404 });
+    if (existing.status === 'cancelled') throw Object.assign(new Error('This adjustment is already cancelled'), { status: 400 });
+    if (existing.status === 'posted' && status !== 'cancelled') throw Object.assign(new Error('A posted adjustment can only be cancelled'), { status: 400 });
+    const { data: details } = await c.from('stock_adjustment_details').select('*').eq('adjustment_id', existing.id).order('display_order');
 
-        let warnings = [], acc = null;
-        if (['approved', 'posted'].includes(status)) {
-            const err = validateBody({ ...existing, details: details || [] }, false);
-            if (err) return fail(res, err);
-        }
-        if (status === 'posted') {
-            acc = await stockAcc.finalAdjustmentAccounts(c, t, existing);
-            warnings = await stockAcc.checkAdjustmentAccounts(c, t, acc, details || []);
-            const neg = await checkNegativeStock(c, t, existing, details || []);
-            if (neg.blocked && !req.body.override_negative_stock_warning) return res.status(400).json({ success: false, error: 'Insufficient stock to post this adjustment', warnings: neg.warnings });
-            warnings = [...warnings, ...neg.warnings];
-            if (acc.posts && (details || []).some(d => !(Number(d.amount) > 0))) warnings.push('Lines without a rate have no value, so they are not in the GL entry');
-        }
+    let warnings = [], acc = null;
+    if (['approved', 'posted'].includes(status)) {
+        const err = validateBody({ ...existing, details: details || [] }, false);
+        if (err) throw Object.assign(new Error(err), { status: 400 });
+    }
+    if (status === 'posted') {
+        acc = await stockAcc.finalAdjustmentAccounts(c, t, existing, { forceOwn: !!opts.forceOwnLedgers });
+        warnings = await stockAcc.checkAdjustmentAccounts(c, t, acc, details || []);
+        const neg = await checkNegativeStock(c, t, existing, details || []);
+        if (neg.blocked && !override_negative_stock_warning) throw Object.assign(new Error(`Insufficient stock to post this adjustment: ${neg.warnings.join('; ')}`), { status: 400, warnings: neg.warnings });
+        warnings = [...warnings, ...neg.warnings];
+        if (acc.posts && (details || []).some(d => !(Number(d.amount) > 0))) warnings.push('Lines without a rate have no value, so they are not in the GL entry');
+    }
 
-        const update = { status, updated_by: req.auth.userId };
-        const now = new Date().toISOString();
-        if (status === 'approved') Object.assign(update, { approved_by: req.auth.userId, approved_at: now });
-        if (status === 'posted') Object.assign(update, { posted_by: req.auth.userId, posted_at: now, contra_ledger_id: acc.contra_ledger_id, gain_ledger_id: acc.gain_ledger_id });
-        if (status === 'cancelled') Object.assign(update, { cancellation_reason, cancelled_by: req.auth.userId, cancelled_at: now });
-        const { data, error } = await c.from('stock_adjustments').update(update).eq('id', existing.id).eq('tenant_id', t).select().single();
-        if (error) throw error;
+    const update = { status, updated_by: userId };
+    const now = new Date().toISOString();
+    if (status === 'approved') Object.assign(update, { approved_by: userId, approved_at: now });
+    if (status === 'posted') Object.assign(update, { posted_by: userId, posted_at: now, contra_ledger_id: acc.contra_ledger_id, gain_ledger_id: acc.gain_ledger_id });
+    if (status === 'cancelled') Object.assign(update, { cancellation_reason, cancelled_by: userId, cancelled_at: now });
+    const { data, error } = await c.from('stock_adjustments').update(update).eq('id', existing.id).eq('tenant_id', t).select().single();
+    if (error) throw error;
 
-        if (status === 'posted') {
-            try {
-                await postStock(c, t, data, details || []);
-                const gl = await postGl(c, t, data, details || [], acc, req.auth.userId);
-                if (gl) await c.from('stock_adjustments').update({ gl_posted: true }).eq('id', data.id);
-                data.gl_posted = gl;
-            } catch (postErr) {
-                await reverseStock(c, existing.id);
-                await stockAcc.reverseGlBatches(c, ['stock_adjustment'], existing.id);
-                await c.from('stock_adjustments').update({ status: existing.status, posted_by: null, posted_at: null }).eq('id', existing.id);
-                throw postErr;
-            }
-        } else if (status === 'cancelled' && existing.status === 'posted') {
+    if (status === 'posted') {
+        try {
+            await postStock(c, t, data, details || []);
+            const gl = await postGl(c, t, data, details || [], acc, userId);
+            if (gl) await c.from('stock_adjustments').update({ gl_posted: true }).eq('id', data.id);
+            data.gl_posted = gl;
+        } catch (postErr) {
             await reverseStock(c, existing.id);
             await stockAcc.reverseGlBatches(c, ['stock_adjustment'], existing.id);
-            await c.from('stock_adjustments').update({ gl_posted: false }).eq('id', existing.id);
+            await c.from('stock_adjustments').update({ status: existing.status, posted_by: null, posted_at: null }).eq('id', existing.id);
+            throw postErr;
         }
-        await logAudit(t, req.auth.userId, 'change_stock_adjustment_status', 'stock_adjustment', existing.id, { new_status: status, cancellation_reason });
-        await audit(c, t, existing.id, 'status_change', req.auth.userId);
-        res.json({ success: true, data, warnings: warnings.length ? warnings : undefined });
-    } catch (error) { res.status(error.status || 500).json({ success: false, error: error.message }); }
+    } else if (status === 'cancelled' && existing.status === 'posted') {
+        await reverseStock(c, existing.id);
+        await stockAcc.reverseGlBatches(c, ['stock_adjustment'], existing.id);
+        await c.from('stock_adjustments').update({ gl_posted: false }).eq('id', existing.id);
+    }
+    await logAudit(t, userId, 'change_stock_adjustment_status', 'stock_adjustment', existing.id, { new_status: status, cancellation_reason });
+    await audit(c, t, existing.id, 'status_change', userId);
+    return { data, warnings };
+}
+
+router.put('/stock-adjustments/:id/status', requireAuth, loadUserPermissions, requirePermission('ledger', 'edit'), async (req, res) => {
+    try {
+        const out = await setAdjustmentStatus(await getTenantClient(req.auth.tenantId), req.auth.tenantId, req.auth.userId, req.params.id, req.body || {});
+        res.json({ success: true, data: out.data, warnings: out.warnings.length ? out.warnings : undefined });
+    } catch (error) { res.status(error.status || 500).json({ success: false, error: error.message, warnings: error.warnings }); }
 });
 
 router.delete('/stock-adjustments/:id', requireAuth, loadUserPermissions, requirePermission('ledger', 'delete'), async (req, res) => {
@@ -318,3 +329,4 @@ router.get('/stock-adjustments/:id/audit-trail', requireAuth, loadUserPermission
 });
 
 module.exports = router;
+Object.assign(module.exports, { createAdjustment, setAdjustmentStatus });

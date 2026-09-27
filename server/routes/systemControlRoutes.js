@@ -48,6 +48,11 @@ router.put('/system-control', requireAuth, loadUserPermissions, requirePermissio
         await tenantClient.rpc('ensure_system_control_settings', { p_tenant_id: tenantId });
 
         const update = { ...req.body, updated_by: req.auth.userId, updated_at: new Date().toISOString() };
+        // Business Nature: which modules the company uses (poultry adds the Poultry & Hatchery menus)
+        if ('poultry_features' in update) {
+            const pf = update.poultry_features || {};
+            update.poultry_features = { broiler: pf.broiler !== false, hatchery: !!pf.hatchery };
+        }
         delete update.tenant_id; // never let the client move a settings row to a different tenant
 
         const { data, error } = await tenantClient
@@ -61,6 +66,15 @@ router.put('/system-control', requireAuth, loadUserPermissions, requirePermissio
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
+});
+
+// Which optional modules are on - read by every screen (menus), so any signed-in user may call it.
+router.get('/app-features', requireAuth, async (req, res) => {
+    try {
+        if (!req.auth.tenantId) return res.json({ success: true, data: { business_nature: 'trading', poultry: { enabled: false, broiler: false, hatchery: false } } });
+        const { features } = require('../utils/poultry');
+        res.json({ success: true, data: await features(await getTenantClient(req.auth.tenantId), req.auth.tenantId) });
+    } catch (error) { res.status(500).json({ success: false, error: error.message }); }
 });
 
 module.exports = router;

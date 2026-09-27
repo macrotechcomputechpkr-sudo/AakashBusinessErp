@@ -20,7 +20,7 @@ const DEFAULT_ADMIN_PASSWORD = () => String(process.env.DEFAULT_TENANT_ADMIN_PAS
 
 // every module the server checks with requirePermission() or reads from the group permissions
 const ALL_MODULES = ['dashboard', 'ledger', 'product', 'sales', 'purchase', 'inventory', 'invoice', 'reports', 'user_management', 'security', 'security_groups',
-    'company_settings', 'tax_settings', 'ocr_bill', 'backup', 'audit_log', 'data_access', 'darta_chalani', 'tasks'];
+    'company_settings', 'tax_settings', 'ocr_bill', 'backup', 'audit_log', 'data_access', 'darta_chalani', 'tasks', 'poultry'];
 const ACTIONS = ['view', 'create', 'edit', 'delete', 'print', 'export'];
 const permissionsFor = pick => Object.fromEntries(ALL_MODULES.map(m => [m, Object.fromEntries(ACTIONS.map(a => [a, pick(m, a)]))]));
 const GROUPS = [
