@@ -21,7 +21,7 @@ const emptyForm = {
     term_category: 'general', tax_type: 'none',
     calculation_mode: 'percentage',
     basis: 'value', quantity_unit: 'primary',
-    base_reference: 'basic_amount', base_reference_term_id: '',
+    base_reference: 'basic_amount', base_reference_term_id: '', base_term_ids: [],
     rate_percentage: 0, fixed_amount: 0, maximum_amount: 0, formula_expression: '',
     sign: '+', rounding_method: 'none', rounding_precision: 1,
     billing_ledger_id: '', return_ledger_id: '', expiry_return_ledger_id: '', sub_ledger_id: '', return_sub_ledger_id: '',
@@ -93,7 +93,7 @@ export default function BillingTermManagement() {
 
     const handleEdit = (row) => {
         setEditingId(row.id);
-        setForm({ ...emptyForm, ...row });
+        setForm({ ...emptyForm, ...row, base_term_ids: row.base_term_ids || [] });
         setShowForm(true);
         window.scrollTo({ top: 0, behavior: 'smooth' });
     };
@@ -184,17 +184,16 @@ export default function BillingTermManagement() {
                         </div>
 
                         <div>
-                            <label className="erp-label">Tax Type</label>
-                            <select className="erp-input" value={form.tax_type} onChange={e => setForm({ ...form, tax_type: e.target.value })}>
-                                <option value="none">None</option>
-                                <option value="vat">VAT</option>
-                                <option value="discount">Discount</option>
-                                <option value="excise">Excise</option>
-                                <option value="service_tax">Service Tax</option>
-                                <option value="tsc">TSC</option>
-                                <option value="cash_discount">Cash Discount</option>
-                                <option value="custom">Custom</option>
-                            </select>
+                            <label className="erp-label">Special Behaviour</label>
+                            {['vat', 'excise', 'discount'].includes(form.tax_type) ? (
+                                <div className="erp-input bg-gray-50 text-gray-600" title="Set in System Control > Term Mapping">{form.tax_type === 'vat' ? 'VAT' : form.tax_type === 'excise' ? 'Excise' : 'Discount'} (from Term Mapping)</div>
+                            ) : (
+                                <select className="erp-input" value={form.tax_type === 'cash_discount' ? 'cash_discount' : 'none'} onChange={e => setForm({ ...form, tax_type: e.target.value })}>
+                                    <option value="none">None</option>
+                                    <option value="cash_discount">Cash Discount (credit days)</option>
+                                </select>
+                            )}
+                            <p className="text-[11px] text-gray-400 mt-0.5">Which term is VAT / Excise / Discount 1-5 / Bill Discount is chosen in System Control &gt; Term Mapping.</p>
                         </div>
                         <div>
                             <label className="erp-label">Basis</label>
@@ -265,6 +264,25 @@ export default function BillingTermManagement() {
                                 </div>
                             )}
                         </div>
+
+                        {form.base_reference !== 'running_total' && ['percentage', 'both'].includes(form.calculation_mode) && (
+                            <div className="mt-3">
+                                <label className="erp-label">Also Include In The Base <span className="text-xs text-gray-400">(tick several - only terms calculated before this one count)</span></label>
+                                <div className="flex flex-wrap gap-x-4 gap-y-1 border rounded px-3 py-2 max-h-40 overflow-auto">
+                                    {rows.filter(r => r.id !== editingId).length === 0 && <span className="text-xs text-gray-400">No other terms yet.</span>}
+                                    {rows.filter(r => r.id !== editingId).map(r => {
+                                        const on = (form.base_term_ids || []).includes(r.id);
+                                        return (
+                                            <label key={r.id} className="flex items-center gap-1.5 text-sm">
+                                                <input type="checkbox" data-enter-skip="true" checked={on}
+                                                    onChange={() => setForm({ ...form, base_term_ids: on ? form.base_term_ids.filter(x => x !== r.id) : [...(form.base_term_ids || []), r.id] })} />
+                                                {r.term_name}
+                                            </label>
+                                        );
+                                    })}
+                                </div>
+                            </div>
+                        )}
 
                         {form.calculation_mode === 'fixed_amount' && (
                             <div className="mt-3 max-w-xs">

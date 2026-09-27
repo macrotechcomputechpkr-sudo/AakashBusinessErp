@@ -189,6 +189,10 @@ router.put('/billing-terms/:id', requireAuth, loadUserPermissions, requirePermis
         ['id', 'tenant_id', 'created_at', 'created_by', 'base_reference_term', 'billing_ledger', 'return_ledger', 'sub_ledger', 'return_sub_ledger']
             .forEach(k => delete body[k]);
         Object.keys(body).forEach(k => { if (body[k] !== null && typeof body[k] === 'object' && !Array.isArray(body[k])) delete body[k]; });
+        if ('base_term_ids' in body) {
+            const U = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+            body.base_term_ids = [...new Set((Array.isArray(body.base_term_ids) ? body.base_term_ids : []).filter(x => U.test(x || '') && x !== req.params.id))];
+        }
         const update = {
             ...body,
             formula_expression: merged.calculation_mode === 'formula' ? merged.formula_expression : null,

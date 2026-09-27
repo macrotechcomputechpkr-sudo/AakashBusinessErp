@@ -28,7 +28,7 @@ const emptyForm = {
     product_name: '', short_name: '', item_type: 'trading_item', product_group_id: '', product_company_id: '',
     hs_code: '', is_blocked: false, product_category_ids: [], tags: [],
     base_unit_id: '', unit_rates: [], uom_mode: 'single', dual_uom_primary_unit_id: '',
-    sales_account_ledger_id: '', purchase_account_ledger_id: '', sales_sub_ledger_id: '', purchase_sub_ledger_id: '', inventory_account_ledger_id: '', cogs_account_ledger_id: '', discount_account_ledger_id: '',
+    sales_account_ledger_id: '', purchase_account_ledger_id: '', sales_return_account_ledger_id: '', sales_nonsaleable_return_account_ledger_id: '', purchase_return_account_ledger_id: '', purchase_nonsaleable_return_account_ledger_id: '', sales_sub_ledger_id: '', purchase_sub_ledger_id: '', inventory_account_ledger_id: '', cogs_account_ledger_id: '', discount_account_ledger_id: '',
     default_vendor_id: '', vendor_item_code: '', lead_time_days: 0, default_discount_percent: 0,
     opening_qty: 0, opening_rate: 0, minimum_stock: 0, maximum_stock: 0, reorder_qty: 0, allow_negative_stock: null,
     costing_method: 'average',
@@ -52,7 +52,7 @@ const TABS = [
 ];
 
 // Account field -> its sub-ledger field (product-level posting, see utils/accountResolver).
-const PRODUCT_ACCOUNT_PURPOSE = { sales_account_ledger_id: 'sales_goods', purchase_account_ledger_id: 'purchase_goods', inventory_account_ledger_id: 'inventory', cogs_account_ledger_id: 'cogs', discount_account_ledger_id: 'discount' };
+const PRODUCT_ACCOUNT_PURPOSE = { sales_account_ledger_id: 'sales_goods', purchase_account_ledger_id: 'purchase_goods', sales_return_account_ledger_id: 'sales_goods', sales_nonsaleable_return_account_ledger_id: 'sales_goods', purchase_return_account_ledger_id: 'purchase_goods', purchase_nonsaleable_return_account_ledger_id: 'purchase_goods', inventory_account_ledger_id: 'inventory', cogs_account_ledger_id: 'cogs', discount_account_ledger_id: 'discount' };
 const ACCOUNT_SUB = { sales_account_ledger_id: 'sales_sub_ledger_id', purchase_account_ledger_id: 'purchase_sub_ledger_id' };
 
 export default function ProductMaster() {
@@ -464,34 +464,41 @@ export default function ProductMaster() {
                     </div>
 
                     {/* ==================== ACCOUNT MAPPING ==================== */}
-                    <div className={tab === 'mapping' ? 'grid grid-cols-1 md:grid-cols-2 gap-4' : 'hidden'}>
-                        <p className="md:col-span-2 text-xs text-gray-400">Leave blank to use the System Control defaults.</p>
+                    <div className={tab === 'mapping' ? 'space-y-4' : 'hidden'}>
+                        <p className="text-xs text-gray-400">Leave blank to use the System Control defaults. A return account left blank uses the sales / purchase account.</p>
                         {[
-                            ['sales_account_ledger_id', 'Sales Account'],
-                            ['purchase_account_ledger_id', 'Purchase Account'],
-                            ['inventory_account_ledger_id', 'Inventory/Stock Account'],
-                            ['cogs_account_ledger_id', 'Cost of Goods Sold Account'],
-                            ['discount_account_ledger_id', 'Discount Account']
-                        ].map(([key, label]) => (
-                            <div key={key}>
-                                <label className="erp-label">{label}</label>
-                                <SearchablePopupSelect
-                                    listKey={`product_ledger_${key}`}
-                                    columns={[{ key: 'account_code', label: 'Code' }, { key: 'account_name', label: 'Name' }]}
-                                    defaultVisibleKeys={['account_name']}
-                                    items={lp.filter(ledgers, PRODUCT_ACCOUNT_PURPOSE[key], form[key])} getId={l => l.id} getLabel={l => l.account_name}
-                                    searchKeys={['account_name', 'account_code']}
-                                    value={form[key]} onChange={id => setForm({ ...form, [key]: id, ...(ACCOUNT_SUB[key] ? { [ACCOUNT_SUB[key]]: '' } : {}) })}
-                                    placeholder="System Control default"
-                                />
-                                {ACCOUNT_SUB[key] && (
-                                    <select className="erp-select mt-1" value={form[ACCOUNT_SUB[key]] || ''} disabled={!form[key]}
-                                        onChange={e => setForm({ ...form, [ACCOUNT_SUB[key]]: e.target.value })}>
-                                        <option value="">{form[key] ? 'Sub-Ledger: none' : 'Sub-Ledger (choose the account first)'}</option>
-                                        {subLedgers.filter(sl => sl.main_ledger_id === form[key]).map(sl => <option key={sl.id} value={sl.id}>{sl.sub_ledger_name}</option>)}
-                                    </select>
-                                )}
-                            </div>
+                            ['Sales', 'sales_sub_ledger_id', 'sales_account_ledger_id', [['sales_account_ledger_id', 'Sales Account'], ['sales_return_account_ledger_id', 'Sales Return Account'], ['sales_nonsaleable_return_account_ledger_id', 'Sales Non-saleable Return Account']]],
+                            ['Purchase', 'purchase_sub_ledger_id', 'purchase_account_ledger_id', [['purchase_account_ledger_id', 'Purchase Account'], ['purchase_return_account_ledger_id', 'Purchase Return Account'], ['purchase_nonsaleable_return_account_ledger_id', 'Purchase Non-saleable Return Account']]],
+                            ['Other', null, null, [['inventory_account_ledger_id', 'Inventory/Stock Account'], ['cogs_account_ledger_id', 'Cost of Goods Sold Account'], ['discount_account_ledger_id', 'Discount Account']]]
+                        ].map(([part, subKey, mainKey, accounts]) => (
+                            <fieldset key={part} className="border rounded-lg p-3">
+                                <legend className="px-1 text-xs font-semibold text-gray-600 uppercase">{part}</legend>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    {accounts.map(([key, label]) => (
+                                        <div key={key}>
+                                            <label className="erp-label">{label}</label>
+                                            <SearchablePopupSelect
+                                                listKey={`product_ledger_${key}`}
+                                                columns={[{ key: 'account_code', label: 'Code' }, { key: 'account_name', label: 'Name' }]}
+                                                defaultVisibleKeys={['account_name']}
+                                                items={lp.filter(ledgers, PRODUCT_ACCOUNT_PURPOSE[key], form[key])} getId={l => l.id} getLabel={l => l.account_name}
+                                                searchKeys={['account_name', 'account_code']}
+                                                value={form[key]} onChange={id => setForm({ ...form, [key]: id, ...(ACCOUNT_SUB[key] ? { [ACCOUNT_SUB[key]]: '' } : {}) })}
+                                                placeholder={key === mainKey ? 'System Control default' : 'Same as the main account'}
+                                            />
+                                        </div>
+                                    ))}
+                                    {subKey && (
+                                        <div>
+                                            <label className="erp-label">{part} Sub-Ledger</label>
+                                            <select className="erp-select" value={form[subKey] || ''} disabled={!form[mainKey]} onChange={e => setForm({ ...form, [subKey]: e.target.value })}>
+                                                <option value="">{form[mainKey] ? 'None' : `Choose the ${part.toLowerCase()} account first`}</option>
+                                                {subLedgers.filter(sl => sl.main_ledger_id === form[mainKey]).map(sl => <option key={sl.id} value={sl.id}>{sl.sub_ledger_name}</option>)}
+                                            </select>
+                                        </div>
+                                    )}
+                                </div>
+                            </fieldset>
                         ))}
                     </div>
 

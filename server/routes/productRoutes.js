@@ -313,6 +313,8 @@ router.put('/products/:id', requireAuth, loadUserPermissions, requirePermission(
         delete update.product_groups;
         delete update.product_companies;
         delete update.base_unit;
+        // an empty picker is sent as '' - a uuid column needs null
+        Object.keys(update).forEach(k => { if (/_id$/.test(k) && update[k] === '') update[k] = null; });
 
         const { data, error } = await tenantClient
             .from('products').update(update).eq('id', req.params.id).eq('tenant_id', tenantId).select().single();
