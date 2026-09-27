@@ -16,7 +16,8 @@ import type { FlatBatch } from '../../components/poultry/common';
 interface Dash {
     features: { enabled: boolean; broiler: boolean; hatchery: boolean };
     kpis: { active_batches: number; live_birds: number; avg_age: number | null; mortality_today: number; mortality_mtd: number; closed_12m: number; avg_fcr_12m: number | null; avg_livability_12m: number | null; avg_epef_12m: number | null; profit_12m: number };
-    active: FlatBatch[]; missing_today: { id: string; batch_no: string; shed_name: string }[]; closed: FlatBatch[];
+    active: FlatBatch[]; missing_today: { id: string; batch_no: string; shed_name: string }[];
+    due_lifting?: { id: string; batch_no: string; shed_name: string; age_days: number; alive: number; lift_due_date: string; days_to_lift: number }[]; closed: FlatBatch[];
     hatchery: null | { in_incubation: number; eggs_in_incubation: number; hatches_12m: number; eggs_set_12m: number; chicks_12m: number; fertility_pct: number | null; hatchability_pct: number | null; hof_pct: number | null; due_soon: { id: string; hatch_no: string; set_date: string; eggs_set: number; status: string }[] };
 }
 
@@ -53,6 +54,7 @@ export default function PoultryDashboard() {
                         <Kpi label="Profit (12 m)" tone={k.profit_12m >= 0 ? 'green' : 'red'} value={n2(k.profit_12m)} />
                     </div>
                 )}
+                {d && (d.due_lifting || []).length > 0 && <div className="nav-msg warn">🚚 Due for lifting: {(d.due_lifting || []).map(m => <a key={m.id} className="underline mr-3" href={`/poultry/batches?id=${m.id}`}>{m.batch_no} ({m.shed_name}) - day {m.age_days}, {n0(m.alive)} birds, {m.days_to_lift < 0 ? `${-m.days_to_lift} days late` : m.days_to_lift === 0 ? 'today' : `in ${m.days_to_lift} days`}</a>)}</div>}
                 {d && d.missing_today.length > 0 && <div className="nav-msg warn">No daily entry today for: {d.missing_today.map(m => <a key={m.id} className="underline mr-2" href={`/poultry/batches?id=${m.id}`}>{m.batch_no} ({m.shed_name})</a>)}</div>}
                 {d && (
                     <div className="grid grid-cols-1 lg:grid-cols-2 gap-2">

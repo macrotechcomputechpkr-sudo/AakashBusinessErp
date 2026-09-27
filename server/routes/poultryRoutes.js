@@ -68,6 +68,7 @@ router.post('/poultry/hatches', ...can('create'), send((c, t, req) => H.create(c
 router.post('/poultry/hatches/:id/candle', ...can('edit'), send((c, t, req) => H.candle(c, t, req.auth.userId, req.params.id, req.body || {}), 'hatchery'));
 router.post('/poultry/hatches/:id/hatch', ...can('edit'), send((c, t, req) => H.hatch(c, t, req.auth.userId, req.params.id, req.body || {}), 'hatchery'));
 router.post('/poultry/hatches/:id/reopen', ...can('edit'), send((c, t, req) => H.hatch(c, t, req.auth.userId, req.params.id, {}, { reverse: true }), 'hatchery'));
+router.post('/poultry/hatches/:id/place', ...can('create'), send((c, t, req) => H.placeInSheds(c, t, req.auth.userId, req.params.id, req.body || {}), 'hatchery'));
 router.post('/poultry/hatches/:id/cancel', ...can('delete'), send((c, t, req) => H.cancel(c, t, req.auth.userId, req.params.id), 'hatchery'));
 
 module.exports = router;

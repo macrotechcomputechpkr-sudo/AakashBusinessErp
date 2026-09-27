@@ -158,7 +158,7 @@ export default function PoultryBatches() {
         };
         return (
             <Layout>
-                <NavWindow wide title={<>🐔 Batch {detail.batch_no} · {detail.shed_name} <span className="font-normal">({detail.status === 'closed' ? `closed ${detail.closed_on}` : `day ${s.kpi.age_days}, ${s.stage}`})</span></>} tools={<>
+                <NavWindow wide title={<>🐔 Batch {detail.batch_no} · {detail.shed_name} <span className="font-normal">({detail.status === 'closed' ? `closed ${detail.closed_on}` : `day ${s.kpi.age_days}, ${s.stage}${s.cycle ? `, lift due ${s.cycle.lift_due_date}` : ''}`})</span></>} tools={<>
                     <button type="button" className="nav-tool-btn" onClick={() => setParams({})}>← Batches</button>
                     <span className="nav-tool-sep" />
                     {([['log', '📝 Daily Log'], ['life', '📈 Lifecycle'], ['lift', '🚚 Lifting'], ['cost', '💰 Cost & Profit'], ['close', active ? '🔒 Close Batch' : '🔓 Reopen']] as [string, string][]).map(([k, l]) => (
@@ -388,18 +388,19 @@ export default function PoultryBatches() {
                 {id && !detail && !err && <p className="text-sm text-gray-500">Loading…</p>}
                 <div className="overflow-x-auto">
                     <table className="erp-grid-table">
-                        <thead><tr><th>Batch</th><th>Shed</th><th>Breed</th><th>Placed on</th><th className="text-right">Age</th><th>Stage</th><th className="text-right">Placed</th><th className="text-right">Alive</th><th className="text-right">Mort %</th><th className="text-right">Feed kg</th><th className="text-right">FCR</th><th className="text-right">Avg kg</th><th className="text-right">Cost</th><th className="text-right">Profit</th></tr></thead>
+                        <thead><tr><th>Batch</th><th>Shed</th><th>Breed</th><th>Placed on</th><th className="text-right">Age</th><th>Stage</th><th>Lift due</th><th className="text-right">Placed</th><th className="text-right">Alive</th><th className="text-right">Mort %</th><th className="text-right">Feed kg</th><th className="text-right">FCR</th><th className="text-right">Avg kg</th><th className="text-right">Cost</th><th className="text-right">Profit</th></tr></thead>
                         <tbody>
                             {rows.map(b => (
                                 <tr key={b.id} className="cursor-pointer" onClick={() => setParams({ id: b.id })}>
                                     <td className="font-mono text-blue-700 underline">{b.batch_no}</td><td>{b.shed_name}</td><td>{b.breed || ''}</td><td>{b.placement_date}</td>
                                     <td className="text-right">{b.kpi?.age_days}</td><td><span className={`px-1 ${STAGE_TONE[b.stage || ''] || ''}`}>{b.stage}</span></td>
+                                    <td className={b.cycle?.lift_due ? 'text-orange-700 font-semibold' : ''}>{b.status === 'active' && b.cycle ? `${b.cycle.lift_due_date} (${b.cycle.days_to_lift}d)` : ''}</td>
                                     <td className="text-right">{n0(b.birds?.placed)}</td><td className="text-right">{n0(b.birds?.alive)}</td><td className="text-right">{b.kpi?.mortality_pct?.toFixed(2)}</td>
                                     <td className="text-right">{n0(b.kpi?.feed_kg)}</td><td className="text-right">{n3(b.kpi?.fcr)}</td><td className="text-right">{n3(b.kpi?.avg_weight_kg)}</td>
                                     <td className="text-right">{n2(b.costs?.total)}</td><td className={`text-right ${(b.profit || 0) < 0 ? 'text-red-700' : ''}`}>{n2(b.profit)}</td>
                                 </tr>
                             ))}
-                            {rows.length === 0 && <tr><td colSpan={14} className="text-center text-gray-500 py-6">No batches. Click “New placement”.</td></tr>}
+                            {rows.length === 0 && <tr><td colSpan={15} className="text-center text-gray-500 py-6">No batches. Click “New placement”.</td></tr>}
                         </tbody>
                     </table>
                 </div>

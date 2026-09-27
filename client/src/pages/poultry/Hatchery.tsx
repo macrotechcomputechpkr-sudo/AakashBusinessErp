@@ -3,7 +3,9 @@
 // Hatchery: egg setting (eggs issued from stock to the setter) -> candling
 // (infertile / early dead / cracked) -> hatch (A-grade chicks into stock at
 // the computed chick cost, B-grade and infertile eggs as by-products).
-// Fertility, hatchability, hatch-of-fertile and cost per chick.
+// Fertility, hatchability, hatch-of-fertile and cost per chick. Hatched chicks
+// can be placed straight into the company's own broiler sheds (one lot per
+// shed, at the hatch's cost per chick) and followed to sale and profit.
 // Server: utils/hatchery.js.
 // =============================================
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
@@ -19,6 +21,8 @@ interface Hatch {
     infertile: number; early_dead: number; cracked: number; candling_date: string | null; transfer_date: string | null; chicks_a: number; chicks_b: number; dead_in_shell: number; hatch_date: string | null;
     fertile: number; hatched: number; fertility_pct: number | null; hatchability_pct: number | null; saleable_pct: number | null; hof_pct: number | null; early_dead_pct: number | null; dead_in_shell_pct: number | null; unaccounted: number;
     expected_candling: string; expected_transfer: string; expected_hatch: string; remarks: string | null;
+    broiler_lots?: { id: string; batch_no: string; shed_name: string; placement_date: string; status: string; placed: number; dead: number; mortality_pct: number; lifted: number; alive: number; age_days: number; lift_due_date: string; sales: number; cost: number; profit: number }[];
+    chicks_available?: number; placed_in_lots?: number;
     cost?: { eggs: number; direct_expenses: number; hatchery_share: number; total: number; by_products: number; chick_cost: number | null }; set_adjustment_no?: string | null; output_adjustment_no?: string | null;
 }
 const STATUS_LABEL: Record<string, string> = { set: 'In setter', candled: 'Candled', hatched: 'Hatched', cancelled: 'Cancelled' };
@@ -33,6 +37,8 @@ export default function Hatchery() {
     const [rows, setRows] = useState<Hatch[]>([]);
     const [h, setH] = useState<Hatch | null>(null);
     const [hatcheries, setHatcheries] = useState<Shed[]>([]);
+    const [broilerSheds, setBroilerSheds] = useState<Shed[]>([]);
+    const [place, setPlace] = useState<{ placement_date: string; breed: string; rows: { shed_id: string; chicks_placed: string; free_chicks: string }[] }>({ placement_date: today(), breed: '', rows: [{ shed_id: '', chicks_placed: '', free_chicks: '' }] });
     const [items, setItems] = useState<PItem[]>([]);
     const [ok, setOk] = useState('');
     const [err, setErr] = useState('');
@@ -52,6 +58,7 @@ export default function Hatchery() {
     useEffect(() => { loadOne(); }, [loadOne]);
     useEffect(() => {
         authFetch<Shed[]>('/api/poultry/sheds?shed_type=hatchery').then(r => setHatcheries(r.data)).catch(() => undefined);
+        authFetch<Shed[]>('/api/poultry/sheds?shed_type=broiler').then(r => setBroilerSheds(r.data)).catch(() => undefined);
         authFetch<{ items: PItem[] }>('/api/poultry/settings').then(r => setItems(r.data.items)).catch(() => undefined);
     }, [authFetch]);
 
@@ -76,6 +83,23 @@ export default function Hatchery() {
         return { done, by: Object.values(by) };
     }, [rows]);
     const p = (a: number, b: number) => (b ? (a / b) * 100 : null);
+
+    useEffect(() => { if (h?.hatch_date) setPlace(p0 => ({ ...p0, placement_date: String(h.hatch_date).slice(0, 10) })); }, [h?.hatch_date]);
+    const freeSheds = broilerSheds.filter(x => x.is_active && !x.active_batch);
+    const placing = place.rows.reduce((t, r) => t + (Number(r.chicks_placed) || 0) + (Number(r.free_chicks) || 0), 0);
+    const setRow = (i: number, patch: Partial<{ shed_id: string; chicks_placed: string; free_chicks: string }>) => setPlace(p0 => ({ ...p0, rows: p0.rows.map((r, k) => (k === i ? { ...r, ...patch } : r)) }));
+    const placeLots = async () => {
+        if (!h) return;
+        setOk(''); setErr(''); setWarn([]);
+        try {
+            const r = await authFetch<{ lots: { batch_no: string; shed_name: string }[]; warnings?: string[] }>(`/api/poultry/hatches/${h.id}/place`, { method: 'POST', body: JSON.stringify(place) });
+            if (r.data.warnings?.length) setWarn(r.data.warnings);
+            setOk(`Placed: ${r.data.lots.map(l => `${l.batch_no} (${l.shed_name})`).join(', ')}`);
+            setPlace(p0 => ({ ...p0, rows: [{ shed_id: '', chicks_placed: '', free_chicks: '' }] }));
+            authFetch<Shed[]>('/api/poultry/sheds?shed_type=broiler').then(x => setBroilerSheds(x.data)).catch(() => undefined);
+            await loadOne();
+        } catch (e) { setErr(errText(e)); }
+    };
 
     const opts = (list: PItem[]) => list.map(i => <option key={i.product_id} value={i.product_id}>{i.product_name}</option>);
 
@@ -150,7 +174,56 @@ export default function Hatchery() {
                             <div className="flex justify-end mt-3"><button type="button" className="nav-btn primary" onClick={() => act(`/api/poultry/hatches/${h.id}/hatch`, hf, 'Hatch saved - chicks are in stock')}>🐣 Save hatch</button></div>
                         </GroupBox>
                     )}
-                    {h.status === 'hatched' && <button type="button" className="nav-btn" onClick={() => window.confirm('Reopen? The chick receipt is reversed.') && act(`/api/poultry/hatches/${h.id}/reopen`, {}, 'Hatch reopened')}>↩ Reopen hatch</button>}
+                    {h.status === 'hatched' && (
+                        <GroupBox title={`Place chicks in own broiler sheds - ${n0(h.chicks_available)} of ${n0(h.chicks_a)} A-grade chicks left`}>
+                            {(h.chicks_available || 0) > 0 ? (
+                                <>
+                                    <div className="nav-form-grid">
+                                        <label className="nav-label required">Placement date</label><input type="date" className="nav-input" value={place.placement_date} onChange={e => setPlace({ ...place, placement_date: e.target.value })} />
+                                        <label className="nav-label">Breed</label><input className="nav-input" value={place.breed} onChange={e => setPlace({ ...place, breed: e.target.value })} placeholder="e.g. Cobb 500" />
+                                    </div>
+                                    <table className="erp-grid-table mt-2">
+                                        <thead><tr><th style={{ minWidth: 200 }}>Shed (empty ones)</th><th className="text-right">Capacity</th><th>Chicks</th><th>Free chicks</th><th /></tr></thead>
+                                        <tbody>{place.rows.map((r, i) => {
+                                            const sh = broilerSheds.find(x => x.id === r.shed_id);
+                                            return (
+                                                <tr key={i}>
+                                                    <td><select className="nav-select" value={r.shed_id} onChange={e => setRow(i, { shed_id: e.target.value })}>
+                                                        <option value="">—</option>{freeSheds.filter(x => x.id === r.shed_id || !place.rows.some(o => o.shed_id === x.id)).map(x => <option key={x.id} value={x.id}>{x.shed_name}</option>)}
+                                                    </select></td>
+                                                    <td className="text-right">{sh?.capacity ? n0(sh.capacity) : ''}</td>
+                                                    <td><input type="number" className="nav-input" style={{ width: 110 }} value={r.chicks_placed} onChange={e => setRow(i, { chicks_placed: e.target.value })} /></td>
+                                                    <td><input type="number" className="nav-input" style={{ width: 90 }} value={r.free_chicks} onChange={e => setRow(i, { free_chicks: e.target.value })} /></td>
+                                                    <td><button type="button" className="nav-btn small" onClick={() => setPlace(p0 => ({ ...p0, rows: p0.rows.length > 1 ? p0.rows.filter((_, k) => k !== i) : p0.rows }))}>✕</button></td>
+                                                </tr>
+                                            );
+                                        })}</tbody>
+                                        <tfoot><tr><td colSpan={2}><button type="button" className="nav-btn small" onClick={() => setPlace(p0 => ({ ...p0, rows: [...p0.rows, { shed_id: '', chicks_placed: '', free_chicks: '' }] }))}>➕ Another shed</button></td>
+                                            <td colSpan={3} className={placing > (h.chicks_available || 0) ? 'text-red-700' : ''}>Placing {n0(placing)} of {n0(h.chicks_available)}</td></tr></tfoot>
+                                    </table>
+                                    {freeSheds.length === 0 && <p className="text-xs text-orange-700 mt-1">Every broiler shed has a lot running - close one first (all-in all-out).</p>}
+                                    <div className="flex justify-end mt-3"><button type="button" className="nav-btn primary" disabled={!placing || placing > (h.chicks_available || 0)} onClick={placeLots}>🐔 Place lots</button></div>
+                                </>
+                            ) : <p className="text-sm text-gray-600">All A-grade chicks of this hatch are placed.</p>}
+                        </GroupBox>
+                    )}
+                    {h.status === 'hatched' && (h.broiler_lots || []).length > 0 && (
+                        <GroupBox title="Broiler lots from this hatch">
+                            <div className="overflow-x-auto">
+                                <table className="erp-grid-table">
+                                    <thead><tr><th>Lot</th><th>Shed</th><th>Placed on</th><th>Status</th><th className="text-right">Age</th><th>Lift due</th><th className="text-right">Placed</th><th className="text-right">Dead</th><th className="text-right">Mort %</th><th className="text-right">Sold</th><th className="text-right">In shed</th><th className="text-right">Sales</th><th className="text-right">Cost</th><th className="text-right">Profit</th></tr></thead>
+                                    <tbody>{(h.broiler_lots || []).map(l => (
+                                        <tr key={l.id} className="cursor-pointer" onClick={() => { window.location.href = `/poultry/batches?id=${l.id}`; }}>
+                                            <td className="font-mono text-blue-700 underline">{l.batch_no}</td><td>{l.shed_name}</td><td>{l.placement_date}</td><td>{l.status}</td><td className="text-right">{l.age_days}</td><td>{l.status === 'active' ? l.lift_due_date : ''}</td>
+                                            <td className="text-right">{n0(l.placed)}</td><td className="text-right">{n0(l.dead)}</td><td className="text-right">{pct(l.mortality_pct)}</td><td className="text-right">{n0(l.lifted)}</td><td className="text-right">{n0(l.alive)}</td>
+                                            <td className="text-right">{n2(l.sales)}</td><td className="text-right">{n2(l.cost)}</td><td className={`text-right ${l.profit < 0 ? 'text-red-700' : ''}`}>{n2(l.profit)}</td>
+                                        </tr>
+                                    ))}</tbody>
+                                </table>
+                            </div>
+                        </GroupBox>
+                    )}
+                    {h.status === 'hatched' && !(h.broiler_lots || []).length && <button type="button" className="nav-btn" onClick={() => window.confirm('Reopen? The chick receipt is reversed.') && act(`/api/poultry/hatches/${h.id}/reopen`, {}, 'Hatch reopened')}>↩ Reopen hatch</button>}
                 </NavWindow>
             </Layout>
         );

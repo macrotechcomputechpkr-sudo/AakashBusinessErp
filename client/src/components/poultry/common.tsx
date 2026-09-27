@@ -22,7 +22,8 @@ export interface KpiData {
 }
 export interface Costs { chicks: number; feed: number; medicine: number; vaccine: number; litter: number; other_items: number; direct_expenses: number; shed_share: number; total: number }
 export interface Revenue { sales: number; unbilled_liftings: number; other_income: number; total: number }
-export interface Summary { birds: Birds; kpi: KpiData; costs: Costs; revenue: Revenue; profit: number; profit_per_kg: number | null; profit_per_bird: number | null; stage: string }
+export interface Cycle { cycle_days: number; lift_due_date: string; days_to_lift: number | null; lift_due: boolean }
+export interface Summary { birds: Birds; kpi: KpiData; costs: Costs; revenue: Revenue; profit: number; profit_per_kg: number | null; profit_per_bird: number | null; stage: string; cycle?: Cycle }
 export interface Batch extends Partial<Summary> {
     id: string; batch_no: string; shed_id: string; shed_name?: string; shed_code?: string; breed: string | null; chick_source: string | null; placement_date: string;
     chicks_placed: number; free_chicks: number; chick_product_id: string | null; target_weight_kg: number | null; expected_close_date: string | null; remarks: string | null;
