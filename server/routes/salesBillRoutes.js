@@ -104,7 +104,7 @@ async function syncDetails(tenantClient, tenantId, billId, details) {
         const { discountAmount, taxAmount, amount } = await lineAmount(tenantClient, d);
         return {
             tenant_id: tenantId, bill_id: billId, display_order: i + 1,
-            source_delivery_detail_id: d.source_delivery_detail_id || null, source_order_detail_id: d.source_order_detail_id || null,
+            source_delivery_detail_id: d.source_delivery_detail_id || null, source_order_detail_id: d.source_order_detail_id || null, source_quotation_detail_id: d.source_quotation_detail_id || null, free_uom_id: d.free_uom_id || null,
             product_id: d.product_id, qty: Number(d.qty), uom_id: d.uom_id || null,
             alt_qty: d.alt_qty || null, alt_unit_id: d.alt_unit_id || null, rate_basis: d.rate_basis || 'primary',
             rate: Number(d.rate) || 0, amount, discount_percent: d.discount_percent || 0, discount_amount: discountAmount,
@@ -137,6 +137,13 @@ async function updateBilledProgress(tenantClient, details, delta) {
 // the goods itself, so it moves the order's delivered counter - otherwise
 // the order would stay pending forever and could be billed twice.
 async function updateOrderProgressFromBill(tenantClient, details, delta) {
+    // a bill made straight from a Sales Quotation moves the quotation's "ordered" counter
+    for (const d of (details || []).filter(x => x.source_quotation_detail_id && !x.source_order_detail_id && !x.source_delivery_detail_id)) {
+        const { data: q } = await tenantClient.from('sales_quotation_details').select('qty_ordered').eq('id', d.source_quotation_detail_id).maybeSingle();
+        if (!q) continue;
+        await tenantClient.from('sales_quotation_details').update({ qty_ordered: Math.max(0, Number(q.qty_ordered || 0) + delta * Number(d.qty || 0)) }).eq('id', d.source_quotation_detail_id);
+        await bumpAltCounter(tenantClient, 'sales_quotation_details', d.source_quotation_detail_id, 'alt_qty_ordered', delta * Number(d.alt_qty || 0));
+    }
     const direct = (details || []).filter(d => d.source_order_detail_id && !d.source_delivery_detail_id);
     for (const d of direct) {
         const { data: row } = await tenantClient.from('sales_order_details').select('qty_delivered').eq('id', d.source_order_detail_id).maybeSingle();
@@ -326,7 +333,7 @@ async function createSalesBill(req, res) {
                 product_company_id: b.product_company_id || null,
                 tenant_id: tenantId, branch_id: currentUser?.default_branch_id || null, branch_name_snapshot: branchNameSnapshot,
                 doc_no: docNo, doc_date: b.doc_date, fiscal_year_id: currentFy?.id || null,
-                source_delivery_id: b.source_delivery_id || null, source_order_id: b.source_order_id || null,
+                source_delivery_id: b.source_delivery_id || null, source_order_id: b.source_order_id || null, source_quotation_id: b.source_quotation_id || null,
                 customer_ledger_id: b.customer_ledger_id || null, customer_sub_ledger_id: b.customer_sub_ledger_id || null, sales_sub_ledger_id: b.sales_sub_ledger_id || null, agent_id: b.agent_id || null,
                 invoice_type: b.invoice_type || 'credit', currency: b.currency || 'NPR', due_date: b.due_date || null, due_days: b.due_days || null,
                 warehouse_id: b.warehouse_id || null, sales_account_ledger_id: b.sales_account_ledger_id || null, sales_sub_ledger_id: b.sales_sub_ledger_id || null,

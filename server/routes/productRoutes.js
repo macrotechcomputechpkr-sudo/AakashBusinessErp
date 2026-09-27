@@ -172,7 +172,7 @@ router.post('/products', requireAuth, loadUserPermissions, requirePermission('le
 
         const unitError = validateUnitRates(b.unit_rates, b.base_unit_id);
         if (unitError) return res.status(400).json({ success: false, error: unitError });
-        const acctError = await checkAccountPurposes(await getTenantClient(req.auth.tenantId), req.auth.tenantId, b, { sales_account_ledger_id: 'sales_goods', purchase_account_ledger_id: 'purchase_goods', inventory_account_ledger_id: 'inventory', cogs_account_ledger_id: 'cogs', discount_account_ledger_id: 'discount' });
+        const acctError = await checkAccountPurposes(await getTenantClient(req.auth.tenantId), req.auth.tenantId, b, { sales_account_ledger_id: 'sales_goods', purchase_account_ledger_id: 'purchase_goods', sales_return_account_ledger_id: 'sales_goods', sales_nonsaleable_return_account_ledger_id: 'sales_goods', purchase_return_account_ledger_id: 'purchase_goods', purchase_nonsaleable_return_account_ledger_id: 'purchase_goods', inventory_account_ledger_id: 'inventory', cogs_account_ledger_id: 'cogs', discount_account_ledger_id: 'discount' });
         if (acctError) return res.status(400).json({ success: false, error: acctError });
 
         if (['production', 'assembly'].includes(b.replenishment_method) && !['semi_finished', 'finished_good'].includes(b.item_type)) {
@@ -206,6 +206,10 @@ router.post('/products', requireAuth, loadUserPermissions, requirePermission('le
                 inventory_account_ledger_id: b.inventory_account_ledger_id || null,
                 cogs_account_ledger_id: b.cogs_account_ledger_id || null,
                 discount_account_ledger_id: b.discount_account_ledger_id || null,
+                sales_return_account_ledger_id: b.sales_return_account_ledger_id || null,
+                purchase_return_account_ledger_id: b.purchase_return_account_ledger_id || null,
+                sales_nonsaleable_return_account_ledger_id: b.sales_nonsaleable_return_account_ledger_id || null,
+                purchase_nonsaleable_return_account_ledger_id: b.purchase_nonsaleable_return_account_ledger_id || null,
                 base_unit_id: b.base_unit_id,
                 uom_mode: b.uom_mode || 'single', dual_uom_primary_unit_id: b.dual_uom_primary_unit_id || null,
                 default_discount_percent: b.default_discount_percent || 0,
@@ -286,7 +290,7 @@ router.put('/products/:id', requireAuth, loadUserPermissions, requirePermission(
         if (!existing) return res.status(404).json({ success: false, error: 'Product not found' });
 
         const b = req.body;
-        const acctError = await checkAccountPurposes(tenantClient, tenantId, b, { sales_account_ledger_id: 'sales_goods', purchase_account_ledger_id: 'purchase_goods', inventory_account_ledger_id: 'inventory', cogs_account_ledger_id: 'cogs', discount_account_ledger_id: 'discount' });
+        const acctError = await checkAccountPurposes(tenantClient, tenantId, b, { sales_account_ledger_id: 'sales_goods', purchase_account_ledger_id: 'purchase_goods', sales_return_account_ledger_id: 'sales_goods', sales_nonsaleable_return_account_ledger_id: 'sales_goods', purchase_return_account_ledger_id: 'purchase_goods', purchase_nonsaleable_return_account_ledger_id: 'purchase_goods', inventory_account_ledger_id: 'inventory', cogs_account_ledger_id: 'cogs', discount_account_ledger_id: 'discount' });
         if (acctError) return res.status(400).json({ success: false, error: acctError });
         const merged = { ...existing, ...b };
 

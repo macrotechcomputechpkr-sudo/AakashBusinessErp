@@ -122,6 +122,7 @@ router.post('/billing-terms', requireAuth, loadUserPermissions, requirePermissio
                 quantity_unit: b.quantity_unit || 'primary',
                 base_reference: b.base_reference || 'basic_amount',
                 base_reference_term_id: b.base_reference_term_id || null,
+                base_term_ids: Array.isArray(b.base_term_ids) ? b.base_term_ids.filter(Boolean) : [],
                 rate_percentage: b.rate_percentage || 0,
                 fixed_amount: b.fixed_amount || 0,
                 maximum_amount: b.maximum_amount || 0,

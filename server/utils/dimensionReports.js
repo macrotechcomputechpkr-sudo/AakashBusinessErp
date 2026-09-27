@@ -115,11 +115,17 @@ async function dimLines(c, t, M, { from = null, to, ledgerIds = [] }) {
     const jvLines = await inChunks(jvIds, async ch => { const { data } = await c.from('journal_voucher_details').select('jv_id, ledger_id, debit_amount, credit_amount, cost_center_id, business_unit_id, display_order').in('jv_id', ch); return data || []; });
     const jvPool = {};
     jvLines.forEach(d => { const k = `${d.jv_id}|${d.ledger_id}|${round2(d.debit_amount)}|${round2(d.credit_amount)}`; (jvPool[k] = jvPool[k] || []).push(d); });
+    // Cash / Bank voucher lines carry their own cost center / unit too
+    const cbIds = [...(byType.cash_bank_entry || [])];
+    const cbLines = await inChunks(cbIds, async ch => { const { data } = await c.from('cash_bank_entry_lines').select('entry_id, ledger_id, receipt_amount, payment_amount, cost_center_id, business_unit_id').in('entry_id', ch); return data || []; });
+    const cbPool = {};
+    cbLines.forEach(d => { const k = `${d.entry_id}|${d.ledger_id}|${round2(d.payment_amount)}|${round2(d.receipt_amount)}`; (cbPool[k] = cbPool[k] || []).push(d); });
     return lines.map(l => {
         const type = l.batch.document_type, h = heads[`${type}:${l.batch.document_id}`] || {};
         const dr = round2(l.debit_amount), cr = round2(l.credit_amount);
         let cc = h.cost_center_id || null, bu = h.business_unit_id || null;
         if (type === 'journal_voucher') { const pool = jvPool[`${l.batch.document_id}|${l.ledger_account_id}|${dr}|${cr}`]; const d = pool && pool.shift(); if (d) { cc = d.cost_center_id || cc; bu = d.business_unit_id || bu; } }
+        if (type === 'cash_bank_entry') { const pool = cbPool[`${l.batch.document_id}|${l.ledger_account_id}|${dr}|${cr}`]; const d = pool && pool.shift(); if (d) { cc = d.cost_center_id || cc; bu = d.business_unit_id || bu; } }
         const led = M.ledgers[l.ledger_account_id] || {}, g = M.groups[led.account_group_id];
         const section = sectionOf(g);
         const date = String(l.batch.batch_date).slice(0, 10);

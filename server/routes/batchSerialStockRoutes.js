@@ -78,6 +78,14 @@ router.get('/product-serial-stock', requireAuth, loadUserPermissions, requirePer
             .eq('tenant_id', req.auth.tenantId).eq('product_id', product_id).eq('status', 'in_stock').eq('is_active', true)
             .order('serial_no');
         if (error) throw error;
+        // only the serials lying in the chosen warehouse (net of stock movements there)
+        if (req.query.warehouse_id) {
+            const { data: moves } = await tenantClient.from('stock_movements').select('serial_no, qty_in, qty_out')
+                .eq('tenant_id', req.auth.tenantId).eq('product_id', product_id).eq('warehouse_id', req.query.warehouse_id).not('serial_no', 'is', null);
+            const net = {};
+            (moves || []).forEach(m => { net[m.serial_no] = (net[m.serial_no] || 0) + Number(m.qty_in || 0) - Number(m.qty_out || 0); });
+            return res.json({ success: true, data: (data || []).filter(r => (net[r.serial_no] || 0) > 0) });
+        }
         res.json({ success: true, data });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });

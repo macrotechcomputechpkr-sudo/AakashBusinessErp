@@ -22,7 +22,7 @@ export default function BatchSerialPicker({ mode, productId, warehouseId, onSele
         setLoading(true);
         try {
             const url = mode === 'serial'
-                ? `/api/product-serial-stock?product_id=${productId}`
+                ? `/api/product-serial-stock?product_id=${productId}${warehouseId ? `&warehouse_id=${warehouseId}` : ''}`
                 : `/api/product-batch-stock?product_id=${productId}${warehouseId ? `&warehouse_id=${warehouseId}` : ''}`;
             const res = await authFetch(url);
             setRows(res.data || []);

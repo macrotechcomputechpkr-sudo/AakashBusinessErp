@@ -15,13 +15,71 @@ const { requireAuth, requirePermission } = require('../middleware/auth');
 const { resolveDocumentNumber } = require('../utils/documentNumbering');
 const { isBillWiseTrackingEnabled, getOutstandingReferences, computeFifoAllocation, createReferenceAndSettle, reverseReferenceAndSettlements } = require('../utils/billWiseSettlement');
 
+const round2 = n => Math.round((Number(n) || 0) * 100) / 100;
+const LINE_DIMS = ['product_company_id', 'area_id', 'agent_id', 'route_id', 'business_unit_id', 'cost_center_id'];
+
+// A voucher is either the old single-party form, or (new) master + lines:
+// each line one ledger (a party, an expense, a bank ...) with a Receipt or a
+// Payment amount. The master's Cash / Bank ledger takes the difference.
+function normaliseLines(b) {
+    if (!Array.isArray(b.lines)) return null;
+    return b.lines.filter(l => l && l.ledger_id).map((l, i) => {
+        const row = { line_no: i + 1, ledger_id: l.ledger_id, sub_ledger_id: l.sub_ledger_id || null,
+            manual_receipt_no: l.manual_receipt_no ? String(l.manual_receipt_no).slice(0, 50) : null, remarks: l.remarks || null,
+            receipt_amount: round2(l.receipt_amount), payment_amount: round2(l.payment_amount),
+            bill_wise_settlements: l.bill_wise_settlements || null };
+        // a dimension chosen on the master applies to every line
+        LINE_DIMS.forEach(k => { row[k] = b[k] || l[k] || null; });
+        return row;
+    });
+}
+
 function validateBody(b) {
     if (!b.doc_date) return 'Date is required';
     if (!b.entry_type || !['receipt', 'payment'].includes(b.entry_type)) return 'Receipt/Payment is required';
     if (!b.cash_bank_ledger_id) return 'Cash/Bank Ledger is required';
+    const lines = normaliseLines(b);
+    if (lines) {
+        if (!lines.length) return 'Enter at least one line';
+        for (const l of lines) {
+            if (l.receipt_amount < 0 || l.payment_amount < 0) return `Line ${l.line_no}: amounts cannot be negative`;
+            if ((l.receipt_amount > 0) === (l.payment_amount > 0)) return `Line ${l.line_no}: enter either a Receipt or a Payment amount`;
+            if (l.ledger_id === b.cash_bank_ledger_id) return `Line ${l.line_no}: the line ledger cannot be the Cash / Bank ledger itself`;
+        }
+        const net = round2(lines.reduce((s, l) => s + l.receipt_amount - l.payment_amount, 0));
+        if (net === 0) return 'Receipts and payments cancel out - nothing moves in Cash / Bank';
+        return null;
+    }
     if (!b.party_ledger_id) return 'A Party is required';
     if (!b.amount || Number(b.amount) <= 0) return 'Amount greater than zero is required';
     return null;
+}
+
+// header fields that follow from the lines
+async function headerFromLines(tenantClient, b, lines) {
+    const rec = round2(lines.reduce((s, l) => s + l.receipt_amount, 0)), pay = round2(lines.reduce((s, l) => s + l.payment_amount, 0));
+    const net = round2(rec - pay);
+    const ids = [...new Set(lines.map(l => l.ledger_id))];
+    const { data: leds } = await tenantClient.from('ledger_accounts').select('id, account_name').in('id', ids);
+    const name = Object.fromEntries((leds || []).map(l => [l.id, l.account_name]));
+    lines.forEach(l => { l.ledger_name_snapshot = name[l.ledger_id] || null; });
+    return {
+        entry_type: net > 0 ? 'receipt' : 'payment', amount: Math.abs(net), total_receipt: rec, total_payment: pay, line_count: lines.length,
+        party_ledger_id: ids.length === 1 ? ids[0] : null, party_sub_ledger_id: ids.length === 1 ? (lines[0].sub_ledger_id || null) : null,
+        party_name_snapshot: ids.length === 1 ? name[ids[0]] || null : `${ids.length} ledgers`
+    };
+}
+
+async function saveLines(tenantClient, tenantId, entryId, lines) {
+    await tenantClient.from('cash_bank_entry_lines').delete().eq('entry_id', entryId);
+    if (!lines || !lines.length) return;
+    const { error } = await tenantClient.from('cash_bank_entry_lines').insert(lines.map(l => ({ ...l, tenant_id: tenantId, entry_id: entryId,
+        bill_wise_settlements: l.bill_wise_settlements ? JSON.stringify(l.bill_wise_settlements) : null })));
+    if (error) throw error;
+}
+async function loadLines(tenantClient, entryId) {
+    const { data } = await tenantClient.from('cash_bank_entry_lines').select('*').eq('entry_id', entryId).order('line_no');
+    return (data || []).map(l => ({ ...l, bill_wise_settlements: typeof l.bill_wise_settlements === 'string' ? JSON.parse(l.bill_wise_settlements) : l.bill_wise_settlements }));
 }
 
 async function captureSnapshots(tenantClient, b) {
@@ -55,6 +113,17 @@ async function postCashBankToLedger(tenantClient, tenantId, entry, userId) {
         .insert({ tenant_id: tenantId, document_type: 'cash_bank_entry', document_id: entry.id, batch_date: entry.doc_date, narration: entry.narration || `${entry.entry_type} ${entry.doc_no}`, created_by: userId })
         .select().single();
     if (error) throw error;
+    const lines = await loadLines(tenantClient, entry.id);
+    if (lines.length) {
+        const net = round2(lines.reduce((s, l) => s + Number(l.receipt_amount) - Number(l.payment_amount), 0));
+        const gl = [{ tenant_id: tenantId, batch_id: batch.id, ledger_account_id: entry.cash_bank_ledger_id, debit_amount: net > 0 ? net : 0, credit_amount: net < 0 ? -net : 0 }];
+        lines.forEach(l => gl.push({ tenant_id: tenantId, batch_id: batch.id, ledger_account_id: l.ledger_id, sub_ledger_id: l.sub_ledger_id || null, product_company_id: l.product_company_id || null,
+            narration: [l.manual_receipt_no ? `Rec ${l.manual_receipt_no}` : null, l.remarks].filter(Boolean).join(' - ') || null,
+            debit_amount: Number(l.payment_amount) || 0, credit_amount: Number(l.receipt_amount) || 0 }));
+        const { error: lineErr } = await tenantClient.from('ledger_transaction_lines').insert(gl);
+        if (lineErr) throw lineErr;
+        return;
+    }
     const rows = entry.entry_type === 'receipt'
         ? [
             { tenant_id: tenantId, batch_id: batch.id, ledger_account_id: entry.cash_bank_ledger_id, debit_amount: entry.amount, credit_amount: 0 },
@@ -77,6 +146,24 @@ async function reverseCashBankLedger(tenantClient, entryId) {
 }
 
 async function settleBillWise(tenantClient, tenantId, entry) {
+    const lines = await loadLines(tenantClient, entry.id);
+    if (lines.length) {
+        // every line of a bill-wise party settles that party's own outstanding
+        for (const l of lines) {
+            if (!(await isBillWiseTrackingEnabled(tenantClient, tenantId, l.ledger_id))) continue;
+            const isReceipt = Number(l.receipt_amount) > 0;
+            const amount = isReceipt ? Number(l.receipt_amount) : Number(l.payment_amount);
+            let settlements = l.bill_wise_settlements;
+            if (!settlements) {
+                const outstanding = await getOutstandingReferences(tenantClient, l.ledger_id, isReceipt ? 'dr' : 'cr', l.product_company_id || null);
+                settlements = computeFifoAllocation(outstanding, amount).allocations;
+            }
+            await createReferenceAndSettle(tenantClient, tenantId, { productCompanyId: l.product_company_id || null,
+                ledgerId: l.ledger_id, sourceType: 'cash_bank_entry', sourceId: entry.id,
+                docNo: lines.length > 1 ? `${entry.doc_no}/${l.line_no}` : entry.doc_no, date: entry.doc_date, nature: isReceipt ? 'cr' : 'dr', totalAmount: amount, settlements });
+        }
+        return;
+    }
     if (!entry.party_ledger_id) return;
     const bwEnabled = await isBillWiseTrackingEnabled(tenantClient, tenantId, entry.party_ledger_id);
     if (!bwEnabled) return;
@@ -127,6 +214,7 @@ router.get('/cash-bank-entries/:id', requireAuth, loadUserPermissions, requirePe
         const tenantClient = await getTenantClient(req.auth.tenantId);
         const { data, error } = await tenantClient.from('cash_bank_entries').select('*').eq('id', req.params.id).eq('tenant_id', req.auth.tenantId).single();
         if (error) return res.status(404).json({ success: false, error: 'Entry not found' });
+        data.lines = await loadLines(tenantClient, data.id);
         res.json({ success: true, data });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
@@ -152,7 +240,10 @@ router.post('/cash-bank-entries', requireAuth, loadUserPermissions, requirePermi
         }
         const { data: currentFy } = await tenantClient.from('fiscal_years').select('id, fiscal_year_name').eq('tenant_id', tenantId).eq('is_current', true).maybeSingle();
         const docNo = await createDocNo(tenantClient, tenantId, req.auth.userId, currentUser, currentFy, b.numbering_category_id);
+        const lines = normaliseLines(b);
+        if (lines) Object.assign(b, await headerFromLines(tenantClient, b, lines));
         const snapshots = await captureSnapshots(tenantClient, b);
+        if (lines) snapshots.party_name_snapshot = b.party_name_snapshot;
 
         const { data: doc, error } = await tenantClient
             .from('cash_bank_entries')
@@ -164,12 +255,14 @@ router.post('/cash-bank-entries', requireAuth, loadUserPermissions, requirePermi
                 payment_mode: b.payment_mode || 'cash', ref_no: b.ref_no || null, ref_doc_no: b.ref_doc_no || null, ref_doc_date: b.ref_doc_date || null,
                 remarks_id: b.remarks_id || null, remarks_text: b.remarks_text || null, narration: b.narration || null,
                 cost_center_id: b.cost_center_id || null, business_unit_id: b.business_unit_id || null,
+                ...(lines ? { area_id: b.area_id || null, route_id: b.route_id || null, total_receipt: b.total_receipt, total_payment: b.total_payment, line_count: b.line_count } : {}),
                 pending_bill_wise_settlements: b.bill_wise_settlements ? JSON.stringify(b.bill_wise_settlements) : null,
                 ...snapshots,
                 status: b.status || 'draft', created_by: req.auth.userId, updated_by: req.auth.userId
             })
             .select().single();
         if (error) throw error;
+        if (lines) await saveLines(tenantClient, tenantId, doc.id, lines);
 
         await logAudit(tenantId, req.auth.userId, 'create_cash_bank_entry', 'cash_bank_entry', doc.id, { doc_no: doc.doc_no });
         await logDocumentAudit(tenantClient, tenantId, 'cash_bank_entry', doc.id, 'create', req.auth.userId);
@@ -199,14 +292,23 @@ router.put('/cash-bank-entries/:id', requireAuth, loadUserPermissions, requirePe
 
         await lockProtectedFields(await getTenantClient(req.auth.tenantId), req.auth.tenantId, req.auth.userId, 'cash_bank_entry', b, existing);
 
+        const lines = normaliseLines(b);
+        if (lines) Object.assign(b, await headerFromLines(tenantClient, b, lines));
         const snapshots = await captureSnapshots(tenantClient, { ...existing, ...b });
+        if (lines) snapshots.party_name_snapshot = b.party_name_snapshot;
         const update = { ...b, ...snapshots, updated_by: req.auth.userId, updated_at: new Date().toISOString() };
         delete update.branch_id;
         delete update.bill_wise_settlements;
+        delete update.lines;
+        delete update.numbering_category_id;
+        delete update.id;
+        delete update.doc_no;
+        delete update.status;
         if (b.bill_wise_settlements) update.pending_bill_wise_settlements = JSON.stringify(b.bill_wise_settlements);
 
         const { data, error } = await tenantClient.from('cash_bank_entries').update(update).eq('id', req.params.id).eq('tenant_id', tenantId).select().single();
         if (error) throw error;
+        if (lines) await saveLines(tenantClient, tenantId, req.params.id, lines);
 
         await logAudit(tenantId, req.auth.userId, 'update_cash_bank_entry', 'cash_bank_entry', req.params.id, { old_data: existing, new_data: data });
         await logDocumentAudit(tenantClient, tenantId, 'cash_bank_entry', req.params.id, 'update', req.auth.userId);

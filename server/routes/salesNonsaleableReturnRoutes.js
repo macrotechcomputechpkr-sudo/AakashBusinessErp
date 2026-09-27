@@ -8,6 +8,7 @@
 // =============================================
 
 const express = require('express');
+const { splitByAccount } = require('../utils/accountResolver');
 const { checkAccountPurposes } = require('../utils/ledgerPurpose');
 const { checkCompulsoryFields, lockProtectedFields } = require('../utils/entryFieldRules');
 const { checkProductCompany } = require('../utils/productCompanyRules');
@@ -133,6 +134,13 @@ async function postReturnToLedger(tenantClient, tenantId, returnDoc, userId) {
 
     const rows = [{ tenant_id: tenantId, batch_id: batch.id, ledger_account_id: returnDoc.customer_ledger_id, debit_amount: 0, credit_amount: returnDoc.total_amount }];
     if (returnDoc.sales_account_ledger_id) rows.push({ tenant_id: tenantId, batch_id: batch.id, ledger_account_id: returnDoc.sales_account_ledger_id, debit_amount: returnDoc.total_amount, credit_amount: 0 });
+    else {
+        // no account on the document: each product's Non-saleable Return Account
+        // (else its Sales Return Account, else System Control's sales return default)
+        const { data: lines } = await tenantClient.from('sales_nonsaleable_return_details').select('product_id, amount').eq('return_id', returnDoc.id);
+        const parts = await splitByAccount(tenantClient, tenantId, 'sales', {}, (lines || []).map(l => ({ ...l, tax_amount: 0 })), Number(returnDoc.total_amount), { isReturn: true, nonSaleable: true });
+        if (parts.every(x => x.ledgerId)) parts.forEach(x => rows.push({ tenant_id: tenantId, batch_id: batch.id, ledger_account_id: x.ledgerId, sub_ledger_id: x.subLedgerId, debit_amount: x.amount > 0 ? x.amount : 0, credit_amount: x.amount < 0 ? -x.amount : 0 }));
+    }
     if (rows.length > 1) {
         const { error: lineErr } = await tenantClient.from('ledger_transaction_lines').insert(rows);
         if (lineErr) throw lineErr;
