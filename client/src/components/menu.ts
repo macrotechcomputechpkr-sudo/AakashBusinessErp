@@ -10,7 +10,7 @@
 // =============================================
 
 /** feature: shown only when System Control turns that feature on */
-export type Feature = 'poultry' | 'broiler' | 'hatchery';
+export type Feature = 'poultry' | 'broiler' | 'hatchery' | 'construction';
 export interface MenuItem { to: string; label: string; group?: string; feature?: Feature }
 export interface MenuGroup { title: string; items: MenuItem[]; feature?: Feature }
 export interface TopMenu { key: string; title: string; groups: MenuGroup[]; feature?: Feature }
@@ -78,6 +78,11 @@ export const REPORT_GROUPS: ReportGroup[] = [
         ['/poultry/reports?view=mortality', 'Shed-wise Mortality'], ['/poultry/reports?view=consumption', 'Shed-wise Consumption (feed / medicine / vaccine)'],
         ['/poultry/hatchery?tab=report', 'Hatchery Performance (fertility / hatchability / chick cost)']
     ] },
+    { title: 'Construction', feature: 'construction', items: [
+        ['/construction/reports?view=profitability', 'Site-wise Profit / Loss (contract, billed, cost)'], ['/construction/reports?view=ra_register', 'Running Bill Register'],
+        ['/construction/reports?view=subcontractors', 'Petti Thekka (Sub-contract) Register'], ['/construction/reports?view=material', 'Site-wise Material Consumed'],
+        ['/construction/reports?view=wages', 'Site-wise Labour / Wages']
+    ] },
     { title: 'Control & Registers', items: [
         ['/register', 'Universal Register (all documents)'], ['/control-reports?view=cancelled_docs', 'Cancelled Documents'], ['/control-reports?view=draft_docs', 'Draft (Unposted) Documents'],
         ['/control-reports?view=master_exceptions', 'Master Data Exceptions'], ['/lc-bg-dashboard', 'LC / BG / PDC Dashboard'], ['/pdc-dashboard', 'PDC Dashboard & Report'],
@@ -137,6 +142,9 @@ export const TOP_MENUS: TopMenu[] = [
             i('/interest-posting', '% Interest on Overdue'), i('/fixed-assets?tab=depreciation', '🏗 Depreciation Posting'), i('/budgets', '💼 Budgets'),
             i('/confirmation-letters', '✉ Account Confirmation Letters')
         ] },
+        { title: 'Construction', feature: 'construction', items: [
+            i('/construction/sites', '🏗️ Sites / Running Bills / Material / Wages', 'construction'), i('/construction/sites?new=1', '➕ New Site / Contract', 'construction')
+        ] },
         { title: 'Poultry & Hatchery', feature: 'poultry', items: [
             i('/poultry/batches', '🐔 Broiler Batches (placement / daily log / lifting)', 'broiler'), i('/poultry/batches?new=1', '➕ New Batch Placement', 'broiler'),
             i('/poultry/hatchery', '🥚 Hatchery (egg set / candling / hatch)', 'hatchery')
@@ -146,7 +154,7 @@ export const TOP_MENUS: TopMenu[] = [
         ] }
     ] },
     { key: 'acc_report', title: 'Accounts Report', groups: [rg('Accounts & Finance'), rg('Budget & Dimensions'), rg('VAT, TDS & IRD'), rg('Control & Registers')] },
-    { key: 'sp_report', title: 'Sales/Purchase', groups: [rg('Sales, Salesman & Routes'), rg('Purchase'), rg('Inventory & Production'), rg('Poultry & Hatchery')] },
+    { key: 'sp_report', title: 'Sales/Purchase', groups: [rg('Sales, Salesman & Routes'), rg('Purchase'), rg('Inventory & Production'), rg('Poultry & Hatchery'), rg('Construction')] },
     { key: 'analysis', title: 'Analysis', groups: [
         { title: 'Dashboards', items: [
             i('/dashboard', '🏠 Dashboard'), i('/work-dashboard', '📊 Work Dashboard'), i('/lc-bg-dashboard', '📑 LC / BG / PDC Dashboard'), i('/pdc-dashboard', '🏦 PDC Dashboard'),
@@ -192,13 +200,21 @@ export const TOP_MENUS: TopMenu[] = [
             i('/poultry/setup', '⚙️ Poultry Setup')
         ] },
         rg('Poultry & Hatchery')
+    ] },
+    { key: 'construction', title: 'Construction', feature: 'construction', groups: [
+        { title: 'Sites & Contracts', items: [
+            i('/construction', '📊 Construction Dashboard'), i('/construction/sites', '🏗️ Sites / Contracts (thekka)'), i('/construction/sites?new=1', '➕ New Site'),
+            i('/construction/setup', '⚙️ Construction Setup')
+        ] },
+        rg('Construction')
     ] }
 ];
 
-export interface AppFeatures { business_nature: string; poultry: { enabled: boolean; broiler: boolean; hatchery: boolean } }
+export interface AppFeatures { business_nature: string; poultry: { enabled: boolean; broiler: boolean; hatchery: boolean }; construction?: { enabled: boolean } }
 /** is a feature-gated menu entry / report group on for this company? */
 export const featureOn = (f: Feature | undefined, a: AppFeatures | null): boolean => {
     if (!f) return true;
+    if (f === 'construction') return !!a?.construction?.enabled;
     if (!a?.poultry?.enabled) return false;
     return f === 'poultry' || !!a.poultry[f];
 };
