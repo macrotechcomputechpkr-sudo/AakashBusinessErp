@@ -72,7 +72,9 @@ router.put('/system-control', requireAuth, loadUserPermissions, requirePermissio
             const { data: prev } = await tenantClient.from('system_control_settings').select('term_mapping').eq('tenant_id', tenantId).maybeSingle();
             const prevIds = new Set(['sales', 'purchase'].flatMap(sd => Object.values((prev && prev.term_mapping && prev.term_mapping[sd]) || {})).filter(Boolean));
             termTypes = { __prev: prevIds };
-            for (const side of ['sales', 'purchase']) KEYS.forEach(k => { const id = out[side][k]; if (id) termTypes[id] = k === 'vat' ? 'vat' : k === 'excise' ? 'excise' : 'discount'; });
+            // the VAT / Excise slots give their term that Type; a discount slot keeps the term's own Type
+            // (only a VAT / Excise type there is taken back to Normal)
+            for (const side of ['sales', 'purchase']) KEYS.forEach(k => { const id = out[side][k]; if (id && !termTypes[id]) termTypes[id] = k === 'vat' ? 'vat' : k === 'excise' ? 'excise' : 'keep'; });
         }
         delete update.tenant_id; // never let the client move a settings row to a different tenant
 
@@ -88,7 +90,11 @@ router.put('/system-control', requireAuth, loadUserPermissions, requirePermissio
             const { data: terms } = await tenantClient.from('billing_terms').select('id, tax_type').eq('tenant_id', tenantId);
             for (const tm of terms || []) {
                 // a term taken out of the mapping loses the type the mapping gave it; others are left alone
-                const want = termTypes[tm.id] || (prevIds.has(tm.id) ? 'none' : tm.tax_type);
+                const mapped = termTypes[tm.id];
+                let want = tm.tax_type;
+                if (mapped === 'vat' || mapped === 'excise') want = mapped;
+                else if (mapped === 'keep') want = ['vat', 'excise', 'discount'].includes(tm.tax_type) ? 'none' : tm.tax_type;
+                else if (prevIds.has(tm.id) && ['vat', 'excise', 'discount'].includes(tm.tax_type)) want = 'none';
                 if (want !== tm.tax_type) await tenantClient.from('billing_terms').update({ tax_type: want }).eq('id', tm.id);
             }
         }

@@ -201,9 +201,10 @@ async function controlReport(c, t, view, q) {
         ]);
         const G = Object.fromEntries(groups.map(x => [x.id, x.group_name])), C = Object.fromEntries(comps.map(x => [x.id, x.company_name])), U = Object.fromEntries(units.map(x => [x.id, x.unit_name]));
         const S = Object.fromEntries((st.rows || []).map(r => [r.product_id, r.closing_qty]));
+        const VAT = await require('./productVat').productVatMap(c, t, products.map(p => p.id), 13);
         let rows = products.map(p => ({ id: p.id, code: p.product_code, name: p.product_name, hs_code: p.hs_code || '', unit: U[p.base_unit_id] || '', group: G[p.product_group_id] || '', company: C[p.product_company_id] || '',
             mrp: round2(p.mrp), sr1: round2(p.sales_rate_sr1), sr2: round2(p.sales_rate_sr2), sr3: round2(p.sales_rate_sr3), sr4: round2(p.sales_rate_sr4), sr5: round2(p.sales_rate_sr5),
-            purchase_rate: round2(R[p.id]?.purchase_rate), vat: p.vat_applicable === false ? 'No' : 'Yes', discount: Number(p.default_discount_percent) || 0, stock: S[p.id] ?? null, blocked: !!p.is_blocked }));
+            purchase_rate: round2(R[p.id]?.purchase_rate), vat: VAT[p.id].taxable ? 'Yes' : 'No', discount: Number(p.default_discount_percent) || 0, stock: S[p.id] ?? null, blocked: !!p.is_blocked }));
         if (q.product_group_id) rows = rows.filter(r => products.find(p => p.id === r.id).product_group_id === q.product_group_id);
         if (q.product_company_id) rows = rows.filter(r => products.find(p => p.id === r.id).product_company_id === q.product_company_id);
         return { rows };

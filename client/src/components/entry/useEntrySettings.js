@@ -51,7 +51,14 @@ export default function useEntrySettings() {
  * in order Disc 1-5, Excise, VAT, each with its default % from the term
  */
 export function termColumns(settings, side) {
-    const map = settings?.termMapping?.[side] || {};
+    const map = { ...(settings?.termMapping?.[side] || {}) };
+    // no VAT / Excise slot mapped: the active term of that Type (Billing Term setup) for this side
+    ['vat', 'excise'].forEach(k => {
+        if (map[k]) return;
+        const t = (settings?.billingTerms || []).find(x => x.tax_type === k && x.is_active !== false
+            && (side === 'sales' ? x.applicable_sales_entry !== false : x.applicable_purchase_entry !== false) && !Object.values(map).includes(x.id));
+        if (t) map[k] = t.id;
+    });
     return TERM_KEYS.filter(([k]) => map[k]).map(([k, label]) => {
         const t = (settings.billingTerms || []).find(x => x.id === map[k]);
         return { key: k, label: t ? t.term_name : label, term_id: map[k], default_percent: Number(t?.rate_percentage) || 0, kind: k === 'vat' ? 'vat' : k === 'excise' ? 'excise' : 'discount' };

@@ -230,7 +230,7 @@ async function stockMap(c, t, { warehouseId, search } = {}) {
 }
 
 async function mobileProducts(c, t, agent, q) {
-    let pq = c.from('products').select('id, product_code, product_name, short_name, base_unit_id, product_group_id, product_company_id, vat_applicable, sales_rate_sr1, sales_rate_sr2, sales_rate_sr3, sales_rate_sr4, sales_rate_sr5, mrp, default_discount_percent, is_blocked')
+    let pq = c.from('products').select('id, product_code, product_name, short_name, base_unit_id, product_group_id, product_company_id, sales_rate_sr1, sales_rate_sr2, sales_rate_sr3, sales_rate_sr4, sales_rate_sr5, mrp, default_discount_percent, is_blocked')
         .eq('tenant_id', t).eq('is_active', true);
     const s = String(q.search || '').trim().replace(/[(),%]/g, ' ').trim();
     if (s) pq = pq.or(`product_name.ilike.%${s}%,product_code.ilike.%${s}%,short_name.ilike.%${s}%`);
@@ -254,6 +254,7 @@ async function mobileProducts(c, t, agent, q) {
     }
     const { data: sys } = await c.from('system_control_settings').select('*').eq('tenant_id', t).maybeSingle();
     const vatRate = Number(sys?.default_vat_percent ?? 13) || 13;
+    const VAT = await require('./productVat').productVatMap(c, t, products.map(p => p.id), vatRate);
     return products.map(p => {
         const g = G[p.product_group_id], co = C[p.product_company_id];
         const masters = [g, co].filter(Boolean);
@@ -262,7 +263,7 @@ async function mobileProducts(c, t, agent, q) {
             group_name: g?.group_name || '', company_name: co?.company_name || '', product_company_id: p.product_company_id,
             rate: Number(p[`sales_rate_sr${tier}`]) || Number(p.sales_rate_sr1) || 0, mrp: Number(p.mrp) || 0,
             discount_percent: disc[p.product_company_id] ?? (Number(p.default_discount_percent) || 0),
-            tax_percent: p.vat_applicable === false ? 0 : vatRate, stock: stock[p.id] ?? 0,
+            tax_percent: VAT[p.id].percent, stock: stock[p.id] ?? 0,
             rate_editable: !!agent?.allow_rate_change_on_mobile_order || (masters.length > 0 && masters.every(m => m.allow_rate_change_on_mobile_order))
         };
     });

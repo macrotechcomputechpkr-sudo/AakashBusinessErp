@@ -35,7 +35,7 @@ const emptyForm = {
     maintain_batch: false, track_expiry: false, track_mfg_date: false, track_serial_number: false, is_vehicle_linked: false, free_qty_eligible: false,
     replenishment_method: 'purchase', routing_reference: '', scrap_percent: 0, bom_lines: [], rack_locations: [], term_mappings: [],
     costing_approach: 'standard', overhead_absorption_basis: '', overhead_absorption_rate: 0, standard_labour_rate: 0,
-    weight: '', weight_unit: '', dimensions: '', vat_applicable: true, excise_applicable: false
+    weight: '', weight_unit: '', dimensions: ''
 };
 
 const TABS = [
@@ -691,8 +691,6 @@ export default function ProductMaster() {
                         <Field label="Weight" type="number" value={form.weight} onChange={v => setForm({ ...form, weight: v })} />
                         <Field label="Weight Unit" value={form.weight_unit} onChange={v => setForm({ ...form, weight_unit: v })} placeholder="e.g. Kg" />
                         <Field label="Dimensions" value={form.dimensions} onChange={v => setForm({ ...form, dimensions: v })} placeholder="L x W x H" />
-                        <CheckField label="VAT Applicable" checked={form.vat_applicable} onChange={v => setForm({ ...form, vat_applicable: v })} />
-                        <CheckField label="Excise Applicable" checked={form.excise_applicable} onChange={v => setForm({ ...form, excise_applicable: v })} />
                     </div>
 
                     <div className="flex justify-end gap-2 border-t pt-4">

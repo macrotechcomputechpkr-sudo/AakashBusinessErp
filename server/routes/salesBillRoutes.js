@@ -208,9 +208,14 @@ async function salesSplit(tenantClient, tenantId, doc, postVat, exciseLedgerId =
 async function salesExciseLedger(tenantClient, tenantId) {
     const { data: sc } = await tenantClient.from('system_control_settings').select('term_mapping').eq('tenant_id', tenantId).maybeSingle();
     const termId = sc?.term_mapping?.sales?.excise;
-    if (!termId) return null;
-    const { data: term } = await tenantClient.from('billing_terms').select('billing_ledger_id').eq('id', termId).maybeSingle();
-    return term?.billing_ledger_id || null;
+    if (termId) {
+        const { data: term } = await tenantClient.from('billing_terms').select('billing_ledger_id').eq('id', termId).maybeSingle();
+        return term?.billing_ledger_id || null;
+    }
+    // not mapped: the sales term whose Type is Excise (Billing Term setup)
+    const { data: terms } = await tenantClient.from('billing_terms').select('billing_ledger_id, applicable_sales_entry, is_active').eq('tenant_id', tenantId).eq('tax_type', 'excise');
+    const t = (terms || []).find(x => x.is_active !== false && x.applicable_sales_entry !== false);
+    return t?.billing_ledger_id || null;
 }
 
 // Checked BEFORE the status becomes 'posted', so a missing ledger can never

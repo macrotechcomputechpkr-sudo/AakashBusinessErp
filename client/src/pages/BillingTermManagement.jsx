@@ -16,6 +16,9 @@ import SearchablePopupSelect from '../components/SearchablePopupSelect';
 import ReportGrid from '../components/ReportGrid';
 import Layout from '../components/Layout';
 
+// VAT and Excise terms post to the VAT / Excise ledgers and reports; Cash Discount works on credit days
+const TERM_TYPES = [{ value: 'none', label: 'Normal' }, { value: 'vat', label: 'VAT' }, { value: 'excise', label: 'Excise' }, { value: 'cash_discount', label: 'Cash Discount' }];
+
 const emptyForm = {
     term_name: '', description: '',
     term_category: 'general', tax_type: 'none',
@@ -184,16 +187,10 @@ export default function BillingTermManagement() {
                         </div>
 
                         <div>
-                            <label className="erp-label">Special Behaviour</label>
-                            {['vat', 'excise', 'discount'].includes(form.tax_type) ? (
-                                <div className="erp-input bg-gray-50 text-gray-600" title="Set in System Control > Term Mapping">{form.tax_type === 'vat' ? 'VAT' : form.tax_type === 'excise' ? 'Excise' : 'Discount'} (from Term Mapping)</div>
-                            ) : (
-                                <select className="erp-input" value={form.tax_type === 'cash_discount' ? 'cash_discount' : 'none'} onChange={e => setForm({ ...form, tax_type: e.target.value })}>
-                                    <option value="none">None</option>
-                                    <option value="cash_discount">Cash Discount (credit days)</option>
-                                </select>
-                            )}
-                            <p className="text-[11px] text-gray-400 mt-0.5">Which term is VAT / Excise / Discount 1-5 / Bill Discount is chosen in System Control &gt; Term Mapping.</p>
+                            <label className="erp-label">Type</label>
+                            <select className="erp-input" value={TERM_TYPES.some(t => t.value === form.tax_type) ? form.tax_type : 'none'} onChange={e => setForm({ ...form, tax_type: e.target.value })}>
+                                {TERM_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                            </select>
                         </div>
                         <div>
                             <label className="erp-label">Basis</label>
