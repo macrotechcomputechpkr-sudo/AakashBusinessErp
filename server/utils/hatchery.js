@@ -94,7 +94,8 @@ async function detail(c, t, id) {
     const ids = [h.set_adjustment_id, h.output_adjustment_id].filter(Boolean);
     const { data: adjs } = ids.length ? await c.from('stock_adjustments').select('id, doc_no, status').in('id', ids) : { data: [] };
     const A = Object.fromEntries((adjs || []).map(a => [a.id, a]));
-    return { ...h, ...kpis(h), cost: await hatchCost(c, t, h, S), set_adjustment_no: A[h.set_adjustment_id]?.doc_no || null, output_adjustment_no: A[h.output_adjustment_id]?.doc_no || null,
+    const { data: shed } = await c.from('poultry_sheds').select('shed_name').eq('tenant_id', t).eq('id', h.hatchery_id).maybeSingle();
+    return { ...h, hatchery_name: shed?.shed_name || '', ...kpis(h), cost: await hatchCost(c, t, h, S), set_adjustment_no: A[h.set_adjustment_id]?.doc_no || null, output_adjustment_no: A[h.output_adjustment_id]?.doc_no || null,
         expected_candling: addDays(h.set_date, S.candling_day), expected_transfer: addDays(h.set_date, S.transfer_day), expected_hatch: addDays(h.set_date, S.incubation_days) };
 }
 

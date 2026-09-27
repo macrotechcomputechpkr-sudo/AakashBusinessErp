@@ -74,6 +74,11 @@ import DataAccess from './pages/DataAccess';
 import DartaChalani from './pages/DartaChalani';
 import Tasks from './pages/Tasks';
 import WorkDashboard from './pages/WorkDashboard';
+import PoultryDashboard from './pages/poultry/PoultryDashboard';
+import PoultrySetup from './pages/poultry/PoultrySetup';
+import PoultryBatches from './pages/poultry/PoultryBatches';
+import PoultryReports from './pages/poultry/PoultryReports';
+import Hatchery from './pages/poultry/Hatchery';
 import NotificationSettings from './pages/NotificationSettings';
 import ChangePassword from './pages/ChangePassword';
 import LedgerMapping from './pages/LedgerMapping';
@@ -217,6 +222,11 @@ function AppRoutes() {
             <Route path="/darta-chalani" element={<PrivateRoute><DartaChalani /></PrivateRoute>} />
             <Route path="/tasks" element={<PrivateRoute><Tasks /></PrivateRoute>} />
             <Route path="/work-dashboard" element={<PrivateRoute><WorkDashboard /></PrivateRoute>} />
+            <Route path="/poultry" element={<PrivateRoute><PoultryDashboard /></PrivateRoute>} />
+            <Route path="/poultry/setup" element={<PrivateRoute><PoultrySetup /></PrivateRoute>} />
+            <Route path="/poultry/batches" element={<PrivateRoute><PoultryBatches /></PrivateRoute>} />
+            <Route path="/poultry/reports" element={<PrivateRoute><PoultryReports /></PrivateRoute>} />
+            <Route path="/poultry/hatchery" element={<PrivateRoute><Hatchery /></PrivateRoute>} />
             <Route path="/notification-settings" element={<PrivateRoute><NotificationSettings /></PrivateRoute>} />
             <Route path="/change-password" element={<PrivateRoute><ChangePassword /></PrivateRoute>} />
             <Route path="/ledger-mapping" element={<PrivateRoute><LedgerMapping /></PrivateRoute>} />

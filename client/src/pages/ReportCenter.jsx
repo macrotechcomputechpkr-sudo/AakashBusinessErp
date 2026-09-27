@@ -5,20 +5,23 @@
 // =============================================
 import React, { useState } from 'react';
 import Layout from '../components/Layout';
-import { REPORT_GROUPS, REPORT_COUNT } from '../components/menu';
+import { visibleReportGroups } from '../components/menu';
+import useAppFeatures from '../hooks/useAppFeatures';
 
 export default function ReportCenter() {
     const [q, setQ] = useState('');
     const s = q.trim().toLowerCase();
+    const groups = visibleReportGroups(useAppFeatures());
+    const count = groups.reduce((n, g) => n + g.items.length, 0);
     return (
         <Layout>
             <div className="erp-shell px-4">
                 <div className="erp-card">
-                    <div className="erp-header"><span className="erp-header-title">📚 Report Center · {REPORT_COUNT} reports</span></div>
+                    <div className="erp-header"><span className="erp-header-title">📚 Report Center · {count} reports</span></div>
                     <div className="erp-tab-content">
                         <input className="erp-input mb-4" style={{ maxWidth: 420 }} placeholder="🔍 Search reports (e.g. VAT, route, budget, stock)…" value={q} onChange={e => setQ(e.target.value)} autoFocus />
                         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                            {REPORT_GROUPS.map(g => {
+                            {groups.map(g => {
                                 const items = g.items.filter(([, label]) => !s || label.toLowerCase().includes(s) || g.title.toLowerCase().includes(s));
                                 if (!items.length) return null;
                                 return (

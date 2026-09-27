@@ -11,8 +11,10 @@ import { useAuth } from '../contexts/AuthContext';
 import { useEnterKeyNavigation } from '../hooks/useEnterKeyNavigation';
 import SearchablePopupSelect from '../components/SearchablePopupSelect';
 import Layout from '../components/Layout';
+import { refreshAppFeatures } from '../hooks/useAppFeatures';
 
 const TABS = [
+    { key: 'business', label: '🏢 Business Nature' },
     { key: 'regional', label: '🌐 Regional & Format' },
     { key: 'ledgerMapping', label: '📒 Ledger Mapping' },
     { key: 'inventory', label: '📦 Inventory & UOM' },
@@ -65,6 +67,17 @@ function LedgerField({ label, value, onChange, ledgers }) {
     );
 }
 
+// Business Nature: decides which industry modules the menus offer. Trading is the default;
+// Poultry turns on the Poultry & Hatchery module (broiler and / or hatchery).
+const NATURES = [
+    { value: 'trading', label: 'Trading (default)', note: 'Buy and sell goods - the standard accounting, inventory, sales and purchase screens.' },
+    { value: 'distribution', label: 'Distribution', note: 'Trading with salesman routes, orders and schemes - same screens as trading.' },
+    { value: 'retail', label: 'Retail', note: 'Counter sales - same screens as trading.' },
+    { value: 'manufacturing', label: 'Manufacturing', note: 'Trading + BOM and production orders.' },
+    { value: 'service', label: 'Service', note: 'Service billing - inventory screens stay available.' },
+    { value: 'poultry', label: 'Poultry & Hatchery', note: 'Adds shed-wise broiler batches (lifecycle, consumption, mortality, profitability) and hatchery management, posted to the same accounts and inventory.' }
+];
+
 const YES_NO = [{ value: 'true', label: 'Yes' }, { value: 'false', label: 'No' }];
 
 export default function SystemControlSettings() {
@@ -73,7 +86,7 @@ export default function SystemControlSettings() {
     useEnterKeyNavigation(enterAreaRef);
     const [settings, setSettings] = useState(null);
     const [ledgers, setLedgers] = useState([]);
-    const [tab, setTab] = useState('regional');
+    const [tab, setTab] = useState(() => new URLSearchParams(window.location.search).get('tab') || 'business');
     const [alert, setAlert] = useState(null);
     const [saving, setSaving] = useState(false);
     // Stock Posting tab: each branch's / warehouse's own stock ledger + the ledger check.
@@ -112,6 +125,7 @@ export default function SystemControlSettings() {
         try {
             const res = await authFetch('/api/system-control', { method: 'PUT', body: JSON.stringify(settings) });
             setSettings(res.data);
+            refreshAppFeatures();
             if (stockMap) {
                 const dirty = kind => stockMap[kind].filter(r => r._dirty).map(r => ({ id: r.id, stock_ledger_id: r.stock_ledger_id }));
                 if (dirty('branches').length || dirty('warehouses').length) {
@@ -136,32 +150,62 @@ export default function SystemControlSettings() {
 
     return (
         <Layout>
-        <div ref={enterAreaRef} className="max-w-5xl mx-auto p-4">
-            <div className="flex justify-between items-center mb-4">
-                <h1 className="text-2xl font-bold">System Control</h1>
-                <button onClick={handleSave} disabled={saving} className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium disabled:opacity-50">
-                    {saving ? 'Saving...' : '💾 Save Settings'}
-                </button>
+        <div ref={enterAreaRef} className="erp-shell">
+          <div className="erp-card">
+            <div className="erp-header">
+                <span className="erp-header-title">⚙️ System Control</span>
+                <div className="erp-header-actions">
+                    <button onClick={handleSave} disabled={saving} className="erp-header-btn primary">{saving ? 'Saving...' : '💾 Save Settings'}</button>
+                </div>
             </div>
 
             {alert && (
-                <div className={`mb-4 px-4 py-3 rounded-lg text-sm font-medium border-l-4 ${
+                <div className={`m-2 px-4 py-2 text-sm font-medium border-l-4 ${
                     alert.type === 'success' ? 'bg-green-50 border-green-500 text-green-800' :
                     alert.type === 'danger' ? 'bg-red-50 border-red-500 text-red-800' :
                     'bg-yellow-50 border-yellow-500 text-yellow-800'
                 }`}>{alert.message}</div>
             )}
 
-            <div className="flex flex-wrap gap-1 bg-gray-100 rounded-lg p-1 mb-4">
+            <div className="erp-tabs">
                 {TABS.map(t => (
-                    <button key={t.key} onClick={() => setTab(t.key)}
-                        className={`px-3 py-1.5 rounded-md text-xs font-semibold transition ${tab === t.key ? 'bg-white shadow text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>
-                        {t.label}
-                    </button>
+                    <button key={t.key} type="button" onClick={() => setTab(t.key)} className={`erp-tab ${tab === t.key ? 'active' : ''}`}>{t.label}</button>
                 ))}
             </div>
 
-            <div className="bg-white border rounded-xl p-6">
+            <div className="erp-tab-content">
+
+                {tab === 'business' && (() => {
+                    const nature = settings.business_nature || 'trading';
+                    const pf = settings.poultry_features || { broiler: true, hatchery: false };
+                    return (
+                        <div>
+                            <div className="nav-groupbox">
+                                <span className="nav-groupbox-title">Business Nature</span>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                    {NATURES.map(n => (
+                                        <label key={n.value} className={`flex items-start gap-2 p-2 border cursor-pointer ${nature === n.value ? 'bg-[#dde8f6] border-[#4a7ab5]' : 'bg-white border-[#d4d0c8]'}`}>
+                                            <input type="radio" name="business_nature" className="mt-1" checked={nature === n.value} onChange={() => set('business_nature', n.value)} />
+                                            <span><span className="font-semibold text-sm">{n.label}</span><br /><span className="text-xs text-gray-600">{n.note}</span></span>
+                                        </label>
+                                    ))}
+                                </div>
+                            </div>
+                            {nature === 'poultry' && (
+                                <div className="nav-groupbox">
+                                    <span className="nav-groupbox-title">Poultry & Hatchery features</span>
+                                    <div className="flex flex-col gap-1">
+                                        <CheckField label="Broiler farming - shed-wise batches: placement, daily log (feed / medicine / vaccine / mortality / weight), lifting, profitability" checked={pf.broiler !== false} onChange={v => set('poultry_features', { ...pf, broiler: v })} />
+                                        <CheckField label="Hatchery - egg setting, candling, hatch (A / B grade chicks), fertility / hatchability, chick cost" checked={!!pf.hatchery} onChange={v => set('poultry_features', { ...pf, hatchery: v })} />
+                                    </div>
+                                    <p className="text-xs text-gray-600 mt-2">Every issue and receipt is posted as a Stock Adjustment (reason Consumption / Production) with the shed / batch cost center, so stock, ledgers and P&L stay on the normal posting.
+                                        After saving, open <a className="text-blue-700 underline" href="/poultry/setup">Poultry Setup</a> to choose the consumption ledger, warehouse and item roles.</p>
+                                </div>
+                            )}
+                            {nature !== 'poultry' && settings.business_nature === 'poultry' && <p className="nav-msg warn">Poultry menus will be hidden; poultry records stay in the database.</p>}
+                        </div>
+                    );
+                })()}
 
                 {/* ==================== 1. REGIONAL & FORMAT ==================== */}
                 {tab === 'regional' && (
@@ -563,6 +607,7 @@ export default function SystemControlSettings() {
                 )}
 
             </div>
+          </div>
         </div>
         </Layout>
     );
