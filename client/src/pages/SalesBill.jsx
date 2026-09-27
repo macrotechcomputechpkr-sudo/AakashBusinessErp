@@ -10,9 +10,12 @@
 //   Lines   : Code / Barcode first, warehouse, batch / serial (stock of the
 //             chosen warehouse), qty, unit, free qty + unit, rate (+ basis
 //             for dual items), product terms inline or in a popup, amount
-//   Footer  : tabs - customer billing / shipping address & PAN (optionally
-//             saved to the customer master), sales account + sub-ledger,
-//             remarks / narration
+//   Footer  : FinPro style (components/entry/FinEntry.jsx) - Product Term /
+//             Bill Term pop-ups, net amount, remarks, amount in words, Other
+//             Details (sales account + sub-ledger, rate type, narration),
+//             Billing/Taxation (customer address & PAN, optionally saved to
+//             the customer master), Hold / Ok / Cancel; F7 copies the last
+//             bill, F8 recalls a held one
 // Credit-checked; lines not from a Challan move stock.
 // =============================================
 
@@ -26,7 +29,6 @@ import Layout from '../components/Layout';
 import { useEnterKeyNavigation } from '../hooks/useEnterKeyNavigation';
 import { formatDateForDisplay } from '../utils/nepaliDateUtils';
 import NumberingCategorySelector from '../components/NumberingCategorySelector';
-import ProductTermBar from '../components/ProductTermBar';
 import { resolveDualUomEntryMode } from '../utils/dualUomEntryMode';
 import UdfValuesModal from '../components/UdfValuesModal';
 import useLedgerPurposes from '../components/useLedgerPurposes';
@@ -35,8 +37,9 @@ import { priceUrl, lineUnitOf, useSlabRepricing } from '../utils/salesPricing';
 import useEntrySettings, { termColumns } from '../components/entry/useEntrySettings';
 import DocNumberField from '../components/entry/DocNumberField';
 import PendingDocsPanel, { mergePulled } from '../components/entry/PendingDocsPanel';
-import PartyFooterTabs, { emptyPartyInfo, savePartyInfo, partyInfoFromDoc } from '../components/entry/PartyFooterTabs';
-import SalesLineGrid from '../components/entry/SalesLineGrid';
+import { PartyDetailsPanel, emptyPartyInfo, savePartyInfo, partyInfoFromDoc } from '../components/entry/PartyFooterTabs';
+import SalesLineGrid, { useLineGridControl, lineTotals } from '../components/entry/SalesLineGrid';
+import { EntryFooter, useEntryHotkeys, latestOf } from '../components/entry/FinEntry';
 import { calcLine, defaultLineTerms, lineForSave } from '../components/entry/lineCalc';
 import { dualHelpers } from '../components/entry/dualHelpers';
 import DocActions, { HoldButtons, asNewCopy } from '../components/entry/DocActions';
@@ -181,14 +184,8 @@ export default function SalesBill() {
 
     const lineAmount = d => calcLine(d, lineGross(d), termCols).amount;
     const grandTotal = form.details.reduce((sum, d) => sum + lineAmount(d), 0);
-    const totals = form.details.reduce((t, d) => { const x = calcLine(d, lineGross(d), termCols); return { gross: t.gross + lineGross(d), disc: t.disc + x.discount_amount, excise: t.excise + x.excise_amount, tax: t.tax + x.tax_amount }; }, { gross: 0, disc: 0, excise: 0, tax: 0 });
-    const applyProductTerm = (updates) => {
-        setForm(f => {
-            const details = [...f.details];
-            updates.forEach(({ idx, discount_percent }) => { details[idx] = { ...details[idx], ...withDiscount(details[idx], discount_percent) }; });
-            return { ...f, details };
-        });
-    };
+    const totals = lineTotals(form.details, lineGross, termCols);
+    const lineCtl = useLineGridControl();
 
     const handlePull = (data) => {
         setForm(f => mergePulled(f, data, newRow));
@@ -231,6 +228,9 @@ export default function SalesBill() {
     };
 
     const copyAsNew = async (row) => { await handleEdit(row); setEditingId(null); setForm(f => asNewCopy(f, row.id)); setShowForm(true); };
+    // F7: the last bill as a new one (F8 - held entries - is on the Hold button)
+    useEntryHotkeys(showForm, { F7: () => { const last = latestOf(rows); if (last) copyAsNew(last); else showAlert('No earlier bill to copy', 'info'); } });
+    const selectedCustomer = customers.find(c => c.id === form.customer_ledger_id);
     const handleEdit = async (row) => {
         try {
             const res = await authFetch(`/api/sales-bills/${row.id}`);
@@ -307,7 +307,7 @@ export default function SalesBill() {
             )}
 
             {showForm && (
-                <form onSubmit={handleSubmit} ref={formRef}>
+                <form onSubmit={handleSubmit} ref={formRef} className="fin-entry">
                     <div className="erp-topbar grid-cols-1 md:grid-cols-4">
                         <DocNumberField voucherType="sales_bill" categoryId={form.numbering_category_id} docNo={editingId ? form.doc_no : ''} value={form.doc_no} onChange={v => setForm({ ...form, doc_no: v })} />
                         <div className={efc.isVisible('doc_date') ? 'erp-field' : 'erp-field hidden'}>
@@ -367,78 +367,56 @@ export default function SalesBill() {
 
                     <PendingDocsPanel target="sales_bill" partyId={form.customer_ledger_id} efc={efc} disabled={!!editingId} onPull={handlePull} pulled={pulledDocs} />
 
-                    <div className="erp-tab-content">
-                        <ProductTermBar
-                            details={form.details}
-                            selectedIndexes={selectedRowIndexes}
-                            onSelectedIndexesChange={setSelectedRowIndexes}
-                            lineGross={lineGross}
-                            onApply={applyProductTerm}
-                        />
+                    <div className="erp-tab-content fin-lines">
                         <SalesLineGrid
-                            listKey="sb" details={form.details} onRow={updateDetailRow} onRemove={removeDetailRow} onAdd={addDetailRow}
+                            listKey="sb" title="Sales Bill" ctl={lineCtl} details={form.details} onRow={updateDetailRow} onRemove={removeDetailRow} onAdd={addDetailRow}
                             products={filterProductsByCompany(products, form.product_company_id)} allProducts={products} units={units} warehouses={warehouses}
                             settings={settings} termCols={termCols} popupTerms={popupTerms} efc={efc} onProductSelect={handleProductSelect}
                             docWarehouseId={form.warehouse_id} selected={selectedRowIndexes} onSelected={setSelectedRowIndexes}
                             features={{ free: true, batch: true, expiry: false, terms: true }} dual={dual} lineGross={lineGross} onProductKeyDown={handleProductRowKeyDown}
                         />
-                        <div className="flex justify-end mt-2">
-                            <table className="erp-grid-table" style={{ width: 'auto', minWidth: 280 }}>
-                                <tbody>
-                                    <tr><td>Gross</td><td className="text-right">{totals.gross.toFixed(2)}</td></tr>
-                                    {totals.disc > 0 && <tr><td>Discount</td><td className="text-right">-{totals.disc.toFixed(2)}</td></tr>}
-                                    {totals.excise > 0 && <tr><td>Excise</td><td className="text-right">{totals.excise.toFixed(2)}</td></tr>}
-                                    {totals.tax > 0 && <tr><td>VAT</td><td className="text-right">{totals.tax.toFixed(2)}</td></tr>}
-                                </tbody>
-                                <tfoot><tr><td>Total</td><td className="text-right">{grandTotal.toFixed(2)}</td></tr></tfoot>
-                            </table>
-                        </div>
                     </div>
 
-                    <PartyFooterTabs partyId={form.customer_ledger_id} partyLabel="Customer" info={partyInfo} onChange={setPartyInfo} tabs={[
-                        { key: 'accounts', label: '📒 Accounts', content: (
-                            <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
-                                <div className="erp-field">
-                                    <label className="erp-label">Sales Account <span className="hint">(blank = product / system default)</span></label>
-                                    {picker('sales_account_picker', lp.filter(customers, 'sales_goods', form.sales_account_ledger_id), 'id', 'account_code', 'account_name', form.sales_account_ledger_id || '', id => setForm({ ...form, sales_account_ledger_id: id, sales_sub_ledger_id: '' }), 'System default')}
+                    <EntryFooter
+                        title="Sales Bill"
+                        warehouseName={settings?.multiWarehouse ? (warehouses.find(w => w.id === form.warehouse_id)?.warehouse_name || '') : undefined}
+                        totals={{ billTerm: totals.term, net: grandTotal, taxable: totals.taxable, tax: totals.tax, nonTaxable: totals.nonTaxable }}
+                        party={{ label: 'Customer', name: selectedCustomer?.account_name, creditLimit: selectedCustomer?.credit_limit }}
+                        remarks={{ value: form.remarks_text, onChange: v => setForm(f => ({ ...f, remarks_text: v })), options: remarks.map(r => r.remark_text) }}
+                        onProductTerm={lineCtl.openTerms} onBillTerm={lineCtl.openOverall}
+                        panels={[
+                            { key: 'other', label: 'Other Details', content: (
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+                                    <div className="erp-field">
+                                        <label className="erp-label">Sales Account <span className="hint">(blank = product / system default)</span></label>
+                                        {picker('sales_account_picker', lp.filter(customers, 'sales_goods', form.sales_account_ledger_id), 'id', 'account_code', 'account_name', form.sales_account_ledger_id || '', id => setForm({ ...form, sales_account_ledger_id: id, sales_sub_ledger_id: '' }), 'System default')}
+                                    </div>
+                                    <div className="erp-field">
+                                        <label className="erp-label">Sales Sub-Ledger</label>
+                                        {picker('sales_subledger_picker', subLedgers.filter(x => x.main_ledger_id === form.sales_account_ledger_id), 'id', 'sub_ledger_code', 'sub_ledger_name', form.sales_sub_ledger_id, id => setForm({ ...form, sales_sub_ledger_id: id }), form.sales_account_ledger_id ? 'None' : 'Choose a Sales Account first')}
+                                    </div>
+                                    <div className="erp-field">
+                                        <label className="erp-label">Rate Type</label>
+                                        <select className="erp-select" value={form.rate_type} onChange={e => setForm({ ...form, rate_type: e.target.value })}>
+                                            <option value="exclusive">Exclusive of Tax</option>
+                                            <option value="inclusive">Inclusive of Tax</option>
+                                        </select>
+                                    </div>
+                                    <div className={efc.isVisible('narration') ? 'erp-field' : 'erp-field hidden'}>
+                                        <label className="erp-label">Narration</label>
+                                        <input disabled={efc.isReadonly('narration')} className="erp-input" value={form.narration} onChange={e => setForm({ ...form, narration: e.target.value })} />
+                                    </div>
                                 </div>
-                                <div className="erp-field">
-                                    <label className="erp-label">Sales Sub-Ledger</label>
-                                    {picker('sales_subledger_picker', subLedgers.filter(x => x.main_ledger_id === form.sales_account_ledger_id), 'id', 'sub_ledger_code', 'sub_ledger_name', form.sales_sub_ledger_id, id => setForm({ ...form, sales_sub_ledger_id: id }), form.sales_account_ledger_id ? 'None' : 'Choose a Sales Account first')}
-                                </div>
-                                <div className="erp-field">
-                                    <label className="erp-label">Rate Type</label>
-                                    <select className="erp-select" value={form.rate_type} onChange={e => setForm({ ...form, rate_type: e.target.value })}>
-                                        <option value="exclusive">Exclusive of Tax</option>
-                                        <option value="inclusive">Inclusive of Tax</option>
-                                    </select>
-                                </div>
-                            </div>
-                        ) },
-                        { key: 'other', label: '📝 Remarks / Narration', content: (
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
-                                <div className="erp-field">
-                                    <label className="erp-label">Remarks</label>
-                                    <input list="sb-remarks-suggestions" className="erp-input" value={form.remarks_text} onChange={e => setForm({ ...form, remarks_text: e.target.value })} placeholder="Type or pick" />
-                                    <datalist id="sb-remarks-suggestions">{remarks.map(r => <option key={r.id} value={r.remark_text} />)}</datalist>
-                                </div>
-                                <div className={efc.isVisible('narration') ? 'erp-field' : 'erp-field hidden'}>
-                                    <label className="erp-label">Narration</label>
-                                    <input disabled={efc.isReadonly('narration')} className="erp-input" value={form.narration} onChange={e => setForm({ ...form, narration: e.target.value })} />
-                                </div>
-                            </div>
-                        ) }
-                    ]} />
-
-                    <div className="erp-bottombar">
-                        <div className="text-sm font-semibold">Bill Total: {grandTotal.toFixed(2)}</div>
-                        <div className="erp-bottombar-actions">
-                            <HoldButtons voucherType="sales_bill" form={form} disabled={!!editingId} onRecall={p => { if (p) { setForm(p); setEditingId(null); setShowForm(true); } else resetForm(); }} />
-                            <button type="button" onClick={() => { resetForm(); setShowForm(false); }} className="erp-btn">Cancel</button>
+                            ) },
+                            { key: 'billing', label: 'Billing/Taxation', content: <PartyDetailsPanel partyId={form.customer_ledger_id} partyLabel="Customer" info={partyInfo} onChange={setPartyInfo} /> }
+                        ]}
+                        actions={<>
+                            <HoldButtons hotkey voucherType="sales_bill" form={form} disabled={!!editingId} onRecall={p => { if (p) { setForm(p); setEditingId(null); setShowForm(true); } else resetForm(); }} />
                             <button type="button" onClick={e => handleSubmit(e, true)} className="erp-btn">💾 Save as Draft</button>
-                            <button type="submit" className="erp-btn primary">{editingId ? 'Update' : 'Create'}</button>
-                        </div>
-                    </div>
+                            <button type="submit" className="erp-btn primary">✔ {editingId ? 'Update' : 'Ok'}</button>
+                            <button type="button" onClick={() => { resetForm(); setShowForm(false); }} className="erp-btn">✖ Cancel</button>
+                        </>}
+                    />
                 </form>
             )}
         </div>

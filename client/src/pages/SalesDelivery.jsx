@@ -22,8 +22,9 @@ import { priceUrl, lineUnitOf, useSlabRepricing } from '../utils/salesPricing';
 import useEntrySettings from '../components/entry/useEntrySettings';
 import DocNumberField from '../components/entry/DocNumberField';
 import PendingDocsPanel, { mergePulled } from '../components/entry/PendingDocsPanel';
-import PartyFooterTabs, { emptyPartyInfo, savePartyInfo, partyInfoFromDoc } from '../components/entry/PartyFooterTabs';
-import SalesLineGrid from '../components/entry/SalesLineGrid';
+import { PartyDetailsPanel, emptyPartyInfo, savePartyInfo, partyInfoFromDoc } from '../components/entry/PartyFooterTabs';
+import SalesLineGrid, { useLineGridControl, lineTotals } from '../components/entry/SalesLineGrid';
+import { EntryFooter, useEntryHotkeys, latestOf } from '../components/entry/FinEntry';
 
 import { dualHelpers } from '../components/entry/dualHelpers';
 import DocActions, { HoldButtons, asNewCopy } from '../components/entry/DocActions';
@@ -172,7 +173,11 @@ export default function SalesDelivery() {
         }
         return (Number(d.qty) || 0) * (Number(d.rate) || 0);
     };
-    const grandTotal = form.details.reduce((sum, d) => sum + lineAmount(d), 0);
+    const lineCtl = useLineGridControl();
+    const lineTot = lineTotals(form.details, lineAmount, termCols, false);
+    const selectedCustomer = customers.find(c => c.id === form.customer_ledger_id);
+    // F7: the last challan as a new one (F8 - held entries - is on the Hold button)
+    useEntryHotkeys(showForm, { F7: () => { const last = latestOf(rows); if (last) copyAsNew(last); } });
 
     const handlePullFromOrder = async (orderId) => {
         try {
@@ -303,7 +308,7 @@ export default function SalesDelivery() {
             )}
 
             {showForm && (
-                <form onSubmit={handleSubmit} ref={formRef}>
+                <form onSubmit={handleSubmit} ref={formRef} className="fin-entry">
                     <div className="erp-topbar grid-cols-1 md:grid-cols-4">
                         <DocNumberField voucherType="sales_delivery" categoryId={form.numbering_category_id} docNo={editingId ? form.doc_no : ''} value={form.doc_no} onChange={v => setForm({ ...form, doc_no: v })} />
                         <div className={efc.isVisible('doc_date') ? 'erp-field' : 'erp-field hidden'}>
@@ -436,41 +441,49 @@ export default function SalesDelivery() {
                                     value={form.business_unit_id} onChange={id => setForm({ ...form, business_unit_id: id })} placeholder="Select Unit"
                                 />
                             </div>
-                            <div className="erp-field">
-                                <label className="erp-label">Remarks</label>
-                                <input list="sd-remarks-suggestions" className="erp-input" value={form.remarks_text} onChange={e => setForm({ ...form, remarks_text: e.target.value })} placeholder="Type or pick" />
-                                <datalist id="sd-remarks-suggestions">
-                                    {remarks.map(r => <option key={r.id} value={r.remark_text} />)}
-                                </datalist>
-                            </div>
                             <div className={efc.isVisible('narration') ? 'erp-field' : 'erp-field hidden'}>
                                 <label className="erp-label">Narration {efc.isRequired('narration') && <span className="req">*</span>}</label>
                                 <input disabled={efc.isReadonly('narration')} className="erp-input" value={form.narration} onChange={e => setForm({ ...form, narration: e.target.value })} />
                             </div>
                         </div>
-
-                        <h2 className="font-semibold text-sm text-gray-500 uppercase mb-2">Details</h2>
                         <SalesLineGrid
-                            listKey="sd" details={form.details} onRow={updateDetailRow} onRemove={removeDetailRow} onAdd={addDetailRow}
+                            listKey="sd" title="Sales Delivery" ctl={lineCtl} details={form.details} onRow={updateDetailRow} onRemove={removeDetailRow} onAdd={addDetailRow}
                             products={filterProductsByCompany(products, form.product_company_id)} allProducts={products} units={units} warehouses={warehouses}
                             settings={settings} termCols={termCols} popupTerms={popupTerms} efc={efc} onProductSelect={handleProductSelect}
                             docWarehouseId={form.warehouse_id}
                             features={{ free: false, batch: true, expiry: true, terms: false }} dual={dualHelpers(products, dualUomEntryMode).dual} lineGross={dualHelpers(products, dualUomEntryMode).lineGross} onProductKeyDown={handleProductRowKeyDown}
                         />
-                        <div className="flex justify-end mt-2"><span className="text-sm font-semibold">Total: {grandTotal.toFixed(2)}</span></div>
                     </div>
 
-                    <PartyFooterTabs partyId={form.customer_ledger_id} partyLabel="Customer" info={partyInfo} onChange={setPartyInfo} />
+                    <EntryFooter
 
-                    <div className="erp-bottombar">
-                        <div />
-                        <div className="erp-bottombar-actions">
-                            <HoldButtons voucherType="sales_delivery" form={form} disabled={!!editingId} onRecall={p => { if (p) { setForm(p); setEditingId(null); setShowForm(true); } else resetForm(); }} />
-                            <button type="button" onClick={() => { resetForm(); setShowForm(false); }} className="erp-btn">Cancel</button>
+                        title="Sales Delivery"
+
+                        warehouseName={settings?.multiWarehouse ? (warehouses.find(w => w.id === form.warehouse_id)?.warehouse_name || '') : undefined}
+
+                        totals={{ billTerm: lineTot.term, net: lineTot.amount, taxable: lineTot.taxable, tax: lineTot.tax, nonTaxable: lineTot.nonTaxable }}
+
+                        party={{ label: 'Customer', name: selectedCustomer?.account_name, creditLimit: selectedCustomer?.credit_limit }}
+
+                        remarks={{ value: form.remarks_text, onChange: v => setForm(f => ({ ...f, remarks_text: v })), options: remarks.map(r => r.remark_text) }}
+
+                        onProductTerm={false ? lineCtl.openTerms : null} onBillTerm={false ? lineCtl.openOverall : null}
+
+                        panels={[{ key: 'billing', label: 'Billing/Taxation', content: <PartyDetailsPanel partyId={form.customer_ledger_id} partyLabel="Customer" info={partyInfo} onChange={setPartyInfo} /> }]}
+
+                        actions={<>
+
+                            <HoldButtons hotkey voucherType="sales_delivery" form={form} disabled={!!editingId} onRecall={p => { if (p) { setForm(p); setEditingId(null); setShowForm(true); } else resetForm(); }} />
+
                             <button type="button" onClick={e => handleSubmit(e, true)} className="erp-btn">💾 Save as Draft</button>
-                            <button type="submit" className="erp-btn primary">{editingId ? 'Update' : 'Create'}</button>
-                        </div>
-                    </div>
+
+                            <button type="submit" className="erp-btn primary">✔ {editingId ? 'Update' : 'Ok'}</button>
+
+                            <button type="button" onClick={() => { resetForm(); setShowForm(false); }} className="erp-btn">✖ Cancel</button>
+
+                        </>}
+
+                    />
                 </form>
             )}
         </div>

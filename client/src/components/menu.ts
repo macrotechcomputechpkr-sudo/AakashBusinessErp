@@ -11,12 +11,15 @@
 
 /** feature: shown only when System Control turns that feature on */
 export type Feature = 'poultry' | 'broiler' | 'hatchery' | 'construction' | 'automobile';
-export interface MenuItem { to: string; label: string; group?: string; feature?: Feature }
-export interface MenuGroup { title: string; items: MenuItem[]; feature?: Feature }
+/** sep: a separator line above this entry in the drop-down */
+export interface MenuItem { to: string; label: string; group?: string; feature?: Feature; sep?: boolean }
+export interface MenuGroup { title: string; items: MenuItem[]; feature?: Feature; sep?: boolean }
 export interface TopMenu { key: string; title: string; groups: MenuGroup[]; feature?: Feature }
 export type ReportGroup = { title: string; items: [string, string][]; feature?: Feature };
 
 const i = (to: string, label: string, feature?: Feature): MenuItem => (feature ? { to, label, feature } : { to, label });
+/** the same, with a separator line above it */
+const si = (to: string, label: string, feature?: Feature): MenuItem => ({ ...i(to, label, feature), sep: true });
 
 export const REPORT_GROUPS: ReportGroup[] = [
     { title: 'Accounts & Finance', items: [
@@ -124,16 +127,22 @@ export const TOP_MENUS: TopMenu[] = [
         ] }
     ] },
     { key: 'entry', title: 'Data Entry', groups: [
-        { title: 'Sales Transaction', items: [
+        { title: 'Accounts', items: [
+            i('/journal-voucher', '📗 Journal Voucher'), i('/cash-bank-entry', '💵 Cash / Bank Entry'), si('/debit-note', '📤 Debit Note'), i('/credit-note', '📥 Credit Note'),
+            si('/pdc-voucher', '🏦 PDC'), i('/bulk-cash-settlement', '💰 Bulk Cash Settlement'), i('/bank-reconciliation', '🏦 Bank Reconciliation'),
+            si('/interest-posting', '% Interest on Overdue'), i('/fixed-assets?tab=depreciation', '🏗 Depreciation Posting'), si('/budgets', '💼 Budgets'),
+            i('/confirmation-letters', '✉ Account Confirmation Letters')
+        ] },
+        { title: 'Sales Transaction', sep: true, items: [
             i('/sales-quotation', '📝 Sales Quotation'), i('/sales-order', '🧾 Sales Order'), i('/order-billing', '⚡ Order → Bill (single / multiple)'),
-            i('/sales-delivery', '🚚 Sales Delivery / Challan'), i('/sales-bill', '💵 Sales Bill / Invoice'), i('/sales-return', '↩️ Sales Return'),
-            i('/sales-nonsaleable-return', '🗑️ Sales Non-saleable Return'), i('/sales-additional-entry', '➕ Sales Additional Entry'), i('/agent-targets?tab=targets', '🎯 Salesman Targets & Commission')
+            si('/sales-delivery', '🚚 Sales Delivery / Challan'), i('/sales-bill', '💵 Sales Bill / Invoice'), si('/sales-return', '↩️ Sales Return'),
+            i('/sales-nonsaleable-return', '🗑️ Sales Non-saleable Return'), si('/sales-additional-entry', '➕ Sales Additional Entry'), i('/agent-targets?tab=targets', '🎯 Salesman Targets & Commission')
         ] },
         { title: 'Purchase Transaction', items: [
             i('/purchase-quotation', '📨 Purchase Quotation'), i('/purchase-order', '🛒 Purchase Order'),
-            i('/purchase-grn', '📦 Purchase GRN'), i('/purchase-bill', '🧾 Purchase Bill'), i('/purchase-bill-import', '📷 Purchase Bill from Image / PDF'),
-            i('/purchase-additional-expense', '🧮 Additional Expenses'), i('/purchase-return', '↩️ Purchase Return'), i('/purchase-nonsaleable-return', '🚫 Non-saleable Return'),
-            i('/lc-register', '🏦 LC Register & Mapping')
+            si('/purchase-grn', '📦 Purchase GRN'), i('/purchase-bill', '🧾 Purchase Bill'), i('/purchase-bill-import', '📷 Purchase Bill from Image / PDF'),
+            si('/purchase-additional-expense', '🧮 Additional Expenses'), si('/purchase-return', '↩️ Purchase Return'), i('/purchase-nonsaleable-return', '🚫 Non-saleable Return'),
+            si('/lc-register', '🏦 LC Register & Mapping')
         ] },
         { title: 'Production', items: [
             i('/production-order', '🏭 Production Order'), i('/bom-template', '📋 BOM Template')
@@ -141,24 +150,18 @@ export const TOP_MENUS: TopMenu[] = [
         { title: 'Inventory', items: [
             i('/stock-transfer', '🔄 Stock Transfer'), i('/barcode-print', '🏷 Barcode / Label Printing')
         ] },
-        { title: 'Accounts', items: [
-            i('/journal-voucher', '📗 Journal Voucher'), i('/cash-bank-entry', '💵 Cash / Bank Entry'), i('/debit-note', '📤 Debit Note'), i('/credit-note', '📥 Credit Note'),
-            i('/pdc-voucher', '🏦 PDC'), i('/bulk-cash-settlement', '💰 Bulk Cash Settlement'), i('/bank-reconciliation', '🏦 Bank Reconciliation'),
-            i('/interest-posting', '% Interest on Overdue'), i('/fixed-assets?tab=depreciation', '🏗 Depreciation Posting'), i('/budgets', '💼 Budgets'),
-            i('/confirmation-letters', '✉ Account Confirmation Letters')
-        ] },
-        { title: 'Automobile', feature: 'automobile', items: [
+        { title: 'Automobile', feature: 'automobile', sep: true, items: [
             i('/auto/enquiries?new=1', '📋 Customer Enquiry', 'automobile'), i('/auto/vehicles?ownership=stock', '🚗 PDI / Vehicle Delivery', 'automobile'),
             i('/auto/job-cards?new=1', '🔧 Job Card', 'automobile'), i('/auto/reminders', '⏰ Service Reminders', 'automobile')
         ] },
-        { title: 'Construction', feature: 'construction', items: [
+        { title: 'Construction', feature: 'construction', sep: true, items: [
             i('/construction/sites', '🏗️ Sites / Running Bills / Material / Wages', 'construction'), i('/construction/sites?new=1', '➕ New Site / Contract', 'construction')
         ] },
-        { title: 'Poultry & Hatchery', feature: 'poultry', items: [
+        { title: 'Poultry & Hatchery', feature: 'poultry', sep: true, items: [
             i('/poultry/batches', '🐔 Broiler Batches (placement / daily log / lifting)', 'broiler'), i('/poultry/batches?new=1', '➕ New Batch Placement', 'broiler'),
             i('/poultry/hatchery', '🥚 Hatchery (egg set / candling / hatch)', 'hatchery')
         ] },
-        { title: 'Office', items: [
+        { title: 'Office', sep: true, items: [
             i('/tasks', '📝 Tasks'), i('/darta-chalani', '📨 Darta / Chalani Register')
         ] }
     ] },

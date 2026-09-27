@@ -16,7 +16,6 @@ import { useEnterKeyNavigation } from '../hooks/useEnterKeyNavigation';
 import { formatDateForDisplay } from '../utils/nepaliDateUtils';
 import BillWiseSettlementPanel from '../components/BillWiseSettlementPanel';
 import NumberingCategorySelector from '../components/NumberingCategorySelector';
-import ProductTermBar from '../components/ProductTermBar';
 import { resolveDualUomEntryMode, dualBaseQty } from '../utils/dualUomEntryMode';
 import UdfValuesModal from '../components/UdfValuesModal';
 import useLedgerPurposes from '../components/useLedgerPurposes';
@@ -24,8 +23,9 @@ import RecordHistory from '../components/RecordHistory';
 import useEntrySettings, { termColumns } from '../components/entry/useEntrySettings';
 import DocNumberField from '../components/entry/DocNumberField';
 import PendingDocsPanel, { mergePulled } from '../components/entry/PendingDocsPanel';
-import PartyFooterTabs, { emptyPartyInfo, savePartyInfo, partyInfoFromDoc } from '../components/entry/PartyFooterTabs';
-import SalesLineGrid from '../components/entry/SalesLineGrid';
+import { PartyDetailsPanel, emptyPartyInfo, savePartyInfo, partyInfoFromDoc } from '../components/entry/PartyFooterTabs';
+import SalesLineGrid, { useLineGridControl, lineTotals } from '../components/entry/SalesLineGrid';
+import { EntryFooter, useEntryHotkeys, latestOf } from '../components/entry/FinEntry';
 import { calcLine, defaultLineTerms, lineForSave } from '../components/entry/lineCalc';
 import { dualHelpers } from '../components/entry/dualHelpers';
 import DocActions, { HoldButtons, asNewCopy } from '../components/entry/DocActions';
@@ -139,10 +139,6 @@ export default function SalesReturn() {
         return Number(rate?.conversion_factor) || 1;
     };
 
-    // the customer's discount goes into Disc 1 when product terms are mapped (System Control)
-    const withDiscount = (row, pct) => (termCols.some(c => c.key === 'disc1')
-        ? { line_terms: { ...(row.line_terms || defaultLineTerms(termCols) || {}), disc1: { term_id: termCols.find(c => c.key === 'disc1').term_id, percent: pct } } }
-        : { discount_percent: pct });
 
     const handleProductSelect = async (idx, productId, unitId) => {
         const product = products.find(p => p.id === productId);
@@ -163,6 +159,11 @@ export default function SalesReturn() {
     };
     const lineAmount = d => calcLine(d, lineGross(d), termCols).amount;
     const grandTotal = form.details.reduce((sum, d) => sum + lineAmount(d), 0);
+    const lineCtl = useLineGridControl();
+    const lineTot = lineTotals(form.details, lineGross, termCols, true);
+    const selectedCustomer = customers.find(c => c.id === form.customer_ledger_id);
+    // F7: the last return as a new one (F8 - held entries - is on the Hold button)
+    useEntryHotkeys(showForm, { F7: () => { const last = latestOf(rows); if (last) copyAsNew(last); } });
     const [selectedRowIndexes, setSelectedRowIndexes] = useState([]);
     const [dualUomEntryMode, setDualUomEntryMode] = useState({ mode: 'fixed', reverseEnabled: false });
     const [historyModal, setHistoryModal] = useState(null);
@@ -178,13 +179,6 @@ export default function SalesReturn() {
     };
     const handleProductRowKeyDown = (e, productId) => {
         if (e.key === 'F1') { e.preventDefault(); openProductHistory(productId); }
-    };
-    const applyProductTerm = (updates) => {
-        setForm(f => {
-            const details = [...f.details];
-            updates.forEach(({ idx, discount_percent }) => { details[idx] = { ...details[idx], ...withDiscount(details[idx], discount_percent) }; });
-            return { ...f, details };
-        });
     };
 
     const handlePullFromBill = async (billId) => {
@@ -309,7 +303,7 @@ export default function SalesReturn() {
             )}
 
             {showForm && (
-                <form onSubmit={handleSubmit} ref={formRef}>
+                <form onSubmit={handleSubmit} ref={formRef} className="fin-entry">
                     <div className="erp-topbar grid-cols-1 md:grid-cols-4">
                         <DocNumberField voucherType="sales_return" categoryId={form.numbering_category_id} docNo={editingId ? form.doc_no : ''} value={form.doc_no} onChange={v => setForm({ ...form, doc_no: v })} />
                         <div className={efc.isVisible('doc_date') ? 'erp-field' : 'erp-field hidden'}>
@@ -474,35 +468,18 @@ export default function SalesReturn() {
                                     value={form.business_unit_id} onChange={id => setForm({ ...form, business_unit_id: id })} placeholder="Select Unit"
                                 />
                             </div>
-                            <div className="erp-field">
-                                <label className="erp-label">Remarks</label>
-                                <input list="sr-remarks-suggestions" className="erp-input" value={form.remarks_text} onChange={e => setForm({ ...form, remarks_text: e.target.value })} placeholder="Type or pick" />
-                                <datalist id="sr-remarks-suggestions">
-                                    {remarks.map(r => <option key={r.id} value={r.remark_text} />)}
-                                </datalist>
-                            </div>
                             <div className={efc.isVisible('narration') ? 'erp-field' : 'erp-field hidden'}>
                                 <label className="erp-label">Narration {efc.isRequired('narration') && <span className="req">*</span>}</label>
                                 <input disabled={efc.isReadonly('narration')} className="erp-input" value={form.narration} onChange={e => setForm({ ...form, narration: e.target.value })} />
                             </div>
                         </div>
-
-                        <h2 className="font-semibold text-sm text-gray-500 uppercase mb-2">Details</h2>
-                        <ProductTermBar
-                            details={form.details}
-                            selectedIndexes={selectedRowIndexes}
-                            onSelectedIndexesChange={setSelectedRowIndexes}
-                            lineGross={lineGross}
-                            onApply={applyProductTerm}
-                        />
                         <SalesLineGrid
-                            listKey="sr" details={form.details} onRow={updateDetailRow} onRemove={removeDetailRow} onAdd={addDetailRow}
+                            listKey="sr" title="Sales Return" ctl={lineCtl} details={form.details} onRow={updateDetailRow} onRemove={removeDetailRow} onAdd={addDetailRow}
                             products={filterProductsByCompany(products, form.product_company_id)} allProducts={products} units={units} warehouses={warehouses}
                             settings={settings} termCols={termCols} popupTerms={popupTerms} efc={efc} onProductSelect={handleProductSelect}
                             docWarehouseId={form.warehouse_id} selected={selectedRowIndexes} onSelected={setSelectedRowIndexes}
                             features={{ free: false, batch: true, expiry: false, terms: true }} dual={dualHelpers(products, dualUomEntryMode).dual} lineGross={lineGross} onProductKeyDown={handleProductRowKeyDown}
                         />
-                        <div className="flex justify-end mt-2"><span className="text-sm font-semibold">Total: {grandTotal.toFixed(2)}</span></div>
 
                         {form.settlement_type === 'credit_note' && (
                             <BillWiseSettlementPanel
@@ -515,17 +492,35 @@ export default function SalesReturn() {
                         )}
                     </div>
 
-                    <PartyFooterTabs partyId={form.customer_ledger_id} partyLabel="Customer" info={partyInfo} onChange={setPartyInfo} />
+                    <EntryFooter
 
-                    <div className="erp-bottombar">
-                        <div />
-                        <div className="erp-bottombar-actions">
-                            <HoldButtons voucherType="sales_return" form={form} disabled={!!editingId} onRecall={p => { if (p) { setForm(p); setEditingId(null); setShowForm(true); } else resetForm(); }} />
-                            <button type="button" onClick={() => { resetForm(); setShowForm(false); }} className="erp-btn">Cancel</button>
+                        title="Sales Return"
+
+                        warehouseName={settings?.multiWarehouse ? (warehouses.find(w => w.id === form.warehouse_id)?.warehouse_name || '') : undefined}
+
+                        totals={{ billTerm: lineTot.term, net: lineTot.amount, taxable: lineTot.taxable, tax: lineTot.tax, nonTaxable: lineTot.nonTaxable }}
+
+                        party={{ label: 'Customer', name: selectedCustomer?.account_name, creditLimit: selectedCustomer?.credit_limit }}
+
+                        remarks={{ value: form.remarks_text, onChange: v => setForm(f => ({ ...f, remarks_text: v })), options: remarks.map(r => r.remark_text) }}
+
+                        onProductTerm={true ? lineCtl.openTerms : null} onBillTerm={true ? lineCtl.openOverall : null}
+
+                        panels={[{ key: 'billing', label: 'Billing/Taxation', content: <PartyDetailsPanel partyId={form.customer_ledger_id} partyLabel="Customer" info={partyInfo} onChange={setPartyInfo} /> }]}
+
+                        actions={<>
+
+                            <HoldButtons hotkey voucherType="sales_return" form={form} disabled={!!editingId} onRecall={p => { if (p) { setForm(p); setEditingId(null); setShowForm(true); } else resetForm(); }} />
+
                             <button type="button" onClick={e => handleSubmit(e, true)} className="erp-btn">💾 Save as Draft</button>
-                            <button type="submit" className="erp-btn primary">{editingId ? 'Update' : 'Create'}</button>
-                        </div>
-                    </div>
+
+                            <button type="submit" className="erp-btn primary">✔ {editingId ? 'Update' : 'Ok'}</button>
+
+                            <button type="button" onClick={() => { resetForm(); setShowForm(false); }} className="erp-btn">✖ Cancel</button>
+
+                        </>}
+
+                    />
                 </form>
             )}
         </div>

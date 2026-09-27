@@ -18,6 +18,9 @@ function cleanLineTerms(v) {
         const pct = Number(x.percent), amt = Number(x.amount);
         if (!(pct > 0) && !(amt > 0)) return;
         out[k] = { term_id: x.term_id || null, percent: pct > 0 ? Math.round(pct * 10000) / 10000 : 0, amount: r2(amt) };
+        // Q basis: percent holds the rate per quantity; fixed: an amount typed in (Over All Term)
+        if (x.basis === 'Q') out[k].basis = 'Q';
+        if (x.fixed) out[k].fixed = true;
     });
     return Object.keys(out).length ? out : null;
 }

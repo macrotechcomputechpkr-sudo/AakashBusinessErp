@@ -2,6 +2,8 @@
 // components/entry/lineCalc.js
 // Amount of a sales line with inline product terms:
 //   gross -> Disc 1 -> Disc 2 ... (each on what is left) -> + Excise -> + VAT
+// A term is a % of what it is calculated on (basis V), a rate per quantity
+// (basis Q) or a fixed amount typed in the Over All Term pop-up.
 // (VAT is on the amount after discounts and excise, as on a Nepali invoice).
 // Without mapped terms the line keeps the plain Disc % / Tax % fields.
 // The result goes into discount_amount / excise_amount / tax_amount and
@@ -17,18 +19,22 @@ export function calcLine(d, gross, cols) {
         return { discount_amount: r2(disc), excise_amount: 0, tax_amount: r2(tax), amount: r2(g - disc + tax), line_terms: null };
     }
     const lt = d.line_terms || {};
+    const qty = Number(d.qty) || 0;
+    // basis V: % of what the term is calculated on; basis Q: rate per quantity; fixed: amount typed in
+    const termAmt = (x, base) => (x?.fixed ? Number(x.amount) || 0 : x?.basis === 'Q' ? qty * (Number(x.percent) || 0) : base * (Number(x?.percent) || 0) / 100);
+    const flags = x => ({ ...(x?.fixed ? { fixed: true } : {}), ...(x?.basis === 'Q' ? { basis: 'Q' } : {}) });
     let running = g, disc = 0, excise = 0, vat = 0;
     const out = {};
     cols.filter(c => c.kind === 'discount').forEach(c => {
-        const pct = Number(lt[c.key]?.percent) || 0;
-        const amt = lt[c.key]?.fixed ? Number(lt[c.key].amount) || 0 : running * pct / 100;
+        const x = lt[c.key];
+        const amt = termAmt(x, running);
+        out[c.key] = { term_id: c.term_id, percent: Number(x?.percent) || 0, amount: r2(amt), base: r2(running), ...flags(x) };
         disc += amt; running -= amt;
-        out[c.key] = { term_id: c.term_id, percent: pct, amount: r2(amt), ...(lt[c.key]?.fixed ? { fixed: true } : {}) };
     });
     const ex = cols.find(c => c.kind === 'excise');
-    if (ex) { const pct = Number(lt.excise?.percent) || 0; excise = running * pct / 100; out.excise = { term_id: ex.term_id, percent: pct, amount: r2(excise) }; }
+    if (ex) { excise = termAmt(lt.excise, running); out.excise = { term_id: ex.term_id, percent: Number(lt.excise?.percent) || 0, amount: r2(excise), base: r2(running), ...flags(lt.excise) }; }
     const vt = cols.find(c => c.kind === 'vat');
-    if (vt) { const pct = Number(lt.vat?.percent) || 0; vat = (running + excise) * pct / 100; out.vat = { term_id: vt.term_id, percent: pct, amount: r2(vat) }; }
+    if (vt) { vat = termAmt(lt.vat, running + excise); out.vat = { term_id: vt.term_id, percent: Number(lt.vat?.percent) || 0, amount: r2(vat), base: r2(running + excise), ...flags(lt.vat) }; }
     return { discount_amount: r2(disc), excise_amount: r2(excise), tax_amount: r2(vat), amount: r2(running + excise + vat), line_terms: out };
 }
 

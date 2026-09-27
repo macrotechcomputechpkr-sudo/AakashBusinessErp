@@ -15,15 +15,15 @@ import { useEnterKeyNavigation } from '../hooks/useEnterKeyNavigation';
 import { formatDateForDisplay } from '../utils/nepaliDateUtils';
 import BillWiseSettlementPanel from '../components/BillWiseSettlementPanel';
 import NumberingCategorySelector from '../components/NumberingCategorySelector';
-import ProductTermBar from '../components/ProductTermBar';
 import { resolveDualUomEntryMode, dualBaseQty } from '../utils/dualUomEntryMode';
 import UdfValuesModal from '../components/UdfValuesModal';
 import RecordHistory from '../components/RecordHistory';
 import useEntrySettings from '../components/entry/useEntrySettings';
 import DocNumberField from '../components/entry/DocNumberField';
 import PendingDocsPanel, { mergePulled } from '../components/entry/PendingDocsPanel';
-import PartyFooterTabs, { emptyPartyInfo, savePartyInfo, partyInfoFromDoc } from '../components/entry/PartyFooterTabs';
-import SalesLineGrid from '../components/entry/SalesLineGrid';
+import { PartyDetailsPanel, emptyPartyInfo, savePartyInfo, partyInfoFromDoc } from '../components/entry/PartyFooterTabs';
+import SalesLineGrid, { useLineGridControl, lineTotals } from '../components/entry/SalesLineGrid';
+import { EntryFooter, useEntryHotkeys, latestOf } from '../components/entry/FinEntry';
 
 import { dualHelpers } from '../components/entry/dualHelpers';
 import DocActions, { HoldButtons, asNewCopy } from '../components/entry/DocActions';
@@ -150,15 +150,13 @@ export default function SalesNonsaleableReturn() {
         return gross - discountAmt;
     };
     const grandTotal = form.details.reduce((sum, d) => sum + lineAmount(d), 0);
+    const lineCtl = useLineGridControl();
+    const lineTot = lineTotals(form.details, lineGross, termCols, true);
+    const selectedCustomer = customers.find(c => c.id === form.customer_ledger_id);
+    // F7: the last return as a new one (F8 - held entries - is on the Hold button)
+    useEntryHotkeys(showForm, { F7: () => { const last = latestOf(rows); if (last) copyAsNew(last); } });
     const [selectedRowIndexes, setSelectedRowIndexes] = useState([]);
     const [dualUomEntryMode, setDualUomEntryMode] = useState({ mode: 'fixed', reverseEnabled: false });
-    const applyProductTerm = (updates) => {
-        setForm(f => {
-            const details = [...f.details];
-            updates.forEach(({ idx, discount_percent }) => { details[idx] = { ...details[idx], discount_percent }; });
-            return { ...f, details };
-        });
-    };
 
     const handlePullFromBill = async (billId) => {
         try {
@@ -282,7 +280,7 @@ export default function SalesNonsaleableReturn() {
             )}
 
             {showForm && (
-                <form onSubmit={handleSubmit} ref={formRef}>
+                <form onSubmit={handleSubmit} ref={formRef} className="fin-entry">
                     <p className="mx-4 mt-3 text-xs text-amber-700 bg-amber-50 border-l-4 border-amber-400 px-3 py-2 rounded">
                         ⚠️ These goods are tracked separately from regular sellable stock and will NOT be available for future sales.
                     </p>
@@ -375,35 +373,18 @@ export default function SalesNonsaleableReturn() {
                                     value={form.business_unit_id} onChange={id => setForm({ ...form, business_unit_id: id })} placeholder="Select Unit"
                                 />
                             </div>
-                            <div className="erp-field">
-                                <label className="erp-label">Remarks</label>
-                                <input list="snsr-remarks-suggestions" className="erp-input" value={form.remarks_text} onChange={e => setForm({ ...form, remarks_text: e.target.value })} placeholder="Type or pick" />
-                                <datalist id="snsr-remarks-suggestions">
-                                    {remarks.map(r => <option key={r.id} value={r.remark_text} />)}
-                                </datalist>
-                            </div>
                             <div className={efc.isVisible('narration') ? 'erp-field' : 'erp-field hidden'}>
                                 <label className="erp-label">Narration {efc.isRequired('narration') && <span className="req">*</span>}</label>
                                 <input disabled={efc.isReadonly('narration')} className="erp-input" value={form.narration} onChange={e => setForm({ ...form, narration: e.target.value })} />
                             </div>
                         </div>
-
-                        <h2 className="font-semibold text-sm text-gray-500 uppercase mb-2">Details</h2>
-                        <ProductTermBar
-                            details={form.details}
-                            selectedIndexes={selectedRowIndexes}
-                            onSelectedIndexesChange={setSelectedRowIndexes}
-                            lineGross={lineGross}
-                            onApply={applyProductTerm}
-                        />
                         <SalesLineGrid
-                            listKey="snr" details={form.details} onRow={updateDetailRow} onRemove={removeDetailRow} onAdd={addDetailRow}
+                            listKey="snr" title="Sales Non-saleable Return" ctl={lineCtl} details={form.details} onRow={updateDetailRow} onRemove={removeDetailRow} onAdd={addDetailRow}
                             products={filterProductsByCompany(products, form.product_company_id)} allProducts={products} units={units} warehouses={warehouses}
                             settings={settings} termCols={termCols} popupTerms={popupTerms} efc={efc} onProductSelect={handleProductSelect}
                             docWarehouseId={form.warehouse_id} selected={selectedRowIndexes} onSelected={setSelectedRowIndexes}
                             features={{ free: false, batch: true, expiry: false, terms: true, tax: false }} dual={dualHelpers(products, dualUomEntryMode).dual} lineGross={lineGross}
                         />
-                        <div className="flex justify-end mt-2"><span className="text-sm font-semibold">Total: {grandTotal.toFixed(2)}</span></div>
 
                         {form.settlement_type === 'credit_note' && (
                             <BillWiseSettlementPanel
@@ -416,17 +397,35 @@ export default function SalesNonsaleableReturn() {
                         )}
                     </div>
 
-                    <PartyFooterTabs partyId={form.customer_ledger_id} partyLabel="Customer" info={partyInfo} onChange={setPartyInfo} />
+                    <EntryFooter
 
-                    <div className="erp-bottombar">
-                        <div />
-                        <div className="erp-bottombar-actions">
-                            <HoldButtons voucherType="sales_nonsalable_return" form={form} disabled={!!editingId} onRecall={p => { if (p) { setForm(p); setEditingId(null); setShowForm(true); } else resetForm(); }} />
-                            <button type="button" onClick={() => { resetForm(); setShowForm(false); }} className="erp-btn">Cancel</button>
+                        title="Sales Non-saleable Return"
+
+                        warehouseName={settings?.multiWarehouse ? (warehouses.find(w => w.id === form.warehouse_id)?.warehouse_name || '') : undefined}
+
+                        totals={{ billTerm: lineTot.term, net: lineTot.amount, taxable: lineTot.taxable, tax: lineTot.tax, nonTaxable: lineTot.nonTaxable }}
+
+                        party={{ label: 'Customer', name: selectedCustomer?.account_name, creditLimit: selectedCustomer?.credit_limit }}
+
+                        remarks={{ value: form.remarks_text, onChange: v => setForm(f => ({ ...f, remarks_text: v })), options: remarks.map(r => r.remark_text) }}
+
+                        onProductTerm={true ? lineCtl.openTerms : null} onBillTerm={true ? lineCtl.openOverall : null}
+
+                        panels={[{ key: 'billing', label: 'Billing/Taxation', content: <PartyDetailsPanel partyId={form.customer_ledger_id} partyLabel="Customer" info={partyInfo} onChange={setPartyInfo} /> }]}
+
+                        actions={<>
+
+                            <HoldButtons hotkey voucherType="sales_nonsalable_return" form={form} disabled={!!editingId} onRecall={p => { if (p) { setForm(p); setEditingId(null); setShowForm(true); } else resetForm(); }} />
+
                             <button type="button" onClick={e => handleSubmit(e, true)} className="erp-btn">💾 Save as Draft</button>
-                            <button type="submit" className="erp-btn primary">{editingId ? 'Update' : 'Create'}</button>
-                        </div>
-                    </div>
+
+                            <button type="submit" className="erp-btn primary">✔ {editingId ? 'Update' : 'Ok'}</button>
+
+                            <button type="button" onClick={() => { resetForm(); setShowForm(false); }} className="erp-btn">✖ Cancel</button>
+
+                        </>}
+
+                    />
                 </form>
             )}
         </div>

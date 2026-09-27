@@ -4,8 +4,9 @@
 //   * blue title bar (company, bell, user, company switch)
 //   * beige menu bar on top: Master Data, Data Entry, Accounts Report,
 //     Sales/Purchase, Analysis, Setup, Office, Tools and the Business Nature
-//     menus - components/menu.ts. A menu drops down one panel with each
-//     sub-menu as a column (no side fly-outs, so nothing overlaps).
+//     menus - components/menu.ts. A menu drops down its sub-menus
+//     (separator lines between clusters); pointing at one opens its screens
+//     beside it, kept inside the window at the screen edges.
 //   * menu finder (type part of a screen / report name)
 //   * every screen sits in a NAV window: title bar with the screen name and
 //     minimise / maximise / close, ribbon (Home, Related screens of the same
@@ -20,7 +21,7 @@ import useExcelTableFilters from '../hooks/useExcelTableFilters';
 import useAppFeatures from '../hooks/useAppFeatures';
 import { useNotifications, BellButton, NotificationOverlay } from './NotificationCenter';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
-import { TOP_MENUS, featureOn, visibleReportGroups } from './menu';
+import { TOP_MENUS, REPORT_GROUPS, featureOn, visibleReportGroups } from './menu';
 import { useAuth } from '../contexts/AuthContext';
 
 // links with a query string reload the page so a report / tab opens on the chosen view
@@ -28,6 +29,8 @@ function MenuLink({ item, className, onClick }) {
     if (item.to.includes('?')) return <a href={item.to} className={className} onClick={onClick}>{item.label}</a>;
     return <Link to={item.to} className={className} onClick={onClick}>{item.label}</Link>;
 }
+
+const REPORT_TITLES = new Set(REPORT_GROUPS.map(g => g.title));
 
 // which report group a screen's "Reports" ribbon tab lists
 const REPORT_FOR = [
@@ -72,7 +75,9 @@ export default function Layout({ children }) {
     }, [menus]);
 
     const [openMenu, setOpenMenu] = useState(null);       // key of the open top menu
-    const [menuPos, setMenuPos] = useState({ top: 0, left: 0, width: 280 });
+    const [menuPos, setMenuPos] = useState({ top: 0, left: 0 });
+    const [openGroup, setOpenGroup] = useState(null);     // index of the sub-menu shown beside the list
+    const [subPos, setSubPos] = useState({ top: 0, left: 0, width: 290 });
     const [drawer, setDrawer] = useState(false);
     const [drawerOpen, setDrawerOpen] = useState({});
     const [search, setSearch] = useState('');
@@ -123,35 +128,62 @@ export default function Layout({ children }) {
     const q = search.trim().toLowerCase();
     const found = q ? allItems.filter(it => it.label.toLowerCase().includes(q) || it.group.toLowerCase().includes(q)).slice(0, 40) : [];
 
-    // the drop-down is one panel under the menu title with every sub-menu as a column:
-    // nothing flies out sideways, so nothing covers another list
-    const placeMenu = (m, el) => {
+    // FinPro-style cascade: the menu title drops a list of its sub-menus (separator lines between
+    // clusters); pointing at one opens its screens beside it. Both lists are placed in the window
+    // (fixed position, flipped / lifted at the screen edge), so nothing is cut off or hidden.
+    const placeMenu = el => {
         const r = el.getBoundingClientRect();
-        const cols = Math.min(m.groups.length, window.innerWidth >= 1200 ? 4 : 3);
-        const width = Math.min(cols * 250 + 8, window.innerWidth - 16);
-        const left = Math.max(8, Math.min(r.left, window.innerWidth - width - 8));
-        setMenuPos({ top: r.bottom, left, width });
+        setMenuPos({ top: r.bottom, left: Math.max(4, Math.min(r.left, window.innerWidth - 270)) });
+        setOpenGroup(null);
     };
     const toggleMenu = (m, el) => {
-        placeMenu(m, el);
+        placeMenu(el);
         setOpenMenu(o => (o === m.key ? null : m.key));
     };
     const hoverMenu = (m, el) => {
         if (!openMenu || openMenu === m.key) return;
-        placeMenu(m, el);
+        placeMenu(el);
         setOpenMenu(m.key);
     };
-    const cols = Math.max(1, Math.round((menuPos.width - 8) / 250));
-    const dropdown = m => (
-        <div ref={panelRef} className="nav-mega no-print" role="menu" style={{ top: menuPos.top, left: menuPos.left, width: menuPos.width, gridTemplateColumns: `repeat(${cols}, minmax(0, 1fr))` }}>
-            {m.groups.map(g => (
-                <div key={g.title} className="nav-mega-group">
-                    {m.groups.length > 1 && <div className="nav-submenu-title">{g.title}</div>}
-                    {g.items.map(it => <MenuLink key={it.to} item={it} className={`nav-dropdown-item ${current === it.to ? 'hot' : ''}`} />)}
+    const showGroup = (gi, g, el) => {
+        const r = el.getBoundingClientRect();
+        const width = 290;
+        const height = Math.min(g.items.length * 27 + 30, window.innerHeight - 16);
+        const left = r.right + width + 4 <= window.innerWidth ? r.right - 2 : Math.max(4, r.left - width + 2);
+        const top = Math.max(8, Math.min(r.top - 3, window.innerHeight - height - 8));
+        setSubPos({ top, left, width, maxHeight: window.innerHeight - 16 });
+        setOpenGroup(gi);
+    };
+    const dropdown = m => {
+        const single = m.groups.length === 1;
+        const g = openGroup !== null ? m.groups[openGroup] : null;
+        return (
+            <div ref={panelRef} className="no-print">
+                <div className="nav-cascade" role="menu" style={{ top: menuPos.top, left: menuPos.left }}>
+                    {single ? m.groups[0].items.map(it => <MenuLink key={it.to} item={it} className={`nav-dropdown-item ${current === it.to ? 'hot' : ''}`} />)
+                        : m.groups.map((grp, gi) => (
+                            <React.Fragment key={grp.title}>
+                                {gi > 0 && (grp.sep || (REPORT_TITLES.has(grp.title) && !REPORT_TITLES.has(m.groups[gi - 1].title))) && <div className="nav-cascade-sep" />}
+                                <div className={`nav-dropdown-item has-sub ${openGroup === gi ? 'hot' : ''}`} role="menuitem" aria-haspopup="menu"
+                                    onMouseEnter={e => showGroup(gi, grp, e.currentTarget)} onClick={e => showGroup(gi, grp, e.currentTarget)}>
+                                    <span>{grp.title}</span><span className="nav-sub-arrow">▶</span>
+                                </div>
+                            </React.Fragment>
+                        ))}
                 </div>
-            ))}
-        </div>
-    );
+                {g && (
+                    <div className="nav-cascade sub" role="menu" style={subPos} onMouseEnter={() => setOpenGroup(openGroup)}>
+                        {g.items.map((it, ii) => (
+                            <React.Fragment key={it.to}>
+                                {ii > 0 && it.sep && <div className="nav-cascade-sep" />}
+                                <MenuLink item={it} className={`nav-dropdown-item ${current === it.to ? 'hot' : ''}`} />
+                            </React.Fragment>
+                        ))}
+                    </div>
+                )}
+            </div>
+        );
+    };
 
     const drawerNav = (
         <div className="nav-drawer-body">

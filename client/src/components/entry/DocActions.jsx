@@ -109,8 +109,8 @@ export default function DocActions({ type, api, row, onOpen, onCopy, onReverse, 
     );
 }
 
-/** Hold the entry being typed and recall it later (per user, per screen) */
-export function HoldButtons({ voucherType, form, label, onRecall, disabled }) {
+/** Hold the entry being typed and recall it later (per user, per screen); hotkey: F8 opens the held list */
+export function HoldButtons({ voucherType, form, label, onRecall, disabled, hotkey }) {
     const { authFetch } = useAuth();
     const [list, setList] = useState(null);
     const [count, setCount] = useState(0);
@@ -118,6 +118,12 @@ export function HoldButtons({ voucherType, form, label, onRecall, disabled }) {
         try { const r = await authFetch(`/api/held-entries?voucher_type=${voucherType}`); setCount((r.data || []).length); return r.data || []; } catch { return []; }
     }, [authFetch, voucherType]);
     useEffect(() => { load(); }, [load]);
+    useEffect(() => {
+        if (!hotkey) return undefined;
+        const onKey = async e => { if (e.key === 'F8') { e.preventDefault(); setList(await load()); } };
+        window.addEventListener('keydown', onKey);
+        return () => window.removeEventListener('keydown', onKey);
+    }, [hotkey, load]);
 
     const hold = async () => {
         try {

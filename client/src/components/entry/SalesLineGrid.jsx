@@ -1,11 +1,15 @@
 // =============================================
 // components/entry/SalesLineGrid.jsx
 // The product lines of the sales entries (Quotation, Order, Challan,
-// Bill, Return ...), one layout everywhere:
-//   Code / Barcode | Product | Warehouse* | Batch / Serial | Mfg | Expiry |
-//   Qty | Unit | Free Qty | Free Unit | Rate (+ per unit for dual items) |
-//   product terms | Amount
+// Bill, Return ...), one FinPro-style layout everywhere:
+//   SNo | Short Name (code / barcode) | Name | Unit | WHSE* | Batch / Serial |
+//   Mfg | Expiry | Quantity | Free Qty | Free Unit | Rate (+ per unit for dual
+//   items) | Gross Amt | inline terms | Term | Amount
 //   * only when System Control > Multi Warehouse is on
+// At least 10 rows show (click an empty one to start a line), the line being
+// typed is yellow and the Total row sits under Quantity / Gross / Term / Amount.
+// Term opens "<Entry> (Product wise)" for that line; the footer's Bill Term
+// opens "Over All Term(s)" (useLineGridControl links the two).
 // Code / Barcode: type a product code or scan a barcode + Enter; the
 // unit of a scanned unit barcode is set too. Anything else lists matches.
 // The product popup searches by name or by code (System Control).
@@ -13,10 +17,11 @@
 // VAT) as inline columns, or one "Terms" button per line when that entry
 // is set to popup; with no mapping the plain Disc % / Tax % columns.
 // =============================================
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import SearchablePopupSelect from '../SearchablePopupSelect';
 import BatchSerialPicker from '../BatchSerialPicker';
 import { calcLine } from './lineCalc';
+import { TermPopup, OverallTermPopup } from './FinEntry';
 
 const num = v => (v === '' || v === null || v === undefined ? '' : v);
 const fmt = n => (Number(n) || 0).toFixed(2);
@@ -75,77 +80,155 @@ export function CodeCell({ products, product, onPick }) {
     );
 }
 
-function TermsPopup({ cols, line, gross, onSave, onClose }) {
-    const [lt, setLt] = useState(line.line_terms || {});
-    const x = calcLine({ ...line, line_terms: lt }, gross, cols);
-    return (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={onClose}>
-            <div className="nav-window w-full max-w-md" onClick={e => e.stopPropagation()}>
-                <div className="erp-header"><span className="erp-header-title">Product terms of this line</span></div>
-                <div className="nav-content">
-                    <table className="erp-grid-table">
-                        <thead><tr><th>Term</th><th>%</th><th className="text-right">Amount</th></tr></thead>
-                        <tbody>{cols.map(c => (
-                            <tr key={c.key}><td>{c.label}</td>
-                                <td><input type="number" step="0.01" className="erp-input" style={{ width: 90 }} value={num(lt[c.key]?.percent)} onChange={e => setLt({ ...lt, [c.key]: { term_id: c.term_id, percent: e.target.value } })} /></td>
-                                <td className="text-right">{fmt(x.line_terms?.[c.key]?.amount)}</td></tr>
-                        ))}</tbody>
-                        <tfoot><tr><td>Line amount</td><td /><td className="text-right">{fmt(x.amount)}</td></tr></tfoot>
-                    </table>
-                </div>
-                <div className="erp-bottombar"><div /><div className="erp-bottombar-actions">
-                    <button type="button" className="nav-btn" onClick={onClose}>Cancel</button>
-                    <button type="button" className="nav-btn primary" onClick={() => { onSave(lt); onClose(); }}>OK</button>
-                </div></div>
-            </div>
-        </div>
-    );
+/** shared state between the grid and the entry footer (Product Term / Bill Term buttons) */
+export function useLineGridControl() {
+    const [active, setActive] = useState(0);
+    const [termsFor, setTermsFor] = useState(null);
+    const [overall, setOverall] = useState(false);
+    return { active, setActive, termsFor, setTermsFor, overall, setOverall, openTerms: () => setTermsFor(active), openOverall: () => setOverall(true) };
 }
+
+/** qty / gross / terms / amount of the lines, and the taxable / non-taxable split */
+export function lineTotals(details, lineGross, termCols, useTerms = true) {
+    return details.reduce((t, d) => {
+        if (!d.product_id) return t;
+        const g = lineGross ? lineGross(d) : (Number(d.qty) || 0) * (Number(d.rate) || 0);
+        const x = calcLine(d, g, useTerms ? termCols : []);
+        const amount = useTerms ? x.amount : g;
+        const term = amount - g;
+        return {
+            qty: t.qty + (Number(d.qty) || 0), gross: t.gross + g, disc: t.disc + x.discount_amount, excise: t.excise + x.excise_amount, tax: t.tax + x.tax_amount,
+            term: t.term + term, amount: t.amount + amount,
+            taxable: t.taxable + (x.tax_amount > 0 ? amount - x.tax_amount : 0), nonTaxable: t.nonTaxable + (x.tax_amount > 0 ? 0 : amount)
+        };
+    }, { qty: 0, gross: 0, disc: 0, excise: 0, tax: 0, term: 0, amount: 0, taxable: 0, nonTaxable: 0 });
+}
+
+const TAXATION = { vat: 'VAT', excise: 'Excise', discount: 'Cash Discount', none: 'None' };
+const formulaOf = t => (!t ? 'BV' : t.calculation_mode === 'formula' ? t.formula_expression : t.base_reference_term ? `after ${t.base_reference_term.term_code}` : 'BV');
 
 export default function SalesLineGrid({
     details, onRow, onRemove, onAdd, products, allProducts, units, warehouses, settings, termCols = [], popupTerms = false,
     efc, onProductSelect, docWarehouseId, selected, onSelected, features = {}, dual, lineGross, onProductKeyDown, listKey = 'sl',
-    extraColumns
+    ctl: ctlIn, title = 'Entry', minRows = 10
 }) {
-    const f = { free: true, batch: true, expiry: false, terms: true, rate: true, tax: true, ...features };
+    const f0 = { free: true, batch: true, expiry: false, terms: true, rate: true, tax: true, ...features };
     const visible = (k) => !efc || efc.isVisible(k, 'detail');
     const readonly = (k) => !!efc && efc.isReadonly(k, 'detail');
-    const [termsFor, setTermsFor] = useState(null);
+    const own = useLineGridControl();
+    const ctl = ctlIn || own;
+    const tableRef = useRef(null);
     const searchBy = settings?.searchBy || 'name';
     const catalog = allProducts || products;
     const productById = useMemo(() => Object.fromEntries(catalog.map(p => [p.id, p])), [catalog]);
+    // Batch / Serial (and Mfg / Expiry) columns only once a line's product keeps batches or serials
+    const tracked = details.some(d => { const p = productById[d.product_id]; return p && (p.maintain_batch || p.track_serial_number); });
+    const f = { ...f0, batch: f0.batch && tracked, expiry: f0.expiry && tracked };
+    const termById = useMemo(() => Object.fromEntries((settings?.billingTerms || []).map(t => [t.id, t])), [settings]);
     const multiWh = !!settings?.multiWarehouse;
     const inlineTerms = f.terms && termCols.length > 0 && !popupTerms;
     const legacyTerms = f.terms && termCols.length === 0;
     const unitName = id => units.find(u => u.id === id)?.unit_name || '';
     const isDual = pid => !!dual && dual.isDual(pid);
+    const grossOf = d => (lineGross ? lineGross(d) : (Number(d.qty) || 0) * (Number(d.rate) || 0));
 
     const pick = (idx, productId, unitId) => onProductSelect(idx, productId, unitId || null);
 
+    // ---- product-wise terms of one line ----
+    const termRows = (d) => {
+        const g = grossOf(d);
+        if (legacyTerms || !f.terms) {
+            const x = calcLine(d, g, []);
+            return [
+                { key: 'discount_percent', description: 'Product Discount', sign: '-', percent: d.discount_percent, amount: x.discount_amount, calculatedOn: g, termCode: 'DISC', formula: 'BV', taxation: 'None' },
+                ...(f.tax ? [{ key: 'tax_percent', description: 'VAT / Tax', sign: '+', percent: d.tax_percent, amount: x.tax_amount, calculatedOn: g - x.discount_amount, termCode: 'TAX', formula: 'BV - Discount', taxation: 'VAT' }] : [])
+            ];
+        }
+        const x = calcLine(d, g, termCols);
+        return termCols.map(c => {
+            const t = termById[c.term_id];
+            const lt = d.line_terms?.[c.key] || {};
+            return {
+                key: c.key, description: c.label, basis: lt.basis || 'V', sign: c.kind === 'discount' ? '-' : '+', percent: lt.fixed ? '' : lt.percent,
+                amount: x.line_terms?.[c.key]?.amount, calculatedOn: x.line_terms?.[c.key]?.base, termCode: t?.term_code, ledgerName: t?.billing_ledger?.account_name,
+                subLedger: t?.sub_ledger?.sub_ledger_name, formula: formulaOf(t), taxation: TAXATION[t?.tax_type || c.kind] || 'None'
+            };
+        });
+    };
+    const setLineTerm = (idx, key, patch) => {
+        const d = details[idx];
+        if (legacyTerms || !f.terms) { onRow(idx, { [key]: patch.percent }); return; }
+        const c = termCols.find(x => x.key === key);
+        const cur = { ...(d.line_terms?.[key] || {}) };
+        delete cur.fixed; delete cur.amount;
+        onRow(idx, { line_terms: { ...(d.line_terms || {}), [key]: { ...cur, term_id: c.term_id, ...patch } } });
+    };
+
+    // ---- over-all terms (every line, or the ticked lines) ----
+    const scope = details.map((d, i) => i).filter(i => details[i].product_id && (!selected || !selected.length || selected.includes(i)));
+    const overallRows = () => {
+        const keys = legacyTerms || !f.terms ? termRows({ qty: 0, rate: 0 }).map(r => ({ key: r.key, label: r.description, sign: r.sign })) : termCols.map(c => ({ key: c.key, label: c.label, sign: c.kind === 'discount' ? '-' : '+' }));
+        return keys.map(k => {
+            let amount = 0; const pcts = new Set();
+            scope.forEach(i => { const r = termRows(details[i]).find(x => x.key === k.key); if (r) { amount += Number(r.amount) || 0; pcts.add(String(Number(r.percent) || 0)); } });
+            const same = pcts.size === 1 ? Number([...pcts][0]) : '';
+            return { key: k.key, term: k.label, basis: 'V', sign: k.sign, percent: pcts.size > 1 ? '' : same, mixed: pcts.size > 1, amount };
+        });
+    };
+    const overallPercent = (key, v) => scope.forEach(i => setLineTerm(i, key, { percent: v, basis: 'V' }));
+    const overallAmount = (key, v) => {
+        const total = Number(v) || 0;
+        const grosses = scope.map(i => grossOf(details[i]));
+        const sum = grosses.reduce((a, b) => a + b, 0);
+        if (!sum) return;
+        scope.forEach((i, n) => {
+            const share = total * grosses[n] / sum;
+            if (legacyTerms || !f.terms) { onRow(i, { [key]: grosses[n] ? +(share / grosses[n] * 100).toFixed(4) : 0 }); return; }
+            const c = termCols.find(x => x.key === key);
+            onRow(i, { line_terms: { ...(details[i].line_terms || {}), [key]: { term_id: c.term_id, fixed: true, amount: Math.round(share * 100) / 100, percent: 0 } } });
+        });
+    };
+
+    const addAndFocus = () => {
+        onAdd();
+        setTimeout(() => {
+            const rows = tableRef.current?.querySelectorAll('tbody tr.line');
+            const last = rows && rows[rows.length - 1];
+            const inp = last && last.querySelector('input:not([type=checkbox]), select');
+            if (inp) inp.focus();
+        }, 50);
+    };
+
+    const totals = lineTotals(details, lineGross, termCols, f.terms);
+    const colCount = 3 + 1 + (multiWh ? 1 : 0) + (f.batch ? 1 : 0) + (f.expiry ? 2 : 0) + 1 + (f.free ? 2 : 0) + (f.rate ? 2 : 0)
+        + (legacyTerms ? (f.tax ? 2 : 1) : 0) + (inlineTerms ? termCols.length : 0) + (f.terms ? 1 : 0) + (f.rate ? 1 : 0) + 1;
+    const beforeQty = 3 + 1 + (multiWh ? 1 : 0) + (f.batch ? 1 : 0) + (f.expiry ? 2 : 0);
+    const fillers = Math.max(0, minRows - details.length);
+
     return (
         <>
-            <div className="overflow-x-auto">
-                <table className="erp-grid-table" style={{ minWidth: 1100 }}>
+            <div className="fin-grid-wrap">
+                <table className="fin-grid" ref={tableRef} style={{ minWidth: 1100 }}>
                     <thead>
                         <tr>
-                            {onSelected && <th className="w-8" />}
-                            <th>Code / Barcode</th>
-                            <th style={{ minWidth: 220 }}>Product</th>
-                            {multiWh && <th>Warehouse</th>}
+                            <th className="sno">SNo.</th>
+                            <th>Short Name</th>
+                            <th style={{ minWidth: 200 }}>Name</th>
+                            <th>Unit</th>
+                            {multiWh && <th>WHSE</th>}
                             {f.batch && <th>Batch / Serial</th>}
                             {f.expiry && <th>Mfg</th>}
                             {f.expiry && <th>Expiry</th>}
-                            <th className={visible('qty') ? '' : 'hidden'}>Qty</th>
-                            <th>Unit</th>
-                            {f.free && <th className={visible('free_qty') ? '' : 'hidden'}>Free Qty</th>}
+                            <th className={`r ${visible('qty') ? '' : 'hidden'}`}>Quantity</th>
+                            {f.free && <th className={`r ${visible('free_qty') ? '' : 'hidden'}`}>Free Qty</th>}
                             {f.free && <th>Free Unit</th>}
-                            {f.rate && <th className={visible('rate') ? '' : 'hidden'}>Rate</th>}
-                            {legacyTerms && <th className={visible('discount_percent') ? '' : 'hidden'}>Disc %</th>}
-                            {legacyTerms && f.tax && <th className={visible('tax_percent') ? '' : 'hidden'}>Tax %</th>}
-                            {inlineTerms && termCols.map(c => <th key={c.key} title={c.label}>{c.label} %</th>)}
-                            {f.terms && popupTerms && termCols.length > 0 && <th>Terms</th>}
-                            {extraColumns && extraColumns.header}
-                            {f.rate && <th className="text-right">Amount</th>}
+                            {f.rate && <th className={`r ${visible('rate') ? '' : 'hidden'}`}>Rate</th>}
+                            {f.rate && <th className="r">Gross Amt.</th>}
+                            {legacyTerms && <th className={`r ${visible('discount_percent') ? '' : 'hidden'}`}>Disc %</th>}
+                            {legacyTerms && f.tax && <th className={`r ${visible('tax_percent') ? '' : 'hidden'}`}>Tax %</th>}
+                            {inlineTerms && termCols.map(c => <th key={c.key} className="r" title={c.label}>{c.label} %</th>)}
+                            {f.terms && <th className="r">Term</th>}
+                            {f.rate && <th className="r">Amount</th>}
                             <th />
                         </tr>
                     </thead>
@@ -153,12 +236,19 @@ export default function SalesLineGrid({
                         {details.map((d, idx) => {
                             const p = productById[d.product_id];
                             const pUnits = unitsOfProduct(p, units);
-                            const gross = lineGross ? lineGross(d) : (Number(d.qty) || 0) * (Number(d.rate) || 0);
+                            const gross = grossOf(d);
                             const calc = calcLine(d, gross, f.terms ? termCols : []);
                             const wh = d.warehouse_id || docWarehouseId || '';
+                            const amount = f.terms ? calc.amount : gross;
                             return (
-                                <tr key={idx}>
-                                    {onSelected && <td><input type="checkbox" checked={selected.includes(idx)} onChange={e => onSelected(e.target.checked ? [...selected, idx] : selected.filter(i => i !== idx))} /></td>}
+                                <tr key={idx} className={`line ${ctl.active === idx ? 'cur' : ''}`} onFocus={() => ctl.setActive(idx)}>
+                                    <td className="sno">
+                                        {onSelected ? (
+                                            <label className="inline-flex items-center gap-1 cursor-pointer" title="Tick lines for Bill Term / discount">
+                                                <input type="checkbox" tabIndex={-1} checked={selected.includes(idx)} onChange={e => onSelected(e.target.checked ? [...selected, idx] : selected.filter(i => i !== idx))} />{idx + 1}
+                                            </label>
+                                        ) : idx + 1}
+                                    </td>
                                     <td><CodeCell products={products} product={p} onPick={(pid, uid) => pick(idx, pid, uid)} /></td>
                                     <td onKeyDown={e => onProductKeyDown && onProductKeyDown(e, d.product_id)}>
                                         <SearchablePopupSelect
@@ -170,8 +260,14 @@ export default function SalesLineGrid({
                                             value={d.product_id} onChange={id => pick(idx, id, null)} placeholder={searchBy === 'code' ? 'Search by code' : 'Search by name'}
                                         />
                                     </td>
+                                    <td>
+                                        {isDual(d.product_id)
+                                            ? <span className="text-xs text-gray-600 whitespace-nowrap">{unitName(d.uom_id)} + {unitName(d.alt_unit_id)}</span>
+                                            : <select className="erp-select" style={{ width: 78 }} value={d.uom_id || ''} onChange={e => onRow(idx, { uom_id: e.target.value })}>
+                                                <option value="">Unit</option>{pUnits.map(u => <option key={u.id} value={u.id}>{u.unit_name}</option>)}</select>}
+                                    </td>
                                     {multiWh && (
-                                        <td><select className="erp-select" style={{ width: 140 }} value={d.warehouse_id || ''} onChange={e => onRow(idx, { warehouse_id: e.target.value, batch_no: '', serial_no: '' })}>
+                                        <td><select className="erp-select" style={{ width: 130 }} value={d.warehouse_id || ''} onChange={e => onRow(idx, { warehouse_id: e.target.value, batch_no: '', serial_no: '' })}>
                                             <option value="">(document)</option>{warehouses.map(w => <option key={w.id} value={w.id}>{w.warehouse_name}</option>)}</select></td>
                                     )}
                                     {f.batch && (
@@ -191,42 +287,36 @@ export default function SalesLineGrid({
                                     )}
                                     {f.expiry && <td>{p?.maintain_batch ? <input type="date" className="erp-input" style={{ width: 130 }} value={String(d.mfg_date || '').slice(0, 10)} onChange={e => onRow(idx, { mfg_date: e.target.value })} /> : ''}</td>}
                                     {f.expiry && <td>{p?.maintain_batch ? <input type="date" className="erp-input" style={{ width: 130 }} value={String(d.exp_date || '').slice(0, 10)} onChange={e => onRow(idx, { exp_date: e.target.value })} /> : ''}</td>}
-                                    <td className={visible('qty') ? '' : 'hidden'}>
+                                    <td className={`r ${visible('qty') ? '' : 'hidden'}`}>
                                         {isDual(d.product_id) ? (
                                             <div className="flex flex-col gap-1">
-                                                <input data-qty disabled={readonly('qty')} type="number" step="0.0001" className="erp-input" style={{ width: 80 }} value={num(d.qty)} placeholder={unitName(d.uom_id) || 'Primary'}
+                                                <input data-qty disabled={readonly('qty')} type="number" step="0.0001" className="erp-input text-right" style={{ width: 80 }} value={num(d.qty)} placeholder={unitName(d.uom_id) || 'Primary'}
                                                     onChange={e => onRow(idx, dual.onPrimary(e.target.value, d))} />
-                                                <input type="number" step="0.0001" className="erp-input" style={{ width: 80 }} value={num(d.alt_qty)} placeholder={unitName(d.alt_unit_id) || 'Secondary'}
+                                                <input type="number" step="0.0001" className="erp-input text-right" style={{ width: 80 }} value={num(d.alt_qty)} placeholder={unitName(d.alt_unit_id) || 'Secondary'}
                                                     onChange={e => onRow(idx, dual.onSecondary(e.target.value, d))} />
                                                 {dual.error && dual.error(d) && <span className="text-[9px] text-red-600 leading-tight">{dual.error(d)}</span>}
                                             </div>
-                                        ) : <input data-qty disabled={readonly('qty')} type="number" step="0.0001" className="erp-input" style={{ width: 90 }} value={num(d.qty)} onChange={e => onRow(idx, { qty: e.target.value })} />}
-                                    </td>
-                                    <td>
-                                        {isDual(d.product_id)
-                                            ? <span className="text-xs text-gray-600 whitespace-nowrap">{unitName(d.uom_id)} + {unitName(d.alt_unit_id)}</span>
-                                            : <select className="erp-select" style={{ width: 90 }} value={d.uom_id || ''} onChange={e => onRow(idx, { uom_id: e.target.value })}>
-                                                <option value="">Unit</option>{pUnits.map(u => <option key={u.id} value={u.id}>{u.unit_name}</option>)}</select>}
+                                        ) : <input data-qty disabled={readonly('qty')} type="number" step="0.0001" className="erp-input text-right" style={{ width: 80 }} value={num(d.qty)} onChange={e => onRow(idx, { qty: e.target.value })} />}
                                     </td>
                                     {f.free && (
-                                        <td className={visible('free_qty') ? '' : 'hidden'}>
+                                        <td className={`r ${visible('free_qty') ? '' : 'hidden'}`}>
                                             {isDual(d.product_id) ? (
                                                 <div className="flex flex-col gap-1">
-                                                    <input type="number" step="0.0001" className="erp-input" style={{ width: 75 }} value={num(d.free_qty)} placeholder="0" onChange={e => onRow(idx, { free_qty: e.target.value })} />
-                                                    <input type="number" step="0.0001" className="erp-input" style={{ width: 75 }} value={num(d.free_alt_qty)} placeholder="0" onChange={e => onRow(idx, { free_alt_qty: e.target.value })} />
+                                                    <input type="number" step="0.0001" className="erp-input text-right" style={{ width: 75 }} value={num(d.free_qty)} placeholder="0" onChange={e => onRow(idx, { free_qty: e.target.value })} />
+                                                    <input type="number" step="0.0001" className="erp-input text-right" style={{ width: 75 }} value={num(d.free_alt_qty)} placeholder="0" onChange={e => onRow(idx, { free_alt_qty: e.target.value })} />
                                                 </div>
-                                            ) : <input type="number" step="0.0001" className="erp-input" style={{ width: 75 }} value={num(d.free_qty)} placeholder="0" onChange={e => onRow(idx, { free_qty: e.target.value })} />}
+                                            ) : <input type="number" step="0.0001" className="erp-input text-right" style={{ width: 60 }} value={num(d.free_qty)} placeholder="0" onChange={e => onRow(idx, { free_qty: e.target.value })} />}
                                         </td>
                                     )}
                                     {f.free && (
                                         <td>{isDual(d.product_id)
                                             ? <span className="text-xs text-gray-600 whitespace-nowrap">{unitName(d.uom_id)} + {unitName(d.alt_unit_id)}</span>
-                                            : <select className="erp-select" style={{ width: 90 }} value={d.free_uom_id || ''} onChange={e => onRow(idx, { free_uom_id: e.target.value })}>
+                                            : <select className="erp-select" style={{ width: 78 }} value={d.free_uom_id || ''} onChange={e => onRow(idx, { free_uom_id: e.target.value })}>
                                                 <option value="">{unitName(d.uom_id) || 'Same'}</option>{pUnits.filter(u => u.id !== d.uom_id).map(u => <option key={u.id} value={u.id}>{u.unit_name}</option>)}</select>}</td>
                                     )}
                                     {f.rate && (
-                                        <td className={visible('rate') ? '' : 'hidden'}>
-                                            <input disabled={readonly('rate')} type="number" step="0.01" className="erp-input" style={{ width: 90 }} value={num(d.rate)} onChange={e => onRow(idx, { rate: e.target.value })} />
+                                        <td className={`r ${visible('rate') ? '' : 'hidden'}`}>
+                                            <input disabled={readonly('rate')} type="number" step="0.01" className="erp-input text-right" style={{ width: 80 }} value={num(d.rate)} onChange={e => onRow(idx, { rate: e.target.value })} />
                                             {isDual(d.product_id) && (
                                                 <select className="erp-select mt-1" style={{ fontSize: 11, height: 22, width: 90 }} value={d.rate_basis || 'primary'} onChange={e => onRow(idx, { rate_basis: e.target.value })} title="Rate is per">
                                                     <option value="primary">per {unitName(d.uom_id) || 'primary'}</option>
@@ -235,35 +325,71 @@ export default function SalesLineGrid({
                                             )}
                                         </td>
                                     )}
-                                    {legacyTerms && <td className={visible('discount_percent') ? '' : 'hidden'}><input type="number" step="0.01" className="erp-input" style={{ width: 70 }} value={num(d.discount_percent)} onChange={e => onRow(idx, { discount_percent: e.target.value })} /></td>}
-                                    {legacyTerms && f.tax && <td className={visible('tax_percent') ? '' : 'hidden'}><input disabled={readonly('tax_percent')} type="number" step="0.01" className="erp-input" style={{ width: 70 }} value={num(d.tax_percent)} onChange={e => onRow(idx, { tax_percent: e.target.value })} /></td>}
+                                    {f.rate && <td className="r whitespace-nowrap">{d.product_id ? fmt(gross) : ''}</td>}
+                                    {legacyTerms && <td className={`r ${visible('discount_percent') ? '' : 'hidden'}`}><input type="number" step="0.01" className="erp-input text-right" style={{ width: 56 }} value={num(d.discount_percent)} onChange={e => onRow(idx, { discount_percent: e.target.value })} /></td>}
+                                    {legacyTerms && f.tax && <td className={`r ${visible('tax_percent') ? '' : 'hidden'}`}><input disabled={readonly('tax_percent')} type="number" step="0.01" className="erp-input text-right" style={{ width: 56 }} value={num(d.tax_percent)} onChange={e => onRow(idx, { tax_percent: e.target.value })} /></td>}
                                     {inlineTerms && termCols.map(c => (
-                                        <td key={c.key}>
-                                            <input type="number" step="0.01" className="erp-input" style={{ width: 70 }} value={num(d.line_terms?.[c.key]?.percent)}
-                                                onChange={e => onRow(idx, { line_terms: { ...(d.line_terms || {}), [c.key]: { term_id: c.term_id, percent: e.target.value } } })} />
+                                        <td key={c.key} className="r">
+                                            <input type="number" step="0.01" className="erp-input text-right" style={{ width: 70 }} value={d.line_terms?.[c.key]?.fixed ? '' : num(d.line_terms?.[c.key]?.percent)} placeholder={d.line_terms?.[c.key]?.fixed ? 'amt' : ''}
+                                                onChange={e => setLineTerm(idx, c.key, { percent: e.target.value })} />
                                             <div className="text-[10px] text-gray-600 text-right">{fmt(calc.line_terms?.[c.key]?.amount)}</div>
                                         </td>
                                     ))}
-                                    {f.terms && popupTerms && termCols.length > 0 && (
-                                        <td><button type="button" className="nav-btn small" onClick={() => setTermsFor(idx)} title="Product terms of this line">
-                                            Terms {fmt((calc.excise_amount || 0) + (calc.tax_amount || 0) - (calc.discount_amount || 0))}</button></td>
+                                    {f.terms && (
+                                        <td className="r">
+                                            <button type="button" tabIndex={-1} className="fin-term-btn" onClick={() => { ctl.setActive(idx); ctl.setTermsFor(idx); }} title="Product terms of this line (Product Term)">
+                                                {d.product_id ? fmt(amount - gross) : '…'}
+                                            </button>
+                                        </td>
                                     )}
-                                    {extraColumns && extraColumns.cells(d, idx)}
-                                    {f.rate && <td className="text-right whitespace-nowrap">{fmt(f.terms ? calc.amount : gross)}</td>}
-                                    <td><button type="button" tabIndex={-1} onClick={() => onRemove(idx)} className="nav-btn small danger">✕</button></td>
+                                    {f.rate && <td className="r whitespace-nowrap font-semibold">{d.product_id ? fmt(amount) : ''}</td>}
+                                    <td className="c"><button type="button" tabIndex={-1} onClick={() => onRemove(idx)} className="fin-x" title="Remove line">✕</button></td>
                                 </tr>
                             );
                         })}
+                        {Array.from({ length: fillers }).map((_, i) => (
+                            <tr key={`f${i}`} className="filler" onClick={addAndFocus} title="Click to add a line">
+                                <td className="sno">{details.length + i + 1}</td>
+                                <td colSpan={colCount - 1} />
+                            </tr>
+                        ))}
                     </tbody>
+                    <tfoot>
+                        <tr>
+                            <td colSpan={beforeQty} className="r"><span className="fin-total-cap">Total in (Nrs)&gt;</span></td>
+                            <td className={`r ${visible('qty') ? '' : 'hidden'}`}>{Number(totals.qty).toFixed(3)}</td>
+                            {f.free && <td className={visible('free_qty') ? '' : 'hidden'} />}
+                            {f.free && <td />}
+                            {f.rate && <td className={visible('rate') ? '' : 'hidden'} />}
+                            {f.rate && <td className="r">{fmt(totals.gross)}</td>}
+                            {legacyTerms && <td className={visible('discount_percent') ? '' : 'hidden'} />}
+                            {legacyTerms && f.tax && <td className={visible('tax_percent') ? '' : 'hidden'} />}
+                            {inlineTerms && termCols.map(c => <td key={c.key} />)}
+                            {f.terms && <td className="r">{fmt(totals.term)}</td>}
+                            {f.rate && <td className="r">{fmt(totals.amount)}</td>}
+                            <td />
+                        </tr>
+                    </tfoot>
                 </table>
             </div>
-            <div className="flex items-center gap-2 mt-2">
-                <button type="button" className="nav-btn small" onClick={onAdd}>➕ Add line</button>
-                <span className="text-xs text-gray-600">Code / Barcode: type or scan + Enter · Product search by {searchBy} (System Control)</span>
+            <div className="flex items-center gap-2 mt-1 text-xs text-gray-600">
+                <button type="button" className="nav-btn small" onClick={addAndFocus}>➕ Add line</button>
+                <span>Short Name: type a code or scan a barcode + Enter · Name: search by {searchBy} · Enter on the last field adds a line · Term: product-wise terms</span>
             </div>
-            {termsFor !== null && details[termsFor] && (
-                <TermsPopup cols={termCols} line={details[termsFor]} gross={lineGross ? lineGross(details[termsFor]) : 0}
-                    onSave={lt => onRow(termsFor, { line_terms: lt })} onClose={() => setTermsFor(null)} />
+            {ctl.termsFor !== null && details[ctl.termsFor] && (() => {
+                const d = details[ctl.termsFor];
+                const p = productById[d.product_id];
+                return (
+                    <TermPopup title={`${title} (Product wise)`} productName={p ? `${p.product_code || ''} ${p.product_name}` : `Line ${ctl.termsFor + 1}`}
+                        basic={grossOf(d)} qty={d.qty} unitName={unitName(d.uom_id)} rows={termRows(d)}
+                        onPercent={(key, v) => setLineTerm(ctl.termsFor, key, { percent: v })}
+                        onBasis={legacyTerms || !f.terms ? null : (key, b) => setLineTerm(ctl.termsFor, key, { basis: b })}
+                        onClose={() => ctl.setTermsFor(null)} />
+                );
+            })()}
+            {ctl.overall && (
+                <OverallTermPopup title={`${title} Over All Term(s)`} rows={overallRows()} onPercent={overallPercent} onAmount={overallAmount} onClose={() => ctl.setOverall(false)}
+                    note={selected && selected.length ? `Applies to the ${scope.length} ticked line(s)` : `Applies to all ${scope.length} line(s) - tick lines (SNo.) to change only those`} />
             )}
         </>
     );
