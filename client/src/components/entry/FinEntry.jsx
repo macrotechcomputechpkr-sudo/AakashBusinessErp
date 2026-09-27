@@ -183,9 +183,10 @@ export function OverallTermPopup({ title, rows, onPercent, onAmount, onClose, no
  * <EntryFooter warehouseName totals={{ billTerm, net, taxable, tax, nonTaxable }} party={{ label, name, creditLimit }}
  *     remarks={{ value, onChange, options }} onProductTerm onBillTerm panels={[{ key, label, content }]} actions={<>…</>} />
  * Panels (Other Details, Billing / Taxation ...) open as pop-ups; they stay mounted so party details
- * still fill in from the ledger while closed.
+ * still fill in from the ledger while closed. A panel may have several buttons ({ label, onClick }),
+ * e.g. one pop-up of tabs opened on different tabs. children: more rows under Number in Words.
  */
-export function EntryFooter({ warehouseName, totals, party, remarks, onProductTerm, onBillTerm, panels = [], actions, hints = ['[F7]: copy previous data', '[F8]: resume hold data'], title = 'Entry', extraButtons }) {
+export function EntryFooter({ warehouseName, totals, party, remarks, onProductTerm, onBillTerm, panels = [], actions, hints = ['[F7]: copy previous data', '[F8]: resume hold data'], title = 'Entry', extraButtons, children }) {
     const [open, setOpen] = useState(null);
     const listId = useRef(`rmk-${Math.random().toString(36).slice(2, 8)}`).current;
     return (
@@ -207,9 +208,12 @@ export function EntryFooter({ warehouseName, totals, party, remarks, onProductTe
                     </div>
                 )}
                 <div className="fin-row"><label>Number in Words</label><input className="fin-box wide words" readOnly value={amountInWords(totals.net)} /></div>
+                {children}
             </div>
             <div className="fin-row fin-actions">
-                {panels.map(p => <button key={p.key} type="button" className="fin-btn" onClick={() => setOpen(p.key)}>◉ {p.label}</button>)}
+                {panels.flatMap(p => (p.buttons || [{ label: p.label }]).map(b => (
+                    <button key={`${p.key}-${b.label}`} type="button" className="fin-btn" onClick={() => { if (b.onClick) b.onClick(); setOpen(p.key); }}>◉ {b.label}</button>
+                )))}
                 {extraButtons}
                 <div className="ml-auto flex items-center gap-2 flex-wrap">{actions}</div>
             </div>

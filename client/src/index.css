@@ -207,6 +207,8 @@
   .fin-term-btn:hover { background: #fff3a0; border-color: #4a7ab5; }
   .fin-x { width: 20px; height: 20px; border-radius: 2px; color: #a92a1a; font-size: 11px; }
   .fin-x:hover { background: #f6d0c8; }
+  .fin-grid td > input.w-full:not([type=checkbox]), .fin-grid td > div > input.w-full { min-width: 72px; }
+  .fin-grid td > select.w-full { min-width: 84px; }
   .fin-total-cap { color: #b0202a; font-weight: 700; white-space: nowrap; }
 
   .fin-footer { border-top: 1px solid #9aa8cc; background: #e6eaf6; padding: 6px 10px 4px; display: flex; flex-direction: column; gap: 5px; font-size: 12px; }

@@ -27,6 +27,8 @@ import PendingDocsPanel, { mergePulled } from '../components/entry/PendingDocsPa
 import { PartyDetailsPanel, emptyPartyInfo, savePartyInfo, partyInfoFromDoc } from '../components/entry/PartyFooterTabs';
 import { CodeCell } from '../components/entry/SalesLineGrid';
 import DocActions, { HoldButtons } from '../components/entry/DocActions';
+import { EntryFooter, useEntryHotkeys, latestOf } from '../components/entry/FinEntry';
+import { PurchaseProductTermPopup, PurchaseOverallTermPopup } from '../components/entry/PurchaseTermPopups';
 
 const emptyDetailRow = () => ({
     product_id: '', qty: '', uom_id: '', alt_qty: '', alt_unit_id: '', alt1_qty: '', alt1_unit_id: '', rate_basis: 'primary',
@@ -384,6 +386,22 @@ export default function PurchaseGrn() {
 
     const summaryGrandTotal = summaryRows.reduce((sum, r) => sum + (summaryOverrides[r.billing_term_id] !== undefined ? Number(summaryOverrides[r.billing_term_id]) : r.original_total), 0);
 
+    // FinPro footer: bill terms (preview) + product-term totals, taxable split; F7 copies the last entry
+    const [overallOpen, setOverallOpen] = useState(false);
+    // Alt unit / batch columns only once a line's product has them
+    const anyAlt = form.details.some(d => productHasAltUnits(d.product_id));
+    const anyBatch = form.details.some(d => productMaintainsBatch(d.product_id) || productTracksSerial(d.product_id));
+    const billTermAmount = (billingPreview ? billingPreview.total - grandTotal : 0) + summaryGrandTotal;
+    const taxSplit = form.details.reduce((t, d) => {
+        if (!d.product_id) return t;
+        const base = lineGross(d);
+        const disc = d.discount_percent ? base * Number(d.discount_percent) / 100 : 0;
+        const tax = d.tax_percent ? (base - disc) * Number(d.tax_percent) / 100 : 0;
+        return tax > 0 ? { ...t, taxable: t.taxable + base - disc, tax: t.tax + tax } : { ...t, nonTaxable: t.nonTaxable + base - disc };
+    }, { taxable: 0, tax: 0, nonTaxable: 0 });
+    const footVendor = vendors.find(v => v.id === form.vendor_ledger_id);
+    useEntryHotkeys(showForm, { F7: () => { const last = latestOf(rows); if (last) handleCopyFrom(last.id); } });
+
     const handleSubmit = async (e, saveAsDraft = false) => {
         e.preventDefault();
         if (!saveAsDraft) {
@@ -595,7 +613,7 @@ export default function PurchaseGrn() {
             )}
 
             {showForm && (
-                <form onSubmit={handleSubmit} ref={formRef}>
+                <form onSubmit={handleSubmit} ref={formRef} className="fin-entry">
                     {/* ==================== PULL FORWARD (universal - any earlier stage) ==================== */}
                     {!editingId && (
                         <details className="mx-3 mt-2 text-xs"><summary className="cursor-pointer text-[#1a4a8a]">Pull from any earlier document (any party)</summary>
@@ -704,28 +722,28 @@ export default function PurchaseGrn() {
 
                     {/* ==================== DETAILS PART ==================== */}
                     <div className="border-t pt-4">
-                        <h2 className="font-semibold text-sm text-gray-500 uppercase mb-3">Details</h2>
-                        <div className="overflow-x-auto">
-                            <table className="w-full text-sm min-w-[1400px]">
+                        <div className="fin-grid-wrap">
+                            <table className="fin-grid" style={{ minWidth: 1300 }}>
                                 <thead>
-                                    <tr className="text-xs text-gray-500 uppercase">
-                                        <th className="text-left px-1 py-1 w-6"></th>
-                                        <th className="text-left px-1 py-1">Code / Barcode</th>
-                                        <th className="text-left px-1 py-1 w-56">Product {isRequired('product_id', 'detail') && <span className="text-red-500">*</span>}</th>
+                                    <tr>
+                                        <th className="sno">SNo.</th>
+                                        <th className="text-left px-1 py-1">Short Name</th>
+                                        <th className="text-left px-1 py-1 w-56">Name {isRequired('product_id', 'detail') && <span className="text-red-500">*</span>}</th>
                                         <th className={`text-left px-1 py-1 w-40 ${(settings?.multiWarehouse && isVisible('warehouse_id', 'detail')) ? '' : 'hidden'}`}>Details Warehouse</th>
-                                        <th className={`text-left px-1 py-1 w-28 ${isVisible('batch_no', 'detail') ? '' : 'hidden'}`}>Batch No</th>
+                                        <th className={`text-left px-1 py-1 w-28 ${(anyBatch && isVisible('batch_no', 'detail')) ? '' : 'hidden'}`}>Batch No</th>
                                         <th className="text-left px-1 py-1 w-24">Qty {isRequired('qty', 'detail') && <span className="text-red-500">*</span>}</th>
                                         <th className={`text-left px-1 py-1 w-32 ${isVisible('uom_id', 'detail') ? '' : 'hidden'}`}>UOM</th>
                                         <th className={`text-left px-1 py-1 w-20 ${isVisible('free_qty', 'detail') ? '' : 'hidden'}`}>Free Qty</th>
                                         <th className={`text-left px-1 py-1 w-32 ${isVisible('free_uom_id', 'detail') ? '' : 'hidden'}`}>Free UOM</th>
-                                        <th className={`text-left px-1 py-1 w-20 ${isVisible('alt_qty', 'detail') ? '' : 'hidden'}`}>Alt Qty</th>
-                                        <th className={`text-left px-1 py-1 w-32 ${isVisible('alt_unit_id', 'detail') ? '' : 'hidden'}`}>Alt Unit</th>
-                                        <th className={`text-left px-1 py-1 w-20 ${isVisible('alt1_qty', 'detail') ? '' : 'hidden'}`}>Alt1 Qty</th>
-                                        <th className={`text-left px-1 py-1 w-32 ${isVisible('alt1_unit_id', 'detail') ? '' : 'hidden'}`}>Alt1 Unit</th>
+                                        <th className={`text-left px-1 py-1 w-20 ${(anyAlt && isVisible('alt_qty', 'detail')) ? '' : 'hidden'}`}>Alt Qty</th>
+                                        <th className={`text-left px-1 py-1 w-32 ${(anyAlt && isVisible('alt_unit_id', 'detail')) ? '' : 'hidden'}`}>Alt Unit</th>
+                                        <th className={`text-left px-1 py-1 w-20 ${(anyAlt && isVisible('alt1_qty', 'detail')) ? '' : 'hidden'}`}>Alt1 Qty</th>
+                                        <th className={`text-left px-1 py-1 w-32 ${(anyAlt && isVisible('alt1_unit_id', 'detail')) ? '' : 'hidden'}`}>Alt1 Unit</th>
                                         <th className={`text-left px-1 py-1 w-24 ${isVisible('rate', 'detail') ? '' : 'hidden'}`}>Rate</th>
                                         <th className={`text-left px-1 py-1 w-20 ${isVisible('discount_percent', 'detail') ? '' : 'hidden'}`}>Disc %</th>
                                         <th className={`text-left px-1 py-1 w-20 ${isVisible('tax_percent', 'detail') ? '' : 'hidden'}`}>Tax %</th>
-                                        <th className="text-left px-1 py-1 w-24">Amount</th>
+                                        <th className="r">Gross Amt.</th>
+                                        <th className="r">Amount</th>
                                         <th className={`text-left px-1 py-1 w-28 ${isVisible('barcode', 'detail') ? '' : 'hidden'}`}>Barcode</th>
                                         <th className="text-left px-1 py-1 w-32">Ref No <span className="text-gray-400 normal-case">(source doc)</span></th>
                                         <th className={`text-left px-1 py-1 w-40 ${isVisible('narration', 'detail') ? '' : 'hidden'}`}>Narration</th>
@@ -735,27 +753,15 @@ export default function PurchaseGrn() {
                                 </thead>
                                 <tbody>
                                     {form.details.map((d, idx) => (
-                                        <tr key={idx} className="border-t border-gray-100">
-                                            <td className="px-1 py-1">
+                                        <tr key={idx} className="line">
+                                            <td className="sno whitespace-nowrap">
                                                 <input
-                                                    type="checkbox"
+                                                    type="checkbox" tabIndex={-1}
                                                     checked={selectedRowIndexes.includes(idx)}
                                                     onChange={e => setSelectedRowIndexes(cur => e.target.checked ? [...cur, idx] : cur.filter(i => i !== idx))}
-                                                />
+                                                />{' '}{idx + 1}
                                             </td>
                                             <td className="px-1 py-1"><CodeCell products={filterProductsByCompany(products, form.product_company_id)} product={products.find(p => p.id === d.product_id)} onPick={(pid, uid) => handleProductSelect(idx, pid, uid)} /></td>
-                                            <td className={`px-1 py-1 ${(settings?.multiWarehouse && isVisible('warehouse_id', 'detail')) ? '' : 'hidden'}`}>
-                                                <select disabled={efc.isReadonly('warehouse_id', 'detail')} className="w-full border rounded px-1.5 py-1" value={d.warehouse_id} onChange={e => updateDetailRow(idx, { warehouse_id: e.target.value })}>
-                                                    <option value="">Warehouse</option>
-                                                    {warehouses.map(w => <option key={w.id} value={w.id}>{w.warehouse_name}</option>)}
-                                                </select>
-                                            </td>
-                                            <td className={`px-1 py-1 ${isVisible('batch_no', 'detail') ? '' : 'hidden'}`}>
-                                                {productMaintainsBatch(d.product_id) ? (
-                                                    <input disabled={efc.isReadonly('batch_no', 'detail')} className="w-full border rounded px-1.5 py-1" value={d.batch_no} onChange={e => updateDetailRow(idx, { batch_no: e.target.value })} placeholder="Batch" />
-                                                ) : <span className="text-gray-300 text-xs">—</span>}
-                                                {productTracksSerial(d.product_id) && <input className="w-full border rounded px-1.5 py-1 mt-1" value={d.serial_no || ''} onChange={e => updateDetailRow(idx, { serial_no: e.target.value })} placeholder="Serial No(s)" title="Serial numbers, comma separated - used for serial-wise costing" />}
-                                            </td>
                                             <td className="px-1 py-1" onKeyDown={e => handleProductRowKeyDown(e, d.product_id)}>
                                                 <div className="flex items-center gap-1">
                                                     <div className="flex-1">
@@ -771,6 +777,18 @@ export default function PurchaseGrn() {
                                                     </div>
                                                     <button type="button" tabIndex={-1} onClick={() => openProductHistory(d.product_id, false)} title="Last Purchase History (F1)" className="text-gray-400 hover:text-blue-600 text-sm px-1">🕐</button>
                                                 </div>
+                                            </td>
+                                            <td className={`px-1 py-1 ${(settings?.multiWarehouse && isVisible('warehouse_id', 'detail')) ? '' : 'hidden'}`}>
+                                                <select disabled={efc.isReadonly('warehouse_id', 'detail')} className="w-full border rounded px-1.5 py-1" value={d.warehouse_id} onChange={e => updateDetailRow(idx, { warehouse_id: e.target.value })}>
+                                                    <option value="">Warehouse</option>
+                                                    {warehouses.map(w => <option key={w.id} value={w.id}>{w.warehouse_name}</option>)}
+                                                </select>
+                                            </td>
+                                            <td className={`px-1 py-1 ${(anyBatch && isVisible('batch_no', 'detail')) ? '' : 'hidden'}`}>
+                                                {productMaintainsBatch(d.product_id) ? (
+                                                    <input disabled={efc.isReadonly('batch_no', 'detail')} className="w-full border rounded px-1.5 py-1" value={d.batch_no} onChange={e => updateDetailRow(idx, { batch_no: e.target.value })} placeholder="Batch" />
+                                                ) : <span className="text-gray-300 text-xs">—</span>}
+                                                {productTracksSerial(d.product_id) && <input className="w-full border rounded px-1.5 py-1 mt-1" value={d.serial_no || ''} onChange={e => updateDetailRow(idx, { serial_no: e.target.value })} placeholder="Serial No(s)" title="Serial numbers, comma separated - used for serial-wise costing" />}
                                             </td>
                                             <td className="px-1 py-1">
                                                 {productIsFixedDualUom(d.product_id) ? (
@@ -821,10 +839,10 @@ export default function PurchaseGrn() {
                                                     {units.map(u => <option key={u.id} value={u.id}>{u.unit_name}</option>)}
                                                 </select>
                                             </td>
-                                            <td className={`px-1 py-1 ${isVisible('alt_qty', 'detail') ? '' : 'hidden'}`}>
+                                            <td className={`px-1 py-1 ${(anyAlt && isVisible('alt_qty', 'detail')) ? '' : 'hidden'}`}>
                                                 {productIsFixedDualUom(d.product_id) ? <span className="text-gray-300 text-xs">(above)</span> : productHasAltUnits(d.product_id) ? <input disabled={efc.isReadonly('alt_qty', 'detail')} type="number" step="0.0001" className="w-full border rounded px-1.5 py-1" value={d.alt_qty} onChange={e => updateDetailRow(idx, { alt_qty: e.target.value })} /> : <span className="text-gray-300 text-xs">—</span>}
                                             </td>
-                                            <td className={`px-1 py-1 ${isVisible('alt_unit_id', 'detail') ? '' : 'hidden'}`}>
+                                            <td className={`px-1 py-1 ${(anyAlt && isVisible('alt_unit_id', 'detail')) ? '' : 'hidden'}`}>
                                                 {productIsFixedDualUom(d.product_id) ? <span className="text-gray-300 text-xs">(above)</span> : productHasAltUnits(d.product_id) ? (
                                                 <select disabled={efc.isReadonly('alt_unit_id', 'detail')} className="w-full border rounded px-1.5 py-1" value={d.alt_unit_id} onChange={e => updateDetailRow(idx, { alt_unit_id: e.target.value })}>
                                                     <option value="">Unit</option>
@@ -832,10 +850,10 @@ export default function PurchaseGrn() {
                                                 </select>
                                                 ) : <span className="text-gray-300 text-xs">—</span>}
                                             </td>
-                                            <td className={`px-1 py-1 ${isVisible('alt1_qty', 'detail') ? '' : 'hidden'}`}>
+                                            <td className={`px-1 py-1 ${(anyAlt && isVisible('alt1_qty', 'detail')) ? '' : 'hidden'}`}>
                                                 {productHasAltUnits(d.product_id) ? <input type="number" step="0.0001" className="w-full border rounded px-1.5 py-1" value={d.alt1_qty} onChange={e => updateDetailRow(idx, { alt1_qty: e.target.value })} /> : <span className="text-gray-300 text-xs">—</span>}
                                             </td>
-                                            <td className={`px-1 py-1 ${isVisible('alt1_unit_id', 'detail') ? '' : 'hidden'}`}>
+                                            <td className={`px-1 py-1 ${(anyAlt && isVisible('alt1_unit_id', 'detail')) ? '' : 'hidden'}`}>
                                                 {productHasAltUnits(d.product_id) ? (
                                                 <select className="w-full border rounded px-1.5 py-1" value={d.alt1_unit_id} onChange={e => updateDetailRow(idx, { alt1_unit_id: e.target.value })}>
                                                     <option value="">Unit</option>
@@ -854,285 +872,204 @@ export default function PurchaseGrn() {
                                             </td>
                                             <td className={`px-1 py-1 ${isVisible('discount_percent', 'detail') ? '' : 'hidden'}`}><input disabled={efc.isReadonly('discount_percent', 'detail')} type="number" step="0.01" className="w-full border rounded px-1.5 py-1" value={d.discount_percent} onChange={e => updateDetailRow(idx, { discount_percent: e.target.value })} /></td>
                                             <td className={`px-1 py-1 ${isVisible('tax_percent', 'detail') ? '' : 'hidden'}`}><input disabled={efc.isReadonly('tax_percent', 'detail')} type="number" step="0.01" className="w-full border rounded px-1.5 py-1" value={d.tax_percent} onChange={e => updateDetailRow(idx, { tax_percent: e.target.value })} /></td>
-                                            <td className="px-1 py-1 text-gray-500">{lineAmount(d).toFixed(2)}</td>
+                                            <td className="px-1 py-1 r">{d.product_id ? lineGross(d).toFixed(2) : ''}</td>
+                                            <td className="px-1 py-1 r font-semibold">{d.product_id ? lineAmount(d).toFixed(2) : ''}</td>
                                             <td className={`px-1 py-1 ${isVisible('barcode', 'detail') ? '' : 'hidden'}`}><input disabled={efc.isReadonly('barcode', 'detail')} className="w-full border rounded px-1.5 py-1" value={d.barcode} onChange={e => updateDetailRow(idx, { barcode: e.target.value })} /></td>
                                             <td className="px-1 py-1 text-xs text-gray-500">{d.source_doc_no || (d.source_requisition_detail_id || d.source_quotation_detail_id || d.source_order_detail_id ? '…' : '—')}</td>
                                             <td className={`px-1 py-1 ${isVisible('narration', 'detail') ? '' : 'hidden'}`}><input disabled={efc.isReadonly('narration', 'detail')} className="w-full border rounded px-1.5 py-1" value={d.narration} onChange={e => updateDetailRow(idx, { narration: e.target.value })} /></td>
-                                            {inlineTerms ? termCols.map(c => { const on = (d.billing_term_ids || []).includes(c.term_id); const pos = (d.billing_term_ids || []).indexOf(c.term_id); const amt = on ? lineTermPreviews[idx]?.lines?.[pos]?.amount : null; return (<td key={c.key} className="px-1 py-1 whitespace-nowrap"><input type="checkbox" checked={on} onChange={() => updateDetailRow(idx, { billing_term_ids: on ? d.billing_term_ids.filter(x => x !== c.term_id) : [...(d.billing_term_ids || []), c.term_id] })} /> <span className="text-xs">{amt !== null && amt !== undefined ? Number(amt).toFixed(2) : ''}</span></td>); }) : (<td className="px-1 py-1"><button type="button" tabIndex={-1} onClick={() => setProductTermModalIndexes([idx])} className="text-blue-600 text-xs underline">
-{(d.billing_term_ids || []).length > 0 ? `Term (${d.billing_term_ids.length})` : 'Term'}
+                                            {inlineTerms ? termCols.map(c => { const on = (d.billing_term_ids || []).includes(c.term_id); const pos = (d.billing_term_ids || []).indexOf(c.term_id); const amt = on ? lineTermPreviews[idx]?.lines?.[pos]?.amount : null; return (<td key={c.key} className="px-1 py-1 whitespace-nowrap"><input type="checkbox" checked={on} onChange={() => updateDetailRow(idx, { billing_term_ids: on ? d.billing_term_ids.filter(x => x !== c.term_id) : [...(d.billing_term_ids || []), c.term_id] })} /> <span className="text-xs">{amt !== null && amt !== undefined ? Number(amt).toFixed(2) : ''}</span></td>); }) : (<td className="px-1 py-1"><button type="button" tabIndex={-1} onClick={() => setProductTermModalIndexes([idx])} className="fin-term-btn" title="Product terms of this line">
+{lineTermPreviews[idx]?.total !== undefined ? (lineTermPreviews[idx].total - (Number(d.qty) || 0) * (Number(d.rate) || 0)).toFixed(2) : '…'}
 </button></td>)}
                                             <td className="px-1 py-1"><button type="button" tabIndex={-1} onClick={() => removeDetailRow(idx)} className="text-red-500 text-xs">✕</button></td>
                                         </tr>
                                     ))}
+                                    {Array.from({ length: Math.max(0, 10 - form.details.length) }).map((_, i) => (
+                                        <tr key={`f${i}`} className="filler" onClick={addDetailRow} title="Click to add a line"><td className="sno">{form.details.length + i + 1}</td><td colSpan={24} /></tr>
+                                    ))}
                                 </tbody>
+                                <tfoot><tr><td colSpan={25}><span className="fin-total-cap" style={{ marginLeft: 260 }}>Total in (Nrs)&gt;</span>&nbsp;&nbsp; Qty <b>{totalQty.toFixed(3)}</b> &nbsp;·&nbsp; Gross <b>{form.details.reduce((a, d) => a + (d.product_id ? lineGross(d) : 0), 0).toFixed(2)}</b> &nbsp;·&nbsp; Amount <b>{grandTotal.toFixed(2)}</b></td></tr></tfoot>
                             </table>
                         </div>
-                        <div className="flex justify-between items-center mt-2">
-                            <div className="flex items-center gap-3">
-                                <button type="button" onClick={addDetailRow} className="text-xs text-blue-600">➕ Add Line (or press Enter on the last field)</button>
-                                <button
-                                    type="button"
-                                    onClick={() => setProductTermModalIndexes(selectedRowIndexes.length > 0 ? selectedRowIndexes : form.details.map((_, i) => i))}
-                                    className="text-xs text-purple-600"
-                                >
-                                    🏷️ Product Term ({selectedRowIndexes.length > 0 ? `${selectedRowIndexes.length} selected` : 'all rows'})
-                                </button>
-                            </div>
-                            <span className="text-sm font-semibold">Total: {grandTotal.toFixed(2)}</span>
+                        <div className="flex items-center gap-2 mt-1 text-xs text-gray-600">
+                            <button type="button" className="nav-btn small" onClick={addDetailRow}>➕ Add line</button>
+                            <span>Enter on the last field adds a line · Term: product-wise terms · tick lines (SNo.) and use Product Term to set them together</span>
                         </div>
                     </div>
 
-                    {/* ==================== BILLING TERMS ==================== */}
-                    {billingTerms.length > 0 && (
-                        <div className="border-t pt-4">
-                            <h2 className="font-semibold text-sm text-gray-500 uppercase mb-3">Billing Terms</h2>
-                            <p className="text-xs text-gray-400 mb-2">Same calculation engine as Billing Term Management's own Test Formula - pick any that apply, the adjustment previews live below.</p>
-                            <div className="grid grid-cols-1 md:grid-cols-2 gap-2 mb-3">
-                                {billingTerms.map(t => (
-                                    <label key={t.id} className="flex flex-wrap items-center gap-2 text-sm border rounded-lg px-3 py-2">
-                                        <input type="checkbox" data-enter-skip="true" checked={form.billing_term_ids.includes(t.id)} onChange={() => toggleBillingTerm(t.id)} />
-                                        {t.term_name} <span className="text-xs text-gray-400">({t.term_code})</span>
-                                        <TermLedgerInfo term={t} isReturn={false} subLedgers={subLedgers} value={(form.term_sub_ledgers || {})[t.id]} onChange={v => setForm(f => ({ ...f, term_sub_ledgers: { ...(f.term_sub_ledgers || {}), [t.id]: v } }))} />
-                                    </label>
-                                ))}
+                    </div>
+
+                    <EntryFooter
+                        title="Purchase GRN"
+                        totals={{ billTerm: billTermAmount, net: grandTotal + billTermAmount, taxable: taxSplit.taxable, tax: taxSplit.tax, nonTaxable: taxSplit.nonTaxable }}
+                        party={{ label: 'Supplier', name: footVendor?.account_name || form.cash_vendor_name, creditLimit: footVendor?.credit_limit }}
+                        remarks={{ value: form.remarks_text, onChange: v => setForm(f => ({ ...f, remarks_text: v })), options: remarks.map(r => r.remark_text) }}
+                        onProductTerm={() => setProductTermModalIndexes(selectedRowIndexes.length > 0 ? selectedRowIndexes : form.details.map((_, i) => i).filter(i => form.details[i].product_id))}
+                        onBillTerm={() => setOverallOpen(true)}
+                        panels={[{ key: 'other', label: 'Other Details', buttons: [{ label: 'Other Details', onClick: () => setActiveTab('general') }, { label: 'Billing/Taxation', onClick: () => setActiveTab('party') }], content: (
+                            <>
+                            <div className="erp-tabs">
+                                <button type="button" className={`erp-tab ${activeTab === 'general' ? 'active' : ''}`} onClick={() => setActiveTab('general')}>General</button>
+                                <button type="button" className={`erp-tab ${activeTab === 'accounts' ? 'active' : ''}`} onClick={() => setActiveTab('accounts')}>Accounts &amp; Allocation</button>
+                                <button type="button" className={`erp-tab ${activeTab === 'party' ? 'active' : ''}`} onClick={() => setActiveTab('party')}>🏠 Vendor Details</button>
+                                <button type="button" className={`erp-tab ${activeTab === 'additional' ? 'active' : ''}`} onClick={() => setActiveTab('additional')}>Additional</button>
                             </div>
-                            {billingPreview && (
-                                <div className="bg-gray-50 rounded-lg p-3 text-sm space-y-1">
-                                    {billingPreview.lines.map((line, i) => (
-                                        <div key={i} className="flex justify-between text-xs text-gray-600">
-                                            <span>{line.term_code}{line.suppressed ? ' (suppressed, zero)' : line.skipped ? ' (disabled)' : ''}</span>
-                                            <span>{line.free_quantity !== undefined ? `+${line.free_quantity} free unit(s)` : (line.amount ?? 0).toFixed(2)}</span>
-                                        </div>
-                                    ))}
-                                    <div className="flex justify-between font-semibold border-t pt-1 mt-1">
-                                        <span>Final Total (Lines + Terms)</span>
-                                        <span>{billingPreview.total.toFixed(2)}</span>
+                            <div className="erp-tab-content">
+                                {activeTab === 'party' && <PartyDetailsPanel partyId={form.vendor_ledger_id} partyLabel="Vendor" info={partyInfo} onChange={setPartyInfo} />}
+                                <div className={activeTab === 'general' ? 'grid grid-cols-1 md:grid-cols-4 gap-3' : 'hidden'}>
+                                    <div className={isVisible('agent_id') ? 'erp-field' : 'erp-field hidden'}>
+                                        <label className="erp-label">Agent</label>
+                                        <SearchablePopupSelect
+                                            listKey="purchase_grn_agent_picker"
+                                            columns={[{ key: 'agent_code', label: 'Code' }, { key: 'agent_name', label: 'Name' }]}
+                                            defaultVisibleKeys={['agent_name']}
+                                            items={agents} getId={a => a.id} getLabel={a => a.agent_name}
+                                            searchKeys={['agent_name', 'agent_code']}
+                                            value={form.agent_id} onChange={id => setForm({ ...form, agent_id: id })} placeholder="Select Agent"
+                                            onAddNew={() => openMasterModal('agent')}
+                                            disabled={isReadonly('agent_id')}
+                                        />
+                                    </div>
+                                    <div className={isVisible('currency') ? 'erp-field' : 'erp-field hidden'}>
+                                        <label className="erp-label">Currency</label>
+                                        <input className="erp-input" value={form.currency} onChange={e => setForm({ ...form, currency: e.target.value })} />
+                                    </div>
+                                    <div className={isVisible('due_date') ? 'erp-field' : 'erp-field hidden'}>
+                                        <label className="erp-label">Due Date</label>
+                                        <input type="date" className="erp-input" value={form.due_date} onChange={e => setForm({ ...form, due_date: e.target.value })} />
+                                    </div>
+                                    <div className={isVisible('due_days') ? 'erp-field' : 'erp-field hidden'}>
+                                        <label className="erp-label">Due Days</label>
+                                        <input type="number" className="erp-input" value={form.due_days} onChange={e => setForm({ ...form, due_days: e.target.value })} />
+                                    </div>
+                                    <div className={(settings?.multiWarehouse && isVisible('warehouse_id')) ? 'erp-field' : 'erp-field hidden'}>
+                                        <label className="erp-label">Master Warehouse</label>
+                                        <SearchablePopupSelect
+                                            listKey="purchase_grn_warehouse_picker"
+                                            columns={[{ key: 'warehouse_code', label: 'Code' }, { key: 'warehouse_name', label: 'Name' }]}
+                                            defaultVisibleKeys={['warehouse_name']}
+                                            items={warehouses} getId={w => w.id} getLabel={w => w.warehouse_name}
+                                            searchKeys={['warehouse_name', 'warehouse_code']}
+                                            value={form.warehouse_id} onChange={id => setForm({ ...form, warehouse_id: id })} placeholder="Select Warehouse"
+                                        />
+                                    </div>
+                                    {!editingId && (
+                                        <NumberingCategorySelector voucherType="purchase_grn" value={form.numbering_category_id} onChange={id => setForm({ ...form, numbering_category_id: id })} />
+                                    )}
+                                </div>
+
+                                <div className={activeTab === 'accounts' ? 'grid grid-cols-1 md:grid-cols-4 gap-3' : 'hidden'}>
+                                    <div className={isVisible('goods_account_ledger_id') ? 'erp-field' : 'erp-field hidden'}>
+                                        <label className="erp-label">Goods Account</label>
+                                        <SearchablePopupSelect
+                                            listKey="purchase_grn_goods_account_picker"
+                                            columns={[{ key: 'account_code', label: 'Code' }, { key: 'account_name', label: 'Name' }]}
+                                            defaultVisibleKeys={['account_name']}
+                                            items={lp.filter(ledgers, 'purchase_goods', form.goods_account_ledger_id)} getId={l => l.id} getLabel={l => l.account_name}
+                                            searchKeys={['account_name', 'account_code']}
+                                            value={form.goods_account_ledger_id} onChange={id => setForm({ ...form, goods_account_ledger_id: id, goods_sub_ledger_id: '' })} placeholder="Select Ledger"
+                                        />
+                                    </div>
+                                    <div className={isVisible('goods_sub_ledger_id') ? 'erp-field' : 'erp-field hidden'}>
+                                        <label className="erp-label">Goods Sub-Ledger</label>
+                                        <SearchablePopupSelect
+                                            listKey="purchase_grn_goods_subledger_picker"
+                                            columns={[{ key: 'sub_ledger_code', label: 'Code' }, { key: 'sub_ledger_name', label: 'Name' }]}
+                                            defaultVisibleKeys={['sub_ledger_name']}
+                                            items={subLedgers.filter(s => s.main_ledger_id === form.goods_account_ledger_id)} getId={s => s.id} getLabel={s => s.sub_ledger_name}
+                                            searchKeys={['sub_ledger_name', 'sub_ledger_code']}
+                                            value={form.goods_sub_ledger_id} onChange={id => setForm({ ...form, goods_sub_ledger_id: id })} placeholder="Select Sub-Ledger"
+                                        />
+                                    </div>
+                                    <div className={isVisible('rate_type') ? 'erp-field' : 'erp-field hidden'}>
+                                        <label className="erp-label">Rate Type</label>
+                                        <select className="erp-select" value={form.rate_type} onChange={e => setForm({ ...form, rate_type: e.target.value })}>
+                                            <option value="exclusive">Exclusive of Tax</option>
+                                            <option value="inclusive">Inclusive of Tax</option>
+                                        </select>
+                                    </div>
+                                    <div className={isVisible('cost_center_id') ? 'erp-field' : 'erp-field hidden'}>
+                                        <label className="erp-label">Cost Center</label>
+                                        <SearchablePopupSelect
+                                            listKey="purchase_grn_cost_center_picker"
+                                            columns={[{ key: 'cost_center_code', label: 'Code' }, { key: 'cost_center_name', label: 'Name' }]}
+                                            defaultVisibleKeys={['cost_center_name']}
+                                            items={costCenters} getId={c => c.id} getLabel={c => c.cost_center_name}
+                                            searchKeys={['cost_center_name', 'cost_center_code']}
+                                            value={form.cost_center_id} onChange={id => setForm({ ...form, cost_center_id: id })} placeholder="Select Cost Center"
+                                            onAddNew={() => openMasterModal('cost_center')}
+                                        />
+                                    </div>
+                                    <div className={isVisible('business_unit_id') ? 'erp-field' : 'erp-field hidden'}>
+                                        <label className="erp-label">Unit (Business Unit)</label>
+                                        <SearchablePopupSelect
+                                            listKey="purchase_grn_business_unit_picker"
+                                            columns={[{ key: 'unit_code', label: 'Code' }, { key: 'unit_name', label: 'Name' }]}
+                                            defaultVisibleKeys={['unit_name']}
+                                            items={businessUnits} getId={u => u.id} getLabel={u => u.unit_name}
+                                            searchKeys={['unit_name', 'unit_code']}
+                                            value={form.business_unit_id} onChange={id => setForm({ ...form, business_unit_id: id })} placeholder="Select Unit"
+                                            onAddNew={() => openMasterModal('business_unit')}
+                                        />
+                                    </div>
+                                    <div className={isVisible('area_id') ? 'erp-field' : 'erp-field hidden'}>
+                                        <label className="erp-label">Area</label>
+                                        <SearchablePopupSelect
+                                            listKey="purchase_grn_area_picker"
+                                            columns={[{ key: 'area_code', label: 'Code' }, { key: 'area_name', label: 'Name' }]}
+                                            defaultVisibleKeys={['area_name']}
+                                            items={areas} getId={a => a.id} getLabel={a => a.area_name}
+                                            searchKeys={['area_name', 'area_code']}
+                                            value={form.area_id} onChange={id => setForm({ ...form, area_id: id })} placeholder="Select Area"
+                                            onAddNew={() => openMasterModal('area')}
+                                        />
+                                    </div>
+                                    <div className={isVisible('route_id') ? 'erp-field' : 'erp-field hidden'}>
+                                        <label className="erp-label">Route</label>
+                                        <SearchablePopupSelect
+                                            listKey="purchase_grn_route_picker"
+                                            columns={[{ key: 'route_code', label: 'Code' }, { key: 'route_name', label: 'Name' }]}
+                                            defaultVisibleKeys={['route_name']}
+                                            items={routes} getId={r => r.id} getLabel={r => r.route_name}
+                                            searchKeys={['route_name', 'route_code']}
+                                            value={form.route_id} onChange={id => setForm({ ...form, route_id: id })} placeholder="Select Route"
+                                            onAddNew={() => openMasterModal('route')}
+                                        />
                                     </div>
                                 </div>
-                            )}
-                        </div>
-                    )}
 
-                    {/* ==================== SUMMARY (aggregated Product Term amounts) ==================== */}
-                    {/* FEATURE: "product wise term amount should show in
-                        summary automatically" - each line's own applied
-                        terms (set via the "Term" button per row) roll up
-                        here by term code. Editing a Summary amount
-                        redistributes proportionally back down to the
-                        exact lines it came from (their ORIGINAL relative
-                        share is preserved), matching "if changed in
-                        Summary, it goes to product level, portion-based". */}
-                    {summaryRows.length > 0 && (
-                        <div className="border-t pt-4">
-                            <h2 className="font-semibold text-sm text-gray-500 uppercase mb-3">Summary (Overall Term Totals)</h2>
-                            <table className="erp-grid-table max-w-lg">
-                                <thead>
-                                    <tr><th>Term</th><th>Amount</th></tr>
-                                </thead>
-                                <tbody>
-                                    {summaryRows.map(r => (
-                                        <tr key={r.billing_term_id}>
-                                            <td>{r.term_name} <span className="text-xs text-gray-400">({r.term_code})</span></td>
-                                            <td>
-                                                <input
-                                                    type="number" step="0.01" className="erp-input w-32"
-                                                    value={summaryOverrides[r.billing_term_id] !== undefined ? summaryOverrides[r.billing_term_id] : r.original_total.toFixed(2)}
-                                                    onChange={e => setSummaryOverrides(o => ({ ...o, [r.billing_term_id]: e.target.value }))}
-                                                />
-                                            </td>
-                                        </tr>
-                                    ))}
-                                    <tr className="font-semibold border-t">
-                                        <td>Total</td>
-                                        <td>{summaryGrandTotal.toFixed(2)}</td>
-                                    </tr>
-                                </tbody>
-                            </table>
-                            <p className="text-xs text-gray-400 mt-1">Editing an amount here redistributes it proportionally across every line that carries this term, preserving each line's original share.</p>
-                        </div>
-                    )}
-                    </div>
-
-                    {/* ==================== TABS ==================== */}
-                    <div className="erp-tabs">
-                        <button type="button" className={`erp-tab ${activeTab === 'general' ? 'active' : ''}`} onClick={() => setActiveTab('general')}>General</button>
-                        <button type="button" className={`erp-tab ${activeTab === 'accounts' ? 'active' : ''}`} onClick={() => setActiveTab('accounts')}>Accounts &amp; Allocation</button>
-                        <button type="button" className={`erp-tab ${activeTab === 'party' ? 'active' : ''}`} onClick={() => setActiveTab('party')}>🏠 Vendor Details</button>
-                        <button type="button" className={`erp-tab ${activeTab === 'additional' ? 'active' : ''}`} onClick={() => setActiveTab('additional')}>Additional</button>
-                    </div>
-                    <div className="erp-tab-content">
-                        {activeTab === 'party' && <PartyDetailsPanel partyId={form.vendor_ledger_id} partyLabel="Vendor" info={partyInfo} onChange={setPartyInfo} />}
-                        <div className={activeTab === 'general' ? 'grid grid-cols-1 md:grid-cols-4 gap-3' : 'hidden'}>
-                            <div className={isVisible('agent_id') ? 'erp-field' : 'erp-field hidden'}>
-                                <label className="erp-label">Agent</label>
-                                <SearchablePopupSelect
-                                    listKey="purchase_grn_agent_picker"
-                                    columns={[{ key: 'agent_code', label: 'Code' }, { key: 'agent_name', label: 'Name' }]}
-                                    defaultVisibleKeys={['agent_name']}
-                                    items={agents} getId={a => a.id} getLabel={a => a.agent_name}
-                                    searchKeys={['agent_name', 'agent_code']}
-                                    value={form.agent_id} onChange={id => setForm({ ...form, agent_id: id })} placeholder="Select Agent"
-                                    onAddNew={() => openMasterModal('agent')}
-                                    disabled={isReadonly('agent_id')}
-                                />
+                                <div className={activeTab === 'additional' ? 'grid grid-cols-1 md:grid-cols-4 gap-3' : 'hidden'}>
+                                    <div className={isVisible('vendor_challan_no') ? 'erp-field' : 'erp-field hidden'}>
+                                        <label className="erp-label">Vendor Challan No</label>
+                                        <input className="erp-input" value={form.vendor_challan_no} onChange={e => setForm({ ...form, vendor_challan_no: e.target.value })} />
+                                    </div>
+                                    <div className={isVisible('vendor_challan_date') ? 'erp-field' : 'erp-field hidden'}>
+                                        <label className="erp-label">Vendor Challan Date</label>
+                                        <input type="date" className="erp-input" value={form.vendor_challan_date} onChange={e => setForm({ ...form, vendor_challan_date: e.target.value })} />
+                                    </div>
+                                    <div className={`erp-field md:col-span-2 ${isVisible('terms_conditions_id') ? '' : 'hidden'}`}>
+                                        <label className="erp-label">Terms &amp; Conditions</label>
+                                        <SearchablePopupSelect
+                                            listKey="purchase_grn_terms_picker"
+                                            columns={[{ key: 'title', label: 'Title' }]}
+                                            defaultVisibleKeys={['title']}
+                                            items={termsConditions} getId={t => t.id} getLabel={t => t.title}
+                                            searchKeys={['title']}
+                                            value={form.terms_conditions_id} onChange={id => setForm({ ...form, terms_conditions_id: id })} placeholder="Select Terms"
+                                        />
+                                    </div>
+                                </div>
                             </div>
-                            <div className={isVisible('currency') ? 'erp-field' : 'erp-field hidden'}>
-                                <label className="erp-label">Currency</label>
-                                <input className="erp-input" value={form.currency} onChange={e => setForm({ ...form, currency: e.target.value })} />
-                            </div>
-                            <div className={isVisible('due_date') ? 'erp-field' : 'erp-field hidden'}>
-                                <label className="erp-label">Due Date</label>
-                                <input type="date" className="erp-input" value={form.due_date} onChange={e => setForm({ ...form, due_date: e.target.value })} />
-                            </div>
-                            <div className={isVisible('due_days') ? 'erp-field' : 'erp-field hidden'}>
-                                <label className="erp-label">Due Days</label>
-                                <input type="number" className="erp-input" value={form.due_days} onChange={e => setForm({ ...form, due_days: e.target.value })} />
-                            </div>
-                            <div className={(settings?.multiWarehouse && isVisible('warehouse_id')) ? 'erp-field' : 'erp-field hidden'}>
-                                <label className="erp-label">Master Warehouse</label>
-                                <SearchablePopupSelect
-                                    listKey="purchase_grn_warehouse_picker"
-                                    columns={[{ key: 'warehouse_code', label: 'Code' }, { key: 'warehouse_name', label: 'Name' }]}
-                                    defaultVisibleKeys={['warehouse_name']}
-                                    items={warehouses} getId={w => w.id} getLabel={w => w.warehouse_name}
-                                    searchKeys={['warehouse_name', 'warehouse_code']}
-                                    value={form.warehouse_id} onChange={id => setForm({ ...form, warehouse_id: id })} placeholder="Select Warehouse"
-                                />
-                            </div>
-                            {!editingId && (
-                                <NumberingCategorySelector voucherType="purchase_grn" value={form.numbering_category_id} onChange={id => setForm({ ...form, numbering_category_id: id })} />
-                            )}
-                        </div>
-
-                        <div className={activeTab === 'accounts' ? 'grid grid-cols-1 md:grid-cols-4 gap-3' : 'hidden'}>
-                            <div className={isVisible('goods_account_ledger_id') ? 'erp-field' : 'erp-field hidden'}>
-                                <label className="erp-label">Goods Account</label>
-                                <SearchablePopupSelect
-                                    listKey="purchase_grn_goods_account_picker"
-                                    columns={[{ key: 'account_code', label: 'Code' }, { key: 'account_name', label: 'Name' }]}
-                                    defaultVisibleKeys={['account_name']}
-                                    items={lp.filter(ledgers, 'purchase_goods', form.goods_account_ledger_id)} getId={l => l.id} getLabel={l => l.account_name}
-                                    searchKeys={['account_name', 'account_code']}
-                                    value={form.goods_account_ledger_id} onChange={id => setForm({ ...form, goods_account_ledger_id: id, goods_sub_ledger_id: '' })} placeholder="Select Ledger"
-                                />
-                            </div>
-                            <div className={isVisible('goods_sub_ledger_id') ? 'erp-field' : 'erp-field hidden'}>
-                                <label className="erp-label">Goods Sub-Ledger</label>
-                                <SearchablePopupSelect
-                                    listKey="purchase_grn_goods_subledger_picker"
-                                    columns={[{ key: 'sub_ledger_code', label: 'Code' }, { key: 'sub_ledger_name', label: 'Name' }]}
-                                    defaultVisibleKeys={['sub_ledger_name']}
-                                    items={subLedgers.filter(s => s.main_ledger_id === form.goods_account_ledger_id)} getId={s => s.id} getLabel={s => s.sub_ledger_name}
-                                    searchKeys={['sub_ledger_name', 'sub_ledger_code']}
-                                    value={form.goods_sub_ledger_id} onChange={id => setForm({ ...form, goods_sub_ledger_id: id })} placeholder="Select Sub-Ledger"
-                                />
-                            </div>
-                            <div className={isVisible('rate_type') ? 'erp-field' : 'erp-field hidden'}>
-                                <label className="erp-label">Rate Type</label>
-                                <select className="erp-select" value={form.rate_type} onChange={e => setForm({ ...form, rate_type: e.target.value })}>
-                                    <option value="exclusive">Exclusive of Tax</option>
-                                    <option value="inclusive">Inclusive of Tax</option>
-                                </select>
-                            </div>
-                            <div className={isVisible('cost_center_id') ? 'erp-field' : 'erp-field hidden'}>
-                                <label className="erp-label">Cost Center</label>
-                                <SearchablePopupSelect
-                                    listKey="purchase_grn_cost_center_picker"
-                                    columns={[{ key: 'cost_center_code', label: 'Code' }, { key: 'cost_center_name', label: 'Name' }]}
-                                    defaultVisibleKeys={['cost_center_name']}
-                                    items={costCenters} getId={c => c.id} getLabel={c => c.cost_center_name}
-                                    searchKeys={['cost_center_name', 'cost_center_code']}
-                                    value={form.cost_center_id} onChange={id => setForm({ ...form, cost_center_id: id })} placeholder="Select Cost Center"
-                                    onAddNew={() => openMasterModal('cost_center')}
-                                />
-                            </div>
-                            <div className={isVisible('business_unit_id') ? 'erp-field' : 'erp-field hidden'}>
-                                <label className="erp-label">Unit (Business Unit)</label>
-                                <SearchablePopupSelect
-                                    listKey="purchase_grn_business_unit_picker"
-                                    columns={[{ key: 'unit_code', label: 'Code' }, { key: 'unit_name', label: 'Name' }]}
-                                    defaultVisibleKeys={['unit_name']}
-                                    items={businessUnits} getId={u => u.id} getLabel={u => u.unit_name}
-                                    searchKeys={['unit_name', 'unit_code']}
-                                    value={form.business_unit_id} onChange={id => setForm({ ...form, business_unit_id: id })} placeholder="Select Unit"
-                                    onAddNew={() => openMasterModal('business_unit')}
-                                />
-                            </div>
-                            <div className={isVisible('area_id') ? 'erp-field' : 'erp-field hidden'}>
-                                <label className="erp-label">Area</label>
-                                <SearchablePopupSelect
-                                    listKey="purchase_grn_area_picker"
-                                    columns={[{ key: 'area_code', label: 'Code' }, { key: 'area_name', label: 'Name' }]}
-                                    defaultVisibleKeys={['area_name']}
-                                    items={areas} getId={a => a.id} getLabel={a => a.area_name}
-                                    searchKeys={['area_name', 'area_code']}
-                                    value={form.area_id} onChange={id => setForm({ ...form, area_id: id })} placeholder="Select Area"
-                                    onAddNew={() => openMasterModal('area')}
-                                />
-                            </div>
-                            <div className={isVisible('route_id') ? 'erp-field' : 'erp-field hidden'}>
-                                <label className="erp-label">Route</label>
-                                <SearchablePopupSelect
-                                    listKey="purchase_grn_route_picker"
-                                    columns={[{ key: 'route_code', label: 'Code' }, { key: 'route_name', label: 'Name' }]}
-                                    defaultVisibleKeys={['route_name']}
-                                    items={routes} getId={r => r.id} getLabel={r => r.route_name}
-                                    searchKeys={['route_name', 'route_code']}
-                                    value={form.route_id} onChange={id => setForm({ ...form, route_id: id })} placeholder="Select Route"
-                                    onAddNew={() => openMasterModal('route')}
-                                />
-                            </div>
-                        </div>
-
-                        <div className={activeTab === 'additional' ? 'grid grid-cols-1 md:grid-cols-4 gap-3' : 'hidden'}>
-                            <div className={isVisible('vendor_challan_no') ? 'erp-field' : 'erp-field hidden'}>
-                                <label className="erp-label">Vendor Challan No</label>
-                                <input className="erp-input" value={form.vendor_challan_no} onChange={e => setForm({ ...form, vendor_challan_no: e.target.value })} />
-                            </div>
-                            <div className={isVisible('vendor_challan_date') ? 'erp-field' : 'erp-field hidden'}>
-                                <label className="erp-label">Vendor Challan Date</label>
-                                <input type="date" className="erp-input" value={form.vendor_challan_date} onChange={e => setForm({ ...form, vendor_challan_date: e.target.value })} />
-                            </div>
-                            <div className={`erp-field md:col-span-2 ${isVisible('terms_conditions_id') ? '' : 'hidden'}`}>
-                                <label className="erp-label">Terms &amp; Conditions</label>
-                                <SearchablePopupSelect
-                                    listKey="purchase_grn_terms_picker"
-                                    columns={[{ key: 'title', label: 'Title' }]}
-                                    defaultVisibleKeys={['title']}
-                                    items={termsConditions} getId={t => t.id} getLabel={t => t.title}
-                                    searchKeys={['title']}
-                                    value={form.terms_conditions_id} onChange={id => setForm({ ...form, terms_conditions_id: id })} placeholder="Select Terms"
-                                />
-                            </div>
-                        </div>
-                    </div>
-                    <div className="erp-bottombar">
-                        <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-3">
-                            <div className="erp-field">
-                                <label className="erp-label">Remarks <span className="hint">(pick from list or type - editable either way)</span></label>
-                                <input
-                                    list="remarks-suggestions"
-                                    className="erp-input"
-                                    value={form.remarks_text}
-                                    onChange={e => setForm({ ...form, remarks_text: e.target.value })}
-                                    placeholder="Type, or pick a saved remark"
-                                />
-                                <datalist id="remarks-suggestions">
-                                    {remarks.map(r => <option key={r.id} value={r.remark_text} />)}
-                                </datalist>
-                            </div>
-                            <div className={`erp-field ${isVisible('narration') ? '' : 'hidden'}`}>
-                                <label className="erp-label">Narration</label>
-                                <input className="erp-input" value={form.narration} onChange={e => setForm({ ...form, narration: e.target.value })} />
-                            </div>
-                        </div>
-                        <div className="erp-bottombar-actions">
-                            <HoldButtons voucherType="purchase_grn" form={form} disabled={!!editingId} onRecall={p => { if (p) { setForm(p); setEditingId(null); setShowForm(true); } else resetForm(); }} />
-                            <button type="button" onClick={() => { resetForm(); setShowForm(false); }} className="erp-btn">Cancel</button>
+                            </>
+                        ) }]}
+                        actions={<>
+                            <HoldButtons hotkey voucherType="purchase_grn" form={form} disabled={!!editingId} onRecall={p => { if (p) { setForm(p); setEditingId(null); setShowForm(true); } else resetForm(); }} />
                             <button type="button" onClick={e => handleSubmit(e, true)} className="erp-btn">💾 Save as Draft</button>
-                            <button type="submit" className="erp-btn primary">{editingId ? 'Update' : 'Create'} GRN</button>
-                        </div>
-                    </div>
+                            <button type="submit" className="erp-btn primary">✔ {editingId ? 'Update' : 'Ok'}</button>
+                            <button type="button" onClick={() => { resetForm(); setShowForm(false); }} className="erp-btn">✖ Cancel</button>
+                        </>}
+                    >
+                        <div className={`fin-row ${isVisible('narration') ? '' : 'hidden'}`}><label>Narration</label><input className="fin-box wide edit" value={form.narration} onChange={e => setForm({ ...form, narration: e.target.value })} /></div>
+                    </EntryFooter>
                 </form>
             )}
         </div>
@@ -1193,81 +1130,21 @@ export default function PurchaseGrn() {
                 </div>
             )}
 
-            {/* ==================== PRODUCT TERM MODAL (per-line) ==================== */}
-            {productTermModalIndexes !== null && productTermModalIndexes.length > 0 && (() => {
-                const targetLines = productTermModalIndexes.map(idx => ({ idx, line: form.details[idx] })).filter(t => t.line);
-                const lineBasicOf = (line) => (Number(line.qty) || 0) * (Number(line.rate) || 0);
-                const totalBasic = targetLines.reduce((s, t) => s + lineBasicOf(t.line), 0);
-                const totalNetTermAmount = targetLines.reduce((s, t) => {
-                    const preview = lineTermPreviews[t.idx];
-                    return s + (preview?.total !== undefined ? preview.total - lineBasicOf(t.line) : 0);
-                }, 0);
-                return (
-                    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                        <div className="bg-white rounded-xl w-full max-w-2xl max-h-[85vh] overflow-y-auto">
-                            <div className="erp-header">
-                                <span className="erp-header-title">Product Term — {targetLines.length} Line{targetLines.length > 1 ? 's' : ''} Selected</span>
-                            </div>
-                            <div className="p-5">
-                                <div className="max-h-32 overflow-y-auto border rounded-lg mb-4">
-                                    <table className="w-full text-xs">
-                                        <thead><tr className="text-gray-500 uppercase"><th className="text-left px-2 py-1">Line</th><th className="text-left px-2 py-1">Product</th><th className="text-right px-2 py-1">Qty</th><th className="text-right px-2 py-1">Basic Value</th></tr></thead>
-                                        <tbody>
-                                            {targetLines.map(({ idx, line }) => (
-                                                <tr key={idx} className="border-t">
-                                                    <td className="px-2 py-1">{idx + 1}</td>
-                                                    <td className="px-2 py-1">{line.product_name_snapshot || '—'}</td>
-                                                    <td className="px-2 py-1 text-right">{line.qty || 0}</td>
-                                                    <td className="px-2 py-1 text-right">{lineBasicOf(line).toFixed(2)}</td>
-                                                </tr>
-                                            ))}
-                                        </tbody>
-                                    </table>
-                                </div>
-                                <div className="erp-field mb-4">
-                                    <label className="erp-label">Combined Basic Value</label>
-                                    <input className="erp-input" disabled value={totalBasic.toFixed(2)} />
-                                </div>
-                                <p className="text-xs font-semibold text-slate-500 uppercase mb-2">
-                                    Applicable Terms <span className="text-gray-400 normal-case">(checking a term applies it to every line above at once)</span>
-                                </p>
-                                <div className="space-y-1.5">
-                                    {billingTerms.map(t => {
-                                        const checkedCount = targetLines.filter(({ line }) => (line.billing_term_ids || []).includes(t.id)).length;
-                                        const allChecked = checkedCount === targetLines.length;
-                                        const someChecked = checkedCount > 0 && !allChecked;
-                                        return (
-                                            <label key={t.id} className="flex flex-wrap items-center justify-between gap-2 text-sm border rounded-lg px-3 py-2">
-                                                <span className="flex items-center gap-2">
-                                                    <input
-                                                        type="checkbox" data-enter-skip="true" checked={allChecked}
-                                                        ref={el => { if (el) el.indeterminate = someChecked; }}
-                                                        onChange={() => toggleTermForLines(productTermModalIndexes, t.id)}
-                                                    />
-                                                    {t.term_name} <span className="text-xs text-gray-400">({t.term_code})</span>
-                                                </span>
-                                                {someChecked && <span className="text-xs text-amber-600">{checkedCount}/{targetLines.length}</span>}
-                                                <TermLedgerInfo term={t} isReturn={false} subLedgers={subLedgers} value={(form.term_sub_ledgers || {})[t.id]} onChange={v => setForm(f => ({ ...f, term_sub_ledgers: { ...(f.term_sub_ledgers || {}), [t.id]: v } }))} />
-                                            </label>
-                                        );
-                                    })}
-                                    {billingTerms.length === 0 && <p className="text-sm text-gray-400">No Billing Terms are set up for Purchase yet.</p>}
-                                </div>
-                                <div className="flex justify-between font-semibold text-sm border-t pt-2 mt-3">
-                                    <span>Net Term Amount (combined, all selected lines)</span>
-                                    <span>{totalNetTermAmount.toFixed(2)}</span>
-                                </div>
-                            </div>
-                            <div className="erp-bottombar">
-                                <div />
-                                <div className="erp-bottombar-actions">
-                                    <button type="button" onClick={() => setProductTermModalIndexes(null)} className="erp-btn primary">Ok</button>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                );
-            })()}
+            {/* ==================== TERM POP-UPS (FinPro: product wise / over all) ==================== */}
+            {productTermModalIndexes !== null && productTermModalIndexes.length > 0 && (
+                <PurchaseProductTermPopup
+                    title="Purchase GRN (Product wise)" terms={billingTerms} previews={lineTermPreviews}
+                    lines={productTermModalIndexes.map(idx => ({ idx, line: form.details[idx] })).filter(t => t.line)}
+                    productName={productTermModalIndexes.length === 1 ? (products.find(p => p.id === form.details[productTermModalIndexes[0]]?.product_id)?.product_name || '') : `${productTermModalIndexes.length} lines`}
+                    onToggle={id => toggleTermForLines(productTermModalIndexes, id)} subLedgerCell={t => <TermLedgerInfo term={t} isReturn={false} subLedgers={subLedgers} value={(form.term_sub_ledgers || {})[t.id]} onChange={v => setForm(f => ({ ...f, term_sub_ledgers: { ...(f.term_sub_ledgers || {}), [t.id]: v } }))} />}
+                    onClose={() => setProductTermModalIndexes(null)} />
+            )}
+            {overallOpen && (
+                <PurchaseOverallTermPopup
+                    title="Purchase GRN Over All Term(s)" summaryRows={summaryRows} overrides={summaryOverrides} onOverride={(id, v) => setSummaryOverrides(o => ({ ...o, [id]: v }))}
+                    terms={billingTerms} billTermIds={form.billing_term_ids} onToggleBillTerm={toggleBillingTerm} preview={billingPreview} subLedgerCell={t => <TermLedgerInfo term={t} isReturn={false} subLedgers={subLedgers} value={(form.term_sub_ledgers || {})[t.id]} onChange={v => setForm(f => ({ ...f, term_sub_ledgers: { ...(f.term_sub_ledgers || {}), [t.id]: v } }))} />}
+                    onClose={() => setOverallOpen(false)} />
+            )}
 
             {/* ==================== CASH PARTY BILLING/SHIPPING & TAXATION MODAL ==================== */}
             {/* FEATURE: even without a full Vendor Ledger, a Cash party

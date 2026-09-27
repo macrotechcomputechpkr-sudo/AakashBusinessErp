@@ -113,6 +113,7 @@ export function useEnterKeyNavigation(formRef: RefObject<HTMLFormElement>, optio
             const target = e.target as Field;
             if (target.tagName === 'TEXTAREA') return; // allow multi-line input
             if (target.tagName === 'BUTTON') return;    // let native button behavior run
+            if (target.closest && target.closest('[data-enter-nav="off"]')) return; // the field moves focus itself (e.g. Short Name code cell)
             const form = attachedRef.current;
             if (!form) return;
             const visible = getVisibleFocusable(form);

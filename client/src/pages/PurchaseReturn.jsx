@@ -27,6 +27,8 @@ import PendingDocsPanel, { mergePulled } from '../components/entry/PendingDocsPa
 import { PartyDetailsPanel, emptyPartyInfo, savePartyInfo, partyInfoFromDoc } from '../components/entry/PartyFooterTabs';
 import { CodeCell } from '../components/entry/SalesLineGrid';
 import DocActions, { HoldButtons } from '../components/entry/DocActions';
+import { EntryFooter, useEntryHotkeys, latestOf } from '../components/entry/FinEntry';
+import { PurchaseProductTermPopup, PurchaseOverallTermPopup } from '../components/entry/PurchaseTermPopups';
 
 const RETURN_REASONS = [
     { value: 'defective', label: 'Defective' },
@@ -278,6 +280,20 @@ export default function PurchaseReturn() {
     }, [form.details, lineTermPreviews, billingTerms]);
     const summaryGrandTotal = summaryRows.reduce((sum, r) => sum + (summaryOverrides[r.billing_term_id] !== undefined ? Number(summaryOverrides[r.billing_term_id]) : r.original_total), 0);
 
+    // FinPro footer: bill terms (preview) + product-term totals, taxable split; F7 copies the last entry
+    const [overallOpen, setOverallOpen] = useState(false);
+    const grossOf = d => (lineAmount(d) / (1 + (Number(d.tax_percent) || 0) / 100));
+    const anyBatch = form.details.some(d => productMaintainsBatch(d.product_id) || productTracksSerial(d.product_id));
+    const billTermAmount = (billingPreview ? billingPreview.total - grandTotal : 0) + summaryGrandTotal;
+    const taxSplit = form.details.reduce((t, d) => {
+        if (!d.product_id) return t;
+        const base = grossOf(d);
+        const tax = d.tax_percent ? base * Number(d.tax_percent) / 100 : 0;
+        return tax > 0 ? { ...t, taxable: t.taxable + base, tax: t.tax + tax } : { ...t, nonTaxable: t.nonTaxable + base };
+    }, { taxable: 0, tax: 0, nonTaxable: 0 });
+    const footVendor = vendors.find(v => v.id === form.vendor_ledger_id);
+    useEntryHotkeys(showForm, { F7: () => { const last = latestOf(rows); if (last) handleCopyFrom(last.id); } });
+
     // FEATURE: "whichever module comes after should be able to fill from
     // FEATURE: Return links to Bill only - a return is a Credit Note
     // against what was actually billed. Only offering
@@ -430,7 +446,7 @@ export default function PurchaseReturn() {
             )}
 
             {showForm && (
-                <form onSubmit={handleSubmit} ref={formRef}>
+                <form onSubmit={handleSubmit} ref={formRef} className="fin-entry">
                     {!editingId && (
                         <details className="mx-3 mt-2 text-xs"><summary className="cursor-pointer text-[#1a4a8a]">Pull from any earlier document (any party)</summary>
                         <div className="erp-topbar grid-cols-1 md:grid-cols-3" style={{ background: '#eff6ff' }}>
@@ -597,31 +613,27 @@ export default function PurchaseReturn() {
                                     <option value="urgent">Urgent</option>
                                 </select>
                             </div>
-                            <div className="erp-field">
-                                <label className="erp-label">Remarks</label>
-                                <input className="erp-input" value={form.remarks_text} onChange={e => setForm({ ...form, remarks_text: e.target.value })} />
-                            </div>
                             <div className={efc.isVisible('narration') ? 'erp-field' : 'erp-field hidden'}>
                                 <label className="erp-label">Narration {efc.isRequired('narration') && <span className="req">*</span>}</label>
                                 <input disabled={efc.isReadonly('narration')} className="erp-input" value={form.narration} onChange={e => setForm({ ...form, narration: e.target.value })} />
                             </div>
                         </div>
 
-                        <h2 className="font-semibold text-sm text-gray-500 uppercase mb-2">Details</h2>
-                        <div className="overflow-x-auto">
-                            <table className="erp-grid-table min-w-[1100px]">
+                        <div className="fin-grid-wrap">
+                            <table className="fin-grid" style={{ minWidth: 1100 }}>
                                 <thead>
                                     <tr>
-                                        <th className="w-6"></th>
-                                        <th className="text-left px-1 py-1">Code / Barcode</th>
-                                        <th className="w-56">Product</th>
+                                        <th className="sno">SNo.</th>
+                                        <th>Short Name</th>
+                                        <th className="w-56">Name</th>
                                         <th className={`w-40 ${(settings?.multiWarehouse && efc.isVisible('warehouse_id', 'detail')) ? '' : 'hidden'}`}>Details Warehouse</th>
-                                        <th className={`w-28 ${efc.isVisible('batch_no', 'detail') ? '' : 'hidden'}`}>Batch No</th>
+                                        <th className={`w-28 ${(anyBatch && efc.isVisible('batch_no', 'detail')) ? '' : 'hidden'}`}>Batch No</th>
                                         <th className={`w-24 ${efc.isVisible('qty', 'detail') ? '' : 'hidden'}`}>Qty</th>
                                         <th className={`w-32 ${efc.isVisible('uom_id', 'detail') ? '' : 'hidden'}`}>UOM</th>
                                         <th className={`w-24 ${efc.isVisible('rate', 'detail') ? '' : 'hidden'}`}>Rate</th>
                                         <th className={`w-20 ${efc.isVisible('tax_percent', 'detail') ? '' : 'hidden'}`}>Tax %</th>
-                                        <th className="w-24">Amount</th>
+                                        <th className="r">Gross Amt.</th>
+                                        <th className="r">Amount</th>
                                         <th className="w-32">Ref No</th>
                                         <th className={`w-40 ${efc.isVisible('line_reason', 'detail') ? '' : 'hidden'}`}>Line Reason</th>
                                         {inlineTerms ? termCols.map(c => <th key={c.key} className="text-left px-1 py-1">{c.label}</th>) : <th className="w-20">Term</th>}
@@ -630,27 +642,15 @@ export default function PurchaseReturn() {
                                 </thead>
                                 <tbody>
                                     {form.details.map((d, idx) => (
-                                        <tr key={idx}>
-                                            <td>
+                                        <tr key={idx} className="line">
+                                            <td className="sno whitespace-nowrap">
                                                 <input
-                                                    type="checkbox"
+                                                    type="checkbox" tabIndex={-1}
                                                     checked={selectedRowIndexes.includes(idx)}
                                                     onChange={e => setSelectedRowIndexes(cur => e.target.checked ? [...cur, idx] : cur.filter(i => i !== idx))}
-                                                />
+                                                />{' '}{idx + 1}
                                             </td>
                                             <td className="px-1 py-1"><CodeCell products={filterProductsByCompany(products, form.product_company_id)} product={products.find(p => p.id === d.product_id)} onPick={(pid, uid) => handleProductSelect(idx, pid, uid)} /></td>
-                                            <td className={(settings?.multiWarehouse && efc.isVisible('warehouse_id', 'detail')) ? '' : 'hidden'}>
-                                                <select disabled={efc.isReadonly('warehouse_id', 'detail')} className="erp-select" value={d.warehouse_id} onChange={e => updateDetailRow(idx, { warehouse_id: e.target.value })}>
-                                                    <option value="">Warehouse</option>
-                                                    {warehouses.map(w => <option key={w.id} value={w.id}>{w.warehouse_name}</option>)}
-                                                </select>
-                                            </td>
-                                            <td className={efc.isVisible('batch_no', 'detail') ? '' : 'hidden'}>
-                                                {productMaintainsBatch(d.product_id) ? (
-                                                    <input disabled={efc.isReadonly('batch_no', 'detail')} className="erp-input" value={d.batch_no} onChange={e => updateDetailRow(idx, { batch_no: e.target.value })} placeholder="Batch" />
-                                                ) : <span className="text-gray-300 text-xs">—</span>}
-                                                {productTracksSerial(d.product_id) && <input className="erp-input mt-1" value={d.serial_no || ''} onChange={e => updateDetailRow(idx, { serial_no: e.target.value })} placeholder="Serial No(s)" title="Serial numbers, comma separated - used for serial-wise costing" />}
-                                            </td>
                                             <td onKeyDown={e => handleProductRowKeyDown(e, d.product_id)}>
                                                 <div className="flex items-center gap-1">
                                                     <div className="flex-1">
@@ -665,6 +665,18 @@ export default function PurchaseReturn() {
                                                     </div>
                                                     <button type="button" tabIndex={-1} onClick={() => openProductHistory(d.product_id, false)} title="Last Purchase History (F1)" className="text-gray-400 hover:text-blue-600 text-sm px-1">🕐</button>
                                                 </div>
+                                            </td>
+                                            <td className={(settings?.multiWarehouse && efc.isVisible('warehouse_id', 'detail')) ? '' : 'hidden'}>
+                                                <select disabled={efc.isReadonly('warehouse_id', 'detail')} className="erp-select" value={d.warehouse_id} onChange={e => updateDetailRow(idx, { warehouse_id: e.target.value })}>
+                                                    <option value="">Warehouse</option>
+                                                    {warehouses.map(w => <option key={w.id} value={w.id}>{w.warehouse_name}</option>)}
+                                                </select>
+                                            </td>
+                                            <td className={(anyBatch && efc.isVisible('batch_no', 'detail')) ? '' : 'hidden'}>
+                                                {productMaintainsBatch(d.product_id) ? (
+                                                    <input disabled={efc.isReadonly('batch_no', 'detail')} className="erp-input" value={d.batch_no} onChange={e => updateDetailRow(idx, { batch_no: e.target.value })} placeholder="Batch" />
+                                                ) : <span className="text-gray-300 text-xs">—</span>}
+                                                {productTracksSerial(d.product_id) && <input className="erp-input mt-1" value={d.serial_no || ''} onChange={e => updateDetailRow(idx, { serial_no: e.target.value })} placeholder="Serial No(s)" title="Serial numbers, comma separated - used for serial-wise costing" />}
                                             </td>
                                             <td className={efc.isVisible('qty', 'detail') ? '' : 'hidden'}>
                                                 {productIsFixedDualUom(d.product_id) ? (
@@ -718,78 +730,29 @@ export default function PurchaseReturn() {
                                                 )}
                                             </td>
                                             <td className={efc.isVisible('tax_percent', 'detail') ? '' : 'hidden'}><input disabled={efc.isReadonly('tax_percent', 'detail')} type="number" step="0.01" className="erp-input" value={d.tax_percent} onChange={e => updateDetailRow(idx, { tax_percent: e.target.value })} /></td>
-                                            <td className="text-gray-500">{lineAmount(d).toFixed(2)}</td>
+                                            <td className="r">{d.product_id ? grossOf(d).toFixed(2) : ''}</td>
+                                            <td className="r font-semibold">{d.product_id ? lineAmount(d).toFixed(2) : ''}</td>
                                             <td className="text-xs text-gray-500">{d.source_doc_no || (d.source_bill_detail_id ? '…' : '—')}</td>
                                             <td className={efc.isVisible('line_reason', 'detail') ? '' : 'hidden'}><input disabled={efc.isReadonly('line_reason', 'detail')} className="erp-input" value={d.line_reason} onChange={e => updateDetailRow(idx, { line_reason: e.target.value })} /></td>
-                                            {inlineTerms ? termCols.map(c => { const on = (d.billing_term_ids || []).includes(c.term_id); const pos = (d.billing_term_ids || []).indexOf(c.term_id); const amt = on ? lineTermPreviews[idx]?.lines?.[pos]?.amount : null; return (<td key={c.key} className="px-1 py-1 whitespace-nowrap"><input type="checkbox" checked={on} onChange={() => updateDetailRow(idx, { billing_term_ids: on ? d.billing_term_ids.filter(x => x !== c.term_id) : [...(d.billing_term_ids || []), c.term_id] })} /> <span className="text-xs">{amt !== null && amt !== undefined ? Number(amt).toFixed(2) : ''}</span></td>); }) : (<td><button type="button" tabIndex={-1} onClick={() => setProductTermModalIndexes([idx])} className="text-blue-600 text-xs underline">
-{(d.billing_term_ids || []).length > 0 ? `Term (${d.billing_term_ids.length})` : 'Term'}
+                                            {inlineTerms ? termCols.map(c => { const on = (d.billing_term_ids || []).includes(c.term_id); const pos = (d.billing_term_ids || []).indexOf(c.term_id); const amt = on ? lineTermPreviews[idx]?.lines?.[pos]?.amount : null; return (<td key={c.key} className="px-1 py-1 whitespace-nowrap"><input type="checkbox" checked={on} onChange={() => updateDetailRow(idx, { billing_term_ids: on ? d.billing_term_ids.filter(x => x !== c.term_id) : [...(d.billing_term_ids || []), c.term_id] })} /> <span className="text-xs">{amt !== null && amt !== undefined ? Number(amt).toFixed(2) : ''}</span></td>); }) : (<td><button type="button" tabIndex={-1} onClick={() => setProductTermModalIndexes([idx])} className="fin-term-btn" title="Product terms of this line">
+{lineTermPreviews[idx]?.total !== undefined ? (lineTermPreviews[idx].total - (Number(d.qty) || 0) * (Number(d.rate) || 0)).toFixed(2) : '…'}
 </button></td>)}
                                             <td><button type="button" tabIndex={-1} onClick={() => removeDetailRow(idx)} className="text-red-500 text-xs">✕</button></td>
                                         </tr>
                                     ))}
+                                    {Array.from({ length: Math.max(0, 10 - form.details.length) }).map((_, i) => (
+                                        <tr key={`f${i}`} className="filler" onClick={addDetailRow} title="Click to add a line"><td className="sno">{form.details.length + i + 1}</td><td colSpan={16} /></tr>
+                                    ))}
                                 </tbody>
+                                <tfoot><tr><td colSpan={17}><span className="fin-total-cap" style={{ marginLeft: 260 }}>Total in (Nrs)&gt;</span>&nbsp;&nbsp; Qty <b>{totalQty.toFixed(3)}</b> &nbsp;·&nbsp; Gross <b>{form.details.reduce((a, d) => a + (d.product_id ? grossOf(d) : 0), 0).toFixed(2)}</b> &nbsp;·&nbsp; Amount <b>{grandTotal.toFixed(2)}</b></td></tr></tfoot>
                             </table>
                         </div>
-                        <div className="flex justify-between items-center mt-2">
-                            <div className="flex items-center gap-3">
-                                <button type="button" onClick={addDetailRow} className="text-xs text-blue-600">➕ Add Line</button>
-                                <button
-                                    type="button"
-                                    onClick={() => setProductTermModalIndexes(selectedRowIndexes.length > 0 ? selectedRowIndexes : form.details.map((_, i) => i))}
-                                    className="text-xs text-purple-600"
-                                >
-                                    🏷️ Product Term ({selectedRowIndexes.length > 0 ? `${selectedRowIndexes.length} selected` : 'all rows'})
-                                </button>
-                            </div>
-                            <span className="text-sm font-semibold">Total: {grandTotal.toFixed(2)}</span>
+                        <div className="flex items-center gap-2 mt-1 text-xs text-gray-600">
+                            <button type="button" className="nav-btn small" onClick={addDetailRow}>➕ Add line</button>
+                            <span>Enter on the last field adds a line · Term: product-wise terms · tick lines (SNo.) and use Product Term to set them together</span>
                         </div>
                     </div>
 
-                    {/* ==================== BILLING TERMS ==================== */}
-                    <div className="erp-card p-4 mb-3">
-                        <h2 className="font-semibold text-sm text-gray-500 uppercase mb-2">Billing Terms (Document-level)</h2>
-                        <div className="space-y-1.5 mb-3">
-                            {billingTerms.map(t => {
-                                const checked = form.billing_term_ids.includes(t.id);
-                                return (
-                                    <label key={t.id} className="flex flex-wrap items-center gap-2 text-sm border rounded-lg px-3 py-2">
-                                        <input type="checkbox" checked={checked} onChange={() => toggleBillingTerm(t.id)} />
-                                        {t.term_name} <span className="text-xs text-gray-400">({t.term_code})</span>
-                                        <TermLedgerInfo term={t} isReturn={true} subLedgers={subLedgers} value={(form.term_sub_ledgers || {})[t.id]} onChange={v => setForm(f => ({ ...f, term_sub_ledgers: { ...(f.term_sub_ledgers || {}), [t.id]: v } }))} />
-                                    </label>
-                                );
-                            })}
-                            {billingTerms.length === 0 && <p className="text-sm text-gray-400">No Billing Terms are set up for Purchase yet.</p>}
-                        </div>
-                        {summaryRows.length > 0 && (
-                            <div className="border rounded-lg overflow-hidden">
-                                <table className="w-full text-sm">
-                                    <thead><tr className="bg-slate-50 text-xs text-gray-500 uppercase"><th className="text-left px-3 py-1.5">Term</th><th className="text-right px-3 py-1.5">Amount</th></tr></thead>
-                                    <tbody>
-                                        {summaryRows.map(r => (
-                                            <tr key={r.billing_term_id} className="border-t">
-                                                <td className="px-3 py-1.5">{r.term_name}</td>
-                                                <td className="px-3 py-1.5 text-right">
-                                                    <input
-                                                        type="number" step="0.01" className="erp-input text-right" style={{ maxWidth: '140px', marginLeft: 'auto' }}
-                                                        value={summaryOverrides[r.billing_term_id] !== undefined ? summaryOverrides[r.billing_term_id] : r.original_total.toFixed(2)}
-                                                        onChange={e => setSummaryOverrides(prev => ({ ...prev, [r.billing_term_id]: e.target.value }))}
-                                                    />
-                                                </td>
-                                            </tr>
-                                        ))}
-                                        <tr className="border-t font-semibold bg-slate-50">
-                                            <td className="px-3 py-1.5">Total</td>
-                                            <td className="px-3 py-1.5 text-right">{summaryGrandTotal.toFixed(2)}</td>
-                                        </tr>
-                                    </tbody>
-                                </table>
-                            </div>
-                        )}
-                        {billingPreview && (
-                            <p className="text-xs text-gray-400 mt-2">Document-level term adjustment (net): {(billingPreview.total !== undefined ? billingPreview.total - grandTotal : 0).toFixed(2)}</p>
-                        )}
-                    </div>
 
                     <BillWiseSettlementPanel
                             productCompanyId={form.product_company_id}
@@ -799,16 +762,21 @@ export default function PurchaseReturn() {
                         onSettlementsChange={setBillWiseSettlements}
                     />
 
-                    <div className="p-3 border-t border-[#aca899]"><p className="nav-label font-semibold mb-1">🏠 Vendor Details</p><PartyDetailsPanel partyId={form.vendor_ledger_id} partyLabel="Vendor" info={partyInfo} onChange={setPartyInfo} /></div>
-                    <div className="erp-bottombar">
-                        <div />
-                        <div className="erp-bottombar-actions">
-                            <HoldButtons voucherType="purchase_return" form={form} disabled={!!editingId} onRecall={p => { if (p) { setForm(p); setEditingId(null); setShowForm(true); } else resetForm(); }} />
-                            <button type="button" onClick={() => { resetForm(); setShowForm(false); }} className="erp-btn">Cancel</button>
+                    <EntryFooter
+                        title="Purchase Return"
+                        totals={{ billTerm: billTermAmount, net: grandTotal + billTermAmount, taxable: taxSplit.taxable, tax: taxSplit.tax, nonTaxable: taxSplit.nonTaxable }}
+                        party={{ label: 'Supplier', name: footVendor?.account_name, creditLimit: footVendor?.credit_limit }}
+                        remarks={{ value: form.remarks_text, onChange: v => setForm(f => ({ ...f, remarks_text: v })) }}
+                        onProductTerm={() => setProductTermModalIndexes(selectedRowIndexes.length > 0 ? selectedRowIndexes : form.details.map((_, i) => i).filter(i => form.details[i].product_id))}
+                        onBillTerm={() => setOverallOpen(true)}
+                        panels={[{ key: 'billing', label: 'Billing/Taxation', content: <PartyDetailsPanel partyId={form.vendor_ledger_id} partyLabel="Vendor" info={partyInfo} onChange={setPartyInfo} /> }]}
+                        actions={<>
+                            <HoldButtons hotkey voucherType="purchase_return" form={form} disabled={!!editingId} onRecall={p => { if (p) { setForm(p); setEditingId(null); setShowForm(true); } else resetForm(); }} />
                             <button type="button" onClick={e => handleSubmit(e, true)} className="erp-btn">💾 Save as Draft</button>
-                            <button type="submit" className="erp-btn primary">{editingId ? 'Update' : 'Create'} Return</button>
-                        </div>
-                    </div>
+                            <button type="submit" className="erp-btn primary">✔ {editingId ? 'Update' : 'Ok'}</button>
+                            <button type="button" onClick={() => { resetForm(); setShowForm(false); }} className="erp-btn">✖ Cancel</button>
+                        </>}
+                    />
                 </form>
             )}
         </div>
@@ -838,80 +806,21 @@ export default function PurchaseReturn() {
             />
         </div>
 
-        {productTermModalIndexes !== null && productTermModalIndexes.length > 0 && (() => {
-            const targetLines = productTermModalIndexes.map(idx => ({ idx, line: form.details[idx] })).filter(t => t.line);
-            const lineBasicOf = (line) => (Number(line.qty) || 0) * (Number(line.rate) || 0);
-            const totalBasic = targetLines.reduce((s, t) => s + lineBasicOf(t.line), 0);
-            const totalNetTermAmount = targetLines.reduce((s, t) => {
-                const preview = lineTermPreviews[t.idx];
-                return s + (preview?.total !== undefined ? preview.total - lineBasicOf(t.line) : 0);
-            }, 0);
-            return (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-xl w-full max-w-2xl max-h-[85vh] overflow-y-auto">
-                        <div className="erp-header">
-                            <span className="erp-header-title">Product Term — {targetLines.length} Line{targetLines.length > 1 ? 's' : ''} Selected</span>
-                        </div>
-                        <div className="p-5">
-                            <div className="max-h-32 overflow-y-auto border rounded-lg mb-4">
-                                <table className="w-full text-xs">
-                                    <thead><tr className="text-gray-500 uppercase"><th className="text-left px-2 py-1">Line</th><th className="text-left px-2 py-1">Product</th><th className="text-right px-2 py-1">Qty</th><th className="text-right px-2 py-1">Basic Value</th></tr></thead>
-                                    <tbody>
-                                        {targetLines.map(({ idx, line }) => (
-                                            <tr key={idx} className="border-t">
-                                                <td className="px-2 py-1">{idx + 1}</td>
-                                                <td className="px-2 py-1">{line.product_name_snapshot || '—'}</td>
-                                                <td className="px-2 py-1 text-right">{line.qty || 0}</td>
-                                                <td className="px-2 py-1 text-right">{lineBasicOf(line).toFixed(2)}</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                            <div className="erp-field mb-4">
-                                <label className="erp-label">Combined Basic Value</label>
-                                <input className="erp-input" disabled value={totalBasic.toFixed(2)} />
-                            </div>
-                            <p className="text-xs font-semibold text-slate-500 uppercase mb-2">
-                                Applicable Terms <span className="text-gray-400 normal-case">(checking a term applies it to every line above at once)</span>
-                            </p>
-                            <div className="space-y-1.5">
-                                {billingTerms.map(t => {
-                                    const checkedCount = targetLines.filter(({ line }) => (line.billing_term_ids || []).includes(t.id)).length;
-                                    const allChecked = checkedCount === targetLines.length;
-                                    const someChecked = checkedCount > 0 && !allChecked;
-                                    return (
-                                        <label key={t.id} className="flex flex-wrap items-center justify-between gap-2 text-sm border rounded-lg px-3 py-2">
-                                            <span className="flex items-center gap-2">
-                                                <input
-                                                    type="checkbox" data-enter-skip="true" checked={allChecked}
-                                                    ref={el => { if (el) el.indeterminate = someChecked; }}
-                                                    onChange={() => toggleTermForLines(productTermModalIndexes, t.id)}
-                                                />
-                                                {t.term_name} <span className="text-xs text-gray-400">({t.term_code})</span>
-                                            </span>
-                                            {someChecked && <span className="text-xs text-amber-600">{checkedCount}/{targetLines.length}</span>}
-                                            <TermLedgerInfo term={t} isReturn={true} subLedgers={subLedgers} value={(form.term_sub_ledgers || {})[t.id]} onChange={v => setForm(f => ({ ...f, term_sub_ledgers: { ...(f.term_sub_ledgers || {}), [t.id]: v } }))} />
-                                        </label>
-                                    );
-                                })}
-                                {billingTerms.length === 0 && <p className="text-sm text-gray-400">No Billing Terms are set up for Purchase yet.</p>}
-                            </div>
-                            <div className="flex justify-between font-semibold text-sm border-t pt-2 mt-3">
-                                <span>Net Term Amount (combined, all selected lines)</span>
-                                <span>{totalNetTermAmount.toFixed(2)}</span>
-                            </div>
-                        </div>
-                        <div className="erp-bottombar">
-                            <div />
-                            <div className="erp-bottombar-actions">
-                                <button type="button" onClick={() => setProductTermModalIndexes(null)} className="erp-btn primary">Ok</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            );
-        })()}
+        {/* ==================== TERM POP-UPS (FinPro: product wise / over all) ==================== */}
+        {productTermModalIndexes !== null && productTermModalIndexes.length > 0 && (
+            <PurchaseProductTermPopup
+                title="Purchase Return (Product wise)" terms={billingTerms} previews={lineTermPreviews}
+                lines={productTermModalIndexes.map(idx => ({ idx, line: form.details[idx] })).filter(t => t.line)}
+                productName={productTermModalIndexes.length === 1 ? (products.find(p => p.id === form.details[productTermModalIndexes[0]]?.product_id)?.product_name || '') : `${productTermModalIndexes.length} lines`}
+                onToggle={id => toggleTermForLines(productTermModalIndexes, id)} subLedgerCell={t => <TermLedgerInfo term={t} isReturn={true} subLedgers={subLedgers} value={(form.term_sub_ledgers || {})[t.id]} onChange={v => setForm(f => ({ ...f, term_sub_ledgers: { ...(f.term_sub_ledgers || {}), [t.id]: v } }))} />}
+                onClose={() => setProductTermModalIndexes(null)} />
+        )}
+        {overallOpen && (
+            <PurchaseOverallTermPopup
+                title="Purchase Return Over All Term(s)" summaryRows={summaryRows} overrides={summaryOverrides} onOverride={(id, v) => setSummaryOverrides(o => ({ ...o, [id]: v }))}
+                terms={billingTerms} billTermIds={form.billing_term_ids} onToggleBillTerm={toggleBillingTerm} preview={billingPreview} subLedgerCell={t => <TermLedgerInfo term={t} isReturn={true} subLedgers={subLedgers} value={(form.term_sub_ledgers || {})[t.id]} onChange={v => setForm(f => ({ ...f, term_sub_ledgers: { ...(f.term_sub_ledgers || {}), [t.id]: v } }))} />}
+                onClose={() => setOverallOpen(false)} />
+        )}
 
         {historyModal && (
             <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
