@@ -23,7 +23,7 @@
 // =============================================
 
 const { loadMasters, fetchAll, inChunks, csv, round2, round4 } = require('./tradeLines');
-const { toBaseQtyFromDual, getDualUomMode } = require('./dualUomCalculation');
+const { toBaseQtyFromDual, getDualUomResolver } = require('./dualUomCalculation');
 
 const VIEWS = ['register', 'details', 'output', 'consumption', 'byproduct', 'variance', 'cost_trend', 'batch', 'bom_cost', 'pending'];
 const GROUPS = {
@@ -56,7 +56,7 @@ function withChildren(ids, byId, parentKey) {
 
 async function loadProduction(c, t, f) {
     const M = await loadMasters(c, t);
-    const dualMode = await getDualUomMode(c);
+    const dualModeOf = await getDualUomResolver(c);
     let orders = await fetchAll(() => {
         let x = c.from('production_orders').select('*').eq('tenant_id', t).in('status', f.statuses);
         if (f.from) x = x.gte('doc_date', f.from);
@@ -87,7 +87,7 @@ async function loadProduction(c, t, f) {
     const whName = Object.fromEntries(whs.map(w => [w.id, w.warehouse_name])), brName = Object.fromEntries(branches.map(b => [b.id, b.branch_name]));
     const baseQty = (pid, qty, uomId, altQty) => {
         const p = M.products[pid] || {};
-        if (p.uom_mode === 'fixed_dual' && altQty) return toBaseQtyFromDual(qty, altQty, M.factor[`${pid}|${p.dual_uom_primary_unit_id}`] || 1, dualMode);
+        if (p.uom_mode === 'fixed_dual' && altQty) return toBaseQtyFromDual(qty, altQty, M.factor[`${pid}|${p.dual_uom_primary_unit_id}`] || 1, dualModeOf(pid));
         return (Number(qty) || 0) * (uomId ? M.factor[`${pid}|${uomId}`] || 1 : 1);
     };
     const termsByLine = {};

@@ -1,7 +1,8 @@
 // =============================================
 // components/entry/DocNumberField.jsx
 // "Voucher No." of an entry: a new entry shows the number it will get from
-// Document Numbering (read-only); a Manual series lets the user type it;
+// Document Numbering (read-only; the chosen, default, or else first active
+// series of the voucher type); a Manual series lets the user type it;
 // a saved entry shows its own number.
 // =============================================
 import React, { useEffect, useState } from 'react';
@@ -23,7 +24,7 @@ export default function DocNumberField({ voucherType, categoryId, docNo, value, 
             <label className="erp-label">{label} {manual ? <span className="req">*</span> : <span className="hint">(automatic)</span>}</label>
             {manual
                 ? <input className="erp-input" value={value || ''} onChange={e => onChange && onChange(e.target.value)} placeholder="Type the number" />
-                : <input className="erp-input nav-input code" readOnly tabIndex={-1} value={docNo || next?.number || (next?.mode === 'system' ? 'Given on save' : '…')} />}
+                : <input className="erp-input nav-input code" readOnly tabIndex={-1} value={docNo || next?.number || (next?.mode === 'system' ? 'System series - given on save' : '…')} />}
         </div>
     );
 }

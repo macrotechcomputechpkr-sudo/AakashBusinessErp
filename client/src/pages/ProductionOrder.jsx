@@ -11,7 +11,7 @@ import SearchablePopupSelect from '../components/SearchablePopupSelect';
 import ReportGrid from '../components/ReportGrid';
 import Layout from '../components/Layout';
 import NumberingCategorySelector from '../components/NumberingCategorySelector';
-import { resolveDualUomEntryMode, onPrimaryQtyChange, onSecondaryQtyChange, validateFixedSecondary, dualBaseQty } from '../utils/dualUomEntryMode';
+import { resolveDualUomEntryMode, onPrimaryQtyChange, onSecondaryQtyChange, validateFixedSecondary, dualBaseQty, productDualMode } from '../utils/dualUomEntryMode';
 import { useEnterKeyNavigation } from '../hooks/useEnterKeyNavigation';
 import { formatDateForDisplay } from '../utils/nepaliDateUtils';
 import UdfValuesModal from '../components/UdfValuesModal';
@@ -35,6 +35,9 @@ const emptyForm = {
 const EFC_RENDERED_KEYS = ['doc_date', 'narration', 'output_batch_no', 'output_product_id', 'output_qty', 'output_warehouse_id', 'source_warehouse_id'];
 
 export default function ProductionOrder() {
+    const [dualUomEntryMode, setDualUomEntryMode] = useState({ mode: 'fixed', reverseEnabled: false });
+    // a product's own dual-UOM entry mode (Product Master) over System Control's
+    const dualModeOf = pid => productDualMode(products.find(p => p.id === pid), dualUomEntryMode);
     const { authFetch } = useAuth();
     const efc = useEntryFieldControls('production', EFC_RENDERED_KEYS);
     const [rows, setRows] = useState([]);
@@ -62,7 +65,6 @@ export default function ProductionOrder() {
     const [costCenters, setCostCenters] = useState([]);
     const [businessUnits, setBusinessUnits] = useState([]);
     const [remarks, setRemarks] = useState([]);
-    const [dualUomEntryMode, setDualUomEntryMode] = useState({ mode: 'fixed', reverseEnabled: false });
 
     const formRef = useRef(null);
     useEnterKeyNavigation(formRef, { onLastField: () => { addRawMaterialRow(); return true; } });
@@ -134,7 +136,7 @@ export default function ProductionOrder() {
     const rawMaterialBaseAmount = (r) => {
         if (productIsFixedDualUom(r.product_id) && r.alt_qty) {
             const factor = dualConversionFactor(r.product_id);
-            const totalBaseQty = dualBaseQty(r.qty, r.alt_qty, factor, dualUomEntryMode.mode);
+            const totalBaseQty = dualBaseQty(r.qty, r.alt_qty, factor, dualModeOf(r.product_id).mode);
             return r.rate_basis === 'primary' ? (totalBaseQty / factor) * (Number(r.cost_rate) || 0) : totalBaseQty * (Number(r.cost_rate) || 0);
         }
         return (Number(r.qty) || 0) * (Number(r.cost_rate) || 0);
@@ -367,7 +369,7 @@ export default function ProductionOrder() {
                                         <input disabled={efc.isReadonly('output_qty')}
                                             type="number" step="0.0001" className="erp-input" value={form.output_qty} required
                                             onChange={e => {
-                                                if (dualUomEntryMode.mode === 'auto_convert') {
+                                                if (dualModeOf(form.output_product_id).mode === 'auto_convert') {
                                                     const { qty, alt_qty } = onPrimaryQtyChange(e.target.value, dualConversionFactor(form.output_product_id));
                                                     setForm({ ...form, output_qty: qty, output_alt_qty: alt_qty });
                                                 } else {
@@ -381,8 +383,8 @@ export default function ProductionOrder() {
                                         <input
                                             type="number" step="0.0001" className="erp-input" value={form.output_alt_qty} placeholder="0"
                                             onChange={e => {
-                                                if (dualUomEntryMode.mode === 'auto_convert') {
-                                                    const { qty, alt_qty } = onSecondaryQtyChange(e.target.value, dualConversionFactor(form.output_product_id), dualUomEntryMode.reverseEnabled);
+                                                if (dualModeOf(form.output_product_id).mode === 'auto_convert') {
+                                                    const { qty, alt_qty } = onSecondaryQtyChange(e.target.value, dualConversionFactor(form.output_product_id), dualModeOf(form.output_product_id).reverseEnabled);
                                                     setForm({ ...form, output_qty: qty !== undefined ? qty : form.output_qty, output_alt_qty: alt_qty });
                                                 } else {
                                                     const { value } = validateFixedSecondary(e.target.value, dualConversionFactor(form.output_product_id));
@@ -392,7 +394,7 @@ export default function ProductionOrder() {
                                         />
                                         <span className="text-[10px] text-gray-400">{units.find(u => u.id === form.output_alt_unit_id)?.unit_name || 'Secondary'}</span>
                                     </div>
-                                    {dualUomEntryMode.mode !== 'auto_convert' && validateFixedSecondary(form.output_alt_qty, dualConversionFactor(form.output_product_id)).error && (
+                                    {dualModeOf(form.output_product_id).mode !== 'auto_convert' && validateFixedSecondary(form.output_alt_qty, dualConversionFactor(form.output_product_id)).error && (
                                         <span className="text-[9px] text-red-500 leading-tight">{validateFixedSecondary(form.output_alt_qty, dualConversionFactor(form.output_product_id)).error}</span>
                                     )}
                                 </div>
@@ -552,7 +554,7 @@ export default function ProductionOrder() {
                                                         <div className="flex items-center gap-1">
                                                             <input disabled={efc.isReadonly('qty', 'detail')}
                                                                 type="number" step="0.0001" className="erp-input" style={{ width: '60px' }} value={r.qty}
-                                                                onChange={e => updateRawMaterialRow(idx, dualUomEntryMode.mode === 'auto_convert' ? onPrimaryQtyChange(e.target.value, dualConversionFactor(r.product_id)) : { qty: e.target.value })}
+                                                                onChange={e => updateRawMaterialRow(idx, dualModeOf(r.product_id).mode === 'auto_convert' ? onPrimaryQtyChange(e.target.value, dualConversionFactor(r.product_id)) : { qty: e.target.value })}
                                                             />
                                                             <span className="text-[10px] text-gray-400">{units.find(u => u.id === r.uom_id)?.unit_name || 'Primary'}</span>
                                                         </div>
@@ -560,8 +562,8 @@ export default function ProductionOrder() {
                                                             <input
                                                                 type="number" step="0.0001" className="erp-input" style={{ width: '60px' }} value={r.alt_qty} placeholder="0"
                                                                 onChange={e => {
-                                                                    if (dualUomEntryMode.mode === 'auto_convert') {
-                                                                        updateRawMaterialRow(idx, onSecondaryQtyChange(e.target.value, dualConversionFactor(r.product_id), dualUomEntryMode.reverseEnabled));
+                                                                    if (dualModeOf(r.product_id).mode === 'auto_convert') {
+                                                                        updateRawMaterialRow(idx, onSecondaryQtyChange(e.target.value, dualConversionFactor(r.product_id), dualModeOf(r.product_id).reverseEnabled));
                                                                     } else {
                                                                         const { value } = validateFixedSecondary(e.target.value, dualConversionFactor(r.product_id));
                                                                         updateRawMaterialRow(idx, { alt_qty: value });
@@ -570,7 +572,7 @@ export default function ProductionOrder() {
                                                             />
                                                             <span className="text-[10px] text-gray-400">{units.find(u => u.id === r.alt_unit_id)?.unit_name || 'Secondary'}</span>
                                                         </div>
-                                                        {dualUomEntryMode.mode !== 'auto_convert' && validateFixedSecondary(r.alt_qty, dualConversionFactor(r.product_id)).error && (
+                                                        {dualModeOf(r.product_id).mode !== 'auto_convert' && validateFixedSecondary(r.alt_qty, dualConversionFactor(r.product_id)).error && (
                                                             <span className="text-[9px] text-red-500 leading-tight">{validateFixedSecondary(r.alt_qty, dualConversionFactor(r.product_id)).error}</span>
                                                         )}
                                                     </div>
@@ -646,7 +648,7 @@ export default function ProductionOrder() {
                                         let lineValue;
                                         if (isFixed && productIsFixedDualUom(bp.product_id) && bp.alt_qty) {
                                             const factor = dualConversionFactor(bp.product_id);
-                                            const totalBaseQty = dualBaseQty(bp.qty, bp.alt_qty, factor, dualUomEntryMode.mode);
+                                            const totalBaseQty = dualBaseQty(bp.qty, bp.alt_qty, factor, dualModeOf(bp.product_id).mode);
                                             lineValue = bp.rate_basis === 'primary' ? (totalBaseQty / factor) * (Number(bp.recovery_rate) || 0) : totalBaseQty * (Number(bp.recovery_rate) || 0);
                                         } else {
                                             lineValue = isFixed
@@ -671,7 +673,7 @@ export default function ProductionOrder() {
                                                         <div className="flex items-center gap-1">
                                                             <input
                                                                 type="number" step="0.0001" className="erp-input" style={{ width: '60px' }} value={bp.qty}
-                                                                onChange={e => updateByproductRow(idx, dualUomEntryMode.mode === 'auto_convert' ? onPrimaryQtyChange(e.target.value, dualConversionFactor(bp.product_id)) : { qty: e.target.value })}
+                                                                onChange={e => updateByproductRow(idx, dualModeOf(bp.product_id).mode === 'auto_convert' ? onPrimaryQtyChange(e.target.value, dualConversionFactor(bp.product_id)) : { qty: e.target.value })}
                                                             />
                                                             <span className="text-[10px] text-gray-400">{units.find(u => u.id === bp.uom_id)?.unit_name || 'Primary'}</span>
                                                         </div>
@@ -679,8 +681,8 @@ export default function ProductionOrder() {
                                                             <input
                                                                 type="number" step="0.0001" className="erp-input" style={{ width: '60px' }} value={bp.alt_qty} placeholder="0"
                                                                 onChange={e => {
-                                                                    if (dualUomEntryMode.mode === 'auto_convert') {
-                                                                        updateByproductRow(idx, onSecondaryQtyChange(e.target.value, dualConversionFactor(bp.product_id), dualUomEntryMode.reverseEnabled));
+                                                                    if (dualModeOf(bp.product_id).mode === 'auto_convert') {
+                                                                        updateByproductRow(idx, onSecondaryQtyChange(e.target.value, dualConversionFactor(bp.product_id), dualModeOf(bp.product_id).reverseEnabled));
                                                                     } else {
                                                                         const { value } = validateFixedSecondary(e.target.value, dualConversionFactor(bp.product_id));
                                                                         updateByproductRow(idx, { alt_qty: value });
@@ -689,7 +691,7 @@ export default function ProductionOrder() {
                                                             />
                                                             <span className="text-[10px] text-gray-400">{units.find(u => u.id === bp.alt_unit_id)?.unit_name || 'Secondary'}</span>
                                                         </div>
-                                                        {dualUomEntryMode.mode !== 'auto_convert' && validateFixedSecondary(bp.alt_qty, dualConversionFactor(bp.product_id)).error && (
+                                                        {dualModeOf(bp.product_id).mode !== 'auto_convert' && validateFixedSecondary(bp.alt_qty, dualConversionFactor(bp.product_id)).error && (
                                                             <span className="text-[9px] text-red-500 leading-tight">{validateFixedSecondary(bp.alt_qty, dualConversionFactor(bp.product_id)).error}</span>
                                                         )}
                                                     </div>

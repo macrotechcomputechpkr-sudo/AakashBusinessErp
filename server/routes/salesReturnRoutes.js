@@ -34,7 +34,7 @@ async function getDualUomConfig(tenantClient, productId) {
 async function resolveBaseQtyAndCost(tenantClient, d) {
     const dualConfig = d.alt_qty ? await getDualUomConfig(tenantClient, d.product_id) : null;
     if (dualConfig) {
-        const baseQty = toBaseQtyFromDual(d.qty, d.alt_qty, dualConfig.conversionFactor, await getDualUomMode(tenantClient));
+        const baseQty = toBaseQtyFromDual(d.qty, d.alt_qty, dualConfig.conversionFactor, await getDualUomMode(tenantClient, d.product_id));
         const unitCost = d.rate_basis === 'primary' ? Number(d.rate || 0) / dualConfig.conversionFactor : Number(d.rate || 0);
         return { baseQty, unitCost };
     }
@@ -94,7 +94,7 @@ async function lineAmount(tenantClient, d) {
     let gross;
     if (d.alt_qty) {
         const dualConfig = await getDualUomConfig(tenantClient, d.product_id);
-        gross = dualConfig ? computeDualAmount(d.qty, d.alt_qty, d.rate, d.rate_basis || 'primary', dualConfig.conversionFactor, await getDualUomMode(tenantClient)) : Number(d.qty) * Number(d.rate);
+        gross = dualConfig ? computeDualAmount(d.qty, d.alt_qty, d.rate, d.rate_basis || 'primary', dualConfig.conversionFactor, await getDualUomMode(tenantClient, d.product_id)) : Number(d.qty) * Number(d.rate);
     } else {
         gross = Number(d.qty) * Number(d.rate);
     }

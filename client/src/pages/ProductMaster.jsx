@@ -27,7 +27,7 @@ const emptyBomRow = () => ({ component_product_id: '', quantity_required: '', un
 const emptyForm = {
     product_name: '', short_name: '', item_type: 'trading_item', product_group_id: '', product_company_id: '',
     hs_code: '', is_blocked: false, product_category_ids: [], tags: [],
-    base_unit_id: '', unit_rates: [], uom_mode: 'single', dual_uom_primary_unit_id: '',
+    base_unit_id: '', unit_rates: [], uom_mode: 'single', dual_uom_primary_unit_id: '', dual_auto_convert: null, dual_reverse_conversion: null,
     sales_account_ledger_id: '', purchase_account_ledger_id: '', sales_return_account_ledger_id: '', sales_nonsaleable_return_account_ledger_id: '', purchase_return_account_ledger_id: '', purchase_nonsaleable_return_account_ledger_id: '', sales_sub_ledger_id: '', purchase_sub_ledger_id: '', inventory_account_ledger_id: '', cogs_account_ledger_id: '', discount_account_ledger_id: '',
     default_vendor_id: '', vendor_item_code: '', lead_time_days: 0, default_discount_percent: 0,
     opening_qty: 0, opening_rate: 0, minimum_stock: 0, maximum_stock: 0, reorder_qty: 0, allow_negative_stock: null,
@@ -54,6 +54,10 @@ const TABS = [
 // Account field -> its sub-ledger field (product-level posting, see utils/accountResolver).
 const PRODUCT_ACCOUNT_PURPOSE = { sales_account_ledger_id: 'sales_goods', purchase_account_ledger_id: 'purchase_goods', sales_return_account_ledger_id: 'sales_goods', sales_nonsaleable_return_account_ledger_id: 'sales_goods', purchase_return_account_ledger_id: 'purchase_goods', purchase_nonsaleable_return_account_ledger_id: 'purchase_goods', inventory_account_ledger_id: 'inventory', cogs_account_ledger_id: 'cogs', discount_account_ledger_id: 'discount' };
 const ACCOUNT_SUB = { sales_account_ledger_id: 'sales_sub_ledger_id', purchase_account_ledger_id: 'purchase_sub_ledger_id' };
+
+// dual-UOM entry switches of an item: true / false, or null = follow System Control
+const triValue = v => (v === true ? 'true' : v === false ? 'false' : '');
+const triParse = v => (v === 'true' ? true : v === 'false' ? false : null);
 
 export default function ProductMaster() {
     const { authFetch } = useAuth();
@@ -417,6 +421,26 @@ export default function ProductMaster() {
                                         <p className="text-xs text-amber-600 mt-1">Add a non-base unit row below first (e.g. Carton), with its Conv. Factor to the Base Unit (e.g. Pieces).</p>
                                     )}
                                 </div>
+                            )}
+                            {form.uom_mode === 'fixed_dual' && (
+                                <>
+                                    <div>
+                                        <label className="erp-label">Conversion on entry <span className="hint">(this item only)</span></label>
+                                        <select className="erp-select" value={triValue(form.dual_auto_convert)} onChange={e => setForm({ ...form, dual_auto_convert: triParse(e.target.value) })}>
+                                            <option value="">As System Control</option>
+                                            <option value="true">Yes - typing the first unit fills the second (flexible)</option>
+                                            <option value="false">No - both units typed (fixed)</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="erp-label">Reverse conversion <span className="hint">(this item only)</span></label>
+                                        <select className="erp-select" value={triValue(form.dual_reverse_conversion)} onChange={e => setForm({ ...form, dual_reverse_conversion: triParse(e.target.value) })}>
+                                            <option value="">As System Control</option>
+                                            <option value="true">Yes - typing the second unit works out the first</option>
+                                            <option value="false">No</option>
+                                        </select>
+                                    </div>
+                                </>
                             )}
                         </div>
                         <div className="overflow-x-auto border rounded-lg">

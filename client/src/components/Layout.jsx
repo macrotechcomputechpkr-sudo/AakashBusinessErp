@@ -128,7 +128,7 @@ export default function Layout({ children }) {
     const q = search.trim().toLowerCase();
     const found = q ? allItems.filter(it => it.label.toLowerCase().includes(q) || it.group.toLowerCase().includes(q)).slice(0, 40) : [];
 
-    // FinPro-style cascade: the menu title drops a list of its sub-menus (separator lines between
+    // cascading drop-down: the menu title drops a list of its sub-menus (separator lines between
     // clusters); pointing at one opens its screens beside it. Both lists are placed in the window
     // (fixed position, flipped / lifted at the screen edge), so nothing is cut off or hidden.
     const placeMenu = el => {

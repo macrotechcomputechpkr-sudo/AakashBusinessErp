@@ -1,29 +1,34 @@
 // =============================================
 // components/entry/PurchaseTermPopups.jsx
-// FinPro-style term pop-ups of the purchase entries (Requisition,
-// Quotation, Order, GRN, Bill, Return, Non-saleable Return). Purchase lines
-// carry billing_term_ids (Billing Term setup) that the server evaluates, so
-// here a term is ticked on or off; amounts come from /billing-terms/preview.
-//   * PurchaseProductTermPopup - "<Entry> (Product wise)": the terms of the
-//     chosen line(s), with basis, %, amount, calculated on, and the ledger /
-//     sign / formula / taxation of the focused term
-//   * PurchaseOverallTermPopup - "<Entry> Over All Term(s)": product-term
-//     totals (an amount typed here is shared back to the lines by their
-//     share) and the bill-level terms with their preview
+// Charge pop-ups of the purchase entries (Requisition, Quotation, Order,
+// GRN, Bill, Return, Non-saleable Return). Purchase lines carry
+// billing_term_ids (Billing Term setup) that the server works out, so here a
+// charge is switched on or off; amounts come from /billing-terms/preview.
+//   * PurchaseProductTermPopup - Item Charges of the chosen line(s): use,
+//     charge, sub-ledger, how it is worked out, rate, amount, and the code /
+//     ledger / effect / tax type of the charge in focus
+//   * PurchaseOverallTermPopup - Charges Summary: item-charge totals (an
+//     amount typed here is split over the lines by the charge's basis -
+//     value or quantity - as set in Billing Term) and the bill charges with
+//     their preview
 // =============================================
 import React, { useState } from 'react';
-import { FinPopup } from './FinEntry';
+import { EntryPopup } from './EntryParts';
 
 const fmt = n => (Number(n) || 0).toFixed(2);
-const basisOf = t => (t?.calculation_mode === 'fixed_amount' ? 'A' : t?.calculation_mode === 'formula' ? 'F' : t?.calculation_mode === 'free_quantity' ? 'Q' : 'V');
-const formulaOf = t => (!t ? '' : t.calculation_mode === 'formula' ? t.formula_expression : t.base_reference_term ? `after ${t.base_reference_term.term_code}` : 'BV');
+const HOW = { fixed_amount: 'Fixed', formula: 'Formula', free_quantity: 'Free qty', percentage: 'Value %', both: 'Value % + fixed' };
+const howOf = t => HOW[t?.calculation_mode] || 'Value %';
+const formulaOf = t => (!t ? '' : t.calculation_mode === 'formula' ? t.formula_expression : t.base_reference_term ? `after ${t.base_reference_term.term_code}` : 'Item value');
 const TAXATION = { vat: 'VAT', excise: 'Excise', discount: 'Cash Discount', none: 'None' };
+const splitOf = t => (t?.basis === 'quantity' ? 'Quantity' : 'Value');
+const Adds = ({ sign }) => <span className={sign === '-' ? 'ent-less' : 'ent-add'}>{sign === '-' ? 'Less' : 'Add'}</span>;
 
 /**
  * lines: [{ idx, line }] the target lines; previews: lineTermPreviews (by line index);
- * subLedgerCell(term): node for the SubLedger column (TermLedgerInfo)
+ * subLedgerCell(term): node for the Sub-ledger column (TermLedgerInfo);
+ * lineFields: the line's own Discount % / Tax % when they are not grid columns ({ key, label, sign, value, onChange })
  */
-export function PurchaseProductTermPopup({ title, lines, terms, previews, productName, onToggle, subLedgerCell, onClose }) {
+export function PurchaseProductTermPopup({ title, lines, terms, previews, productName, onToggle, subLedgerCell, onClose, lineFields }) {
     const [focus, setFocus] = useState(0);
     const basicOf = l => (Number(l.qty) || 0) * (Number(l.rate) || 0);
     const basic = lines.reduce((s, t) => s + basicOf(t.line), 0);
@@ -35,105 +40,117 @@ export function PurchaseProductTermPopup({ title, lines, terms, previews, produc
     const net = lines.reduce((s, { idx, line }) => s + (previews[idx]?.total !== undefined ? previews[idx].total - basicOf(line) : 0), 0);
     const t = terms[focus] || terms[0];
     return (
-        <FinPopup title={title} onClose={onClose} width={900} footer={<span className="fin-popup-note">{productName}</span>}>
-            <div className="fin-term-head">
-                <span>Basic Value</span><input className="fin-box r" readOnly value={fmt(basic)} />
-                <span className="ml-auto">Quantity</span><input className="fin-box r" readOnly value={qty.toFixed(3)} />
+        <EntryPopup title={title} onClose={onClose} width={940}>
+            <div className="ent-item-strip">
+                <div><small>Item</small><b>{productName || '—'}</b></div>
+                <div><small>Quantity</small><b>{qty.toFixed(3)}</b></div>
+                <div><small>Value</small><b>{fmt(basic)}</b></div>
+                <div><small>Charges</small><b className={net < 0 ? 'ent-less' : ''}>{fmt(net)}</b></div>
+                <div><small>After charges</small><b>{fmt(basic + net)}</b></div>
             </div>
-            <table className="fin-grid">
-                <thead><tr><th style={{ width: 44 }}>SNo.</th><th style={{ width: 50 }}>Apply</th><th>Description</th><th>SubLedger</th><th style={{ width: 56 }}>Basis</th><th className="r" style={{ width: 80 }}>%tage</th><th className="r">Amount</th><th className="r">Local Amount</th><th className="r">Calculated On</th></tr></thead>
-                <tbody>
-                    {terms.map((term, i) => {
-                        const on = lines.filter(({ line }) => (line.billing_term_ids || []).includes(term.id)).length;
-                        const all = on === lines.length && on > 0;
-                        const amt = amountOf(term.id);
-                        return (
-                            <tr key={term.id} className={focus === i ? 'cur' : ''} onClick={() => setFocus(i)}>
-                                <td className="c">{i + 1}</td>
-                                <td className="c"><input type="checkbox" data-enter-skip="true" checked={all} ref={el => { if (el) el.indeterminate = on > 0 && !all; }} onFocus={() => setFocus(i)} onChange={() => onToggle(term.id)} /></td>
-                                <td>{term.term_name} <span className="text-[10px] text-gray-500">{on > 0 && !all ? `(${on}/${lines.length} lines)` : ''}</span></td>
-                                <td onClick={e => e.stopPropagation()}>{subLedgerCell ? subLedgerCell(term) : ''}</td>
-                                <td className="c">{basisOf(term)}</td>
-                                <td className="r">{term.rate_percentage ? fmt(term.rate_percentage) : ''}</td>
-                                <td className="r">{on ? fmt(amt) : ''}</td>
-                                <td className="r">{on ? fmt(amt) : ''}</td>
-                                <td className="r">{fmt(basic)}</td>
+            <div className="ent-charge-wrap">
+                <table className="erp-grid-table ent-charge-table">
+                    <thead><tr><th style={{ width: 34 }}>#</th><th style={{ width: 44 }}>Use</th><th>Charge</th><th>Sub-ledger</th><th style={{ width: 90 }}>Worked as</th><th style={{ width: 56 }}>+/-</th><th className="text-right" style={{ width: 80 }}>Rate</th><th className="text-right">Amount</th></tr></thead>
+                    <tbody>
+                        {(lineFields || []).map(fl => (
+                            <tr key={fl.key} className="ent-line-field">
+                                <td>•</td><td /><td>{fl.label}</td><td /><td>Value %</td><td><Adds sign={fl.sign} /></td>
+                                <td className="text-right"><input type="number" step="0.01" className="erp-input text-right" style={{ height: 24 }} value={fl.value} onFocus={e => e.target.select()} onChange={e => fl.onChange(e.target.value)} /></td>
+                                <td className="text-right">{lines.length > 1 ? `${lines.length} lines` : ''}</td>
                             </tr>
-                        );
-                    })}
-                    {terms.length === 0 && <tr><td colSpan={9} className="c">No Billing Terms are set up for Purchase yet (Master Data › Billing Terms).</td></tr>}
-                </tbody>
-            </table>
-            <div className="fin-term-info">
-                <label>Net Term Amount</label><input className="fin-box r" readOnly value={fmt(net)} />
-                <label>Term Code</label><input className="fin-box" readOnly value={t?.term_code || ''} />
-                <div className="fin-term-meta">
-                    <span>Ledger : <b>{t?.billing_ledger?.account_name || '—'}</b></span>
-                    <span>Sign : <b>{t?.sign || '+'}</b></span>
-                    <span>Formula To Calculate : <b>{formulaOf(t) || 'BV'}</b></span>
-                    <span>Taxation Term : <b>{TAXATION[t?.tax_type] || 'None'}</b></span>
-                </div>
+                        ))}
+                        {terms.map((term, i) => {
+                            const on = lines.filter(({ line }) => (line.billing_term_ids || []).includes(term.id)).length;
+                            const all = on === lines.length && on > 0;
+                            return (
+                                <tr key={term.id} className={focus === i ? 'ent-focus' : ''} onClick={() => setFocus(i)}>
+                                    <td>{i + 1}</td>
+                                    <td className="text-center"><input type="checkbox" data-enter-skip="true" checked={all} ref={el => { if (el) el.indeterminate = on > 0 && !all; }} onFocus={() => setFocus(i)} onChange={() => onToggle(term.id)} /></td>
+                                    <td>{term.term_name} {on > 0 && !all && <span className="text-[10px] text-gray-500">({on}/{lines.length} lines)</span>}</td>
+                                    <td onClick={e => e.stopPropagation()}>{subLedgerCell ? subLedgerCell(term) : ''}</td>
+                                    <td>{howOf(term)}</td>
+                                    <td><Adds sign={term.sign} /></td>
+                                    <td className="text-right">{term.rate_percentage ? fmt(term.rate_percentage) : ''}</td>
+                                    <td className="text-right font-semibold">{on ? fmt(amountOf(term.id)) : ''}</td>
+                                </tr>
+                            );
+                        })}
+                        {terms.length === 0 && <tr><td colSpan={8} className="text-center">No purchase charges are set up yet (Master Data › Billing Terms).</td></tr>}
+                    </tbody>
+                </table>
+                <aside className="ent-charge-info">
+                    <div className="ent-info-title">{t?.term_name || 'Charge'}</div>
+                    <dl>
+                        <dt>Code</dt><dd>{t?.term_code || '—'}</dd>
+                        <dt>Posts to</dt><dd>{t?.billing_ledger?.account_name || '—'}</dd>
+                        <dt>Effect</dt><dd>{t?.sign === '-' ? 'Less from value' : 'Add to value'}</dd>
+                        <dt>Worked on</dt><dd>{formulaOf(t) || 'Item value'}</dd>
+                        <dt>Split by</dt><dd>{splitOf(t)}</dd>
+                        <dt>Tax type</dt><dd>{TAXATION[t?.tax_type] || 'None'}</dd>
+                    </dl>
+                </aside>
             </div>
-        </FinPopup>
+        </EntryPopup>
     );
 }
 
 /**
- * summaryRows / overrides: the product-term totals of the lines (amount editable);
- * terms + billTermIds + preview: bill-level terms ticked on the document
+ * summaryRows / overrides: the item-charge totals of the lines (amount editable, split by the charge's basis);
+ * terms + billTermIds + preview: bill charges ticked on the document
  */
 export function PurchaseOverallTermPopup({ title, summaryRows, overrides, onOverride, terms, billTermIds, onToggleBillTerm, preview, subLedgerCell, onClose }) {
     const termById = Object.fromEntries(terms.map(t => [t.id, t]));
     const prodTotal = summaryRows.reduce((s, r) => s + (overrides[r.billing_term_id] !== undefined ? Number(overrides[r.billing_term_id]) || 0 : r.original_total), 0);
     const billLines = preview?.lines || [];
     return (
-        <FinPopup title={title} onClose={onClose} width={900}>
-            <table className="fin-grid">
-                <thead><tr><th style={{ width: 44 }}>SNo.</th><th>Term (product-wise, all lines)</th><th style={{ width: 56 }}>Basis</th><th style={{ width: 50 }}>Sign</th><th className="r" style={{ width: 90 }}>%tage</th><th className="r" style={{ width: 140 }}>Amount</th><th className="r" style={{ width: 130 }}>Local Amount</th></tr></thead>
+        <EntryPopup title={title} onClose={onClose} width={900}>
+            <div className="ent-section-title">Item charges (all lines)</div>
+            <table className="erp-grid-table">
+                <thead><tr><th style={{ width: 34 }}>#</th><th>Charge</th><th style={{ width: 100 }}>Split by</th><th style={{ width: 56 }}>+/-</th><th className="text-right" style={{ width: 90 }}>Rate</th><th className="text-right" style={{ width: 160 }}>Amount</th></tr></thead>
                 <tbody>
                     {summaryRows.map((r, i) => {
                         const t = termById[r.billing_term_id];
                         const v = overrides[r.billing_term_id] !== undefined ? overrides[r.billing_term_id] : Number(r.original_total).toFixed(2);
                         return (
                             <tr key={r.billing_term_id}>
-                                <td className="c">{i + 1}</td>
+                                <td>{i + 1}</td>
                                 <td>{r.term_name} <span className="text-[10px] text-gray-500">({r.term_code})</span></td>
-                                <td className="c">{basisOf(t)}</td>
-                                <td className="c">{t?.sign || '+'}</td>
-                                <td className="r">{t?.rate_percentage ? fmt(t.rate_percentage) : ''}</td>
-                                <td className="r"><input type="number" step="0.01" className="fin-cell r" value={v} onFocus={e => e.target.select()} onChange={e => onOverride(r.billing_term_id, e.target.value)} /></td>
-                                <td className="r">{fmt(v)}</td>
+                                <td>{splitOf(t)}</td>
+                                <td><Adds sign={t?.sign} /></td>
+                                <td className="text-right">{t?.rate_percentage ? fmt(t.rate_percentage) : ''}</td>
+                                <td className="text-right"><input type="number" step="0.01" className="erp-input text-right" style={{ height: 24 }} value={v} onFocus={e => e.target.select()} onChange={e => onOverride(r.billing_term_id, e.target.value)} /></td>
                             </tr>
                         );
                     })}
-                    {summaryRows.length === 0 && <tr><td colSpan={7} className="c">No product terms on the lines - use Product Term.</td></tr>}
+                    {summaryRows.length === 0 && <tr><td colSpan={6} className="text-center">No item charges on the lines yet - use Item Charges.</td></tr>}
                 </tbody>
-                <tfoot><tr><td colSpan={5} className="r">Product terms total</td><td className="r">{fmt(prodTotal)}</td><td className="r">{fmt(prodTotal)}</td></tr></tfoot>
+                <tfoot><tr><td colSpan={5} className="text-right">Item charges total</td><td className="text-right">{fmt(prodTotal)}</td></tr></tfoot>
             </table>
-            <p className="fin-popup-note mt-1 mb-3">An amount changed here is shared back to the lines that carry the term, each keeping its share.</p>
-            <table className="fin-grid">
-                <thead><tr><th style={{ width: 44 }}>SNo.</th><th style={{ width: 50 }}>Apply</th><th>Bill Term (on the bill total)</th><th>SubLedger</th><th style={{ width: 56 }}>Basis</th><th style={{ width: 50 }}>Sign</th><th className="r" style={{ width: 90 }}>%tage</th><th className="r" style={{ width: 130 }}>Amount</th></tr></thead>
+            <p className="ent-note mt-1 mb-3">An amount changed here is split over the lines that carry the charge, by value or by quantity as set on the charge (Billing Term).</p>
+            <div className="ent-section-title">Bill charges (on the bill total)</div>
+            <table className="erp-grid-table">
+                <thead><tr><th style={{ width: 34 }}>#</th><th style={{ width: 44 }}>Use</th><th>Charge</th><th>Sub-ledger</th><th style={{ width: 90 }}>Worked as</th><th style={{ width: 56 }}>+/-</th><th className="text-right" style={{ width: 80 }}>Rate</th><th className="text-right" style={{ width: 130 }}>Amount</th></tr></thead>
                 <tbody>
                     {terms.map((t, i) => {
                         const on = billTermIds.includes(t.id);
                         const line = on ? billLines.find(l => l.term_code === t.term_code) : null;
                         return (
                             <tr key={t.id}>
-                                <td className="c">{i + 1}</td>
-                                <td className="c"><input type="checkbox" data-enter-skip="true" checked={on} onChange={() => onToggleBillTerm(t.id)} /></td>
+                                <td>{i + 1}</td>
+                                <td className="text-center"><input type="checkbox" data-enter-skip="true" checked={on} onChange={() => onToggleBillTerm(t.id)} /></td>
                                 <td>{t.term_name} <span className="text-[10px] text-gray-500">({t.term_code})</span></td>
                                 <td>{subLedgerCell ? subLedgerCell(t) : ''}</td>
-                                <td className="c">{basisOf(t)}</td>
-                                <td className="c">{t.sign || '+'}</td>
-                                <td className="r">{t.rate_percentage ? fmt(t.rate_percentage) : ''}</td>
-                                <td className="r">{line ? (line.free_quantity !== undefined ? `+${line.free_quantity} free` : fmt(line.amount)) : ''}</td>
+                                <td>{howOf(t)}</td>
+                                <td><Adds sign={t.sign} /></td>
+                                <td className="text-right">{t.rate_percentage ? fmt(t.rate_percentage) : ''}</td>
+                                <td className="text-right">{line ? (line.free_quantity !== undefined ? `+${line.free_quantity} free` : fmt(line.amount)) : ''}</td>
                             </tr>
                         );
                     })}
-                    {terms.length === 0 && <tr><td colSpan={8} className="c">No Billing Terms are set up for Purchase yet.</td></tr>}
+                    {terms.length === 0 && <tr><td colSpan={8} className="text-center">No purchase charges are set up yet.</td></tr>}
                 </tbody>
-                {preview && <tfoot><tr><td colSpan={7} className="r">Final total (lines + bill terms)</td><td className="r">{fmt(preview.total)}</td></tr></tfoot>}
+                {preview && <tfoot><tr><td colSpan={7} className="text-right">Bill total after bill charges</td><td className="text-right">{fmt(preview.total)}</td></tr></tfoot>}
             </table>
-        </FinPopup>
+        </EntryPopup>
     );
 }

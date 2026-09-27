@@ -135,6 +135,10 @@ async function recalculateAssembledProductRate(tenantClient, tenantId, parentPro
     return newRate;
 }
 
+
+// dual-UOM entry of one product: true / false, or null = follow System Control
+const yesNoOrNull = v => (v === true || v === 'true' ? true : v === false || v === 'false' ? false : null);
+
 router.get('/products', requireAuth, loadUserPermissions, requirePermission('ledger', 'view'), async (req, res) => {
     try {
         const tenantClient = await getTenantClient(req.auth.tenantId);
@@ -212,6 +216,7 @@ router.post('/products', requireAuth, loadUserPermissions, requirePermission('le
                 purchase_nonsaleable_return_account_ledger_id: b.purchase_nonsaleable_return_account_ledger_id || null,
                 base_unit_id: b.base_unit_id,
                 uom_mode: b.uom_mode || 'single', dual_uom_primary_unit_id: b.dual_uom_primary_unit_id || null,
+                dual_auto_convert: yesNoOrNull(b.dual_auto_convert), dual_reverse_conversion: yesNoOrNull(b.dual_reverse_conversion),
                 default_discount_percent: b.default_discount_percent || 0,
                 default_vendor_id: b.default_vendor_id || null,
                 vendor_item_code: b.vendor_item_code || null,
@@ -315,6 +320,7 @@ router.put('/products/:id', requireAuth, loadUserPermissions, requirePermission(
         delete update.base_unit;
         // an empty picker is sent as '' - a uuid column needs null
         Object.keys(update).forEach(k => { if (/_id$/.test(k) && update[k] === '') update[k] = null; });
+        ['dual_auto_convert', 'dual_reverse_conversion'].forEach(k => { if (k in update) update[k] = yesNoOrNull(update[k]); });
 
         const { data, error } = await tenantClient
             .from('products').update(update).eq('id', req.params.id).eq('tenant_id', tenantId).select().single();

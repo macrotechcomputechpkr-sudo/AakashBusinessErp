@@ -16,7 +16,7 @@ import { useEnterKeyNavigation } from '../hooks/useEnterKeyNavigation';
 import { formatDateForDisplay } from '../utils/nepaliDateUtils';
 import BillWiseSettlementPanel from '../components/BillWiseSettlementPanel';
 import NumberingCategorySelector from '../components/NumberingCategorySelector';
-import { resolveDualUomEntryMode, dualBaseQty } from '../utils/dualUomEntryMode';
+import { resolveDualUomEntryMode, dualBaseQty, productDualMode } from '../utils/dualUomEntryMode';
 import UdfValuesModal from '../components/UdfValuesModal';
 import useLedgerPurposes from '../components/useLedgerPurposes';
 import RecordHistory from '../components/RecordHistory';
@@ -25,7 +25,7 @@ import DocNumberField from '../components/entry/DocNumberField';
 import PendingDocsPanel, { mergePulled } from '../components/entry/PendingDocsPanel';
 import { PartyDetailsPanel, emptyPartyInfo, savePartyInfo, partyInfoFromDoc } from '../components/entry/PartyFooterTabs';
 import SalesLineGrid, { useLineGridControl, lineTotals } from '../components/entry/SalesLineGrid';
-import { EntryFooter, useEntryHotkeys, latestOf } from '../components/entry/FinEntry';
+import { EntryFooter, useEntryHotkeys, latestOf } from '../components/entry/EntryParts';
 import { calcLine, defaultLineTerms, lineForSave } from '../components/entry/lineCalc';
 import { dualHelpers } from '../components/entry/dualHelpers';
 import DocActions, { HoldButtons, asNewCopy } from '../components/entry/DocActions';
@@ -50,6 +50,9 @@ const REASONS = [
 const EFC_RENDERED_KEYS = ['customer_ledger_id', 'doc_date', 'narration', 'return_reason', 'settlement_type', 'warehouse_id'];
 
 export default function SalesReturn() {
+    const [dualUomEntryMode, setDualUomEntryMode] = useState({ mode: 'fixed', reverseEnabled: false });
+    // a product's own dual-UOM entry mode (Product Master) over System Control's
+    const dualModeOf = pid => productDualMode(products.find(p => p.id === pid), dualUomEntryMode);
     const { authFetch } = useAuth();
     const lp = useLedgerPurposes();
     const efc = useEntryFieldControls('sales_return', EFC_RENDERED_KEYS);
@@ -152,7 +155,7 @@ export default function SalesReturn() {
     const lineGross = (d) => {
         if (productIsFixedDualUom(d.product_id) && d.alt_qty) {
             const factor = dualConversionFactor(d.product_id);
-            const totalBaseQty = dualBaseQty(d.qty, d.alt_qty, factor, dualUomEntryMode.mode);
+            const totalBaseQty = dualBaseQty(d.qty, d.alt_qty, factor, dualModeOf(d.product_id).mode);
             return d.rate_basis === 'primary' ? (totalBaseQty / factor) * (Number(d.rate) || 0) : totalBaseQty * (Number(d.rate) || 0);
         }
         return (Number(d.qty) || 0) * (Number(d.rate) || 0);
@@ -165,7 +168,6 @@ export default function SalesReturn() {
     // F7: the last return as a new one (F8 - held entries - is on the Hold button)
     useEntryHotkeys(showForm, { F7: () => { const last = latestOf(rows); if (last) copyAsNew(last); } });
     const [selectedRowIndexes, setSelectedRowIndexes] = useState([]);
-    const [dualUomEntryMode, setDualUomEntryMode] = useState({ mode: 'fixed', reverseEnabled: false });
     const [historyModal, setHistoryModal] = useState(null);
     const openProductHistory = async (productId) => {
         if (!form.customer_ledger_id || !productId) return showAlert('Select Customer and Product first', 'danger');
@@ -303,7 +305,7 @@ export default function SalesReturn() {
             )}
 
             {showForm && (
-                <form onSubmit={handleSubmit} ref={formRef} className="fin-entry">
+                <form onSubmit={handleSubmit} ref={formRef} className="ent-entry">
                     <div className="erp-topbar grid-cols-1 md:grid-cols-4">
                         <DocNumberField voucherType="sales_return" categoryId={form.numbering_category_id} docNo={editingId ? form.doc_no : ''} value={form.doc_no} onChange={v => setForm({ ...form, doc_no: v })} />
                         <div className={efc.isVisible('doc_date') ? 'erp-field' : 'erp-field hidden'}>
@@ -498,7 +500,7 @@ export default function SalesReturn() {
 
                         warehouseName={settings?.multiWarehouse ? (warehouses.find(w => w.id === form.warehouse_id)?.warehouse_name || '') : undefined}
 
-                        totals={{ billTerm: lineTot.term, net: lineTot.amount, taxable: lineTot.taxable, tax: lineTot.tax, nonTaxable: lineTot.nonTaxable }}
+                        totals={{ gross: lineTot.gross, billTerm: lineTot.term, net: lineTot.amount, taxable: lineTot.taxable, tax: lineTot.tax, nonTaxable: lineTot.nonTaxable }}
 
                         party={{ label: 'Customer', name: selectedCustomer?.account_name, creditLimit: selectedCustomer?.credit_limit }}
 
@@ -506,7 +508,7 @@ export default function SalesReturn() {
 
                         onProductTerm={true ? lineCtl.openTerms : null} onBillTerm={true ? lineCtl.openOverall : null}
 
-                        panels={[{ key: 'billing', label: 'Billing/Taxation', content: <PartyDetailsPanel partyId={form.customer_ledger_id} partyLabel="Customer" info={partyInfo} onChange={setPartyInfo} /> }]}
+                        panels={[{ key: 'billing', label: 'Party & Tax Info', content: <PartyDetailsPanel partyId={form.customer_ledger_id} partyLabel="Customer" info={partyInfo} onChange={setPartyInfo} /> }]}
 
                         actions={<>
 
@@ -514,9 +516,9 @@ export default function SalesReturn() {
 
                             <button type="button" onClick={e => handleSubmit(e, true)} className="erp-btn">💾 Save as Draft</button>
 
-                            <button type="submit" className="erp-btn primary">✔ {editingId ? 'Update' : 'Ok'}</button>
+                            <button type="submit" className="erp-btn primary">💾 {editingId ? 'Update' : 'Save'}</button>
 
-                            <button type="button" onClick={() => { resetForm(); setShowForm(false); }} className="erp-btn">✖ Cancel</button>
+                            <button type="button" onClick={() => { resetForm(); setShowForm(false); }} className="erp-btn">Cancel</button>
 
                         </>}
 

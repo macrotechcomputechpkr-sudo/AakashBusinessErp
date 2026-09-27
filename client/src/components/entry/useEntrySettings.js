@@ -1,7 +1,8 @@
 // =============================================
 // components/entry/useEntrySettings.js
 // System Control switches every sales / purchase entry reads, fetched once
-// per company: multi-warehouse, product search by name or code, term
+// per company: multi-warehouse, free qty / batch / serial / alt unit / mfg /
+// expiry columns, product search by name or code, term
 // mapping (VAT / Excise / Product Discount 1-5 / Bill Discount), which
 // entries show product terms in a popup instead of inline columns, and the
 // billing terms themselves.
@@ -32,6 +33,13 @@ export default function useEntrySettings() {
                     searchBy: sc.product_search_by === 'code' ? 'code' : 'name',
                     barcode: !!sc.enable_barcode_system,
                     popupTerms: sc.popup_product_wise_term_applicability || [],
+                    // grid columns switched on in System Control
+                    freeQty: !!sc.free_qty_system,
+                    batch: !!sc.batch_system && sc.batch_system !== 'none',
+                    serial: !!sc.enable_serial_number,
+                    altUnit: !!sc.dual_uom_enabled,
+                    mfgDate: !!sc.enable_mfg_date,
+                    expDate: !!sc.enable_exp_date,
                     termMapping: sc.term_mapping || {},
                     billingTerms: terms,
                     raw: sc

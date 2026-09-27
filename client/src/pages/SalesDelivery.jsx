@@ -15,16 +15,17 @@ import Layout from '../components/Layout';
 import { useEnterKeyNavigation } from '../hooks/useEnterKeyNavigation';
 import { formatDateForDisplay } from '../utils/nepaliDateUtils';
 import NumberingCategorySelector from '../components/NumberingCategorySelector';
-import { resolveDualUomEntryMode, dualBaseQty } from '../utils/dualUomEntryMode';
+import { resolveDualUomEntryMode, dualBaseQty, productDualMode } from '../utils/dualUomEntryMode';
 import UdfValuesModal from '../components/UdfValuesModal';
 import RecordHistory from '../components/RecordHistory';
 import { priceUrl, lineUnitOf, useSlabRepricing } from '../utils/salesPricing';
+import RateTypeField, { useEntryRateType } from '../components/entry/RateTypeField';
 import useEntrySettings from '../components/entry/useEntrySettings';
 import DocNumberField from '../components/entry/DocNumberField';
 import PendingDocsPanel, { mergePulled } from '../components/entry/PendingDocsPanel';
 import { PartyDetailsPanel, emptyPartyInfo, savePartyInfo, partyInfoFromDoc } from '../components/entry/PartyFooterTabs';
 import SalesLineGrid, { useLineGridControl, lineTotals } from '../components/entry/SalesLineGrid';
-import { EntryFooter, useEntryHotkeys, latestOf } from '../components/entry/FinEntry';
+import { EntryFooter, useEntryHotkeys, latestOf } from '../components/entry/EntryParts';
 
 import { dualHelpers } from '../components/entry/dualHelpers';
 import DocActions, { HoldButtons, asNewCopy } from '../components/entry/DocActions';
@@ -43,6 +44,9 @@ const emptyForm = {
 const EFC_RENDERED_KEYS = ['customer_ledger_id', 'delivery_address', 'doc_date', 'driver_name', 'narration', 'vehicle_no', 'warehouse_id'];
 
 export default function SalesDelivery() {
+    const [dualUomEntryMode, setDualUomEntryMode] = useState({ mode: 'fixed', reverseEnabled: false });
+    // a product's own dual-UOM entry mode (Product Master) over System Control's
+    const dualModeOf = pid => productDualMode(products.find(p => p.id === pid), dualUomEntryMode);
     const { authFetch } = useAuth();
     const efc = useEntryFieldControls('sales_delivery', EFC_RENDERED_KEYS);
     const settings = useEntrySettings();
@@ -73,7 +77,6 @@ export default function SalesDelivery() {
     const [areas, setAreas] = useState([]);
     const [routes, setRoutes] = useState([]);
     const [remarks, setRemarks] = useState([]);
-    const [dualUomEntryMode, setDualUomEntryMode] = useState({ mode: 'fixed', reverseEnabled: false });
     const [historyModal, setHistoryModal] = useState(null);
     const openProductHistory = async (productId) => {
         if (!form.customer_ledger_id || !productId) return showAlert('Select Customer and Product first', 'danger');
@@ -141,6 +144,21 @@ export default function SalesDelivery() {
     // qty / value slab discounts: re-price the line when its qty or unit changes
     const reprice = useSlabRepricing(authFetch, form, setDetailRow, { withDiscount: false });
     const updateDetailRow = (idx, patch) => { setDetailRow(idx, patch); reprice.onChange(idx, patch); };
+    // Rate Type (Sr1-Sr5): the customer's by default; picking another prices every line again at it
+    const rateType = useEntryRateType(authFetch, form.customer_ledger_id);
+    const onRateTypeChanged = async (tier) => {
+        const caption = rateType.captionOf(tier);
+        if (tier !== rateType.customerTier) showAlert(`Rate type is now ${caption} - different from this customer's (${rateType.captionOf(rateType.customerTier)}). Line rates are taken again at ${caption}.`, 'warning');
+        else showAlert(`Rate type back to the customer's (${caption}); line rates taken again.`, 'info');
+        if (!form.customer_ledger_id) return;
+        const lines = form.details.map((d, idx) => ({ d, idx })).filter(x => x.d.product_id);
+        for (const { d, idx } of lines) {
+            try {
+                const res = await authFetch(priceUrl(form.customer_ledger_id, d.product_id, { sr_tier: tier !== rateType.customerTier ? tier : undefined, unit_id: d.uom_id, qty: d.qty }));
+                setDetailRow(idx, { rate: res.data.rate });
+            } catch { /* keep the line's rate */ }
+        }
+    };
     const productIsFixedDualUom = (productId) => products.find(p => p.id === productId)?.uom_mode === 'fixed_dual';
     const dualConversionFactor = (productId) => {
         const product = products.find(p => p.id === productId);
@@ -160,7 +178,7 @@ export default function SalesDelivery() {
         // (Delivery lines carry no discount column, so only the rate applies.)
         if (!form.customer_ledger_id || !productId) return;
         try {
-            const res = await authFetch(priceUrl(form.customer_ledger_id, productId, { unit_id: lineUnitOf(product), qty: form.details[idx]?.qty, payment_term: form.payment_term }));
+            const res = await authFetch(priceUrl(form.customer_ledger_id, productId, { sr_tier: rateType.srTier, unit_id: lineUnitOf(product), qty: form.details[idx]?.qty, payment_term: form.payment_term }));
             if (res?.data && res.data.rate !== undefined) { setDetailRow(idx, { rate: res.data.rate }); reprice.mark(idx, res.data); }
         } catch { /* keep SR1 */ }
     };
@@ -168,7 +186,7 @@ export default function SalesDelivery() {
     const lineAmount = (d) => {
         if (productIsFixedDualUom(d.product_id) && d.alt_qty) {
             const factor = dualConversionFactor(d.product_id);
-            const totalBaseQty = dualBaseQty(d.qty, d.alt_qty, factor, dualUomEntryMode.mode);
+            const totalBaseQty = dualBaseQty(d.qty, d.alt_qty, factor, dualModeOf(d.product_id).mode);
             return d.rate_basis === 'primary' ? (totalBaseQty / factor) * (Number(d.rate) || 0) : totalBaseQty * (Number(d.rate) || 0);
         }
         return (Number(d.qty) || 0) * (Number(d.rate) || 0);
@@ -308,7 +326,7 @@ export default function SalesDelivery() {
             )}
 
             {showForm && (
-                <form onSubmit={handleSubmit} ref={formRef} className="fin-entry">
+                <form onSubmit={handleSubmit} ref={formRef} className="ent-entry">
                     <div className="erp-topbar grid-cols-1 md:grid-cols-4">
                         <DocNumberField voucherType="sales_delivery" categoryId={form.numbering_category_id} docNo={editingId ? form.doc_no : ''} value={form.doc_no} onChange={v => setForm({ ...form, doc_no: v })} />
                         <div className={efc.isVisible('doc_date') ? 'erp-field' : 'erp-field hidden'}>
@@ -326,6 +344,7 @@ export default function SalesDelivery() {
                                 value={form.customer_ledger_id} onChange={id => setForm({ ...form, customer_ledger_id: id })} placeholder="Select Customer"
                             />
                         </div>
+                        <RateTypeField rt={rateType} onChanged={onRateTypeChanged} />
                         <ProductCompanyField side="sales" form={form} setForm={setForm} products={products} emptyRow={emptyDetailRow} />
                         {settings?.multiWarehouse && (
                         <div className={efc.isVisible('warehouse_id') ? 'erp-field' : 'erp-field hidden'}>
@@ -461,7 +480,7 @@ export default function SalesDelivery() {
 
                         warehouseName={settings?.multiWarehouse ? (warehouses.find(w => w.id === form.warehouse_id)?.warehouse_name || '') : undefined}
 
-                        totals={{ billTerm: lineTot.term, net: lineTot.amount, taxable: lineTot.taxable, tax: lineTot.tax, nonTaxable: lineTot.nonTaxable }}
+                        totals={{ gross: lineTot.gross, billTerm: lineTot.term, net: lineTot.amount, taxable: lineTot.taxable, tax: lineTot.tax, nonTaxable: lineTot.nonTaxable }}
 
                         party={{ label: 'Customer', name: selectedCustomer?.account_name, creditLimit: selectedCustomer?.credit_limit }}
 
@@ -469,7 +488,7 @@ export default function SalesDelivery() {
 
                         onProductTerm={false ? lineCtl.openTerms : null} onBillTerm={false ? lineCtl.openOverall : null}
 
-                        panels={[{ key: 'billing', label: 'Billing/Taxation', content: <PartyDetailsPanel partyId={form.customer_ledger_id} partyLabel="Customer" info={partyInfo} onChange={setPartyInfo} /> }]}
+                        panels={[{ key: 'billing', label: 'Party & Tax Info', content: <PartyDetailsPanel partyId={form.customer_ledger_id} partyLabel="Customer" info={partyInfo} onChange={setPartyInfo} /> }]}
 
                         actions={<>
 
@@ -477,9 +496,9 @@ export default function SalesDelivery() {
 
                             <button type="button" onClick={e => handleSubmit(e, true)} className="erp-btn">💾 Save as Draft</button>
 
-                            <button type="submit" className="erp-btn primary">✔ {editingId ? 'Update' : 'Ok'}</button>
+                            <button type="submit" className="erp-btn primary">💾 {editingId ? 'Update' : 'Save'}</button>
 
-                            <button type="button" onClick={() => { resetForm(); setShowForm(false); }} className="erp-btn">✖ Cancel</button>
+                            <button type="button" onClick={() => { resetForm(); setShowForm(false); }} className="erp-btn">Cancel</button>
 
                         </>}
 

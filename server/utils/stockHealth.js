@@ -23,7 +23,7 @@
 // =============================================
 const { parseQuery, loadProducts, loadEvents, statusOk } = require('./stockReport');
 const { costRatesOn } = require('./stockEngine');
-const { toBaseQtyFromDual, getDualUomMode } = require('./dualUomCalculation');
+const { toBaseQtyFromDual, getDualUomResolver } = require('./dualUomCalculation');
 
 const round2 = n => Math.round((Number(n) || 0) * 100) / 100;
 const round4 = n => Math.round((Number(n) || 0) * 10000) / 10000;
@@ -206,7 +206,7 @@ async function reorderReport(c, t, q) {
     // Pending qty on open orders, in base units (qty x unit factor; dual lines primary x factor + loose).
     const unitRates = await inChunks(ids, async chunk => { const { data } = await c.from('product_unit_rates').select('product_id, unit_id, conversion_factor, is_base_unit').in('product_id', chunk); return data || []; });
     unitRates.forEach(r => { factorOf[`${r.product_id}|${r.unit_id}`] = r.is_base_unit ? 1 : Number(r.conversion_factor) || 1; });
-    const dualMode = await getDualUomMode(c);
+    const dualModeOf = await getDualUomResolver(c);
     const pendingOf = async (headers, table, fk, doneCol) => {
         const out = {};
         const lines = await inChunks(headers.map(h => h.id), async chunk => { const { data, error } = await c.from(table).select('*').in(fk, chunk); if (error) throw error; return data || []; });
@@ -216,7 +216,7 @@ async function reorderReport(c, t, q) {
             let pend;
             if (m.uom_mode === 'fixed_dual' && d.alt_qty) {              // primary x factor + loose pieces
                 const fct = factorOf[`${d.product_id}|${m.dual_uom_primary_unit_id}`] || 1;
-                pend = Math.max(0, toBaseQtyFromDual(d.qty, d.alt_qty, fct, dualMode) - toBaseQtyFromDual(d[doneCol], d[`alt_${doneCol}`], fct, dualMode));
+                pend = Math.max(0, toBaseQtyFromDual(d.qty, d.alt_qty, fct, dualModeOf(d.product_id)) - toBaseQtyFromDual(d[doneCol], d[`alt_${doneCol}`], fct, dualModeOf(d.product_id)));
             } else {
                 const fct = d.uom_id ? factorOf[`${d.product_id}|${d.uom_id}`] || 1 : 1;
                 pend = Math.max(0, (Number(d.qty) || 0) - (Number(d[doneCol]) || 0)) * fct;

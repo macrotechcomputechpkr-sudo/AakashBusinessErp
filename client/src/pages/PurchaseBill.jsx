@@ -18,7 +18,7 @@ import Layout from '../components/Layout';
 import { useEnterKeyNavigation } from '../hooks/useEnterKeyNavigation';
 import BillWiseSettlementPanel from '../components/BillWiseSettlementPanel';
 import NumberingCategorySelector from '../components/NumberingCategorySelector';
-import { resolveDualUomEntryMode, onPrimaryQtyChange, onSecondaryQtyChange, validateFixedSecondary, dualBaseQty } from '../utils/dualUomEntryMode';
+import { resolveDualUomEntryMode, onPrimaryQtyChange, onSecondaryQtyChange, validateFixedSecondary, dualBaseQty, productDualMode } from '../utils/dualUomEntryMode';
 import UdfValuesModal from '../components/UdfValuesModal';
 import useLedgerPurposes from '../components/useLedgerPurposes';
 import RecordHistory from '../components/RecordHistory';
@@ -28,7 +28,7 @@ import PendingDocsPanel, { mergePulled } from '../components/entry/PendingDocsPa
 import { PartyDetailsPanel, emptyPartyInfo, savePartyInfo, partyInfoFromDoc } from '../components/entry/PartyFooterTabs';
 import { CodeCell } from '../components/entry/SalesLineGrid';
 import DocActions, { HoldButtons } from '../components/entry/DocActions';
-import { EntryFooter, useEntryHotkeys, latestOf } from '../components/entry/FinEntry';
+import { EntryFooter, useEntryHotkeys, latestOf } from '../components/entry/EntryParts';
 import { PurchaseProductTermPopup, PurchaseOverallTermPopup } from '../components/entry/PurchaseTermPopups';
 
 const emptyDetailRow = () => ({
@@ -55,6 +55,9 @@ const emptyForm = {
 const EFC_RENDERED_KEYS = ['agent_id', 'area_id', 'business_unit_id', 'cost_center_id', 'currency', 'doc_date', 'due_date', 'due_days', 'goods_account_ledger_id', 'goods_sub_ledger_id', 'invoice_type', 'narration', 'party_bill_date', 'party_bill_no', 'priority', 'rate_type', 'route_id', 'terms_conditions_id', 'vendor_ledger_id', 'warehouse_id'];
 
 export default function PurchaseBill() {
+    const [dualUomEntryMode, setDualUomEntryMode] = useState({ mode: 'fixed', reverseEnabled: false });
+    // a product's own dual-UOM entry mode (Product Master) over System Control's
+    const dualModeOf = pid => productDualMode(products.find(p => p.id === pid), dualUomEntryMode);
     const { authFetch } = useAuth();
     const lp = useLedgerPurposes();
     // Compulsory check on save (incl. popup pickers, which HTML `required` can't enforce);
@@ -314,7 +317,7 @@ export default function PurchaseBill() {
     const lineGross = (d) => {
         if (productIsFixedDualUom(d.product_id) && d.alt_qty) {
             const factor = dualConversionFactor(d.product_id);
-            const totalBaseQty = dualBaseQty(d.qty, d.alt_qty, factor, dualUomEntryMode.mode);
+            const totalBaseQty = dualBaseQty(d.qty, d.alt_qty, factor, dualModeOf(d.product_id).mode);
             return d.rate_basis === 'primary' ? (totalBaseQty / factor) * (Number(d.rate) || 0) : totalBaseQty * (Number(d.rate) || 0);
         }
         return (Number(d.qty) || 0) * (Number(d.rate) || 0);
@@ -332,7 +335,6 @@ export default function PurchaseBill() {
     // aunu paryo" - checked rows here become the target set the
     // Product Term modal applies term selections to, all at once.
     const [selectedRowIndexes, setSelectedRowIndexes] = useState([]);
-    const [dualUomEntryMode, setDualUomEntryMode] = useState({ mode: 'fixed', reverseEnabled: false });
 
     // FEATURE: live preview of the SAME evaluateAllTerms() engine the
     // backend will use on save - refetches whenever the selected terms
@@ -425,11 +427,13 @@ export default function PurchaseBill() {
 
     const summaryGrandTotal = summaryRows.reduce((sum, r) => sum + (summaryOverrides[r.billing_term_id] !== undefined ? Number(summaryOverrides[r.billing_term_id]) : r.original_total), 0);
 
-    // FinPro footer: bill terms (preview) + product-term totals, taxable split; F7 copies the last entry
+    // entry footer: bill charges (preview) + item-charge totals, taxable split; F7 copies the last entry
     const [overallOpen, setOverallOpen] = useState(false);
-    // Alt unit / batch columns only once a line's product has them
-    const anyAlt = form.details.some(d => productHasAltUnits(d.product_id));
-    const anyBatch = form.details.some(d => productMaintainsBatch(d.product_id) || productTracksSerial(d.product_id));
+    // grid columns switched on in System Control; Disc % / Tax % go to the Item Charges pop-up when purchase charges open in a pop-up
+    const batchOn = !!(settings?.batch || settings?.serial);
+    const chargesInPopup = !!settings?.popupTerms?.includes('purchase');
+    // net of a line: gross, less / plus its Disc % / Tax %, plus its item charges
+    const lineNet = (d, idx) => lineAmount(d) + (lineTermPreviews[idx]?.total !== undefined ? lineTermPreviews[idx].total - (Number(d.qty) || 0) * (Number(d.rate) || 0) : 0);
     const billTermAmount = (billingPreview ? billingPreview.total - grandTotal : 0) + summaryGrandTotal;
     const taxSplit = form.details.reduce((t, d) => {
         if (!d.product_id) return t;
@@ -686,7 +690,7 @@ export default function PurchaseBill() {
             )}
 
             {showForm && (
-                <form onSubmit={handleSubmit} ref={formRef} className="fin-entry">
+                <form onSubmit={handleSubmit} ref={formRef} className="ent-entry">
                     {/* ==================== PULL FORWARD (universal - any earlier stage) ==================== */}
                     {!editingId && (
                         <details className="mx-3 mt-2 text-xs"><summary className="cursor-pointer text-[#1a4a8a]">Pull from any earlier document (any party)</summary>
@@ -784,28 +788,29 @@ export default function PurchaseBill() {
 
                     {/* ==================== DETAILS PART ==================== */}
                     <div className="border-t pt-4">
-                        <div className="fin-grid-wrap">
-                            <table className="fin-grid" style={{ minWidth: 1300 }}>
+                        <div className="ent-grid-wrap">
+                            <table className="ent-grid" style={{ minWidth: 1300 }}>
                                 <thead>
                                     <tr>
-                                        <th className="sno">SNo.</th>
-                                        <th className="text-left px-1 py-1">Short Name</th>
-                                        <th className="text-left px-1 py-1 w-56">Name {isRequired('product_id', 'detail') && <span className="text-red-500">*</span>}</th>
+                                        <th className="sno">#</th>
+                                        <th className="text-left px-1 py-1">Item Code</th>
+                                        <th className="text-left px-1 py-1 w-56">Item Name {isRequired('product_id', 'detail') && <span className="text-red-500">*</span>}</th>
                                         <th className={`text-left px-1 py-1 w-40 ${(settings?.multiWarehouse && isVisible('warehouse_id', 'detail')) ? '' : 'hidden'}`}>Details Warehouse</th>
-                                        <th className={`text-left px-1 py-1 w-28 ${(anyBatch && isVisible('batch_no', 'detail')) ? '' : 'hidden'}`}>Batch No</th>
+                                        <th className={`text-left px-1 py-1 w-28 ${(batchOn && isVisible('batch_no', 'detail')) ? '' : 'hidden'}`}>Batch No</th>
                                         <th className="text-left px-1 py-1 w-24">Qty {isRequired('qty', 'detail') && <span className="text-red-500">*</span>}</th>
                                         <th className={`text-left px-1 py-1 w-32 ${isVisible('uom_id', 'detail') ? '' : 'hidden'}`}>UOM</th>
-                                        <th className={`text-left px-1 py-1 w-20 ${isVisible('free_qty', 'detail') ? '' : 'hidden'}`}>Free Qty</th>
-                                        <th className={`text-left px-1 py-1 w-32 ${isVisible('free_uom_id', 'detail') ? '' : 'hidden'}`}>Free UOM</th>
-                                        <th className={`text-left px-1 py-1 w-20 ${(anyAlt && isVisible('alt_qty', 'detail')) ? '' : 'hidden'}`}>Alt Qty</th>
-                                        <th className={`text-left px-1 py-1 w-32 ${(anyAlt && isVisible('alt_unit_id', 'detail')) ? '' : 'hidden'}`}>Alt Unit</th>
-                                        <th className={`text-left px-1 py-1 w-20 ${(anyAlt && isVisible('alt1_qty', 'detail')) ? '' : 'hidden'}`}>Alt1 Qty</th>
-                                        <th className={`text-left px-1 py-1 w-32 ${(anyAlt && isVisible('alt1_unit_id', 'detail')) ? '' : 'hidden'}`}>Alt1 Unit</th>
+                                        <th className={`text-left px-1 py-1 w-20 ${(settings?.freeQty && isVisible('free_qty', 'detail')) ? '' : 'hidden'}`}>Free Qty</th>
+                                        <th className={`text-left px-1 py-1 w-32 ${(settings?.freeQty && isVisible('free_uom_id', 'detail')) ? '' : 'hidden'}`}>Free UOM</th>
+                                        <th className={`text-left px-1 py-1 w-20 ${(settings?.altUnit && isVisible('alt_qty', 'detail')) ? '' : 'hidden'}`}>Alt Qty</th>
+                                        <th className={`text-left px-1 py-1 w-32 ${(settings?.altUnit && isVisible('alt_unit_id', 'detail')) ? '' : 'hidden'}`}>Alt Unit</th>
+                                        <th className={`text-left px-1 py-1 w-20 ${(settings?.altUnit && isVisible('alt1_qty', 'detail')) ? '' : 'hidden'}`}>Alt1 Qty</th>
+                                        <th className={`text-left px-1 py-1 w-32 ${(settings?.altUnit && isVisible('alt1_unit_id', 'detail')) ? '' : 'hidden'}`}>Alt1 Unit</th>
                                         <th className={`text-left px-1 py-1 w-24 ${isVisible('rate', 'detail') ? '' : 'hidden'}`}>Rate</th>
-                                        <th className={`text-left px-1 py-1 w-20 ${isVisible('discount_percent', 'detail') ? '' : 'hidden'}`}>Disc %</th>
-                                        <th className={`text-left px-1 py-1 w-20 ${isVisible('tax_percent', 'detail') ? '' : 'hidden'}`}>Tax %</th>
-                                        <th className="r">Gross Amt.</th>
-                                        <th className="r">Amount</th>
+                                        <th className={`text-left px-1 py-1 w-20 ${(!chargesInPopup && isVisible('discount_percent', 'detail')) ? '' : 'hidden'}`}>Disc %</th>
+                                        <th className={`text-left px-1 py-1 w-20 ${(!chargesInPopup && isVisible('tax_percent', 'detail')) ? '' : 'hidden'}`}>Tax %</th>
+                                        <th className="r">Gross</th>
+                                        <th className="r">Charges ±</th>
+                                        <th className="r">Net Amount</th>
                                         <th className={`text-left px-1 py-1 w-28 ${isVisible('barcode', 'detail') ? '' : 'hidden'}`}>Barcode</th>
                                         <th className="text-left px-1 py-1 w-32">Ref No <span className="text-gray-400 normal-case">(source doc)</span></th>
                                         {form.import_detail_mode === 'item_wise' && (
@@ -815,7 +820,7 @@ export default function PurchaseBill() {
                                             </>
                                         )}
                                         <th className={`text-left px-1 py-1 w-40 ${isVisible('narration', 'detail') ? '' : 'hidden'}`}>Narration</th>
-                                        {inlineTerms ? termCols.map(c => <th key={c.key} className="text-left px-1 py-1">{c.label}</th>) : <th className="text-left px-1 py-1 w-20">Term</th>}
+                                        {inlineTerms ? termCols.map(c => <th key={c.key} className="text-left px-1 py-1">{c.label}</th>) : <th className="text-left px-1 py-1 w-20">Item Charges</th>}
                                         <th></th>
                                     </tr>
                                 </thead>
@@ -854,7 +859,7 @@ export default function PurchaseBill() {
                                                     {warehouses.map(w => <option key={w.id} value={w.id}>{w.warehouse_name}</option>)}
                                                 </select>
                                             </td>
-                                            <td className={`px-1 py-1 ${(anyBatch && isVisible('batch_no', 'detail')) ? '' : 'hidden'}`}>
+                                            <td className={`px-1 py-1 ${(batchOn && isVisible('batch_no', 'detail')) ? '' : 'hidden'}`}>
                                                 {productMaintainsBatch(d.product_id) ? (
                                                     <input disabled={efc.isReadonly('batch_no', 'detail')} className="w-full border rounded px-1.5 py-1" value={d.batch_no} onChange={e => updateDetailRow(idx, { batch_no: e.target.value })} placeholder="Batch" />
                                                 ) : <span className="text-gray-300 text-xs">—</span>}
@@ -866,7 +871,7 @@ export default function PurchaseBill() {
                                                         <div className="flex items-center gap-1">
                                                             <input disabled={efc.isReadonly('qty', 'detail')}
                                                                 type="number" step="0.0001" className="w-full border rounded px-1.5 py-1" style={{ width: '60px' }} value={d.qty}
-                                                                onChange={e => updateDetailRow(idx, dualUomEntryMode.mode === 'auto_convert' ? onPrimaryQtyChange(e.target.value, dualConversionFactor(d.product_id)) : { qty: e.target.value })}
+                                                                onChange={e => updateDetailRow(idx, dualModeOf(d.product_id).mode === 'auto_convert' ? onPrimaryQtyChange(e.target.value, dualConversionFactor(d.product_id)) : { qty: e.target.value })}
                                                             />
                                                             <span className="text-[10px] text-gray-400">{units.find(u => u.id === d.uom_id)?.unit_name || 'Primary'}</span>
                                                         </div>
@@ -874,8 +879,8 @@ export default function PurchaseBill() {
                                                             <input disabled={efc.isReadonly('alt_qty', 'detail')}
                                                                 type="number" step="0.0001" className="w-full border rounded px-1.5 py-1" style={{ width: '60px' }} value={d.alt_qty} placeholder="0"
                                                                 onChange={e => {
-                                                                    if (dualUomEntryMode.mode === 'auto_convert') {
-                                                                        updateDetailRow(idx, onSecondaryQtyChange(e.target.value, dualConversionFactor(d.product_id), dualUomEntryMode.reverseEnabled));
+                                                                    if (dualModeOf(d.product_id).mode === 'auto_convert') {
+                                                                        updateDetailRow(idx, onSecondaryQtyChange(e.target.value, dualConversionFactor(d.product_id), dualModeOf(d.product_id).reverseEnabled));
                                                                     } else {
                                                                         const { value } = validateFixedSecondary(e.target.value, dualConversionFactor(d.product_id));
                                                                         updateDetailRow(idx, { alt_qty: value });
@@ -884,7 +889,7 @@ export default function PurchaseBill() {
                                                             />
                                                             <span className="text-[10px] text-gray-400">{units.find(u => u.id === d.alt_unit_id)?.unit_name || 'Secondary'}</span>
                                                         </div>
-                                                        {dualUomEntryMode.mode !== 'auto_convert' && validateFixedSecondary(d.alt_qty, dualConversionFactor(d.product_id)).error && (
+                                                        {dualModeOf(d.product_id).mode !== 'auto_convert' && validateFixedSecondary(d.alt_qty, dualConversionFactor(d.product_id)).error && (
                                                             <span className="text-[9px] text-red-500 leading-tight">{validateFixedSecondary(d.alt_qty, dualConversionFactor(d.product_id)).error}</span>
                                                         )}
                                                     </div>
@@ -902,7 +907,7 @@ export default function PurchaseBill() {
                                                     </select>
                                                 )}
                                             </td>
-                                            <td className={`px-1 py-1 ${isVisible('free_qty', 'detail') ? '' : 'hidden'}`}>
+                                            <td className={`px-1 py-1 ${(settings?.freeQty && isVisible('free_qty', 'detail')) ? '' : 'hidden'}`}>
                                                 {productIsFixedDualUom(d.product_id) ? (
                                                     <div className="flex flex-col gap-1">
                                                         <input disabled={efc.isReadonly('free_qty', 'detail')} type="number" step="0.0001" className="w-full border rounded px-1.5 py-1" style={{ width: '60px' }} value={d.free_qty} onChange={e => updateDetailRow(idx, { free_qty: e.target.value })} placeholder="0" />
@@ -912,16 +917,16 @@ export default function PurchaseBill() {
                                                     <input disabled={efc.isReadonly('free_qty', 'detail')} type="number" step="0.0001" className="w-full border rounded px-1.5 py-1" value={d.free_qty} onChange={e => updateDetailRow(idx, { free_qty: e.target.value })} />
                                                 )}
                                             </td>
-                                            <td className={`px-1 py-1 ${isVisible('free_uom_id', 'detail') ? '' : 'hidden'}`}>
+                                            <td className={`px-1 py-1 ${(settings?.freeQty && isVisible('free_uom_id', 'detail')) ? '' : 'hidden'}`}>
                                                 <select disabled={efc.isReadonly('free_uom_id', 'detail')} className="w-full border rounded px-1.5 py-1" value={d.free_uom_id} onChange={e => updateDetailRow(idx, { free_uom_id: e.target.value })}>
                                                     <option value="">UOM</option>
                                                     {units.map(u => <option key={u.id} value={u.id}>{u.unit_name}</option>)}
                                                 </select>
                                             </td>
-                                            <td className={`px-1 py-1 ${(anyAlt && isVisible('alt_qty', 'detail')) ? '' : 'hidden'}`}>
+                                            <td className={`px-1 py-1 ${(settings?.altUnit && isVisible('alt_qty', 'detail')) ? '' : 'hidden'}`}>
                                                 {productIsFixedDualUom(d.product_id) ? <span className="text-gray-300 text-xs">(above)</span> : productHasAltUnits(d.product_id) ? <input disabled={efc.isReadonly('alt_qty', 'detail')} type="number" step="0.0001" className="w-full border rounded px-1.5 py-1" value={d.alt_qty} onChange={e => updateDetailRow(idx, { alt_qty: e.target.value })} /> : <span className="text-gray-300 text-xs">—</span>}
                                             </td>
-                                            <td className={`px-1 py-1 ${(anyAlt && isVisible('alt_unit_id', 'detail')) ? '' : 'hidden'}`}>
+                                            <td className={`px-1 py-1 ${(settings?.altUnit && isVisible('alt_unit_id', 'detail')) ? '' : 'hidden'}`}>
                                                 {productHasAltUnits(d.product_id) ? (
                                                 <select disabled={efc.isReadonly('alt_unit_id', 'detail')} className="w-full border rounded px-1.5 py-1" value={d.alt_unit_id} onChange={e => updateDetailRow(idx, { alt_unit_id: e.target.value })}>
                                                     <option value="">Unit</option>
@@ -929,10 +934,10 @@ export default function PurchaseBill() {
                                                 </select>
                                                 ) : <span className="text-gray-300 text-xs">—</span>}
                                             </td>
-                                            <td className={`px-1 py-1 ${(anyAlt && isVisible('alt1_qty', 'detail')) ? '' : 'hidden'}`}>
+                                            <td className={`px-1 py-1 ${(settings?.altUnit && isVisible('alt1_qty', 'detail')) ? '' : 'hidden'}`}>
                                                 {productHasAltUnits(d.product_id) ? <input type="number" step="0.0001" className="w-full border rounded px-1.5 py-1" value={d.alt1_qty} onChange={e => updateDetailRow(idx, { alt1_qty: e.target.value })} /> : <span className="text-gray-300 text-xs">—</span>}
                                             </td>
-                                            <td className={`px-1 py-1 ${(anyAlt && isVisible('alt1_unit_id', 'detail')) ? '' : 'hidden'}`}>
+                                            <td className={`px-1 py-1 ${(settings?.altUnit && isVisible('alt1_unit_id', 'detail')) ? '' : 'hidden'}`}>
                                                 {productHasAltUnits(d.product_id) ? (
                                                 <select className="w-full border rounded px-1.5 py-1" value={d.alt1_unit_id} onChange={e => updateDetailRow(idx, { alt1_unit_id: e.target.value })}>
                                                     <option value="">Unit</option>
@@ -949,10 +954,11 @@ export default function PurchaseBill() {
                                                     </select>
                                                 )}
                                             </td>
-                                            <td className={`px-1 py-1 ${isVisible('discount_percent', 'detail') ? '' : 'hidden'}`}><input disabled={efc.isReadonly('discount_percent', 'detail')} type="number" step="0.01" className="w-full border rounded px-1.5 py-1" value={d.discount_percent} onChange={e => updateDetailRow(idx, { discount_percent: e.target.value })} /></td>
-                                            <td className={`px-1 py-1 ${isVisible('tax_percent', 'detail') ? '' : 'hidden'}`}><input disabled={efc.isReadonly('tax_percent', 'detail')} type="number" step="0.01" className="w-full border rounded px-1.5 py-1" value={d.tax_percent} onChange={e => updateDetailRow(idx, { tax_percent: e.target.value })} /></td>
+                                            <td className={`px-1 py-1 ${(!chargesInPopup && isVisible('discount_percent', 'detail')) ? '' : 'hidden'}`}><input disabled={efc.isReadonly('discount_percent', 'detail')} type="number" step="0.01" className="w-full border rounded px-1.5 py-1" value={d.discount_percent} onChange={e => updateDetailRow(idx, { discount_percent: e.target.value })} /></td>
+                                            <td className={`px-1 py-1 ${(!chargesInPopup && isVisible('tax_percent', 'detail')) ? '' : 'hidden'}`}><input disabled={efc.isReadonly('tax_percent', 'detail')} type="number" step="0.01" className="w-full border rounded px-1.5 py-1" value={d.tax_percent} onChange={e => updateDetailRow(idx, { tax_percent: e.target.value })} /></td>
                                             <td className="px-1 py-1 r">{d.product_id ? lineGross(d).toFixed(2) : ''}</td>
-                                            <td className="px-1 py-1 r font-semibold">{d.product_id ? lineAmount(d).toFixed(2) : ''}</td>
+                                            <td className="px-1 py-1 r">{d.product_id ? (lineNet(d, idx) - lineGross(d)).toFixed(2) : ''}</td>
+                                            <td className="px-1 py-1 r font-semibold">{d.product_id ? lineNet(d, idx).toFixed(2) : ''}</td>
                                             <td className={`px-1 py-1 ${isVisible('barcode', 'detail') ? '' : 'hidden'}`}><input disabled={efc.isReadonly('barcode', 'detail')} className="w-full border rounded px-1.5 py-1" value={d.barcode} onChange={e => updateDetailRow(idx, { barcode: e.target.value })} /></td>
                                             <td className="px-1 py-1 text-xs text-gray-500">{d.source_doc_no || (d.source_quotation_detail_id || d.source_order_detail_id || d.source_grn_detail_id ? '…' : '—')}</td>
                                             {form.import_detail_mode === 'item_wise' && (
@@ -962,22 +968,22 @@ export default function PurchaseBill() {
                                                 </>
                                             )}
                                             <td className={`px-1 py-1 ${isVisible('narration', 'detail') ? '' : 'hidden'}`}><input disabled={efc.isReadonly('narration', 'detail')} className="w-full border rounded px-1.5 py-1" value={d.narration} onChange={e => updateDetailRow(idx, { narration: e.target.value })} /></td>
-                                            {inlineTerms ? termCols.map(c => { const on = (d.billing_term_ids || []).includes(c.term_id); const pos = (d.billing_term_ids || []).indexOf(c.term_id); const amt = on ? lineTermPreviews[idx]?.lines?.[pos]?.amount : null; return (<td key={c.key} className="px-1 py-1 whitespace-nowrap"><input type="checkbox" checked={on} onChange={() => updateDetailRow(idx, { billing_term_ids: on ? d.billing_term_ids.filter(x => x !== c.term_id) : [...(d.billing_term_ids || []), c.term_id] })} /> <span className="text-xs">{amt !== null && amt !== undefined ? Number(amt).toFixed(2) : ''}</span></td>); }) : (<td className="px-1 py-1"><button type="button" tabIndex={-1} onClick={() => setProductTermModalIndexes([idx])} className="fin-term-btn" title="Product terms of this line">
+                                            {inlineTerms ? termCols.map(c => { const on = (d.billing_term_ids || []).includes(c.term_id); const pos = (d.billing_term_ids || []).indexOf(c.term_id); const amt = on ? lineTermPreviews[idx]?.lines?.[pos]?.amount : null; return (<td key={c.key} className="px-1 py-1 whitespace-nowrap"><input type="checkbox" checked={on} onChange={() => updateDetailRow(idx, { billing_term_ids: on ? d.billing_term_ids.filter(x => x !== c.term_id) : [...(d.billing_term_ids || []), c.term_id] })} /> <span className="text-xs">{amt !== null && amt !== undefined ? Number(amt).toFixed(2) : ''}</span></td>); }) : (<td className="px-1 py-1"><button type="button" tabIndex={-1} onClick={() => setProductTermModalIndexes([idx])} className="ent-term-btn" title="Charges of this line">
 {lineTermPreviews[idx]?.total !== undefined ? (lineTermPreviews[idx].total - (Number(d.qty) || 0) * (Number(d.rate) || 0)).toFixed(2) : '…'}
 </button></td>)}
                                             <td className="px-1 py-1"><button type="button" tabIndex={-1} onClick={() => removeDetailRow(idx)} className="text-red-500 text-xs">✕</button></td>
                                         </tr>
                                     ))}
                                     {Array.from({ length: Math.max(0, 10 - form.details.length) }).map((_, i) => (
-                                        <tr key={`f${i}`} className="filler" onClick={addDetailRow} title="Click to add a line"><td className="sno">{form.details.length + i + 1}</td><td colSpan={26} /></tr>
+                                        <tr key={`f${i}`} className="filler" onClick={addDetailRow} title="Click to add a line"><td className="sno">{form.details.length + i + 1}</td><td colSpan={27} /></tr>
                                     ))}
                                 </tbody>
-                                <tfoot><tr><td colSpan={27}><span className="fin-total-cap" style={{ marginLeft: 260 }}>Total in (Nrs)&gt;</span>&nbsp;&nbsp; Qty <b>{totalQty.toFixed(3)}</b> &nbsp;·&nbsp; Gross <b>{form.details.reduce((a, d) => a + (d.product_id ? lineGross(d) : 0), 0).toFixed(2)}</b> &nbsp;·&nbsp; Amount <b>{grandTotal.toFixed(2)}</b></td></tr></tfoot>
+                                <tfoot><tr><td colSpan={28}><span className="ent-total-cap" style={{ marginLeft: 260 }}>Totals</span>&nbsp;&nbsp; Qty <b>{totalQty.toFixed(3)}</b> &nbsp;·&nbsp; Gross <b>{form.details.reduce((a, d) => a + (d.product_id ? lineGross(d) : 0), 0).toFixed(2)}</b> &nbsp;·&nbsp; Amount <b>{grandTotal.toFixed(2)}</b></td></tr></tfoot>
                             </table>
                         </div>
                         <div className="flex items-center gap-2 mt-1 text-xs text-gray-600">
                             <button type="button" className="nav-btn small" onClick={addDetailRow}>➕ Add line</button>
-                            <span>Enter on the last field adds a line · Term: product-wise terms · tick lines (SNo.) and use Product Term to set them together</span>
+                            <span>Enter on the last field adds a line · Charges ±: this line's charges · tick lines (#) and use Item Charges to set them together</span>
                         </div>
                     </div>
 
@@ -993,12 +999,12 @@ export default function PurchaseBill() {
 
                     <EntryFooter
                         title="Purchase Bill"
-                        totals={{ billTerm: billTermAmount, net: grandTotal + billTermAmount, taxable: taxSplit.taxable, tax: taxSplit.tax, nonTaxable: taxSplit.nonTaxable }}
+                        totals={{ gross: form.details.reduce((a, d) => a + (d.product_id ? lineGross(d) : 0), 0), billTerm: billTermAmount, net: grandTotal + billTermAmount, taxable: taxSplit.taxable, tax: taxSplit.tax, nonTaxable: taxSplit.nonTaxable }}
                         party={{ label: 'Supplier', name: footVendor?.account_name || form.cash_vendor_name, creditLimit: footVendor?.credit_limit }}
                         remarks={{ value: form.remarks_text, onChange: v => setForm(f => ({ ...f, remarks_text: v })), options: remarks.map(r => r.remark_text) }}
                         onProductTerm={() => setProductTermModalIndexes(selectedRowIndexes.length > 0 ? selectedRowIndexes : form.details.map((_, i) => i).filter(i => form.details[i].product_id))}
                         onBillTerm={() => setOverallOpen(true)}
-                        panels={[{ key: 'other', label: 'Other Details', buttons: [{ label: 'Other Details', onClick: () => setActiveTab('general') }, { label: 'Billing/Taxation', onClick: () => setActiveTab('party') }], content: (
+                        panels={[{ key: 'other', label: 'More Info', buttons: [{ label: 'More Info', onClick: () => setActiveTab('general') }, { label: 'Party & Tax Info', onClick: () => setActiveTab('party') }], content: (
                             <>
                             <div className="erp-tabs">
                                 <button type="button" className={`erp-tab ${activeTab === 'general' ? 'active' : ''}`} onClick={() => setActiveTab('general')}>General</button>
@@ -1226,11 +1232,11 @@ export default function PurchaseBill() {
                         actions={<>
                             <HoldButtons hotkey voucherType="purchase_bill" form={form} disabled={!!editingId} onRecall={p => { if (p) { setForm(p); setEditingId(null); setShowForm(true); } else resetForm(); }} />
                             <button type="button" onClick={e => handleSubmit(e, true)} className="erp-btn">💾 Save as Draft</button>
-                            <button type="submit" className="erp-btn primary">✔ {editingId ? 'Update' : 'Ok'}</button>
-                            <button type="button" onClick={() => { resetForm(); setShowForm(false); }} className="erp-btn">✖ Cancel</button>
+                            <button type="submit" className="erp-btn primary">💾 {editingId ? 'Update' : 'Save'}</button>
+                            <button type="button" onClick={() => { resetForm(); setShowForm(false); }} className="erp-btn">Cancel</button>
                         </>}
                     >
-                        <div className={`fin-row ${isVisible('narration') ? '' : 'hidden'}`}><label>Narration</label><input className="fin-box wide edit" value={form.narration} onChange={e => setForm({ ...form, narration: e.target.value })} /></div>
+                        <div className={`ent-frow ${isVisible('narration') ? '' : 'hidden'}`}><label>Narration</label><input className="erp-input" value={form.narration} onChange={e => setForm({ ...form, narration: e.target.value })} /></div>
                     </EntryFooter>
                 </form>
             )}
@@ -1374,18 +1380,18 @@ export default function PurchaseBill() {
                 </div>
             )}
 
-            {/* ==================== TERM POP-UPS (FinPro: product wise / over all) ==================== */}
+            {/* ==================== CHARGE POP-UPS (item charges / charges summary) ==================== */}
             {productTermModalIndexes !== null && productTermModalIndexes.length > 0 && (
                 <PurchaseProductTermPopup
-                    title="Purchase Bill (Product wise)" terms={billingTerms} previews={lineTermPreviews}
+                    title="Purchase Bill · Item Charges" terms={billingTerms} previews={lineTermPreviews}
                     lines={productTermModalIndexes.map(idx => ({ idx, line: form.details[idx] })).filter(t => t.line)}
                     productName={productTermModalIndexes.length === 1 ? (products.find(p => p.id === form.details[productTermModalIndexes[0]]?.product_id)?.product_name || '') : `${productTermModalIndexes.length} lines`}
-                    onToggle={id => toggleTermForLines(productTermModalIndexes, id)} subLedgerCell={t => <TermLedgerInfo term={t} isReturn={false} subLedgers={subLedgers} value={(form.term_sub_ledgers || {})[t.id]} onChange={v => setForm(f => ({ ...f, term_sub_ledgers: { ...(f.term_sub_ledgers || {}), [t.id]: v } }))} />}
+                    onToggle={id => toggleTermForLines(productTermModalIndexes, id)} lineFields={chargesInPopup ? [['discount_percent', 'Discount %', '-'], ['tax_percent', 'Tax %', '+']].map(([key, label, sign]) => ({ key, label, sign, value: form.details[productTermModalIndexes[0]]?.[key] ?? '', onChange: v => setForm(f => ({ ...f, details: f.details.map((d, i) => (productTermModalIndexes.includes(i) ? { ...d, [key]: v } : d)) })) })) : null} subLedgerCell={t => <TermLedgerInfo term={t} isReturn={false} subLedgers={subLedgers} value={(form.term_sub_ledgers || {})[t.id]} onChange={v => setForm(f => ({ ...f, term_sub_ledgers: { ...(f.term_sub_ledgers || {}), [t.id]: v } }))} />}
                     onClose={() => setProductTermModalIndexes(null)} />
             )}
             {overallOpen && (
                 <PurchaseOverallTermPopup
-                    title="Purchase Bill Over All Term(s)" summaryRows={summaryRows} overrides={summaryOverrides} onOverride={(id, v) => setSummaryOverrides(o => ({ ...o, [id]: v }))}
+                    title="Purchase Bill · Charges Summary" summaryRows={summaryRows} overrides={summaryOverrides} onOverride={(id, v) => setSummaryOverrides(o => ({ ...o, [id]: v }))}
                     terms={billingTerms} billTermIds={form.billing_term_ids} onToggleBillTerm={toggleBillingTerm} preview={billingPreview} subLedgerCell={t => <TermLedgerInfo term={t} isReturn={false} subLedgers={subLedgers} value={(form.term_sub_ledgers || {})[t.id]} onChange={v => setForm(f => ({ ...f, term_sub_ledgers: { ...(f.term_sub_ledgers || {}), [t.id]: v } }))} />}
                     onClose={() => setOverallOpen(false)} />
             )}

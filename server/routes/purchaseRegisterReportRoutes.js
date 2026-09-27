@@ -11,7 +11,7 @@
 
 const express = require('express');
 const { dualFactors, linePending } = require('../utils/progressCounters');
-const { getDualUomMode } = require('../utils/dualUomCalculation');
+const { getDualUomResolver } = require('../utils/dualUomCalculation');
 const router = express.Router();
 const { getTenantClient, loadUserPermissions } = require('../utils/dbHelpers');
 const { requireAuth, requirePermission } = require('../middleware/auth');
@@ -94,12 +94,12 @@ router.get('/purchase-register-report', requireAuth, loadUserPermissions, requir
         // Fixed-dual lines are measured in BASE units with the alt_* counters
         // (migration 110), so loose pieces count as converted / outstanding.
         const factorOf = await dualFactors(tenantClient, details || []);
-        const dualMode = Object.keys(factorOf).length ? await getDualUomMode(tenantClient) : 'fixed';
+        const dualModeOf = await getDualUomResolver(tenantClient);
         const altCol = 'alt_' + config.convertedColumn;
         let rows = (details || []).map(d => {
             const master = masterById[d[config.fkColumn]];
             const convertedQty = Number(d[config.convertedColumn] || 0);
-            const pend = linePending(d, config.convertedColumn, altCol, factorOf[d.product_id], dualMode);
+            const pend = linePending(d, config.convertedColumn, altCol, factorOf[d.product_id], dualModeOf(d.product_id));
             const outstandingQty = pend.pendingPrimary;
             const convertedAmount = Number(d.amount) * pend.doneShare;
             const outstandingAmount = Number(d.amount) - convertedAmount;

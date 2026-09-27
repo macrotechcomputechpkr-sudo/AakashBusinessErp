@@ -15,7 +15,7 @@ import SearchablePopupSelect from '../components/SearchablePopupSelect';
 import ReportGrid from '../components/ReportGrid';
 import Layout from '../components/Layout';
 import NumberingCategorySelector from '../components/NumberingCategorySelector';
-import { resolveDualUomEntryMode, onPrimaryQtyChange, onSecondaryQtyChange, validateFixedSecondary, dualBaseQty } from '../utils/dualUomEntryMode';
+import { resolveDualUomEntryMode, onPrimaryQtyChange, onSecondaryQtyChange, validateFixedSecondary, dualBaseQty, productDualMode } from '../utils/dualUomEntryMode';
 import { useEnterKeyNavigation } from '../hooks/useEnterKeyNavigation';
 import BillWiseSettlementPanel from '../components/BillWiseSettlementPanel';
 import UdfValuesModal from '../components/UdfValuesModal';
@@ -27,7 +27,7 @@ import PendingDocsPanel, { mergePulled } from '../components/entry/PendingDocsPa
 import { PartyDetailsPanel, emptyPartyInfo, savePartyInfo, partyInfoFromDoc } from '../components/entry/PartyFooterTabs';
 import { CodeCell } from '../components/entry/SalesLineGrid';
 import DocActions, { HoldButtons } from '../components/entry/DocActions';
-import { EntryFooter, useEntryHotkeys, latestOf } from '../components/entry/FinEntry';
+import { EntryFooter, useEntryHotkeys, latestOf } from '../components/entry/EntryParts';
 import { PurchaseProductTermPopup, PurchaseOverallTermPopup } from '../components/entry/PurchaseTermPopups';
 
 const RETURN_REASONS = [
@@ -61,6 +61,9 @@ const emptyForm = {
 const EFC_RENDERED_KEYS = ['agent_id', 'business_unit_id', 'cost_center_id', 'currency', 'doc_date', 'goods_account_ledger_id', 'goods_sub_ledger_id', 'invoice_type', 'narration', 'party_bill_date', 'party_bill_no', 'priority', 'rate_type', 'return_reason', 'vendor_ledger_id', 'warehouse_id'];
 
 export default function PurchaseReturn() {
+    const [dualUomEntryMode, setDualUomEntryMode] = useState({ mode: 'fixed', reverseEnabled: false });
+    // a product's own dual-UOM entry mode (Product Master) over System Control's
+    const dualModeOf = pid => productDualMode(products.find(p => p.id === pid), dualUomEntryMode);
     const { authFetch } = useAuth();
     const lp = useLedgerPurposes();
     const efc = useEntryFieldControls('purchase_return', EFC_RENDERED_KEYS);
@@ -88,7 +91,6 @@ export default function PurchaseReturn() {
     const [lineTermPreviews, setLineTermPreviews] = useState({});
     const [summaryOverrides, setSummaryOverrides] = useState({});
     const [selectedRowIndexes, setSelectedRowIndexes] = useState([]);
-    const [dualUomEntryMode, setDualUomEntryMode] = useState({ mode: 'fixed', reverseEnabled: false });
     // FEATURE: "[F1]: Last Purchase history, [F2]: Last Purchase
     // history (Any Supplier)" - matches Purchase Bill's own two-key
     // distinction exactly.
@@ -191,7 +193,7 @@ export default function PurchaseReturn() {
         let base;
         if (productIsFixedDualUom(d.product_id) && d.alt_qty) {
             const factor = dualConversionFactor(d.product_id);
-            const totalBaseQty = dualBaseQty(d.qty, d.alt_qty, factor, dualUomEntryMode.mode);
+            const totalBaseQty = dualBaseQty(d.qty, d.alt_qty, factor, dualModeOf(d.product_id).mode);
             base = d.rate_basis === 'primary' ? (totalBaseQty / factor) * (Number(d.rate) || 0) : totalBaseQty * (Number(d.rate) || 0);
         } else {
             base = (Number(d.qty) || 0) * (Number(d.rate) || 0);
@@ -280,10 +282,14 @@ export default function PurchaseReturn() {
     }, [form.details, lineTermPreviews, billingTerms]);
     const summaryGrandTotal = summaryRows.reduce((sum, r) => sum + (summaryOverrides[r.billing_term_id] !== undefined ? Number(summaryOverrides[r.billing_term_id]) : r.original_total), 0);
 
-    // FinPro footer: bill terms (preview) + product-term totals, taxable split; F7 copies the last entry
+    // entry footer: bill charges (preview) + item-charge totals, taxable split; F7 copies the last entry
     const [overallOpen, setOverallOpen] = useState(false);
+    // grid columns switched on in System Control; Disc % / Tax % go to the Item Charges pop-up when purchase charges open in a pop-up
+    const batchOn = !!(settings?.batch || settings?.serial);
+    const chargesInPopup = !!settings?.popupTerms?.includes('purchase');
+    // net of a line: gross, less / plus its Disc % / Tax %, plus its item charges
+    const lineNet = (d, idx) => lineAmount(d) + (lineTermPreviews[idx]?.total !== undefined ? lineTermPreviews[idx].total - (Number(d.qty) || 0) * (Number(d.rate) || 0) : 0);
     const grossOf = d => (lineAmount(d) / (1 + (Number(d.tax_percent) || 0) / 100));
-    const anyBatch = form.details.some(d => productMaintainsBatch(d.product_id) || productTracksSerial(d.product_id));
     const billTermAmount = (billingPreview ? billingPreview.total - grandTotal : 0) + summaryGrandTotal;
     const taxSplit = form.details.reduce((t, d) => {
         if (!d.product_id) return t;
@@ -446,7 +452,7 @@ export default function PurchaseReturn() {
             )}
 
             {showForm && (
-                <form onSubmit={handleSubmit} ref={formRef} className="fin-entry">
+                <form onSubmit={handleSubmit} ref={formRef} className="ent-entry">
                     {!editingId && (
                         <details className="mx-3 mt-2 text-xs"><summary className="cursor-pointer text-[#1a4a8a]">Pull from any earlier document (any party)</summary>
                         <div className="erp-topbar grid-cols-1 md:grid-cols-3" style={{ background: '#eff6ff' }}>
@@ -619,24 +625,25 @@ export default function PurchaseReturn() {
                             </div>
                         </div>
 
-                        <div className="fin-grid-wrap">
-                            <table className="fin-grid" style={{ minWidth: 1100 }}>
+                        <div className="ent-grid-wrap">
+                            <table className="ent-grid" style={{ minWidth: 1100 }}>
                                 <thead>
                                     <tr>
-                                        <th className="sno">SNo.</th>
-                                        <th>Short Name</th>
-                                        <th className="w-56">Name</th>
+                                        <th className="sno">#</th>
+                                        <th>Item Code</th>
+                                        <th className="w-56">Item Name</th>
                                         <th className={`w-40 ${(settings?.multiWarehouse && efc.isVisible('warehouse_id', 'detail')) ? '' : 'hidden'}`}>Details Warehouse</th>
-                                        <th className={`w-28 ${(anyBatch && efc.isVisible('batch_no', 'detail')) ? '' : 'hidden'}`}>Batch No</th>
+                                        <th className={`w-28 ${(batchOn && efc.isVisible('batch_no', 'detail')) ? '' : 'hidden'}`}>Batch No</th>
                                         <th className={`w-24 ${efc.isVisible('qty', 'detail') ? '' : 'hidden'}`}>Qty</th>
                                         <th className={`w-32 ${efc.isVisible('uom_id', 'detail') ? '' : 'hidden'}`}>UOM</th>
                                         <th className={`w-24 ${efc.isVisible('rate', 'detail') ? '' : 'hidden'}`}>Rate</th>
-                                        <th className={`w-20 ${efc.isVisible('tax_percent', 'detail') ? '' : 'hidden'}`}>Tax %</th>
-                                        <th className="r">Gross Amt.</th>
-                                        <th className="r">Amount</th>
+                                        <th className={`w-20 ${(!chargesInPopup && efc.isVisible('tax_percent', 'detail')) ? '' : 'hidden'}`}>Tax %</th>
+                                        <th className="r">Gross</th>
+                                        <th className="r">Charges ±</th>
+                                        <th className="r">Net Amount</th>
                                         <th className="w-32">Ref No</th>
                                         <th className={`w-40 ${efc.isVisible('line_reason', 'detail') ? '' : 'hidden'}`}>Line Reason</th>
-                                        {inlineTerms ? termCols.map(c => <th key={c.key} className="text-left px-1 py-1">{c.label}</th>) : <th className="w-20">Term</th>}
+                                        {inlineTerms ? termCols.map(c => <th key={c.key} className="text-left px-1 py-1">{c.label}</th>) : <th className="w-20">Item Charges</th>}
                                         <th></th>
                                     </tr>
                                 </thead>
@@ -672,7 +679,7 @@ export default function PurchaseReturn() {
                                                     {warehouses.map(w => <option key={w.id} value={w.id}>{w.warehouse_name}</option>)}
                                                 </select>
                                             </td>
-                                            <td className={(anyBatch && efc.isVisible('batch_no', 'detail')) ? '' : 'hidden'}>
+                                            <td className={(batchOn && efc.isVisible('batch_no', 'detail')) ? '' : 'hidden'}>
                                                 {productMaintainsBatch(d.product_id) ? (
                                                     <input disabled={efc.isReadonly('batch_no', 'detail')} className="erp-input" value={d.batch_no} onChange={e => updateDetailRow(idx, { batch_no: e.target.value })} placeholder="Batch" />
                                                 ) : <span className="text-gray-300 text-xs">—</span>}
@@ -684,7 +691,7 @@ export default function PurchaseReturn() {
                                                         <div className="flex items-center gap-1">
                                                             <input disabled={efc.isReadonly('qty', 'detail')}
                                                                 type="number" step="0.0001" className="erp-input" style={{ width: '60px' }} value={d.qty}
-                                                                onChange={e => updateDetailRow(idx, dualUomEntryMode.mode === 'auto_convert' ? onPrimaryQtyChange(e.target.value, dualConversionFactor(d.product_id)) : { qty: e.target.value })}
+                                                                onChange={e => updateDetailRow(idx, dualModeOf(d.product_id).mode === 'auto_convert' ? onPrimaryQtyChange(e.target.value, dualConversionFactor(d.product_id)) : { qty: e.target.value })}
                                                             />
                                                             <span className="text-[10px] text-gray-400">{units.find(u => u.id === d.uom_id)?.unit_name || 'Primary'}</span>
                                                         </div>
@@ -692,8 +699,8 @@ export default function PurchaseReturn() {
                                                             <input
                                                                 type="number" step="0.0001" className="erp-input" style={{ width: '60px' }} value={d.alt_qty} placeholder="0"
                                                                 onChange={e => {
-                                                                    if (dualUomEntryMode.mode === 'auto_convert') {
-                                                                        updateDetailRow(idx, onSecondaryQtyChange(e.target.value, dualConversionFactor(d.product_id), dualUomEntryMode.reverseEnabled));
+                                                                    if (dualModeOf(d.product_id).mode === 'auto_convert') {
+                                                                        updateDetailRow(idx, onSecondaryQtyChange(e.target.value, dualConversionFactor(d.product_id), dualModeOf(d.product_id).reverseEnabled));
                                                                     } else {
                                                                         const { value } = validateFixedSecondary(e.target.value, dualConversionFactor(d.product_id));
                                                                         updateDetailRow(idx, { alt_qty: value });
@@ -702,7 +709,7 @@ export default function PurchaseReturn() {
                                                             />
                                                             <span className="text-[10px] text-gray-400">{units.find(u => u.id === d.alt_unit_id)?.unit_name || 'Secondary'}</span>
                                                         </div>
-                                                        {dualUomEntryMode.mode !== 'auto_convert' && validateFixedSecondary(d.alt_qty, dualConversionFactor(d.product_id)).error && (
+                                                        {dualModeOf(d.product_id).mode !== 'auto_convert' && validateFixedSecondary(d.alt_qty, dualConversionFactor(d.product_id)).error && (
                                                             <span className="text-[9px] text-red-500 leading-tight">{validateFixedSecondary(d.alt_qty, dualConversionFactor(d.product_id)).error}</span>
                                                         )}
                                                     </div>
@@ -729,27 +736,28 @@ export default function PurchaseReturn() {
                                                     </select>
                                                 )}
                                             </td>
-                                            <td className={efc.isVisible('tax_percent', 'detail') ? '' : 'hidden'}><input disabled={efc.isReadonly('tax_percent', 'detail')} type="number" step="0.01" className="erp-input" value={d.tax_percent} onChange={e => updateDetailRow(idx, { tax_percent: e.target.value })} /></td>
-                                            <td className="r">{d.product_id ? grossOf(d).toFixed(2) : ''}</td>
-                                            <td className="r font-semibold">{d.product_id ? lineAmount(d).toFixed(2) : ''}</td>
+                                            <td className={(!chargesInPopup && efc.isVisible('tax_percent', 'detail')) ? '' : 'hidden'}><input disabled={efc.isReadonly('tax_percent', 'detail')} type="number" step="0.01" className="erp-input" value={d.tax_percent} onChange={e => updateDetailRow(idx, { tax_percent: e.target.value })} /></td>
+                                            <td className="px-1 py-1 r">{d.product_id ? grossOf(d).toFixed(2) : ''}</td>
+                                            <td className="px-1 py-1 r">{d.product_id ? (lineNet(d, idx) - grossOf(d)).toFixed(2) : ''}</td>
+                                            <td className="px-1 py-1 r font-semibold">{d.product_id ? lineNet(d, idx).toFixed(2) : ''}</td>
                                             <td className="text-xs text-gray-500">{d.source_doc_no || (d.source_bill_detail_id ? '…' : '—')}</td>
                                             <td className={efc.isVisible('line_reason', 'detail') ? '' : 'hidden'}><input disabled={efc.isReadonly('line_reason', 'detail')} className="erp-input" value={d.line_reason} onChange={e => updateDetailRow(idx, { line_reason: e.target.value })} /></td>
-                                            {inlineTerms ? termCols.map(c => { const on = (d.billing_term_ids || []).includes(c.term_id); const pos = (d.billing_term_ids || []).indexOf(c.term_id); const amt = on ? lineTermPreviews[idx]?.lines?.[pos]?.amount : null; return (<td key={c.key} className="px-1 py-1 whitespace-nowrap"><input type="checkbox" checked={on} onChange={() => updateDetailRow(idx, { billing_term_ids: on ? d.billing_term_ids.filter(x => x !== c.term_id) : [...(d.billing_term_ids || []), c.term_id] })} /> <span className="text-xs">{amt !== null && amt !== undefined ? Number(amt).toFixed(2) : ''}</span></td>); }) : (<td><button type="button" tabIndex={-1} onClick={() => setProductTermModalIndexes([idx])} className="fin-term-btn" title="Product terms of this line">
+                                            {inlineTerms ? termCols.map(c => { const on = (d.billing_term_ids || []).includes(c.term_id); const pos = (d.billing_term_ids || []).indexOf(c.term_id); const amt = on ? lineTermPreviews[idx]?.lines?.[pos]?.amount : null; return (<td key={c.key} className="px-1 py-1 whitespace-nowrap"><input type="checkbox" checked={on} onChange={() => updateDetailRow(idx, { billing_term_ids: on ? d.billing_term_ids.filter(x => x !== c.term_id) : [...(d.billing_term_ids || []), c.term_id] })} /> <span className="text-xs">{amt !== null && amt !== undefined ? Number(amt).toFixed(2) : ''}</span></td>); }) : (<td><button type="button" tabIndex={-1} onClick={() => setProductTermModalIndexes([idx])} className="ent-term-btn" title="Charges of this line">
 {lineTermPreviews[idx]?.total !== undefined ? (lineTermPreviews[idx].total - (Number(d.qty) || 0) * (Number(d.rate) || 0)).toFixed(2) : '…'}
 </button></td>)}
                                             <td><button type="button" tabIndex={-1} onClick={() => removeDetailRow(idx)} className="text-red-500 text-xs">✕</button></td>
                                         </tr>
                                     ))}
                                     {Array.from({ length: Math.max(0, 10 - form.details.length) }).map((_, i) => (
-                                        <tr key={`f${i}`} className="filler" onClick={addDetailRow} title="Click to add a line"><td className="sno">{form.details.length + i + 1}</td><td colSpan={16} /></tr>
+                                        <tr key={`f${i}`} className="filler" onClick={addDetailRow} title="Click to add a line"><td className="sno">{form.details.length + i + 1}</td><td colSpan={17} /></tr>
                                     ))}
                                 </tbody>
-                                <tfoot><tr><td colSpan={17}><span className="fin-total-cap" style={{ marginLeft: 260 }}>Total in (Nrs)&gt;</span>&nbsp;&nbsp; Qty <b>{totalQty.toFixed(3)}</b> &nbsp;·&nbsp; Gross <b>{form.details.reduce((a, d) => a + (d.product_id ? grossOf(d) : 0), 0).toFixed(2)}</b> &nbsp;·&nbsp; Amount <b>{grandTotal.toFixed(2)}</b></td></tr></tfoot>
+                                <tfoot><tr><td colSpan={18}><span className="ent-total-cap" style={{ marginLeft: 260 }}>Totals</span>&nbsp;&nbsp; Qty <b>{totalQty.toFixed(3)}</b> &nbsp;·&nbsp; Gross <b>{form.details.reduce((a, d) => a + (d.product_id ? grossOf(d) : 0), 0).toFixed(2)}</b> &nbsp;·&nbsp; Amount <b>{grandTotal.toFixed(2)}</b></td></tr></tfoot>
                             </table>
                         </div>
                         <div className="flex items-center gap-2 mt-1 text-xs text-gray-600">
                             <button type="button" className="nav-btn small" onClick={addDetailRow}>➕ Add line</button>
-                            <span>Enter on the last field adds a line · Term: product-wise terms · tick lines (SNo.) and use Product Term to set them together</span>
+                            <span>Enter on the last field adds a line · Charges ±: this line's charges · tick lines (#) and use Item Charges to set them together</span>
                         </div>
                     </div>
 
@@ -764,17 +772,17 @@ export default function PurchaseReturn() {
 
                     <EntryFooter
                         title="Purchase Return"
-                        totals={{ billTerm: billTermAmount, net: grandTotal + billTermAmount, taxable: taxSplit.taxable, tax: taxSplit.tax, nonTaxable: taxSplit.nonTaxable }}
+                        totals={{ gross: form.details.reduce((a, d) => a + (d.product_id ? grossOf(d) : 0), 0), billTerm: billTermAmount, net: grandTotal + billTermAmount, taxable: taxSplit.taxable, tax: taxSplit.tax, nonTaxable: taxSplit.nonTaxable }}
                         party={{ label: 'Supplier', name: footVendor?.account_name, creditLimit: footVendor?.credit_limit }}
                         remarks={{ value: form.remarks_text, onChange: v => setForm(f => ({ ...f, remarks_text: v })) }}
                         onProductTerm={() => setProductTermModalIndexes(selectedRowIndexes.length > 0 ? selectedRowIndexes : form.details.map((_, i) => i).filter(i => form.details[i].product_id))}
                         onBillTerm={() => setOverallOpen(true)}
-                        panels={[{ key: 'billing', label: 'Billing/Taxation', content: <PartyDetailsPanel partyId={form.vendor_ledger_id} partyLabel="Vendor" info={partyInfo} onChange={setPartyInfo} /> }]}
+                        panels={[{ key: 'billing', label: 'Party & Tax Info', content: <PartyDetailsPanel partyId={form.vendor_ledger_id} partyLabel="Vendor" info={partyInfo} onChange={setPartyInfo} /> }]}
                         actions={<>
                             <HoldButtons hotkey voucherType="purchase_return" form={form} disabled={!!editingId} onRecall={p => { if (p) { setForm(p); setEditingId(null); setShowForm(true); } else resetForm(); }} />
                             <button type="button" onClick={e => handleSubmit(e, true)} className="erp-btn">💾 Save as Draft</button>
-                            <button type="submit" className="erp-btn primary">✔ {editingId ? 'Update' : 'Ok'}</button>
-                            <button type="button" onClick={() => { resetForm(); setShowForm(false); }} className="erp-btn">✖ Cancel</button>
+                            <button type="submit" className="erp-btn primary">💾 {editingId ? 'Update' : 'Save'}</button>
+                            <button type="button" onClick={() => { resetForm(); setShowForm(false); }} className="erp-btn">Cancel</button>
                         </>}
                     />
                 </form>
@@ -806,18 +814,18 @@ export default function PurchaseReturn() {
             />
         </div>
 
-        {/* ==================== TERM POP-UPS (FinPro: product wise / over all) ==================== */}
+        {/* ==================== CHARGE POP-UPS (item charges / charges summary) ==================== */}
         {productTermModalIndexes !== null && productTermModalIndexes.length > 0 && (
             <PurchaseProductTermPopup
-                title="Purchase Return (Product wise)" terms={billingTerms} previews={lineTermPreviews}
+                title="Purchase Return · Item Charges" terms={billingTerms} previews={lineTermPreviews}
                 lines={productTermModalIndexes.map(idx => ({ idx, line: form.details[idx] })).filter(t => t.line)}
                 productName={productTermModalIndexes.length === 1 ? (products.find(p => p.id === form.details[productTermModalIndexes[0]]?.product_id)?.product_name || '') : `${productTermModalIndexes.length} lines`}
-                onToggle={id => toggleTermForLines(productTermModalIndexes, id)} subLedgerCell={t => <TermLedgerInfo term={t} isReturn={true} subLedgers={subLedgers} value={(form.term_sub_ledgers || {})[t.id]} onChange={v => setForm(f => ({ ...f, term_sub_ledgers: { ...(f.term_sub_ledgers || {}), [t.id]: v } }))} />}
+                onToggle={id => toggleTermForLines(productTermModalIndexes, id)} lineFields={chargesInPopup ? [['tax_percent', 'Tax %', '+']].map(([key, label, sign]) => ({ key, label, sign, value: form.details[productTermModalIndexes[0]]?.[key] ?? '', onChange: v => setForm(f => ({ ...f, details: f.details.map((d, i) => (productTermModalIndexes.includes(i) ? { ...d, [key]: v } : d)) })) })) : null} subLedgerCell={t => <TermLedgerInfo term={t} isReturn={true} subLedgers={subLedgers} value={(form.term_sub_ledgers || {})[t.id]} onChange={v => setForm(f => ({ ...f, term_sub_ledgers: { ...(f.term_sub_ledgers || {}), [t.id]: v } }))} />}
                 onClose={() => setProductTermModalIndexes(null)} />
         )}
         {overallOpen && (
             <PurchaseOverallTermPopup
-                title="Purchase Return Over All Term(s)" summaryRows={summaryRows} overrides={summaryOverrides} onOverride={(id, v) => setSummaryOverrides(o => ({ ...o, [id]: v }))}
+                title="Purchase Return · Charges Summary" summaryRows={summaryRows} overrides={summaryOverrides} onOverride={(id, v) => setSummaryOverrides(o => ({ ...o, [id]: v }))}
                 terms={billingTerms} billTermIds={form.billing_term_ids} onToggleBillTerm={toggleBillingTerm} preview={billingPreview} subLedgerCell={t => <TermLedgerInfo term={t} isReturn={true} subLedgers={subLedgers} value={(form.term_sub_ledgers || {})[t.id]} onChange={v => setForm(f => ({ ...f, term_sub_ledgers: { ...(f.term_sub_ledgers || {}), [t.id]: v } }))} />}
                 onClose={() => setOverallOpen(false)} />
         )}

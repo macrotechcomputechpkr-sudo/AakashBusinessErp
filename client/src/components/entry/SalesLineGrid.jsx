@@ -1,14 +1,14 @@
 // =============================================
 // components/entry/SalesLineGrid.jsx
 // The product lines of the sales entries (Quotation, Order, Challan,
-// Bill, Return ...), one FinPro-style layout everywhere:
-//   SNo | Short Name (code / barcode) | Name | Unit | WHSE* | Batch / Serial |
-//   Mfg | Expiry | Quantity | Free Qty | Free Unit | Rate (+ per unit for dual
-//   items) | Gross Amt | inline terms | Term | Amount
+// Bill, Return ...), one layout everywhere:
+//   # | Item Code (code / barcode) | Item Name | Unit | Warehouse* | Batch /
+//   Serial | Mfg | Expiry | Qty | Free Qty | Free Unit | Rate (+ per unit for
+//   dual items) | Gross | inline charges | Charges ± | Net Amount
 //   * only when System Control > Multi Warehouse is on
 // At least 10 rows show (click an empty one to start a line), the line being
 // typed is yellow and the Total row sits under Quantity / Gross / Term / Amount.
-// Term opens "<Entry> (Product wise)" for that line; the footer's Bill Term
+// Term opens "<Entry> · Item Charges" for that line; the footer's Bill Term
 // opens "Over All Term(s)" (useLineGridControl links the two).
 // Code / Barcode: type a product code or scan a barcode + Enter; the
 // unit of a scanned unit barcode is set too. Anything else lists matches.
@@ -21,7 +21,7 @@ import React, { useMemo, useRef, useState } from 'react';
 import SearchablePopupSelect from '../SearchablePopupSelect';
 import BatchSerialPicker from '../BatchSerialPicker';
 import { calcLine } from './lineCalc';
-import { TermPopup, OverallTermPopup } from './FinEntry';
+import { TermPopup, OverallTermPopup } from './EntryParts';
 
 const num = v => (v === '' || v === null || v === undefined ? '' : v);
 const fmt = n => (Number(n) || 0).toFixed(2);
@@ -121,13 +121,17 @@ export default function SalesLineGrid({
     const searchBy = settings?.searchBy || 'name';
     const catalog = allProducts || products;
     const productById = useMemo(() => Object.fromEntries(catalog.map(p => [p.id, p])), [catalog]);
-    // Batch / Serial (and Mfg / Expiry) columns only once a line's product keeps batches or serials
-    const tracked = details.some(d => { const p = productById[d.product_id]; return p && (p.maintain_batch || p.track_serial_number); });
-    const f = { ...f0, batch: f0.batch && tracked, expiry: f0.expiry && tracked };
+    // Free Qty, Batch / Serial, Mfg and Expiry columns only when System Control switches them on
+    const f = {
+        ...f0, free: f0.free && !!settings?.freeQty, batch: f0.batch && !!(settings?.batch || settings?.serial),
+        mfg: f0.expiry && !!settings?.mfgDate, exp: f0.expiry && !!settings?.expDate
+    };
     const termById = useMemo(() => Object.fromEntries((settings?.billingTerms || []).map(t => [t.id, t])), [settings]);
     const multiWh = !!settings?.multiWarehouse;
     const inlineTerms = f.terms && termCols.length > 0 && !popupTerms;
     const legacyTerms = f.terms && termCols.length === 0;
+    // Disc % / Tax % as columns only when this entry's charges are not set to open in the pop-up
+    const legacyInline = legacyTerms && !popupTerms;
     const unitName = id => units.find(u => u.id === id)?.unit_name || '';
     const isDual = pid => !!dual && dual.isDual(pid);
     const grossOf = d => (lineGross ? lineGross(d) : (Number(d.qty) || 0) * (Number(d.rate) || 0));
@@ -172,17 +176,21 @@ export default function SalesLineGrid({
             let amount = 0; const pcts = new Set();
             scope.forEach(i => { const r = termRows(details[i]).find(x => x.key === k.key); if (r) { amount += Number(r.amount) || 0; pcts.add(String(Number(r.percent) || 0)); } });
             const same = pcts.size === 1 ? Number([...pcts][0]) : '';
-            return { key: k.key, term: k.label, basis: 'V', sign: k.sign, percent: pcts.size > 1 ? '' : same, mixed: pcts.size > 1, amount };
+            return { key: k.key, term: k.label, basis: !legacyTerms && f.terms && splitByQty(k.key) ? 'Q' : 'V', sign: k.sign, percent: pcts.size > 1 ? '' : same, mixed: pcts.size > 1, amount };
         });
     };
     const overallPercent = (key, v) => scope.forEach(i => setLineTerm(i, key, { percent: v, basis: 'V' }));
+    // a charge's basis (Billing Term setup): 'quantity' splits a typed amount by qty, else by value
+    const splitByQty = key => { const c = termCols.find(x => x.key === key); return termById[c?.term_id]?.basis === 'quantity'; };
     const overallAmount = (key, v) => {
         const total = Number(v) || 0;
+        const byQty = !legacyTerms && f.terms && splitByQty(key);
         const grosses = scope.map(i => grossOf(details[i]));
-        const sum = grosses.reduce((a, b) => a + b, 0);
+        const weights = byQty ? scope.map(i => Number(details[i].qty) || 0) : grosses;
+        const sum = weights.reduce((a, b) => a + b, 0);
         if (!sum) return;
         scope.forEach((i, n) => {
-            const share = total * grosses[n] / sum;
+            const share = total * weights[n] / sum;
             if (legacyTerms || !f.terms) { onRow(i, { [key]: grosses[n] ? +(share / grosses[n] * 100).toFixed(4) : 0 }); return; }
             const c = termCols.find(x => x.key === key);
             onRow(i, { line_terms: { ...(details[i].line_terms || {}), [key]: { term_id: c.term_id, fixed: true, amount: Math.round(share * 100) / 100, percent: 0 } } });
@@ -200,35 +208,35 @@ export default function SalesLineGrid({
     };
 
     const totals = lineTotals(details, lineGross, termCols, f.terms);
-    const colCount = 3 + 1 + (multiWh ? 1 : 0) + (f.batch ? 1 : 0) + (f.expiry ? 2 : 0) + 1 + (f.free ? 2 : 0) + (f.rate ? 2 : 0)
-        + (legacyTerms ? (f.tax ? 2 : 1) : 0) + (inlineTerms ? termCols.length : 0) + (f.terms ? 1 : 0) + (f.rate ? 1 : 0) + 1;
-    const beforeQty = 3 + 1 + (multiWh ? 1 : 0) + (f.batch ? 1 : 0) + (f.expiry ? 2 : 0);
+    const colCount = 3 + 1 + (multiWh ? 1 : 0) + (f.batch ? 1 : 0) + (f.mfg ? 1 : 0) + (f.exp ? 1 : 0) + 1 + (f.free ? 2 : 0) + (f.rate ? 2 : 0)
+        + (legacyInline ? (f.tax ? 2 : 1) : 0) + (inlineTerms ? termCols.length : 0) + (f.terms ? 1 : 0) + (f.rate ? 1 : 0) + 1;
+    const beforeQty = 3 + 1 + (multiWh ? 1 : 0) + (f.batch ? 1 : 0) + (f.mfg ? 1 : 0) + (f.exp ? 1 : 0);
     const fillers = Math.max(0, minRows - details.length);
 
     return (
         <>
-            <div className="fin-grid-wrap">
-                <table className="fin-grid" ref={tableRef} style={{ minWidth: 1100 }}>
+            <div className="ent-grid-wrap">
+                <table className="ent-grid" ref={tableRef} style={{ minWidth: 1100 }}>
                     <thead>
                         <tr>
-                            <th className="sno">SNo.</th>
-                            <th>Short Name</th>
-                            <th style={{ minWidth: 200 }}>Name</th>
+                            <th className="sno">#</th>
+                            <th>Item Code</th>
+                            <th style={{ minWidth: 200 }}>Item Name</th>
                             <th>Unit</th>
-                            {multiWh && <th>WHSE</th>}
+                            {multiWh && <th>Warehouse</th>}
                             {f.batch && <th>Batch / Serial</th>}
-                            {f.expiry && <th>Mfg</th>}
-                            {f.expiry && <th>Expiry</th>}
-                            <th className={`r ${visible('qty') ? '' : 'hidden'}`}>Quantity</th>
+                            {f.mfg && <th>Mfg</th>}
+                            {f.exp && <th>Expiry</th>}
+                            <th className={`r ${visible('qty') ? '' : 'hidden'}`}>Qty</th>
                             {f.free && <th className={`r ${visible('free_qty') ? '' : 'hidden'}`}>Free Qty</th>}
                             {f.free && <th>Free Unit</th>}
                             {f.rate && <th className={`r ${visible('rate') ? '' : 'hidden'}`}>Rate</th>}
-                            {f.rate && <th className="r">Gross Amt.</th>}
-                            {legacyTerms && <th className={`r ${visible('discount_percent') ? '' : 'hidden'}`}>Disc %</th>}
-                            {legacyTerms && f.tax && <th className={`r ${visible('tax_percent') ? '' : 'hidden'}`}>Tax %</th>}
+                            {f.rate && <th className="r">Gross</th>}
+                            {legacyInline && <th className={`r ${visible('discount_percent') ? '' : 'hidden'}`}>Disc %</th>}
+                            {legacyInline && f.tax && <th className={`r ${visible('tax_percent') ? '' : 'hidden'}`}>Tax %</th>}
                             {inlineTerms && termCols.map(c => <th key={c.key} className="r" title={c.label}>{c.label} %</th>)}
-                            {f.terms && <th className="r">Term</th>}
-                            {f.rate && <th className="r">Amount</th>}
+                            {f.terms && <th className="r">Charges ±</th>}
+                            {f.rate && <th className="r">Net Amount</th>}
                             <th />
                         </tr>
                     </thead>
@@ -244,7 +252,7 @@ export default function SalesLineGrid({
                                 <tr key={idx} className={`line ${ctl.active === idx ? 'cur' : ''}`} onFocus={() => ctl.setActive(idx)}>
                                     <td className="sno">
                                         {onSelected ? (
-                                            <label className="inline-flex items-center gap-1 cursor-pointer" title="Tick lines for Bill Term / discount">
+                                            <label className="inline-flex items-center gap-1 cursor-pointer" title="Tick lines to change their charges together">
                                                 <input type="checkbox" tabIndex={-1} checked={selected.includes(idx)} onChange={e => onSelected(e.target.checked ? [...selected, idx] : selected.filter(i => i !== idx))} />{idx + 1}
                                             </label>
                                         ) : idx + 1}
@@ -280,13 +288,13 @@ export default function SalesLineGrid({
                                             ) : p?.maintain_batch ? (
                                                 <div className="flex items-center gap-1">
                                                     <input className="erp-input" style={{ width: 110 }} value={d.batch_no || ''} onChange={e => onRow(idx, { batch_no: e.target.value })} placeholder="Batch" />
-                                                    <BatchSerialPicker mode="batch" productId={d.product_id} warehouseId={wh} onSelect={sel => onRow(idx, f.expiry ? sel : { batch_no: sel.batch_no, ...(multiWh && sel.warehouse_id ? { warehouse_id: sel.warehouse_id } : {}) })} />
+                                                    <BatchSerialPicker mode="batch" productId={d.product_id} warehouseId={wh} onSelect={sel => onRow(idx, (f.mfg || f.exp) ? sel : { batch_no: sel.batch_no, ...(multiWh && sel.warehouse_id ? { warehouse_id: sel.warehouse_id } : {}) })} />
                                                 </div>
                                             ) : <span className="text-gray-400 text-xs">—</span>}
                                         </td>
                                     )}
-                                    {f.expiry && <td>{p?.maintain_batch ? <input type="date" className="erp-input" style={{ width: 130 }} value={String(d.mfg_date || '').slice(0, 10)} onChange={e => onRow(idx, { mfg_date: e.target.value })} /> : ''}</td>}
-                                    {f.expiry && <td>{p?.maintain_batch ? <input type="date" className="erp-input" style={{ width: 130 }} value={String(d.exp_date || '').slice(0, 10)} onChange={e => onRow(idx, { exp_date: e.target.value })} /> : ''}</td>}
+                                    {f.mfg && <td>{p?.maintain_batch ? <input type="date" className="erp-input" style={{ width: 130 }} value={String(d.mfg_date || '').slice(0, 10)} onChange={e => onRow(idx, { mfg_date: e.target.value })} /> : ''}</td>}
+                                    {f.exp && <td>{p?.maintain_batch ? <input type="date" className="erp-input" style={{ width: 130 }} value={String(d.exp_date || '').slice(0, 10)} onChange={e => onRow(idx, { exp_date: e.target.value })} /> : ''}</td>}
                                     <td className={`r ${visible('qty') ? '' : 'hidden'}`}>
                                         {isDual(d.product_id) ? (
                                             <div className="flex flex-col gap-1">
@@ -326,8 +334,8 @@ export default function SalesLineGrid({
                                         </td>
                                     )}
                                     {f.rate && <td className="r whitespace-nowrap">{d.product_id ? fmt(gross) : ''}</td>}
-                                    {legacyTerms && <td className={`r ${visible('discount_percent') ? '' : 'hidden'}`}><input type="number" step="0.01" className="erp-input text-right" style={{ width: 56 }} value={num(d.discount_percent)} onChange={e => onRow(idx, { discount_percent: e.target.value })} /></td>}
-                                    {legacyTerms && f.tax && <td className={`r ${visible('tax_percent') ? '' : 'hidden'}`}><input disabled={readonly('tax_percent')} type="number" step="0.01" className="erp-input text-right" style={{ width: 56 }} value={num(d.tax_percent)} onChange={e => onRow(idx, { tax_percent: e.target.value })} /></td>}
+                                    {legacyInline && <td className={`r ${visible('discount_percent') ? '' : 'hidden'}`}><input type="number" step="0.01" className="erp-input text-right" style={{ width: 56 }} value={num(d.discount_percent)} onChange={e => onRow(idx, { discount_percent: e.target.value })} /></td>}
+                                    {legacyInline && f.tax && <td className={`r ${visible('tax_percent') ? '' : 'hidden'}`}><input disabled={readonly('tax_percent')} type="number" step="0.01" className="erp-input text-right" style={{ width: 56 }} value={num(d.tax_percent)} onChange={e => onRow(idx, { tax_percent: e.target.value })} /></td>}
                                     {inlineTerms && termCols.map(c => (
                                         <td key={c.key} className="r">
                                             <input type="number" step="0.01" className="erp-input text-right" style={{ width: 70 }} value={d.line_terms?.[c.key]?.fixed ? '' : num(d.line_terms?.[c.key]?.percent)} placeholder={d.line_terms?.[c.key]?.fixed ? 'amt' : ''}
@@ -337,13 +345,13 @@ export default function SalesLineGrid({
                                     ))}
                                     {f.terms && (
                                         <td className="r">
-                                            <button type="button" tabIndex={-1} className="fin-term-btn" onClick={() => { ctl.setActive(idx); ctl.setTermsFor(idx); }} title="Product terms of this line (Product Term)">
+                                            <button type="button" tabIndex={-1} className="ent-term-btn" onClick={() => { ctl.setActive(idx); ctl.setTermsFor(idx); }} title="Charges of this line">
                                                 {d.product_id ? fmt(amount - gross) : '…'}
                                             </button>
                                         </td>
                                     )}
                                     {f.rate && <td className="r whitespace-nowrap font-semibold">{d.product_id ? fmt(amount) : ''}</td>}
-                                    <td className="c"><button type="button" tabIndex={-1} onClick={() => onRemove(idx)} className="fin-x" title="Remove line">✕</button></td>
+                                    <td className="c"><button type="button" tabIndex={-1} onClick={() => onRemove(idx)} className="ent-x" title="Remove line">✕</button></td>
                                 </tr>
                             );
                         })}
@@ -356,14 +364,14 @@ export default function SalesLineGrid({
                     </tbody>
                     <tfoot>
                         <tr>
-                            <td colSpan={beforeQty} className="r"><span className="fin-total-cap">Total in (Nrs)&gt;</span></td>
+                            <td colSpan={beforeQty} className="r"><span className="ent-total-cap">Totals</span></td>
                             <td className={`r ${visible('qty') ? '' : 'hidden'}`}>{Number(totals.qty).toFixed(3)}</td>
                             {f.free && <td className={visible('free_qty') ? '' : 'hidden'} />}
                             {f.free && <td />}
                             {f.rate && <td className={visible('rate') ? '' : 'hidden'} />}
                             {f.rate && <td className="r">{fmt(totals.gross)}</td>}
-                            {legacyTerms && <td className={visible('discount_percent') ? '' : 'hidden'} />}
-                            {legacyTerms && f.tax && <td className={visible('tax_percent') ? '' : 'hidden'} />}
+                            {legacyInline && <td className={visible('discount_percent') ? '' : 'hidden'} />}
+                            {legacyInline && f.tax && <td className={visible('tax_percent') ? '' : 'hidden'} />}
                             {inlineTerms && termCols.map(c => <td key={c.key} />)}
                             {f.terms && <td className="r">{fmt(totals.term)}</td>}
                             {f.rate && <td className="r">{fmt(totals.amount)}</td>}
@@ -374,13 +382,13 @@ export default function SalesLineGrid({
             </div>
             <div className="flex items-center gap-2 mt-1 text-xs text-gray-600">
                 <button type="button" className="nav-btn small" onClick={addAndFocus}>➕ Add line</button>
-                <span>Short Name: type a code or scan a barcode + Enter · Name: search by {searchBy} · Enter on the last field adds a line · Term: product-wise terms</span>
+                <span>Item Code: type a code or scan a barcode + Enter · Item Name: search by {searchBy} · Enter on the last field adds a line · Charges ±: this line's charges</span>
             </div>
             {ctl.termsFor !== null && details[ctl.termsFor] && (() => {
                 const d = details[ctl.termsFor];
                 const p = productById[d.product_id];
                 return (
-                    <TermPopup title={`${title} (Product wise)`} productName={p ? `${p.product_code || ''} ${p.product_name}` : `Line ${ctl.termsFor + 1}`}
+                    <TermPopup title={`${title} · Item Charges`} productName={p ? `${p.product_code || ''} ${p.product_name}` : `Line ${ctl.termsFor + 1}`}
                         basic={grossOf(d)} qty={d.qty} unitName={unitName(d.uom_id)} rows={termRows(d)}
                         onPercent={(key, v) => setLineTerm(ctl.termsFor, key, { percent: v })}
                         onBasis={legacyTerms || !f.terms ? null : (key, b) => setLineTerm(ctl.termsFor, key, { basis: b })}
@@ -388,8 +396,8 @@ export default function SalesLineGrid({
                 );
             })()}
             {ctl.overall && (
-                <OverallTermPopup title={`${title} Over All Term(s)`} rows={overallRows()} onPercent={overallPercent} onAmount={overallAmount} onClose={() => ctl.setOverall(false)}
-                    note={selected && selected.length ? `Applies to the ${scope.length} ticked line(s)` : `Applies to all ${scope.length} line(s) - tick lines (SNo.) to change only those`} />
+                <OverallTermPopup title={`${title} · Charges Summary`} rows={overallRows()} onPercent={overallPercent} onAmount={overallAmount} onClose={() => ctl.setOverall(false)}
+                    note={selected && selected.length ? `Goes to the ${scope.length} ticked line(s)` : `Goes to all ${scope.length} line(s) - tick lines (#) to change only those`} />
             )}
         </>
     );

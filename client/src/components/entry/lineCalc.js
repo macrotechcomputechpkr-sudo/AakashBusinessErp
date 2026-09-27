@@ -3,7 +3,7 @@
 // Amount of a sales line with inline product terms:
 //   gross -> Disc 1 -> Disc 2 ... (each on what is left) -> + Excise -> + VAT
 // A term is a % of what it is calculated on (basis V), a rate per quantity
-// (basis Q) or a fixed amount typed in the Over All Term pop-up.
+// (basis Q) or a fixed amount typed in the Charges Summary pop-up.
 // (VAT is on the amount after discounts and excise, as on a Nepali invoice).
 // Without mapped terms the line keeps the plain Disc % / Tax % fields.
 // The result goes into discount_amount / excise_amount / tax_amount and

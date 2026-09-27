@@ -84,7 +84,7 @@ async function lineAmount(tenantClient, d) {
     if (product?.uom_mode === 'fixed_dual' && d.alt_qty) {
         const { data: unitRate } = await tenantClient.from('product_unit_rates').select('conversion_factor').eq('product_id', d.product_id).eq('unit_id', product.dual_uom_primary_unit_id).maybeSingle();
         const conversionFactor = Number(unitRate?.conversion_factor) || 1;
-        const gross = computeDualAmount(d.qty, d.alt_qty, d.rate, d.rate_basis || 'primary', conversionFactor, await getDualUomMode(tenantClient));
+        const gross = computeDualAmount(d.qty, d.alt_qty, d.rate, d.rate_basis || 'primary', conversionFactor, await getDualUomMode(tenantClient, d.product_id));
         const discountAmount = d.discount_amount ? Number(d.discount_amount) : gross * (Number(d.discount_percent) || 0) / 100;
         const afterDiscount = gross - discountAmount;
         const taxAmount = d.tax_amount ? Number(d.tax_amount) : afterDiscount * (Number(d.tax_percent) || 0) / 100;
@@ -172,7 +172,7 @@ async function postBillStockMovements(tenantClient, tenantId, bill, details) {
         if (product?.uom_mode === 'fixed_dual' && d.alt_qty) {
             const { data: unitRate } = await tenantClient.from('product_unit_rates').select('conversion_factor').eq('product_id', d.product_id).eq('unit_id', product.dual_uom_primary_unit_id).maybeSingle();
             const conversionFactor = Number(unitRate?.conversion_factor) || 1;
-            baseQty = toBaseQtyFromDual(d.qty, d.alt_qty, conversionFactor, await getDualUomMode(tenantClient));
+            baseQty = toBaseQtyFromDual(d.qty, d.alt_qty, conversionFactor, await getDualUomMode(tenantClient, d.product_id));
             // unit_cost must always be PER BASE UNIT for the shared
             // stock ledger, regardless of which unit the rate was
             // actually quoted in.

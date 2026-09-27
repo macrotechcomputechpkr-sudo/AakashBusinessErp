@@ -20,7 +20,7 @@ async function resolveDualAwareBaseQty(tenantClient, productId, qty, uomId, altQ
         const { data: product } = await tenantClient.from('products').select('uom_mode, dual_uom_primary_unit_id').eq('id', productId).maybeSingle();
         if (product?.uom_mode === 'fixed_dual') {
             const { data: unitRate } = await tenantClient.from('product_unit_rates').select('conversion_factor').eq('product_id', productId).eq('unit_id', product.dual_uom_primary_unit_id).maybeSingle();
-            return toBaseQtyFromDual(qty, altQty, Number(unitRate?.conversion_factor) || 1, await getDualUomMode(tenantClient));
+            return toBaseQtyFromDual(qty, altQty, Number(unitRate?.conversion_factor) || 1, await getDualUomMode(tenantClient, productId));
         }
     }
     return toBaseUnitQty(tenantClient, productId, qty, uomId);
@@ -95,7 +95,7 @@ async function syncLines(tenantClient, tenantId, productionId, rawMaterials, byp
                 const { data: product } = await tenantClient.from('products').select('uom_mode, dual_uom_primary_unit_id').eq('id', r.product_id).maybeSingle();
                 if (product?.uom_mode === 'fixed_dual') {
                     const { data: unitRate } = await tenantClient.from('product_unit_rates').select('conversion_factor').eq('product_id', r.product_id).eq('unit_id', product.dual_uom_primary_unit_id).maybeSingle();
-                    baseAmount = computeDualAmount(r.qty, r.alt_qty, r.cost_rate, r.rate_basis || 'primary', Number(unitRate?.conversion_factor) || 1, await getDualUomMode(tenantClient));
+                    baseAmount = computeDualAmount(r.qty, r.alt_qty, r.cost_rate, r.rate_basis || 'primary', Number(unitRate?.conversion_factor) || 1, await getDualUomMode(tenantClient, r.product_id));
                 } else {
                     baseAmount = qty * costRate;
                 }
@@ -165,7 +165,7 @@ async function syncLines(tenantClient, tenantId, productionId, rawMaterials, byp
                 const { data: bpProduct } = await tenantClient.from('products').select('uom_mode, dual_uom_primary_unit_id').eq('id', bp.product_id).maybeSingle();
                 if (bpProduct?.uom_mode === 'fixed_dual') {
                     const { data: bpUnitRate } = await tenantClient.from('product_unit_rates').select('conversion_factor').eq('product_id', bp.product_id).eq('unit_id', bpProduct.dual_uom_primary_unit_id).maybeSingle();
-                    amount = computeDualAmount(bp.qty, bp.alt_qty, bp.recovery_rate, bp.rate_basis || 'primary', Number(bpUnitRate?.conversion_factor) || 1, await getDualUomMode(tenantClient));
+                    amount = computeDualAmount(bp.qty, bp.alt_qty, bp.recovery_rate, bp.rate_basis || 'primary', Number(bpUnitRate?.conversion_factor) || 1, await getDualUomMode(tenantClient, bp.product_id));
                 } else {
                     amount = bp.qty * bp.recovery_rate;
                 }

@@ -49,6 +49,19 @@ export function resolveDualUomEntryMode(systemControl) {
     return { mode, reverseEnabled };
 }
 
+// A product's own entry mode (Product Master: dual_auto_convert / dual_reverse_conversion,
+// true / false, null = follow System Control) over the company's.
+export function productDualMode(product, companyMode) {
+    const base = companyMode || { mode: 'fixed', reverseEnabled: false };
+    if (!product) return base;
+    const auto = product.dual_auto_convert;
+    const rev = product.dual_reverse_conversion;
+    return {
+        mode: auto === true ? 'auto_convert' : auto === false ? 'fixed' : base.mode,
+        reverseEnabled: rev === true ? true : rev === false ? false : base.reverseEnabled
+    };
+}
+
 // Called when the PRIMARY (qty) field changes in auto_convert mode -
 // ALWAYS auto-fills Secondary as the full equivalent (a starting
 // suggestion the person can still adjust), regardless of the reverse

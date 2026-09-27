@@ -10,12 +10,12 @@
 //   Lines   : Code / Barcode first, warehouse, batch / serial (stock of the
 //             chosen warehouse), qty, unit, free qty + unit, rate (+ basis
 //             for dual items), product terms inline or in a popup, amount
-//   Footer  : FinPro style (components/entry/FinEntry.jsx) - Product Term /
-//             Bill Term pop-ups, net amount, remarks, amount in words, Other
-//             Details (sales account + sub-ledger, rate type, narration),
-//             Billing/Taxation (customer address & PAN, optionally saved to
-//             the customer master), Hold / Ok / Cancel; F7 copies the last
-//             bill, F8 recalls a held one
+//   Footer  : components/entry/EntryParts.jsx - Item Charges / Bill Charges
+//             pop-ups, bill summary, remarks, amount in words, More Info
+//             (sales account + sub-ledger, rate type, narration), Party & Tax
+//             Info (customer address & PAN, optionally saved to the customer
+//             master), Hold / Save / Cancel; F7 copies the last bill, F8
+//             recalls a held one
 // Credit-checked; lines not from a Challan move stock.
 // =============================================
 
@@ -34,12 +34,13 @@ import UdfValuesModal from '../components/UdfValuesModal';
 import useLedgerPurposes from '../components/useLedgerPurposes';
 import RecordHistory from '../components/RecordHistory';
 import { priceUrl, lineUnitOf, useSlabRepricing } from '../utils/salesPricing';
+import RateTypeField, { useEntryRateType } from '../components/entry/RateTypeField';
 import useEntrySettings, { termColumns } from '../components/entry/useEntrySettings';
 import DocNumberField from '../components/entry/DocNumberField';
 import PendingDocsPanel, { mergePulled } from '../components/entry/PendingDocsPanel';
 import { PartyDetailsPanel, emptyPartyInfo, savePartyInfo, partyInfoFromDoc } from '../components/entry/PartyFooterTabs';
 import SalesLineGrid, { useLineGridControl, lineTotals } from '../components/entry/SalesLineGrid';
-import { EntryFooter, useEntryHotkeys, latestOf } from '../components/entry/FinEntry';
+import { EntryFooter, useEntryHotkeys, latestOf } from '../components/entry/EntryParts';
 import { calcLine, defaultLineTerms, lineForSave } from '../components/entry/lineCalc';
 import { dualHelpers } from '../components/entry/dualHelpers';
 import DocActions, { HoldButtons, asNewCopy } from '../components/entry/DocActions';
@@ -142,6 +143,21 @@ export default function SalesBill() {
     // qty / value slab discounts: re-price the line when its qty or unit changes
     const reprice = useSlabRepricing(authFetch, form, setDetailRow);
     const updateDetailRow = (idx, patch) => { setDetailRow(idx, patch); reprice.onChange(idx, patch); };
+    // Rate Type (Sr1-Sr5): the customer's by default; picking another prices every line again at it
+    const rateType = useEntryRateType(authFetch, form.customer_ledger_id);
+    const onRateTypeChanged = async (tier) => {
+        const caption = rateType.captionOf(tier);
+        if (tier !== rateType.customerTier) showAlert(`Rate type is now ${caption} - different from this customer's (${rateType.captionOf(rateType.customerTier)}). Line rates are taken again at ${caption}.`, 'warning');
+        else showAlert(`Rate type back to the customer's (${caption}); line rates taken again.`, 'info');
+        if (!form.customer_ledger_id) return;
+        const lines = form.details.map((d, idx) => ({ d, idx })).filter(x => x.d.product_id);
+        for (const { d, idx } of lines) {
+            try {
+                const res = await authFetch(priceUrl(form.customer_ledger_id, d.product_id, { sr_tier: tier !== rateType.customerTier ? tier : undefined, unit_id: d.uom_id, qty: d.qty }));
+                setDetailRow(idx, { rate: res.data.rate });
+            } catch { /* keep the line's rate */ }
+        }
+    };
 
     // the customer's discount goes into Disc 1 when product terms are mapped
     const withDiscount = (row, pct) => (termCols.some(c => c.key === 'disc1')
@@ -158,7 +174,7 @@ export default function SalesBill() {
         }
         if (!form.customer_ledger_id) { updateDetailRow(idx, { rate: product?.sales_rate_sr1 || 0 }); return; }
         try {
-            const res = await authFetch(priceUrl(form.customer_ledger_id, productId, { unit_id: unitId || lineUnitOf(product), qty: form.details[idx]?.qty, payment_term: form.invoice_type === 'cash' ? 'cash' : undefined }));
+            const res = await authFetch(priceUrl(form.customer_ledger_id, productId, { sr_tier: rateType.srTier, unit_id: unitId || lineUnitOf(product), qty: form.details[idx]?.qty, payment_term: form.invoice_type === 'cash' ? 'cash' : undefined }));
             setDetailRow(idx, { rate: res.data.rate, ...(res.data.discount_percent ? withDiscount(form.details[idx] || {}, res.data.discount_percent) : {}) });
             reprice.mark(idx, res.data);
         } catch {
@@ -307,20 +323,12 @@ export default function SalesBill() {
             )}
 
             {showForm && (
-                <form onSubmit={handleSubmit} ref={formRef} className="fin-entry">
+                <form onSubmit={handleSubmit} ref={formRef} className="ent-entry">
                     <div className="erp-topbar grid-cols-1 md:grid-cols-4">
                         <DocNumberField voucherType="sales_bill" categoryId={form.numbering_category_id} docNo={editingId ? form.doc_no : ''} value={form.doc_no} onChange={v => setForm({ ...form, doc_no: v })} />
                         <div className={efc.isVisible('doc_date') ? 'erp-field' : 'erp-field hidden'}>
                             <label className="erp-label">Date <span className="req">*</span> {form.doc_date && <span className="hint">({formatDateForDisplay(form.doc_date, 'nepali')} BS)</span>}</label>
                             <input disabled={efc.isReadonly('doc_date')} type="date" className="erp-input" value={form.doc_date} onChange={e => setForm({ ...form, doc_date: e.target.value })} required />
-                        </div>
-                        <div className={efc.isVisible('customer_ledger_id') ? 'erp-field' : 'erp-field hidden'}>
-                            <label className="erp-label">Customer <span className="req">*</span></label>
-                            {picker('customer_picker', customers, 'id', 'account_code', 'account_name', form.customer_ledger_id, id => setForm({ ...form, customer_ledger_id: id, customer_sub_ledger_id: '' }), 'Select Customer')}
-                        </div>
-                        <div className="erp-field">
-                            <label className="erp-label">Customer Sub-Ledger</label>
-                            {picker('customer_subledger_picker', customerSubs.length ? customerSubs : subLedgers, 'id', 'sub_ledger_code', 'sub_ledger_name', form.customer_sub_ledger_id, id => setForm({ ...form, customer_sub_ledger_id: id }), 'None')}
                         </div>
                         <div className={efc.isVisible('invoice_type') ? 'erp-field' : 'erp-field hidden'}>
                             <label className="erp-label">Cash / Credit</label>
@@ -328,6 +336,15 @@ export default function SalesBill() {
                                 <option value="credit">Credit</option>
                                 <option value="cash">Cash</option>
                             </select>
+                        </div>
+                        <div className={efc.isVisible('customer_ledger_id') ? 'erp-field' : 'erp-field hidden'}>
+                            <label className="erp-label">Customer <span className="req">*</span></label>
+                            {picker('customer_picker', customers, 'id', 'account_code', 'account_name', form.customer_ledger_id, id => setForm({ ...form, customer_ledger_id: id, customer_sub_ledger_id: '' }), 'Select Customer')}
+                        </div>
+                        <RateTypeField rt={rateType} onChanged={onRateTypeChanged} />
+                        <div className="erp-field">
+                            <label className="erp-label">Customer Sub-Ledger</label>
+                            {picker('customer_subledger_picker', customerSubs.length ? customerSubs : subLedgers, 'id', 'sub_ledger_code', 'sub_ledger_name', form.customer_sub_ledger_id, id => setForm({ ...form, customer_sub_ledger_id: id }), 'None')}
                         </div>
                         <ProductCompanyField side="sales" form={form} setForm={setForm} products={products} emptyRow={newRow} />
                         {settings?.multiWarehouse && (
@@ -367,7 +384,7 @@ export default function SalesBill() {
 
                     <PendingDocsPanel target="sales_bill" partyId={form.customer_ledger_id} efc={efc} disabled={!!editingId} onPull={handlePull} pulled={pulledDocs} />
 
-                    <div className="erp-tab-content fin-lines">
+                    <div className="erp-tab-content ent-lines">
                         <SalesLineGrid
                             listKey="sb" title="Sales Bill" ctl={lineCtl} details={form.details} onRow={updateDetailRow} onRemove={removeDetailRow} onAdd={addDetailRow}
                             products={filterProductsByCompany(products, form.product_company_id)} allProducts={products} units={units} warehouses={warehouses}
@@ -380,12 +397,12 @@ export default function SalesBill() {
                     <EntryFooter
                         title="Sales Bill"
                         warehouseName={settings?.multiWarehouse ? (warehouses.find(w => w.id === form.warehouse_id)?.warehouse_name || '') : undefined}
-                        totals={{ billTerm: totals.term, net: grandTotal, taxable: totals.taxable, tax: totals.tax, nonTaxable: totals.nonTaxable }}
+                        totals={{ gross: totals.gross, billTerm: totals.term, net: grandTotal, taxable: totals.taxable, tax: totals.tax, nonTaxable: totals.nonTaxable }}
                         party={{ label: 'Customer', name: selectedCustomer?.account_name, creditLimit: selectedCustomer?.credit_limit }}
                         remarks={{ value: form.remarks_text, onChange: v => setForm(f => ({ ...f, remarks_text: v })), options: remarks.map(r => r.remark_text) }}
                         onProductTerm={lineCtl.openTerms} onBillTerm={lineCtl.openOverall}
                         panels={[
-                            { key: 'other', label: 'Other Details', content: (
+                            { key: 'other', label: 'More Info', content: (
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                                     <div className="erp-field">
                                         <label className="erp-label">Sales Account <span className="hint">(blank = product / system default)</span></label>
@@ -408,13 +425,13 @@ export default function SalesBill() {
                                     </div>
                                 </div>
                             ) },
-                            { key: 'billing', label: 'Billing/Taxation', content: <PartyDetailsPanel partyId={form.customer_ledger_id} partyLabel="Customer" info={partyInfo} onChange={setPartyInfo} /> }
+                            { key: 'billing', label: 'Party & Tax Info', content: <PartyDetailsPanel partyId={form.customer_ledger_id} partyLabel="Customer" info={partyInfo} onChange={setPartyInfo} /> }
                         ]}
                         actions={<>
                             <HoldButtons hotkey voucherType="sales_bill" form={form} disabled={!!editingId} onRecall={p => { if (p) { setForm(p); setEditingId(null); setShowForm(true); } else resetForm(); }} />
                             <button type="button" onClick={e => handleSubmit(e, true)} className="erp-btn">💾 Save as Draft</button>
-                            <button type="submit" className="erp-btn primary">✔ {editingId ? 'Update' : 'Ok'}</button>
-                            <button type="button" onClick={() => { resetForm(); setShowForm(false); }} className="erp-btn">✖ Cancel</button>
+                            <button type="submit" className="erp-btn primary">💾 {editingId ? 'Update' : 'Save'}</button>
+                            <button type="button" onClick={() => { resetForm(); setShowForm(false); }} className="erp-btn">Cancel</button>
                         </>}
                     />
                 </form>
