@@ -443,6 +443,9 @@ async function changeSalesBillStatus(req, res) {
         const tenantClient = await getTenantClient(tenantId);
         const { data: existing } = await tenantClient.from('sales_bills').select('*').eq('id', req.params.id).eq('tenant_id', tenantId).single();
         if (!existing) return res.status(404).json({ success: false, error: 'Sales Bill not found' });
+        if (status === 'draft' && existing.status !== 'draft' && await require('./documentActionRoutes').isIrdLocked(tenantClient, tenantId, 'sales_bill')) {
+            return res.status(400).json({ success: false, error: 'IRD Billing is on - a posted Sales Bill can only be cancelled' });
+        }
 
         const update = { status, updated_by: req.auth.userId };
         if (status === 'cancelled') {

@@ -16,6 +16,7 @@ import { formatDateForDisplay } from '../utils/nepaliDateUtils';
 import BillWiseSettlementPanel from '../components/BillWiseSettlementPanel';
 import UdfValuesModal from '../components/UdfValuesModal';
 import RecordHistory from '../components/RecordHistory';
+import DocActions, { HoldButtons, asNewCopy } from '../components/entry/DocActions';
 
 const PAYMENT_MODES = [
     { value: 'cash', label: 'Cash' }, { value: 'bank_transfer', label: 'Bank Transfer' },
@@ -141,6 +142,7 @@ export default function CashBankEntry() {
         }
     };
 
+    const copyAsNew = async (row) => { await handleEdit(row); setEditingId(null); setForm(f => asNewCopy(f, row.id)); setShowForm(true); };
     const handleEdit = async (row) => {
         try {
             const res = await authFetch(`/api/cash-bank-entries/${row.id}`);
@@ -169,16 +171,6 @@ export default function CashBankEntry() {
         }
     };
 
-    const handleDeleteDraft = async (row) => {
-        if (!window.confirm(`Delete draft "${row.doc_no}"? This cannot be undone.`)) return;
-        try {
-            await authFetch(`/api/cash-bank-entries/${row.id}`, { method: 'DELETE' });
-            showAlert('Draft deleted', 'warning');
-            load();
-        } catch (err) {
-            showAlert(err.message, 'danger');
-        }
-    };
 
     const [udfDoc, setUdfDoc] = useState(null);
 
@@ -368,6 +360,7 @@ export default function CashBankEntry() {
                     <div className="erp-bottombar">
                         <div />
                         <div className="erp-bottombar-actions">
+                            <HoldButtons voucherType="cash_bank_entry" form={form} disabled={!!editingId} onRecall={p => { if (p) { setForm(p); setEditingId(null); setShowForm(true); } else resetForm(); }} />
                             <button type="button" onClick={() => { resetForm(); setShowForm(false); }} className="erp-btn">Cancel</button>
                             <button type="button" onClick={e => handleSubmit(e, true)} className="erp-btn">💾 Save as Draft</button>
                             <button type="submit" className="erp-btn primary">{editingId ? 'Update' : 'Create'}</button>
@@ -465,12 +458,11 @@ export default function CashBankEntry() {
                     rowActions={(row) => (
                         <div className="flex gap-2 justify-center">
                             {row.status === 'draft' && <button onClick={() => handleEdit(row)} className="px-2 py-1 bg-blue-600 text-white rounded text-xs">Open</button>}
+                            <DocActions type="cash_bank_entry" api="cash-bank-entries" row={row} onOpen={handleEdit} onCopy={copyAsNew} onReverse={r => handleStatusChange(r, 'cancelled')} onDone={load} />
                             {row.status === 'posted' && <a href={`/print/cash_bank_entry/${row.id}`} target="_blank" rel="noopener noreferrer" className="px-2 py-1 bg-purple-600 text-white rounded text-xs">🖨️ Print</a>}
                             <button onClick={() => openAuditTrail(row)} className="px-2 py-1 bg-gray-500 text-white rounded text-xs">History</button>
                             <button onClick={() => setUdfDoc(row.id)} className="px-2 py-1 bg-indigo-500 text-white rounded text-xs" title="Custom fields (UDF)">UDF</button>{udfDoc === row.id && <UdfValuesModal docType="cash_bank_entry" docId={row.id} onClose={() => setUdfDoc(null)} />}
                             {row.status === 'draft' && <button onClick={() => handleStatusChange(row, 'posted')} className="px-2 py-1 bg-green-600 text-white rounded text-xs">Post</button>}
-                            {row.status !== 'cancelled' && <button onClick={() => handleStatusChange(row, 'cancelled')} className="px-2 py-1 bg-red-600 text-white rounded text-xs">Cancel</button>}
-                            {row.status === 'draft' && <button onClick={() => handleDeleteDraft(row)} className="px-2 py-1 bg-red-800 text-white rounded text-xs">Delete</button>}
                         </div>
                     )}
                 />

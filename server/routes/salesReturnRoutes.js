@@ -375,6 +375,9 @@ router.put('/sales-returns/:id/status', requireAuth, loadUserPermissions, requir
         const tenantClient = await getTenantClient(tenantId);
         const { data: existing } = await tenantClient.from('sales_returns').select('*').eq('id', req.params.id).eq('tenant_id', tenantId).single();
         if (!existing) return res.status(404).json({ success: false, error: 'Sales Return not found' });
+        if (status === 'draft' && existing.status !== 'draft' && await require('./documentActionRoutes').isIrdLocked(tenantClient, tenantId, 'sales_return')) {
+            return res.status(400).json({ success: false, error: 'IRD Billing is on - a posted Sales Return can only be cancelled' });
+        }
 
         if (status === 'cancelled' && existing.status === 'posted') {
             const blockMsg = await checkCanCancelIfSettled(tenantClient, tenantId, 'sales_return', req.params.id);
