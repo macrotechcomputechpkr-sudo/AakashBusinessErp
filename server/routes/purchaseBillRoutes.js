@@ -588,6 +588,18 @@ async function adjustGrnQtyBilled(tenantClient, sourceGrnDetailId, delta, altDel
         statuses: { none: 'received', partial: 'partially_billed', full: 'billed' }, rollable: ['received', 'partially_billed', 'billed'] });
 }
 
+// A Bill made straight from a Purchase Order (no GRN) receives the goods itself,
+// so it moves the order's received counter - otherwise the order stays pending.
+async function adjustOrderQtyReceived(tenantClient, sourceOrderDetailId, delta, altDelta = 0) {
+    const { data: srcLine } = await tenantClient.from('purchase_order_details').select('qty_received, order_id').eq('id', sourceOrderDetailId).maybeSingle();
+    if (!srcLine) return;
+    await tenantClient.from('purchase_order_details').update({ qty_received: Math.max(0, Number(srcLine.qty_received || 0) + delta) }).eq('id', sourceOrderDetailId);
+    await bumpAltCounter(tenantClient, 'purchase_order_details', sourceOrderDetailId, 'alt_qty_received', altDelta);
+    await rollHeaderStatus(tenantClient, { headerTable: 'purchase_orders', detailTable: 'purchase_order_details', fk: 'order_id', headerId: srcLine.order_id,
+        counter: 'qty_received', altCounter: 'alt_qty_received',
+        statuses: { none: 'confirmed', partial: 'partially_received', full: 'fully_received' }, rollable: ['confirmed', 'partially_received', 'fully_received'] });
+}
+
 router.put('/purchase-bills/:id/status', requireAuth, loadUserPermissions, requirePermission('ledger', 'edit'), async (req, res) => {
     try {
         const { status, cancellation_reason } = req.body;
@@ -626,6 +638,7 @@ router.put('/purchase-bills/:id/status', requireAuth, loadUserPermissions, requi
         if (status === 'posted' && existing.status !== 'posted') {
             for (const d of (billDetails || [])) {
                 if (d.source_grn_detail_id) await adjustGrnQtyBilled(tenantClient, d.source_grn_detail_id, Number(d.qty), Number(d.alt_qty || 0));
+                else if (d.source_order_detail_id) await adjustOrderQtyReceived(tenantClient, d.source_order_detail_id, Number(d.qty), Number(d.alt_qty || 0));
             }
             await postBillStockMovements(tenantClient, tenantId, data, billDetails || []);
 
@@ -660,6 +673,7 @@ router.put('/purchase-bills/:id/status', requireAuth, loadUserPermissions, requi
         } else if (status === 'cancelled' && existing.status === 'posted') {
             for (const d of (billDetails || [])) {
                 if (d.source_grn_detail_id) await adjustGrnQtyBilled(tenantClient, d.source_grn_detail_id, -Number(d.qty), -Number(d.alt_qty || 0));
+                else if (d.source_order_detail_id) await adjustOrderQtyReceived(tenantClient, d.source_order_detail_id, -Number(d.qty), -Number(d.alt_qty || 0));
             }
             await reverseReferenceAndSettlements(tenantClient, 'purchase_bill', req.params.id);
             await reverseGlBatch(tenantClient, 'purchase_bill', req.params.id);

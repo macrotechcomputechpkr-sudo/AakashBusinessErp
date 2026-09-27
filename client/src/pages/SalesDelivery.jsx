@@ -19,6 +19,7 @@ import NumberingCategorySelector from '../components/NumberingCategorySelector';
 import { resolveDualUomEntryMode, onPrimaryQtyChange, onSecondaryQtyChange, validateFixedSecondary, dualBaseQty } from '../utils/dualUomEntryMode';
 import UdfValuesModal from '../components/UdfValuesModal';
 import RecordHistory from '../components/RecordHistory';
+import { priceUrl, lineUnitOf, useSlabRepricing } from '../utils/salesPricing';
 
 const emptyDetailRow = () => ({ product_id: '', qty: '', uom_id: '', alt_qty: '', alt_unit_id: '', rate_basis: 'primary', rate: '', warehouse_id: '', batch_no: '', serial_no: '', mfg_date: '', exp_date: '', source_order_detail_id: '' });
 
@@ -122,7 +123,10 @@ export default function SalesDelivery() {
     const resetForm = () => { setForm(emptyForm); setEditingId(null); };
     const addDetailRow = () => setForm(f => ({ ...f, details: [...f.details, emptyDetailRow()] }));
     const removeDetailRow = (idx) => setForm(f => ({ ...f, details: f.details.length > 1 ? f.details.filter((_, i) => i !== idx) : f.details }));
-    const updateDetailRow = (idx, patch) => setForm(f => ({ ...f, details: f.details.map((d, i) => i === idx ? { ...d, ...patch } : d) }));
+    const setDetailRow = (idx, patch) => setForm(f => ({ ...f, details: f.details.map((d, i) => i === idx ? { ...d, ...patch } : d) }));
+    // qty / value slab discounts: re-price the line when its qty or unit changes
+    const reprice = useSlabRepricing(authFetch, form, setDetailRow, { withDiscount: false });
+    const updateDetailRow = (idx, patch) => { setDetailRow(idx, patch); reprice.onChange(idx, patch); };
     const productMaintainsBatch = (productId) => !!products.find(p => p.id === productId)?.maintain_batch;
     const productTracksSerial = (productId) => !!products.find(p => p.id === productId)?.track_serial_number;
     const productIsFixedDualUom = (productId) => products.find(p => p.id === productId)?.uom_mode === 'fixed_dual';
@@ -144,8 +148,8 @@ export default function SalesDelivery() {
         // (Delivery lines carry no discount column, so only the rate applies.)
         if (!form.customer_ledger_id || !productId) return;
         try {
-            const res = await authFetch(`/api/resolve-sales-price?customer_ledger_id=${form.customer_ledger_id}&product_id=${productId}`);
-            if (res?.data && res.data.rate !== undefined) updateDetailRow(idx, { rate: res.data.rate });
+            const res = await authFetch(priceUrl(form.customer_ledger_id, productId, { unit_id: lineUnitOf(product), qty: form.details[idx]?.qty, payment_term: form.payment_term }));
+            if (res?.data && res.data.rate !== undefined) { setDetailRow(idx, { rate: res.data.rate }); reprice.mark(idx, res.data); }
         } catch { /* keep SR1 */ }
     };
 

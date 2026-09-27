@@ -8,6 +8,7 @@
 // =============================================
 
 const express = require('express');
+const masterCodes = require('../utils/masterCodes');
 const router = express.Router();
 const { getTenantClient, loadUserPermissions, logAudit } = require('../utils/dbHelpers');
 const { requireAuth, requirePermission } = require('../middleware/auth');
@@ -106,7 +107,7 @@ router.post('/sub-ledgers', requireAuth, loadUserPermissions, requirePermission(
         if (typeError) return res.status(400).json({ success: false, error: typeError });
 
         const prefix = sub_ledger_name.trim().slice(0, 4).toUpperCase();
-        const { data: codeRow, error: codeErr } = await tenantClient.rpc('next_sub_ledger_code', { prefix });
+        const { data: codeRow, error: codeErr } = await masterCodes.nextRpc(tenantClient, req.auth.tenantId, 'sub_ledger');
         if (codeErr) throw codeErr;
 
         // FEATURE: Short Name auto-generates from Name's initials + a

@@ -9,6 +9,28 @@ const express = require('express');
 const router = express.Router();
 const { getTenantClient, loadUserPermissions, logAudit } = require('../utils/dbHelpers');
 const { requireAuth, requirePermission } = require('../middleware/auth');
+const pricing = require('../utils/pricing');
+
+const fail = (res, error) => res.status(error.status || 500).json({ success: false, error: error.message });
+
+// Multiple Rate Type: Sr1..Sr5 fixed - caption + enable (Product Master shows only enabled ones)
+router.get('/rate-types', requireAuth, async (req, res) => {
+    try { res.json({ success: true, data: await pricing.rateTypes(await getTenantClient(req.auth.tenantId), req.auth.tenantId) }); } catch (error) { fail(res, error); }
+});
+router.put('/rate-types', requireAuth, loadUserPermissions, requirePermission('company_settings', 'edit'), async (req, res) => {
+    try {
+        const data = await pricing.saveRateTypes(await getTenantClient(req.auth.tenantId), req.auth.tenantId, req.auth.userId, (req.body || {}).rate_types);
+        await logAudit(req.auth.tenantId, req.auth.userId, 'update_rate_types', 'system_control_settings', null, { rate_types: data });
+        res.json({ success: true, data });
+    } catch (error) { fail(res, error); }
+});
+
+router.get('/rate-categories/:id', requireAuth, async (req, res) => {
+    try { res.json({ success: true, data: await pricing.rateCategory(await getTenantClient(req.auth.tenantId), req.auth.tenantId, req.params.id) }); } catch (error) { fail(res, error); }
+});
+router.get('/discount-groups/:id', requireAuth, async (req, res) => {
+    try { res.json({ success: true, data: await pricing.discountGroup(await getTenantClient(req.auth.tenantId), req.auth.tenantId, req.params.id) }); } catch (error) { fail(res, error); }
+});
 
 router.get('/rate-categories', requireAuth, async (req, res) => {
     try {
@@ -28,8 +50,11 @@ router.post('/rate-categories', requireAuth, loadUserPermissions, requirePermiss
         if (!category_name) return res.status(400).json({ success: false, error: 'Category Name is required' });
         const tenantId = req.auth.tenantId;
         const tenantClient = await getTenantClient(tenantId);
-        const { data, error } = await tenantClient.from('rate_categories').insert({ tenant_id: tenantId, category_name, sr_tier: sr_tier || 1 }).select().single();
+        const { data, error } = await tenantClient.from('rate_categories').insert({ tenant_id: tenantId, category_name, sr_tier: sr_tier || 1, description: req.body.description || null }).select().single();
         if (error) throw error;
+        if (Array.isArray(req.body.items)) {
+            try { await pricing.saveRateCategoryItems(tenantClient, tenantId, data.id, req.body.items); } catch (e) { await tenantClient.from('rate_categories').delete().eq('id', data.id); throw e; }
+        }
         await logAudit(tenantId, req.auth.userId, 'create_rate_category', 'rate_category', data.id, { category_name });
         res.json({ success: true, data });
     } catch (error) {
@@ -42,11 +67,14 @@ router.put('/rate-categories/:id', requireAuth, loadUserPermissions, requirePerm
         const { category_name, sr_tier, is_active } = req.body;
         if (sr_tier !== undefined && sr_tier !== null && sr_tier !== '' && !(Number(sr_tier) >= 1 && Number(sr_tier) <= 5)) return res.status(400).json({ success: false, error: 'Sales Rate tier must be SR1 to SR5' });
         const tenantClient = await getTenantClient(req.auth.tenantId);
-        const { data, error } = await tenantClient.from('rate_categories').update({ category_name, sr_tier, is_active }).eq('id', req.params.id).eq('tenant_id', req.auth.tenantId).select().single();
+        const patch = { category_name, sr_tier, is_active };
+        if ('description' in req.body) patch.description = req.body.description || null;
+        const { data, error } = await tenantClient.from('rate_categories').update(patch).eq('id', req.params.id).eq('tenant_id', req.auth.tenantId).select().single();
         if (error) throw error;
+        if (Array.isArray(req.body.items)) await pricing.saveRateCategoryItems(tenantClient, req.auth.tenantId, req.params.id, req.body.items);
         res.json({ success: true, data });
     } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
+        fail(res, error);
     }
 });
 
@@ -82,8 +110,11 @@ router.post('/discount-groups', requireAuth, loadUserPermissions, requirePermiss
         if (!group_name) return res.status(400).json({ success: false, error: 'Group Name is required' });
         const tenantId = req.auth.tenantId;
         const tenantClient = await getTenantClient(tenantId);
-        const { data, error } = await tenantClient.from('discount_groups').insert({ tenant_id: tenantId, group_name }).select().single();
+        const { data, error } = await tenantClient.from('discount_groups').insert({ tenant_id: tenantId, group_name, ...pricing.groupFields(req.body) }).select().single();
         if (error) throw error;
+        if (Array.isArray(req.body.rules)) {
+            try { await pricing.saveDiscountRules(tenantClient, tenantId, data.id, req.body.rules); } catch (e) { await tenantClient.from('discount_groups').delete().eq('id', data.id); throw e; }
+        }
         await logAudit(tenantId, req.auth.userId, 'create_discount_group', 'discount_group', data.id, { group_name });
         res.json({ success: true, data });
     } catch (error) {
@@ -95,11 +126,12 @@ router.put('/discount-groups/:id', requireAuth, loadUserPermissions, requirePerm
     try {
         const { group_name, is_active } = req.body;
         const tenantClient = await getTenantClient(req.auth.tenantId);
-        const { data, error } = await tenantClient.from('discount_groups').update({ group_name, is_active }).eq('id', req.params.id).eq('tenant_id', req.auth.tenantId).select().single();
+        const { data, error } = await tenantClient.from('discount_groups').update({ group_name, is_active, ...pricing.groupFields(req.body) }).eq('id', req.params.id).eq('tenant_id', req.auth.tenantId).select().single();
         if (error) throw error;
+        if (Array.isArray(req.body.rules)) await pricing.saveDiscountRules(tenantClient, req.auth.tenantId, req.params.id, req.body.rules);
         res.json({ success: true, data });
     } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
+        fail(res, error);
     }
 });
 
@@ -152,32 +184,16 @@ router.put('/discount-matrix/:discountGroupId', requireAuth, loadUserPermissions
     }
 });
 
+// rate + discount a sales line gets: rate category (product / unit rows, else the Sr tier)
+// and discount category (qty / value slab rules, else the company matrix).
+// Optional: unit_id, qty, payment_term.
 router.get('/resolve-sales-price', requireAuth, loadUserPermissions, requirePermission('ledger', 'view'), async (req, res) => {
     try {
         const { customer_ledger_id, product_id } = req.query;
         if (!customer_ledger_id || !product_id) return res.status(400).json({ success: false, error: 'customer_ledger_id and product_id are required' });
-        const tenantClient = await getTenantClient(req.auth.tenantId);
-
-        const { data: customer } = await tenantClient.from('ledger_accounts').select('rate_category_id, discount_group_id').eq('id', customer_ledger_id).maybeSingle();
-        const { data: product } = await tenantClient.from('products').select('sales_rate_sr1, sales_rate_sr2, sales_rate_sr3, sales_rate_sr4, sales_rate_sr5, product_company_id').eq('id', product_id).maybeSingle();
-        if (!product) return res.status(404).json({ success: false, error: 'Product not found' });
-
-        let srTier = 1;
-        if (customer?.rate_category_id) {
-            const { data: rateCategory } = await tenantClient.from('rate_categories').select('sr_tier').eq('id', customer.rate_category_id).maybeSingle();
-            srTier = rateCategory?.sr_tier || 1;
-        }
-        const rate = Number(product[`sales_rate_sr${srTier}`]) || 0;
-
-        let discountPercent = 0;
-        if (customer?.discount_group_id && product.product_company_id) {
-            const { data: matrixCell } = await tenantClient.from('discount_matrix').select('discount_percent').eq('discount_group_id', customer.discount_group_id).eq('product_company_id', product.product_company_id).maybeSingle();
-            discountPercent = Number(matrixCell?.discount_percent) || 0;
-        }
-
-        res.json({ success: true, data: { rate, sr_tier: srTier, discount_percent: discountPercent } });
+        res.json({ success: true, data: await pricing.resolve(await getTenantClient(req.auth.tenantId), req.auth.tenantId, req.query) });
     } catch (error) {
-        res.status(500).json({ success: false, error: error.message });
+        fail(res, error);
     }
 });
 

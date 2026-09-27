@@ -8,6 +8,7 @@
 // =============================================
 
 const express = require('express');
+const masterCodes = require('../utils/masterCodes');
 const router = express.Router();
 const { getTenantClient, loadUserPermissions, logAudit } = require('../utils/dbHelpers');
 const { requireAuth, requirePermission } = require('../middleware/auth');
@@ -47,7 +48,7 @@ router.post('/product-companies', requireAuth, loadUserPermissions, requirePermi
         }
 
         const prefix = company_name.trim().slice(0, 4).toUpperCase();
-        const { data: codeRow, error: codeErr } = await tenantClient.rpc('next_product_company_code', { prefix });
+        const { data: codeRow, error: codeErr } = await masterCodes.nextRpc(tenantClient, req.auth.tenantId, 'product_company');
         if (codeErr) throw codeErr;
 
         const { data, error } = await tenantClient

@@ -188,6 +188,7 @@ function applyMaximumCap(value, maximumAmount) {
 function evaluateAllTerms(terms, baseVariables) {
     const results = [];
     const byCode = {};
+    const byId = {};
     let runningTotal = Number(baseVariables.basic_amount) || 0;
 
     for (const term of terms) {
@@ -202,14 +203,19 @@ function evaluateAllTerms(terms, baseVariables) {
             const freeQty = Number(term.fixed_amount) || 0;
             results.push({ term_code: term.term_code, free_quantity: freeQty, quantity_unit: term.quantity_unit || 'primary' });
             byCode[term.term_code] = 0;
+            if (term.id) byId[term.id] = 0;
             continue;
         }
 
-        const baseAmount = term.base_reference === 'running_total'
+        let baseAmount = term.base_reference === 'running_total'
             ? runningTotal
             : term.base_reference === 'specific_term'
-                ? (byCode[term.base_reference_term_code] ?? 0)
+                ? (byCode[term.base_reference_term_code] ?? byId[term.base_reference_term_id] ?? 0)
                 : Number(baseVariables.basic_amount) || 0;
+        // "Calculated on" can also add several earlier terms (e.g. VAT on basic + excise + freight)
+        if (term.base_reference !== 'running_total' && Array.isArray(term.base_term_ids) && term.base_term_ids.length) {
+            baseAmount += term.base_term_ids.reduce((s, id) => s + (Number(byId[id]) || 0), 0);
+        }
 
         let amount = 0;
         if (term.calculation_mode === 'fixed_amount') {
@@ -244,6 +250,7 @@ function evaluateAllTerms(terms, baseVariables) {
         }
 
         byCode[term.term_code] = amount;
+        if (term.id) byId[term.id] = amount;
         runningTotal += amount;
     }
 

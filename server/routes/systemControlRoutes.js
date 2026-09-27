@@ -48,6 +48,32 @@ router.put('/system-control', requireAuth, loadUserPermissions, requirePermissio
         await tenantClient.rpc('ensure_system_control_settings', { p_tenant_id: tenantId });
 
         const update = { ...req.body, updated_by: req.auth.userId, updated_at: new Date().toISOString() };
+        // Business Nature: which modules the company uses (poultry adds the Poultry & Hatchery menus)
+        if ('poultry_features' in update) {
+            const pf = update.poultry_features || {};
+            update.poultry_features = { broiler: pf.broiler !== false, hatchery: !!pf.hatchery };
+        }
+        if ('rate_types' in update) update.rate_types = require('../utils/pricing').cleanRateTypes(update.rate_types);
+        // Term mapping: which billing term is VAT / Excise / Product Discount 1-5 / Bill Discount,
+        // separately for sales and purchase (replaces the "type" on each billing term)
+        let termTypes = null;
+        if ('term_mapping' in update) {
+            const U = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+            const KEYS = ['vat', 'excise', 'disc1', 'disc2', 'disc3', 'disc4', 'disc5', 'bill_disc'];
+            const src = update.term_mapping || {};
+            const out = {};
+            for (const side of ['sales', 'purchase']) {
+                out[side] = {};
+                KEYS.forEach(k => { const v = src[side] && src[side][k]; out[side][k] = U.test(v || '') ? v : null; });
+                const used = KEYS.map(k => out[side][k]).filter(Boolean);
+                if (new Set(used).size !== used.length) return res.status(400).json({ success: false, error: `${side === 'sales' ? 'Sales' : 'Purchase'}: one billing term is chosen for two purposes` });
+            }
+            update.term_mapping = out;
+            const { data: prev } = await tenantClient.from('system_control_settings').select('term_mapping').eq('tenant_id', tenantId).maybeSingle();
+            const prevIds = new Set(['sales', 'purchase'].flatMap(sd => Object.values((prev && prev.term_mapping && prev.term_mapping[sd]) || {})).filter(Boolean));
+            termTypes = { __prev: prevIds };
+            for (const side of ['sales', 'purchase']) KEYS.forEach(k => { const id = out[side][k]; if (id) termTypes[id] = k === 'vat' ? 'vat' : k === 'excise' ? 'excise' : 'discount'; });
+        }
         delete update.tenant_id; // never let the client move a settings row to a different tenant
 
         const { data, error } = await tenantClient
@@ -56,11 +82,30 @@ router.put('/system-control', requireAuth, loadUserPermissions, requirePermissio
             if (error.code === '23514') return res.status(400).json({ success: false, error: 'Invalid value for one of the system control settings' });
             throw error;
         }
+        if (termTypes) {
+            // keep each term's internal type in step with the mapping (VAT posting, VAT reports read it)
+            const prevIds = termTypes.__prev;
+            const { data: terms } = await tenantClient.from('billing_terms').select('id, tax_type').eq('tenant_id', tenantId);
+            for (const tm of terms || []) {
+                // a term taken out of the mapping loses the type the mapping gave it; others are left alone
+                const want = termTypes[tm.id] || (prevIds.has(tm.id) ? 'none' : tm.tax_type);
+                if (want !== tm.tax_type) await tenantClient.from('billing_terms').update({ tax_type: want }).eq('id', tm.id);
+            }
+        }
         await logAudit(tenantId, req.auth.userId, 'update_system_control', 'system_control_settings', data.id, { new_data: data });
         res.json({ success: true, message: 'System control settings updated', data });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
+});
+
+// Which optional modules are on - read by every screen (menus), so any signed-in user may call it.
+router.get('/app-features', requireAuth, async (req, res) => {
+    try {
+        if (!req.auth.tenantId) return res.json({ success: true, data: { business_nature: 'trading', poultry: { enabled: false, broiler: false, hatchery: false } } });
+        const { features } = require('../utils/poultry');
+        res.json({ success: true, data: await features(await getTenantClient(req.auth.tenantId), req.auth.tenantId) });
+    } catch (error) { res.status(500).json({ success: false, error: error.message }); }
 });
 
 module.exports = router;

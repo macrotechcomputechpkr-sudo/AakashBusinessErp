@@ -48,4 +48,28 @@ async function resolveDocumentNumber(tenantClient, { tenantId, voucherType, user
     return `${category.prefix || ''}${fyPart}${padded}${category.suffix || ''}`;
 }
 
-module.exports = { resolveDocumentNumber };
+/**
+ * The number the next document of this type will get - shown read-only on
+ * a new entry. Reads the counter only (nothing is used up). null = no
+ * numbering category (the plain system series applies), manual = user types it.
+ */
+async function previewDocumentNumber(tenantClient, { tenantId, voucherType, userId, categoryId, currentFiscalYearId, currentFiscalYearName, userDefaultBranchId }) {
+    let query = tenantClient.from('document_numbering_categories').select('*').eq('tenant_id', tenantId).eq('voucher_type', voucherType).eq('is_active', true);
+    query = categoryId ? query.eq('id', categoryId) : query.eq('is_default', true);
+    const { data: category } = await query.maybeSingle();
+    if (!category) return { number: null, mode: 'system' };
+    if (category.numbering_mode === 'manual') return { number: null, mode: 'manual', category_id: category.id };
+    const branchId = category.scope === 'branch_wise' ? (userDefaultBranchId || null) : null;
+    const userIdForScope = category.scope === 'user_wise' ? userId : null;
+    const fyIdForScope = category.include_fiscal_year ? (currentFiscalYearId || null) : null;
+    let q = tenantClient.from('document_numbering_counters').select('current_number').eq('category_id', category.id);
+    q = branchId ? q.eq('branch_id', branchId) : q.is('branch_id', null);
+    q = userIdForScope ? q.eq('user_id', userIdForScope) : q.is('user_id', null);
+    q = fyIdForScope ? q.eq('fiscal_year_id', fyIdForScope) : q.is('fiscal_year_id', null);
+    const { data: counter } = await q.maybeSingle();
+    const next = counter ? Number(counter.current_number) + 1 : Number(category.start_number || 1);
+    const fyPart = category.include_fiscal_year ? formatFiscalYearPart(currentFiscalYearName, category.fy_digit_format) : '';
+    return { number: `${category.prefix || ''}${fyPart}${String(next).padStart(category.digit_count, '0')}${category.suffix || ''}`, mode: 'auto', category_id: category.id };
+}
+
+module.exports = { resolveDocumentNumber, previewDocumentNumber };

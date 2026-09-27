@@ -1,110 +1,22 @@
 // =============================================
-// menu.js
-// The navigation, grouped. SECTIONS drive the sidebar (Layout.jsx);
-// REPORT_GROUPS drive the Report Center (/reports) and the sidebar's
-// Reports section - every report screen, with deep links (?tab= / ?view= /
-// ?preset=) straight to one view of a multi-view report page.
+// menu.ts
+// The navigation. TOP_MENUS drive the classic top menu bar (Layout.jsx):
+// Master Data, Data Entry (Sales / Purchase / Production / Inventory /
+// Accounts ... each its own sub-menu), Accounts Report, Sales/Purchase,
+// Analysis, Setup, then Office, Tools and Poultry (only when the Business
+// Nature in System Control is Poultry). REPORT_GROUPS drive the Report
+// Center (/reports) and the report menus - every report screen, with deep
+// links (?tab= / ?view= / ?preset=) straight to one view of a report page.
 // =============================================
 
-export interface MenuItem { to: string; label: string; group?: string }
-export interface MenuSection { key: string; title: string; items: MenuItem[] }
-export type ReportGroup = { title: string; items: [string, string][] };
+/** feature: shown only when System Control turns that feature on */
+export type Feature = 'poultry' | 'broiler' | 'hatchery';
+export interface MenuItem { to: string; label: string; group?: string; feature?: Feature }
+export interface MenuGroup { title: string; items: MenuItem[]; feature?: Feature }
+export interface TopMenu { key: string; title: string; groups: MenuGroup[]; feature?: Feature }
+export type ReportGroup = { title: string; items: [string, string][]; feature?: Feature };
 
-export const SECTIONS: MenuSection[] = [
-    { key: 'home', title: 'Home', items: [
-        { to: '/dashboard', label: '🏠 Dashboard' },
-        { to: '/reports', label: '📚 Report Center (all reports)' },
-        { to: '/mobile', label: '📱 Salesman Mobile App' }
-    ] },
-    { key: 'masters', title: 'Masters', items: [
-        { to: '/chart-of-accounts', label: '📒 Chart of Accounts' },
-        { to: '/sub-ledgers', label: '📑 Sub Ledgers' },
-        { to: '/ledger-opening', label: '📖 Ledger Opening Balance' },
-        { to: '/products', label: '🛒 Products' },
-        { to: '/product-units', label: '📏 Product Units' },
-        { to: '/product-groups', label: '📦 Product Groups' },
-        { to: '/categories', label: '🏷️ Category Management' },
-        { to: '/product-opening', label: '📦 Product Opening Stock' },
-        { to: '/product-rate-change', label: '💲 Product Rate Change' },
-        { to: '/product-offer-rate', label: '🏷️ Offer Rate' },
-        { to: '/pricing-masters', label: '💲 Rate Category & Discount Group' },
-        { to: '/salesman-agents', label: '🧑‍💼 Salesman / Agent' },
-        { to: '/route-sequencing', label: '🚚 Route Sequencing' },
-        { to: '/route-plan', label: '🗓 Route Plan & Mobile Login' },
-        { to: '/transport-master', label: '🚚 Transport Master' },
-        { to: '/cost-profit-centers', label: '🎯 Cost & Profit Centers' },
-        { to: '/billing-terms', label: '🧾 Billing Terms' },
-        { to: '/remarks-terms', label: '📝 Remarks & Terms' },
-        { to: '/fixed-assets', label: '🏗 Fixed Assets & Depreciation' }
-    ] },
-    { key: 'sales', title: 'Sales', items: [
-        { to: '/sales-quotation', label: '📝 Sales Quotation' },
-        { to: '/sales-order', label: '🧾 Sales Order' },
-        { to: '/order-billing', label: '⚡ Order → Bill (single / multiple)' },
-        { to: '/sales-delivery', label: '🚚 Sales Delivery/Challan' },
-        { to: '/sales-bill', label: '💵 Sales Bill/Invoice' },
-        { to: '/sales-return', label: '↩️ Sales Return' },
-        { to: '/sales-nonsaleable-return', label: '🗑️ Sales Non-saleable Return' },
-        { to: '/sales-additional-entry', label: '➕ Sales Additional Entry' },
-        { to: '/agent-targets?tab=targets', label: '🎯 Salesman Targets & Commission' }
-    ] },
-    { key: 'purchase', title: 'Purchase', items: [
-        { to: '/purchase-order', label: '🛒 Purchase Order' },
-        { to: '/purchase-quotation', label: '📨 Purchase Quotation' },
-        { to: '/purchase-grn', label: '📦 Purchase GRN' },
-        { to: '/purchase-bill', label: '🧾 Purchase Bill' },
-        { to: '/purchase-bill-import', label: '📷 Purchase Bill from Image / PDF' },
-        { to: '/purchase-additional-expense', label: '🧮 Additional Expenses' },
-        { to: '/purchase-return', label: '↩️ Purchase Return' },
-        { to: '/purchase-nonsaleable-return', label: '🚫 Non-saleable Return' },
-        { to: '/lc-register', label: '🏦 LC Register & Mapping' }
-    ] },
-    { key: 'office', title: 'Office Work', items: [
-        { to: '/work-dashboard', label: '📊 Work Dashboard' },
-        { to: '/tasks', label: '📝 Tasks' },
-        { to: '/darta-chalani', label: '📨 Darta / Chalani Register' },
-        { to: '/notification-settings', label: '🔔 My Notification Settings' }
-    ] },
-    { key: 'accounts', title: 'Accounts', items: [
-        { to: '/journal-voucher', label: '📗 Journal Voucher' },
-        { to: '/cash-bank-entry', label: '💵 Cash/Bank Entry' },
-        { to: '/debit-note', label: '📤 Debit Note' },
-        { to: '/credit-note', label: '📥 Credit Note' },
-        { to: '/pdc-voucher', label: '🏦 PDC' },
-        { to: '/bulk-cash-settlement', label: '💰 Bulk Cash Settlement' },
-        { to: '/bank-reconciliation', label: '🏦 Bank Reconciliation' },
-        { to: '/interest-posting', label: '% Interest on Overdue' },
-        { to: '/budgets', label: '💼 Budgets & Variance' },
-        { to: '/confirmation-letters', label: '✉ Account Confirmation Letters' },
-        { to: '/lc-bg-dashboard', label: '📑 LC / BG / PDC Dashboard' },
-        { to: '/ird', label: '🏛 IRD Compliance / CBMS' },
-        { to: '/messaging', label: '📨 Messaging (Email / SMS / WhatsApp / Viber)' }
-    ] },
-    { key: 'inventory', title: 'Inventory & Production', items: [
-        { to: '/stock-transfer', label: '🔄 Stock Transfer' },
-        { to: '/bom-template', label: '📋 BOM Template' },
-        { to: '/production-order', label: '🏭 Production Order' },
-        { to: '/barcode-print', label: '🏷 Barcode / Label Printing' }
-    ] },
-    { key: 'print', title: 'Printing', items: [
-        { to: '/document-printing', label: '🖨 Manual Document Printing' },
-        { to: '/document-designer', label: '🎨 Document Designer' }
-    ] },
-    { key: 'setup', title: 'Setup', items: [
-        { to: '/fiscal-years', label: '📅 Fiscal Years' },
-        { to: '/ledger-mapping', label: '🔗 Ledger Mapping' },
-        { to: '/system-control', label: '⚙️ System Control' },
-        { to: '/entry-field-control', label: '🔒 Entry Field Control' },
-        { to: '/audit-log', label: '🕘 Audit Log (who changed what)' },
-        { to: '/data-access', label: '🔐 Data Access (who sees which ledger / product / area)' },
-        { to: '/user-defined-fields', label: '🧩 User Defined Fields' },
-        { to: '/document-numbering', label: '🔢 Document Numbering' },
-        { to: '/branches-warehouses', label: '🏢 Branches & Warehouses' },
-        { to: '/business-units', label: '🏷️ Business Units' },
-        { to: '/security-groups', label: '🔐 Security Groups' },
-        { to: '/users', label: '👤 Users' }
-    ] }
-];
+const i = (to: string, label: string, feature?: Feature): MenuItem => (feature ? { to, label, feature } : { to, label });
 
 export const REPORT_GROUPS: ReportGroup[] = [
     { title: 'Accounts & Finance', items: [
@@ -161,6 +73,11 @@ export const REPORT_GROUPS: ReportGroup[] = [
         ['/darta-chalani?type=darta', 'Darta Register (incoming)'], ['/darta-chalani?type=chalani', 'Chalani Register (outgoing)'], ['/darta-chalani?status=pending', 'Pending Darta / Chalani'],
         ['/tasks?view=overdue', 'Overdue Tasks'], ['/tasks?view=all', 'All Tasks (status / assignee)'], ['/work-dashboard', 'Work Dashboard']
     ] },
+    { title: 'Poultry & Hatchery', feature: 'poultry', items: [
+        ['/poultry/reports?view=profitability', 'Shed / Batch Profitability'], ['/poultry/reports?view=lifecycle', 'Broiler Lifecycle (shed-wise)'],
+        ['/poultry/reports?view=mortality', 'Shed-wise Mortality'], ['/poultry/reports?view=consumption', 'Shed-wise Consumption (feed / medicine / vaccine)'],
+        ['/poultry/hatchery?tab=report', 'Hatchery Performance (fertility / hatchability / chick cost)']
+    ] },
     { title: 'Control & Registers', items: [
         ['/register', 'Universal Register (all documents)'], ['/control-reports?view=cancelled_docs', 'Cancelled Documents'], ['/control-reports?view=draft_docs', 'Draft (Unposted) Documents'],
         ['/control-reports?view=master_exceptions', 'Master Data Exceptions'], ['/lc-bg-dashboard', 'LC / BG / PDC Dashboard'], ['/pdc-dashboard', 'PDC Dashboard & Report'],
@@ -168,4 +85,122 @@ export const REPORT_GROUPS: ReportGroup[] = [
     ] }
 ];
 
-export const REPORT_COUNT = REPORT_GROUPS.reduce((s, g) => s + g.items.length, 0);
+
+const rg = (title: string): MenuGroup => {
+    const g = REPORT_GROUPS.find(x => x.title === title);
+    return { title, feature: g?.feature, items: (g?.items || []).map(([to, label]) => ({ to, label })) };
+};
+
+export const TOP_MENUS: TopMenu[] = [
+    { key: 'master', title: 'Master Data', groups: [
+        { title: 'Accounts Masters', items: [
+            i('/chart-of-accounts', '📒 Chart of Accounts (Ledger)'), i('/sub-ledgers', '📑 Sub Ledgers'), i('/cost-profit-centers', '🎯 Cost & Profit Centers'),
+            i('/billing-terms', '🧾 Billing Terms'), i('/remarks-terms', '📝 Remarks & Terms'), i('/fixed-assets', '🏗 Fixed Assets'), i('/ledger-opening', '📖 Ledger Opening Balance')
+        ] },
+        { title: 'Product Masters', items: [
+            i('/products', '🛒 Product Master'), i('/product-units', '📏 Product Units'), i('/product-groups', '📦 Product Groups'), i('/categories', '🏷️ Categories'),
+            i('/product-opening', '📦 Product Opening Stock'), i('/bom-template', '📋 BOM Template')
+        ] },
+        { title: 'Rate & Discount', items: [
+            i('/pricing-masters?tab=rate_types', '💲 Multiple Rate Types (Sr1 - Sr5)'), i('/pricing-masters?tab=rate', '💲 Rate Category'), i('/pricing-masters?tab=discount', '🏷️ Discount Category'),
+            i('/product-rate-change', '💲 Product Rate Change'), i('/product-offer-rate', '🏷️ Offer Rate')
+        ] },
+        { title: 'Sales Force & Routes', items: [
+            i('/salesman-agents', '🧑‍💼 Salesman / Agent'), i('/route-sequencing', '🚚 Route Sequencing'), i('/route-plan', '🗓 Route Plan & Mobile Login'), i('/transport-master', '🚚 Transport Master')
+        ] },
+        { title: 'Poultry Masters', feature: 'poultry', items: [
+            i('/poultry/setup?tab=sheds', '🏠 Sheds / Hatchers'), i('/poultry/setup?tab=items', '🐣 Poultry Items (chick / feed / medicine…)'),
+            i('/poultry/setup?tab=standards', '📈 Breed Standards'), i('/poultry/setup?tab=settings', '⚙️ Poultry Settings (ledgers / warehouse)')
+        ] }
+    ] },
+    { key: 'entry', title: 'Data Entry', groups: [
+        { title: 'Sales Transaction', items: [
+            i('/sales-quotation', '📝 Sales Quotation'), i('/sales-order', '🧾 Sales Order'), i('/order-billing', '⚡ Order → Bill (single / multiple)'),
+            i('/sales-delivery', '🚚 Sales Delivery / Challan'), i('/sales-bill', '💵 Sales Bill / Invoice'), i('/sales-return', '↩️ Sales Return'),
+            i('/sales-nonsaleable-return', '🗑️ Sales Non-saleable Return'), i('/sales-additional-entry', '➕ Sales Additional Entry'), i('/agent-targets?tab=targets', '🎯 Salesman Targets & Commission')
+        ] },
+        { title: 'Purchase Transaction', items: [
+            i('/purchase-quotation', '📨 Purchase Quotation'), i('/purchase-order', '🛒 Purchase Order'),
+            i('/purchase-grn', '📦 Purchase GRN'), i('/purchase-bill', '🧾 Purchase Bill'), i('/purchase-bill-import', '📷 Purchase Bill from Image / PDF'),
+            i('/purchase-additional-expense', '🧮 Additional Expenses'), i('/purchase-return', '↩️ Purchase Return'), i('/purchase-nonsaleable-return', '🚫 Non-saleable Return'),
+            i('/lc-register', '🏦 LC Register & Mapping')
+        ] },
+        { title: 'Production', items: [
+            i('/production-order', '🏭 Production Order'), i('/bom-template', '📋 BOM Template')
+        ] },
+        { title: 'Inventory', items: [
+            i('/stock-transfer', '🔄 Stock Transfer'), i('/barcode-print', '🏷 Barcode / Label Printing')
+        ] },
+        { title: 'Accounts', items: [
+            i('/journal-voucher', '📗 Journal Voucher'), i('/cash-bank-entry', '💵 Cash / Bank Entry'), i('/debit-note', '📤 Debit Note'), i('/credit-note', '📥 Credit Note'),
+            i('/pdc-voucher', '🏦 PDC'), i('/bulk-cash-settlement', '💰 Bulk Cash Settlement'), i('/bank-reconciliation', '🏦 Bank Reconciliation'),
+            i('/interest-posting', '% Interest on Overdue'), i('/fixed-assets?tab=depreciation', '🏗 Depreciation Posting'), i('/budgets', '💼 Budgets'),
+            i('/confirmation-letters', '✉ Account Confirmation Letters')
+        ] },
+        { title: 'Poultry & Hatchery', feature: 'poultry', items: [
+            i('/poultry/batches', '🐔 Broiler Batches (placement / daily log / lifting)', 'broiler'), i('/poultry/batches?new=1', '➕ New Batch Placement', 'broiler'),
+            i('/poultry/hatchery', '🥚 Hatchery (egg set / candling / hatch)', 'hatchery')
+        ] },
+        { title: 'Office', items: [
+            i('/tasks', '📝 Tasks'), i('/darta-chalani', '📨 Darta / Chalani Register')
+        ] }
+    ] },
+    { key: 'acc_report', title: 'Accounts Report', groups: [rg('Accounts & Finance'), rg('Budget & Dimensions'), rg('VAT, TDS & IRD'), rg('Control & Registers')] },
+    { key: 'sp_report', title: 'Sales/Purchase', groups: [rg('Sales, Salesman & Routes'), rg('Purchase'), rg('Inventory & Production'), rg('Poultry & Hatchery')] },
+    { key: 'analysis', title: 'Analysis', groups: [
+        { title: 'Dashboards', items: [
+            i('/dashboard', '🏠 Dashboard'), i('/work-dashboard', '📊 Work Dashboard'), i('/lc-bg-dashboard', '📑 LC / BG / PDC Dashboard'), i('/pdc-dashboard', '🏦 PDC Dashboard'),
+            i('/poultry', '🐔 Poultry Dashboard', 'poultry')
+        ] },
+        { title: 'Sales & Profit Analysis', items: [
+            i('/sales-purchase-analysis', '📈 Sales / Purchase Analysis'), i('/monthly-analysis', '📅 Monthly Analysis'), i('/profitability', '💹 Profitability'),
+            i('/rate-history', '💲 Rate History'), i('/product-rate-history', '💲 Rate & Discount History')
+        ] },
+        rg('Forecasting & Inventory Analytics')
+    ] },
+    { key: 'setup', title: 'Setup', groups: [
+        { title: 'Company & Control', items: [
+            i('/system-control', '⚙️ System Control (Business Nature, rates, posting)'), i('/fiscal-years', '📅 Fiscal Years'), i('/branches-warehouses', '🏢 Branches & Warehouses'),
+            i('/business-units', '🏷️ Business Units'), i('/ledger-mapping', '🔗 Ledger Mapping'), i('/document-numbering', '🔢 Document Numbering'),
+            i('/entry-field-control', '🔒 Entry Field Control'), i('/user-defined-fields', '🧩 User Defined Fields')
+        ] },
+        { title: 'Users & Security', items: [
+            i('/users', '👤 Users'), i('/security-groups', '🔐 Security Groups'), i('/data-access', '🔐 Data Access (ledger / product / area)'),
+            i('/audit-log', '🕘 Audit Log'), i('/change-password', '🔑 Change My Password')
+        ] },
+        { title: 'Printing & Messaging', items: [
+            i('/document-designer', '🎨 Document Designer'), i('/messaging', '📨 Messaging Templates & Auto-send'), i('/notification-settings', '🔔 My Notification Settings')
+        ] },
+        { title: 'Poultry Setup', feature: 'poultry', items: [i('/poultry/setup', '🐔 Poultry & Hatchery Setup')] }
+    ] },
+    { key: 'office', title: 'Office', groups: [
+        { title: 'Office Work', items: [
+            i('/work-dashboard', '📊 Work Dashboard'), i('/tasks', '📝 Tasks'), i('/darta-chalani', '📨 Darta / Chalani'), i('/notification-settings', '🔔 My Notification Settings')
+        ] },
+        rg('Office: Tasks & Darta / Chalani')
+    ] },
+    { key: 'tools', title: 'Tools', groups: [
+        { title: 'Tools', items: [
+            i('/reports', '📚 Report Center (all reports)'), i('/document-printing', '🖨 Manual Document Printing'), i('/messaging', '📨 Messaging (Email / SMS / WhatsApp / Viber)'),
+            i('/ird', '🏛 IRD Compliance / CBMS'), i('/mobile', '📱 Salesman Mobile App')
+        ] },
+        rg('Messaging')
+    ] },
+    { key: 'poultry', title: 'Poultry', feature: 'poultry', groups: [
+        { title: 'Poultry & Hatchery', items: [
+            i('/poultry', '📊 Poultry Dashboard'), i('/poultry/batches', '🐔 Broiler Batches', 'broiler'), i('/poultry/hatchery', '🥚 Hatchery', 'hatchery'),
+            i('/poultry/setup', '⚙️ Poultry Setup')
+        ] },
+        rg('Poultry & Hatchery')
+    ] }
+];
+
+export interface AppFeatures { business_nature: string; poultry: { enabled: boolean; broiler: boolean; hatchery: boolean } }
+/** is a feature-gated menu entry / report group on for this company? */
+export const featureOn = (f: Feature | undefined, a: AppFeatures | null): boolean => {
+    if (!f) return true;
+    if (!a?.poultry?.enabled) return false;
+    return f === 'poultry' || !!a.poultry[f];
+};
+export const visibleReportGroups = (a: AppFeatures | null): ReportGroup[] => REPORT_GROUPS.filter(g => featureOn(g.feature, a));
+export const REPORT_COUNT = REPORT_GROUPS.filter(g => !g.feature).reduce((s, g) => s + g.items.length, 0);

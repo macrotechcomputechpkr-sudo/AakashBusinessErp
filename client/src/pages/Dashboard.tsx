@@ -42,31 +42,32 @@ function Tile({ tile, def, editing, authFetch, refreshKey, onChange, onRemove, o
     const period = PERIODS.find(p => p[0] === tile.period)?.[1] || '';
 
     return (
-        <div data-tile={tile.widget} className={`bg-white rounded-lg border border-slate-200 shadow-sm p-3 flex flex-col ${SPAN[tile.size] || ''} ${editing ? 'ring-1 ring-blue-200 cursor-move' : ''}`}
+        <div data-tile={tile.widget} className={`chart-panel ${SPAN[tile.size] || ''} ${editing ? 'outline outline-1 outline-blue-300 cursor-move' : ''}`}
             draggable={editing} onDragStart={onDragStart} onDragOver={e => editing && e.preventDefault()} onDrop={onDrop}>
-            <div className="flex items-start justify-between gap-2 mb-2">
-                <div className="min-w-0">
-                    {editing ? <input className="border rounded px-1 text-sm font-semibold w-full" value={tile.title ?? ''} placeholder={def?.label} onChange={e => onChange({ title: e.target.value })} />
-                        : <p className="font-semibold text-sm text-gray-800 truncate">{data?.link ? <a href={data.link} className="hover:underline">{title}</a> : title}</p>}
-                    <p className="text-[11px] text-gray-400">{period}{data?.from ? ` · ${data.from} – ${data.to}` : ''}</p>
+            <div className="chart-panel-header">
+                <div className="min-w-0 flex-1">
+                    {editing ? <input className="nav-input" style={{ height: 22, textTransform: 'none' }} value={tile.title ?? ''} placeholder={def?.label} onChange={e => onChange({ title: e.target.value })} />
+                        : <p className="truncate">{data?.link ? <a href={data.link} className="hover:underline">{title}</a> : title}</p>}
                 </div>
-                {editing && (
-                    <div className="flex items-center gap-1 text-xs shrink-0">
-                        <button className="px-1 border rounded" title="Move left" onClick={() => onMove(-1)}>←</button>
-                        <button className="px-1 border rounded" title="Move right" onClick={() => onMove(1)}>→</button>
-                        <button className="px-1 border rounded text-red-600" title="Remove" onClick={onRemove}>✕</button>
+                {editing ? (
+                    <div className="flex items-center gap-1 shrink-0">
+                        <button className="nav-btn small" title="Move left" onClick={() => onMove(-1)}>←</button>
+                        <button className="nav-btn small" title="Move right" onClick={() => onMove(1)}>→</button>
+                        <button className="nav-btn small danger" title="Remove" onClick={onRemove}>✕</button>
                     </div>
-                )}
+                ) : <span className="font-normal normal-case text-[10px] text-gray-500 shrink-0">{period}</span>}
             </div>
+            <div className="chart-panel-body flex flex-col">
+            {data?.from && <p className="text-[10px] text-gray-500 mb-1">{data.from} – {data.to}</p>}
             {editing && (
                 <div className="grid grid-cols-3 gap-1 mb-2 text-xs" data-enter-nav="off">
-                    <select data-chart className="border rounded px-1 py-0.5" title="Chart type" value={tile.chart} onChange={e => onChange({ chart: e.target.value as ChartType })} disabled={(def?.charts.length || 0) < 2}>
+                    <select data-chart className="nav-select" title="Chart type" value={tile.chart} onChange={e => onChange({ chart: e.target.value as ChartType })} disabled={(def?.charts.length || 0) < 2}>
                         {(def?.charts || [tile.chart]).map(c => <option key={c} value={c}>{CHART_LABEL[c]}</option>)}
                     </select>
-                    <select className="border rounded px-1 py-0.5" value={tile.period} onChange={e => onChange({ period: e.target.value })}>
+                    <select className="nav-select" value={tile.period} onChange={e => onChange({ period: e.target.value })}>
                         {PERIODS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
                     </select>
-                    <select className="border rounded px-1 py-0.5" value={tile.size} onChange={e => onChange({ size: Number(e.target.value) as 1 | 2 | 3 })}>
+                    <select className="nav-select" value={tile.size} onChange={e => onChange({ size: Number(e.target.value) as 1 | 2 | 3 })}>
                         <option value={1}>Small</option><option value={2}>Wide</option><option value={3}>Full width</option>
                     </select>
                 </div>
@@ -76,7 +77,7 @@ function Tile({ tile, def, editing, authFetch, refreshKey, onChange, onRemove, o
                 {error && <p className="text-xs text-red-600">{error}</p>}
                 {data && !error && data.kind === 'kpi' && (
                     <div className="py-1">
-                        <p className="text-2xl font-bold text-gray-900 tabular-nums">{data.unit === 'count' ? Number(data.value || 0).toLocaleString('en-IN') : `Rs ${money(data.value || 0)}`}</p>
+                        <p className="kpi-value text-2xl">{data.unit === 'count' ? Number(data.value || 0).toLocaleString('en-IN') : `Rs ${money(data.value || 0)}`}</p>
                         {data.change_pct !== null && data.change_pct !== undefined && (
                             <p className={`text-xs mt-1 ${data.change_pct >= 0 ? 'text-green-700' : 'text-red-600'}`}>{data.change_pct >= 0 ? '▲' : '▼'} {Math.abs(data.change_pct)}% vs previous period
                                 <span className="text-gray-400"> ({data.unit === 'count' ? data.previous : money(data.previous || 0)})</span></p>
@@ -93,6 +94,7 @@ function Tile({ tile, def, editing, authFetch, refreshKey, onChange, onRemove, o
                         {(data.rows || []).length === 0 && <p className="text-xs text-gray-400 text-center py-6">Nothing to show</p>}
                     </div>
                 )}
+            </div>
             </div>
         </div>
     );
@@ -139,26 +141,28 @@ export default function Dashboard() {
 
     return (
         <Layout>
-            <div className="p-4 max-w-[1400px] mx-auto" data-enter-scope>
-                <div className="flex flex-wrap items-center gap-2 mb-3">
-                    <h1 className="text-xl font-bold text-gray-900 mr-auto">Dashboard <span className="text-sm font-normal text-gray-500">{tenant?.company_name}</span></h1>
-                    <button className="erp-btn" onClick={() => setRefreshKey(k => k + 1)}>⟳ Refresh</button>
-                    {!editing ? <button className="erp-btn primary" onClick={() => setEditing(true)}>✎ Customize</button> : <>
-                        <select className="erp-select" style={{ width: 'auto' }} defaultValue="" onChange={e => { if (e.target.value) setAllPeriods(e.target.value); }} title="Set every tile to one period">
+            <div className="nav-toolbar" data-enter-scope>
+                    <span className="font-bold text-[#1a4a8a] mr-2">📊 Dashboard <span className="font-normal text-gray-600">{tenant?.company_name}</span></span>
+                    <button className="nav-tool-btn" onClick={() => setRefreshKey(k => k + 1)}>🔄 Refresh</button>
+                    <button className="nav-tool-btn" onClick={() => window.print()}>🖨️ Print</button>
+                    <span className="nav-tool-sep" />
+                    {!editing ? <button className="nav-tool-btn" onClick={() => setEditing(true)}>✎ Customize</button> : <>
+                        <select className="nav-select" style={{ width: 'auto', height: 24 }} defaultValue="" onChange={e => { if (e.target.value) setAllPeriods(e.target.value); }} title="Set every tile to one period">
                             <option value="">Period for all…</option>{PERIODS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
                         </select>
-                        <button className="erp-btn" onClick={() => setAdding(a => !a)}>➕ Add widget</button>
-                        <button className="erp-btn primary" onClick={() => save(false)}>💾 Save</button>
-                        <button className="erp-btn" onClick={() => save(true)} title="Administrators only">🏢 Save as company default</button>
-                        <button className="erp-btn" onClick={reset}>↺ Reset</button>
-                        <button className="erp-btn" onClick={() => { setEditing(false); setAdding(false); load(); }}>Cancel</button>
+                        <button className="nav-tool-btn" onClick={() => setAdding(a => !a)}>➕ Add widget</button>
+                        <button className="nav-tool-btn" onClick={() => save(false)}>💾 Save</button>
+                        <button className="nav-tool-btn" onClick={() => save(true)} title="Administrators only">🏢 Save as company default</button>
+                        <button className="nav-tool-btn" onClick={reset}>↺ Reset</button>
+                        <button className="nav-tool-btn" onClick={() => { setEditing(false); setAdding(false); load(); }}>✕ Cancel</button>
                     </>}
-                </div>
+            </div>
+            <div className="p-2 md:p-3 max-w-[1600px] mx-auto">
                 {source === 'default' && !editing && <p className="text-xs text-gray-500 mb-2">This is the standard dashboard - click Customize to choose your own charts.</p>}
                 {error && <p className="text-sm text-red-600 mb-2">{error}</p>}
                 {msg && <p className="text-sm text-green-700 mb-2">{msg}</p>}
                 {adding && (
-                    <div className="bg-white border rounded-lg p-3 mb-3 grid grid-cols-1 md:grid-cols-3 gap-3">
+                    <div className="nav-groupbox grid grid-cols-1 md:grid-cols-3 gap-3">
                         {groups.map(g => (
                             <div key={g}>
                                 <p className="text-xs font-semibold text-gray-500 uppercase mb-1">{g}</p>
@@ -171,7 +175,7 @@ export default function Dashboard() {
                         ))}
                     </div>
                 )}
-                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2">
                     {tiles.map((t, i) => (
                         <Tile key={t.id} tile={t} def={defOf[t.widget]} editing={editing} authFetch={authFetch} refreshKey={refreshKey}
                             onChange={p => patch(i, p)} onRemove={() => setTiles(ts => ts.filter((_, j) => j !== i))} onMove={d => move(i, i + d)}

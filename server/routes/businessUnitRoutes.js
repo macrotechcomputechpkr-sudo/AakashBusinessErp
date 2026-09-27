@@ -5,6 +5,7 @@
 // =============================================
 
 const express = require('express');
+const masterCodes = require('../utils/masterCodes');
 const router = express.Router();
 const { getTenantClient, loadUserPermissions, logAudit } = require('../utils/dbHelpers');
 const { requireAuth, requirePermission } = require('../middleware/auth');
@@ -55,7 +56,7 @@ router.post('/business-units', requireAuth, loadUserPermissions, requirePermissi
         }
 
         const prefix = unit_name.trim().split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0, 4);
-        const { data: codeRow, error: codeErr } = await tenantClient.rpc('next_business_unit_code', { prefix });
+        const { data: codeRow, error: codeErr } = await masterCodes.nextRpc(tenantClient, req.auth.tenantId, 'business_unit');
         if (codeErr) throw codeErr;
 
         // FEATURE: Short Name auto-generates from Name's initials + a

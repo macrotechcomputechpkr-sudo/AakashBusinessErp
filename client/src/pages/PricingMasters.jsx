@@ -1,33 +1,29 @@
 // =============================================
 // PricingMasters.jsx
 // Masters behind automatic sales pricing (resolved by
-// /api/resolve-sales-price in Sales Bill / Order / Quotation):
-//   * Rate Category  -> which product rate tier (SR1..SR5) a customer gets
-//   * Discount Group -> with the product's Company, gives a discount %
-//   * Discount Matrix -> Discount Group x Product Company grid of %
+// /api/resolve-sales-price in Sales Bill / Order / Quotation / Delivery):
+//   * Multiple Rate Type -> Sr1..Sr5 captions + enable (Product Master labels)
+//   * Rate Category      -> Sr tier + own product / unit / rate rows
+//   * Discount Category  -> billing term, effect on rate, qty / value rules
+//   * Company Discount Matrix -> Discount Category x Product Company %
+//     (used when no rule of the category fits)
+// ?tab=rate_types|rate|discount|matrix
 // A customer gets a Rate Category and a Discount Group on their ledger
 // (Chart of Accounts > Ledger Accounts).
 // =============================================
 
-import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
-import { useEnterKeyNavigation } from '../hooks/useEnterKeyNavigation';
 import Layout from '../components/Layout';
+import { RateTypesEditor, RateCategoryEditor, DiscountCategoryEditor } from '../components/pricing/PricingEditors';
 
 export default function PricingMasters() {
     const { authFetch } = useAuth();
-    const enterFormRef0 = useRef(null);
-    useEnterKeyNavigation(enterFormRef0);
-    const enterFormRef1 = useRef(null);
-    useEnterKeyNavigation(enterFormRef1);
-    const [tab, setTab] = useState('matrix');
-    const [rateCats, setRateCats] = useState([]);
+    const [tab, setTab] = useState(() => new URLSearchParams(window.location.search).get('tab') || 'rate_types');
     const [groups, setGroups] = useState([]);
     const [companies, setCompanies] = useState([]);
     const [matrix, setMatrix] = useState({});        // saved: {groupId: {companyId: pct}}
     const [draft, setDraft] = useState({});          // edits in progress, same shape
-    const [rcForm, setRcForm] = useState({ id: null, category_name: '', sr_tier: 1, is_active: true });
-    const [dgForm, setDgForm] = useState({ id: null, group_name: '' });
     const [companyFilter, setCompanyFilter] = useState('');
     const [alert, setAlert] = useState(null);
     const [saving, setSaving] = useState(false);
@@ -36,11 +32,9 @@ export default function PricingMasters() {
 
     const load = useCallback(async () => {
         try {
-            const [rc, dg, pc, dm] = await Promise.all([
-                authFetch('/api/rate-categories'), authFetch('/api/discount-groups'),
-                authFetch('/api/product-companies'), authFetch('/api/discount-matrix')
+            const [dg, pc, dm] = await Promise.all([
+                authFetch('/api/discount-groups'), authFetch('/api/product-companies'), authFetch('/api/discount-matrix')
             ]);
-            setRateCats(rc.data || []);
             setGroups(dg.data || []);
             setCompanies(pc.data || []);
             const m = {};
@@ -50,44 +44,6 @@ export default function PricingMasters() {
         } catch (err) { showAlert(err.message, 'danger'); }
     }, [authFetch]);
     useEffect(() => { load(); }, [load]);
-
-    // ---------- Rate Categories ----------
-    const saveRateCat = async (e) => {
-        e.preventDefault();
-        if (!rcForm.category_name.trim()) return showAlert('Name is required', 'danger');
-        try {
-            const body = JSON.stringify({ category_name: rcForm.category_name.trim(), sr_tier: Number(rcForm.sr_tier), is_active: rcForm.is_active });
-            if (rcForm.id) await authFetch(`/api/rate-categories/${rcForm.id}`, { method: 'PUT', body });
-            else await authFetch('/api/rate-categories', { method: 'POST', body });
-            showAlert(rcForm.id ? 'Rate category updated' : 'Rate category created', 'success');
-            setRcForm({ id: null, category_name: '', sr_tier: 1, is_active: true });
-            load();
-        } catch (err) { showAlert(err.message, 'danger'); }
-    };
-    const deleteRateCat = async (r) => {
-        if (!window.confirm(`Delete rate category "${r.category_name}"?`)) return;
-        try { await authFetch(`/api/rate-categories/${r.id}`, { method: 'DELETE' }); showAlert('Deleted', 'warning'); load(); }
-        catch (err) { showAlert(err.message, 'danger'); }
-    };
-
-    // ---------- Discount Groups ----------
-    const saveGroup = async (e) => {
-        e.preventDefault();
-        if (!dgForm.group_name.trim()) return showAlert('Name is required', 'danger');
-        try {
-            const body = JSON.stringify({ group_name: dgForm.group_name.trim() });
-            if (dgForm.id) await authFetch(`/api/discount-groups/${dgForm.id}`, { method: 'PUT', body });
-            else await authFetch('/api/discount-groups', { method: 'POST', body });
-            showAlert(dgForm.id ? 'Discount group updated' : 'Discount group created', 'success');
-            setDgForm({ id: null, group_name: '' });
-            load();
-        } catch (err) { showAlert(err.message, 'danger'); }
-    };
-    const deleteGroup = async (g) => {
-        if (!window.confirm(`Delete discount group "${g.group_name}"? Its discount % for every company is removed too.`)) return;
-        try { await authFetch(`/api/discount-groups/${g.id}`, { method: 'DELETE' }); showAlert('Deleted', 'warning'); load(); }
-        catch (err) { showAlert(err.message, 'danger'); }
-    };
 
     // ---------- Matrix ----------
     const cellValue = (gid, cid) => draft[gid]?.[cid] !== undefined ? draft[gid][cid] : (matrix[gid]?.[cid] ?? '');
@@ -127,53 +83,20 @@ export default function PricingMasters() {
         <Layout>
         <div className="erp-shell px-4">
         <div className="erp-card">
-            <div className="erp-header"><span className="erp-header-title">💲 Rate Category & Discount Group</span></div>
+            <div className="erp-header"><span className="erp-header-title">💲 Rate Types, Rate Category & Discount Category</span></div>
             {alert && <div className={`mx-4 mt-3 px-4 py-3 rounded-lg text-sm border-l-4 ${alert.type === 'success' ? 'bg-green-50 border-green-500' : alert.type === 'danger' ? 'bg-red-50 border-red-500' : 'bg-yellow-50 border-yellow-500'}`}>{alert.message}</div>}
 
-            <div className="flex gap-1 px-4 pt-3 border-b">
-                {[['matrix', 'Discount Matrix'], ['groups', 'Discount Groups'], ['rate', 'Rate Categories']].map(([k, l]) =>
-                    <button key={k} onClick={() => setTab(k)} className={`px-3 py-2 text-sm border-b-2 ${tab === k ? 'border-blue-600 text-blue-600 font-semibold' : 'border-transparent text-gray-500'}`}>{l}</button>)}
+            <div className="erp-tabs">
+                {[['rate_types', '📊 Multiple Rate Type'], ['rate', '👥 Rate Category'], ['discount', '🏷️ Discount Category'], ['matrix', '🏢 Company Discount Matrix']].map(([k, l]) =>
+                    <button key={k} type="button" onClick={() => setTab(k)} className={`erp-tab ${tab === k ? 'active' : ''}`}>{l}</button>)}
             </div>
 
             <div className="erp-tab-content">
-                <p className="text-xs text-gray-500 mb-3">Set a customer's Rate Category and Discount Group on their ledger (Chart of Accounts). Sales Bill, Order and Quotation then fill the rate and discount automatically when a product is chosen.</p>
+                <p className="text-xs text-gray-500 mb-3">Set a customer's Rate Category and Discount Category on their ledger (Chart of Accounts). Sales Quotation, Order, Delivery and Bill then fill the rate and discount automatically when a product is chosen.</p>
 
-                {tab === 'rate' && (
-                    <>
-                        <form ref={enterFormRef0} onSubmit={saveRateCat} className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4 items-end">
-                            <div className="erp-field"><label className="erp-label">Category Name</label><input className="erp-input" value={rcForm.category_name} onChange={e => setRcForm({ ...rcForm, category_name: e.target.value })} placeholder="e.g. Wholesale" /></div>
-                            <div className="erp-field"><label className="erp-label">Uses Product Rate</label>
-                                <select className="erp-select" value={rcForm.sr_tier} onChange={e => setRcForm({ ...rcForm, sr_tier: e.target.value })}>{[1, 2, 3, 4, 5].map(n => <option key={n} value={n}>Sales Rate {n} (SR{n})</option>)}</select></div>
-                            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={rcForm.is_active} onChange={e => setRcForm({ ...rcForm, is_active: e.target.checked })} /> Active</label>
-                            <div className="flex gap-2">
-                                {rcForm.id && <button type="button" className="erp-btn" onClick={() => setRcForm({ id: null, category_name: '', sr_tier: 1, is_active: true })}>Cancel</button>}
-                                <button type="submit" className="erp-btn primary">{rcForm.id ? 'Update' : 'Add'}</button>
-                            </div>
-                        </form>
-                        <table className="erp-grid-table"><thead><tr><th>Name</th><th>Product Rate Used</th><th>Status</th><th></th></tr></thead>
-                            <tbody>{rateCats.map(r => (
-                                <tr key={r.id}><td>{r.category_name}</td><td>SR{r.sr_tier}</td><td>{r.is_active ? 'Active' : 'Inactive'}</td>
-                                    <td className="flex gap-2 justify-center"><button onClick={() => setRcForm({ id: r.id, category_name: r.category_name, sr_tier: r.sr_tier, is_active: r.is_active })} className="px-2 py-1 bg-blue-600 text-white rounded text-xs">Edit</button>
-                                        <button onClick={() => deleteRateCat(r)} className="px-2 py-1 bg-red-600 text-white rounded text-xs">Delete</button></td></tr>))}
-                                {rateCats.length === 0 && <tr><td colSpan={4} className="text-center text-gray-400 py-4">No rate categories yet.</td></tr>}</tbody></table>
-                    </>
-                )}
-
-                {tab === 'groups' && (
-                    <>
-                        <form ref={enterFormRef1} onSubmit={saveGroup} className="flex gap-3 mb-4 items-end">
-                            <div className="erp-field flex-1 max-w-sm"><label className="erp-label">Discount Group Name</label><input className="erp-input" value={dgForm.group_name} onChange={e => setDgForm({ ...dgForm, group_name: e.target.value })} placeholder="e.g. Retailer A" /></div>
-                            {dgForm.id && <button type="button" className="erp-btn" onClick={() => setDgForm({ id: null, group_name: '' })}>Cancel</button>}
-                            <button type="submit" className="erp-btn primary">{dgForm.id ? 'Update' : 'Add'}</button>
-                        </form>
-                        <table className="erp-grid-table"><thead><tr><th>Name</th><th>Companies with a discount</th><th></th></tr></thead>
-                            <tbody>{groups.map(g => (
-                                <tr key={g.id}><td>{g.group_name}</td><td>{Object.values(matrix[g.id] || {}).filter(v => v > 0).length}</td>
-                                    <td className="flex gap-2 justify-center"><button onClick={() => setDgForm({ id: g.id, group_name: g.group_name })} className="px-2 py-1 bg-blue-600 text-white rounded text-xs">Edit</button>
-                                        <button onClick={() => deleteGroup(g)} className="px-2 py-1 bg-red-600 text-white rounded text-xs">Delete</button></td></tr>))}
-                                {groups.length === 0 && <tr><td colSpan={3} className="text-center text-gray-400 py-4">No discount groups yet.</td></tr>}</tbody></table>
-                    </>
-                )}
+                {tab === 'rate_types' && <RateTypesEditor />}
+                {tab === 'rate' && <RateCategoryEditor />}
+                {tab === 'discount' && <DiscountCategoryEditor onChanged={load} />}
 
                 {tab === 'matrix' && (
                     groups.length === 0 || companies.length === 0 ? (
