@@ -82,6 +82,7 @@ const NATURES = [
     { value: 'retail', label: 'Retail', note: 'Counter sales - same screens as trading.' },
     { value: 'manufacturing', label: 'Manufacturing', note: 'Trading + BOM and production orders.' },
     { value: 'service', label: 'Service', note: 'Service billing - inventory screens stay available.' },
+    { value: 'automobile', label: 'Automobile Dealer / Workshop', note: 'Adds showroom (customer enquiry, vehicle stock, PDI, vehicle delivery) and after-sales (job cards, parts issue, outside work, ready / delivered, service reminders).' },
     { value: 'construction', label: 'Construction / Contractor', note: 'Adds contract sites (thekka) with BOQ, running bills to the client, material, wages, petti thekka (sub-contract) taken or given, and site-wise profit / loss.' },
     { value: 'poultry', label: 'Poultry & Hatchery', note: 'Adds shed-wise broiler batches (lifecycle, consumption, mortality, profitability) and hatchery management, posted to the same accounts and inventory.' }
 ];

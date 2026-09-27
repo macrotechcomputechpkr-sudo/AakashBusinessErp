@@ -47,7 +47,7 @@ async function features(c, t) {
     const nature = data?.business_nature || 'trading';
     const pf = data?.poultry_features || {};
     const on = nature === 'poultry';
-    return { business_nature: nature, poultry: { enabled: on, broiler: on && pf.broiler !== false, hatchery: on && !!pf.hatchery }, construction: { enabled: nature === 'construction' } };
+    return { business_nature: nature, poultry: { enabled: on, broiler: on && pf.broiler !== false, hatchery: on && !!pf.hatchery }, construction: { enabled: nature === 'construction' }, automobile: { enabled: nature === 'automobile' } };
 }
 async function requireFeature(c, t, part) {
     const f = await features(c, t);

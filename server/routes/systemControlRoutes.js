@@ -108,7 +108,7 @@ router.put('/system-control', requireAuth, loadUserPermissions, requirePermissio
 // Which optional modules are on - read by every screen (menus), so any signed-in user may call it.
 router.get('/app-features', requireAuth, async (req, res) => {
     try {
-        if (!req.auth.tenantId) return res.json({ success: true, data: { business_nature: 'trading', poultry: { enabled: false, broiler: false, hatchery: false }, construction: { enabled: false } } });
+        if (!req.auth.tenantId) return res.json({ success: true, data: { business_nature: 'trading', poultry: { enabled: false, broiler: false, hatchery: false }, construction: { enabled: false }, automobile: { enabled: false } } });
         const { features } = require('../utils/poultry');
         res.json({ success: true, data: await features(await getTenantClient(req.auth.tenantId), req.auth.tenantId) });
     } catch (error) { res.status(500).json({ success: false, error: error.message }); }

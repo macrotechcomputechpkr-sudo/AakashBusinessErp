@@ -10,7 +10,7 @@
 // =============================================
 
 /** feature: shown only when System Control turns that feature on */
-export type Feature = 'poultry' | 'broiler' | 'hatchery' | 'construction';
+export type Feature = 'poultry' | 'broiler' | 'hatchery' | 'construction' | 'automobile';
 export interface MenuItem { to: string; label: string; group?: string; feature?: Feature }
 export interface MenuGroup { title: string; items: MenuItem[]; feature?: Feature }
 export interface TopMenu { key: string; title: string; groups: MenuGroup[]; feature?: Feature }
@@ -83,6 +83,11 @@ export const REPORT_GROUPS: ReportGroup[] = [
         ['/construction/reports?view=subcontractors', 'Petti Thekka (Sub-contract) Register'], ['/construction/reports?view=material', 'Site-wise Material Consumed'],
         ['/construction/reports?view=wages', 'Site-wise Labour / Wages']
     ] },
+    { title: 'Automobile', feature: 'automobile', items: [
+        ['/auto/reports?view=enquiries', 'Enquiry Analysis (source / model / salesperson / lost)'], ['/auto/reports?view=vehicle_sales', 'Vehicle Delivery Register'],
+        ['/auto/reports?view=job_cards', 'Job Card Register & Workshop Revenue'], ['/auto/reports?view=parts', 'Parts Issued for Job Cards'],
+        ['/auto/reports?view=outside_work', 'Outside Work Register'], ['/auto/reports?view=technicians', 'Technician Performance'], ['/auto/reminders?view=overdue', 'Overdue Service Reminders']
+    ] },
     { title: 'Control & Registers', items: [
         ['/register', 'Universal Register (all documents)'], ['/control-reports?view=cancelled_docs', 'Cancelled Documents'], ['/control-reports?view=draft_docs', 'Draft (Unposted) Documents'],
         ['/control-reports?view=master_exceptions', 'Master Data Exceptions'], ['/lc-bg-dashboard', 'LC / BG / PDC Dashboard'], ['/pdc-dashboard', 'PDC Dashboard & Report'],
@@ -142,6 +147,10 @@ export const TOP_MENUS: TopMenu[] = [
             i('/interest-posting', '% Interest on Overdue'), i('/fixed-assets?tab=depreciation', '🏗 Depreciation Posting'), i('/budgets', '💼 Budgets'),
             i('/confirmation-letters', '✉ Account Confirmation Letters')
         ] },
+        { title: 'Automobile', feature: 'automobile', items: [
+            i('/auto/enquiries?new=1', '📋 Customer Enquiry', 'automobile'), i('/auto/vehicles?ownership=stock', '🚗 PDI / Vehicle Delivery', 'automobile'),
+            i('/auto/job-cards?new=1', '🔧 Job Card', 'automobile'), i('/auto/reminders', '⏰ Service Reminders', 'automobile')
+        ] },
         { title: 'Construction', feature: 'construction', items: [
             i('/construction/sites', '🏗️ Sites / Running Bills / Material / Wages', 'construction'), i('/construction/sites?new=1', '➕ New Site / Contract', 'construction')
         ] },
@@ -154,7 +163,7 @@ export const TOP_MENUS: TopMenu[] = [
         ] }
     ] },
     { key: 'acc_report', title: 'Accounts Report', groups: [rg('Accounts & Finance'), rg('Budget & Dimensions'), rg('VAT, TDS & IRD'), rg('Control & Registers')] },
-    { key: 'sp_report', title: 'Sales/Purchase', groups: [rg('Sales, Salesman & Routes'), rg('Purchase'), rg('Inventory & Production'), rg('Poultry & Hatchery'), rg('Construction')] },
+    { key: 'sp_report', title: 'Sales/Purchase', groups: [rg('Sales, Salesman & Routes'), rg('Purchase'), rg('Inventory & Production'), rg('Poultry & Hatchery'), rg('Construction'), rg('Automobile')] },
     { key: 'analysis', title: 'Analysis', groups: [
         { title: 'Dashboards', items: [
             i('/dashboard', '🏠 Dashboard'), i('/work-dashboard', '📊 Work Dashboard'), i('/lc-bg-dashboard', '📑 LC / BG / PDC Dashboard'), i('/pdc-dashboard', '🏦 PDC Dashboard'),
@@ -207,14 +216,26 @@ export const TOP_MENUS: TopMenu[] = [
             i('/construction/setup', '⚙️ Construction Setup')
         ] },
         rg('Construction')
+    ] },
+    { key: 'automobile', title: 'Automobile', feature: 'automobile', groups: [
+        { title: 'Showroom', items: [
+            i('/auto', '📊 Automobile Dashboard'), i('/auto/enquiries', '📋 Customer Enquiries'), i('/auto/enquiries?new=1', '➕ New Enquiry'),
+            i('/auto/vehicles?ownership=stock', '🚗 Vehicle Stock / PDI / Delivery'), i('/auto/vehicles?ownership=customer', '🔑 Delivered & Customer Vehicles')
+        ] },
+        { title: 'After Sales / Workshop', items: [
+            i('/auto/job-cards', '🔧 Job Cards'), i('/auto/job-cards?new=1', '➕ New Job Card'), i('/auto/job-cards?status=ready', '✅ Vehicles Ready for Delivery'),
+            i('/auto/reminders', '⏰ Service Reminders'), i('/auto/setup', '⚙️ Automobile Setup')
+        ] },
+        rg('Automobile')
     ] }
 ];
 
-export interface AppFeatures { business_nature: string; poultry: { enabled: boolean; broiler: boolean; hatchery: boolean }; construction?: { enabled: boolean } }
+export interface AppFeatures { business_nature: string; poultry: { enabled: boolean; broiler: boolean; hatchery: boolean }; construction?: { enabled: boolean }; automobile?: { enabled: boolean } }
 /** is a feature-gated menu entry / report group on for this company? */
 export const featureOn = (f: Feature | undefined, a: AppFeatures | null): boolean => {
     if (!f) return true;
     if (f === 'construction') return !!a?.construction?.enabled;
+    if (f === 'automobile') return !!a?.automobile?.enabled;
     if (!a?.poultry?.enabled) return false;
     return f === 'poultry' || !!a.poultry[f];
 };

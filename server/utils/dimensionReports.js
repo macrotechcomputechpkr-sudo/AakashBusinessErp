@@ -57,7 +57,8 @@ const DOCS = {
     depreciation: ['depreciation_runs', null, 'Depreciation'], asset_disposal: ['depreciation_runs', null, 'Asset Disposal'],
     agent_commission: ['agent_commission_postings', null, 'Agent Commission'],
     construction_ra_bill: ['construction_ra_bills', null, 'Running Bill (Construction)'], construction_sub_bill: ['construction_subcontract_bills', null, 'Sub-contract Bill'],
-    construction_wage: ['construction_wage_sheets', null, 'Wage Sheet']
+    construction_wage: ['construction_wage_sheets', null, 'Wage Sheet'],
+    auto_job_invoice: ['auto_job_cards', null, 'Job Card Invoice'], auto_outside_work: ['auto_outside_works', null, 'Outside Work (Job Card)']
 };
 // document tables for the doc-class register (all documents, posted or not)
 const CLASS_TABLES = {
