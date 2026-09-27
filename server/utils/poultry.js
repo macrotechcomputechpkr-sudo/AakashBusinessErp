@@ -243,6 +243,101 @@ async function hatchAvailability(c, t, hatchId) {
     return { ...h, placed_in_lots: placed, chicks_available: Math.max(0, Number(h.chicks_a || 0) - placed), chick_cost: chickCost };
 }
 
+/** a posted Purchase Bill's day-old chicks (products with the Chick role) and how many are not yet in a lot */
+async function purchaseAvailability(c, t, billId) {
+    if (!UUID.test(String(billId))) throw httpError('Purchase bill not found', 404);
+    const { data: bill } = await c.from('purchase_bills').select('id, doc_no, doc_date, status, vendor_ledger_id, vendor_name_snapshot, cash_vendor_name, warehouse_id').eq('tenant_id', t).eq('id', billId).maybeSingle();
+    if (!bill) throw httpError('Purchase bill not found', 404);
+    if (bill.status !== 'posted') throw httpError(`Purchase bill ${bill.doc_no} is not posted`);
+    const roles = await itemMap(c, t);
+    const { data: det } = await c.from('purchase_bill_details').select('product_id, product_name_snapshot, qty, uom_id, free_qty, free_uom_id, amount, tax_amount').eq('bill_id', bill.id);
+    const lines = [];
+    for (const d of (det || []).filter(x => roles[x.product_id]?.role === 'chick')) {
+        const q = await toBaseUnitQty(c, d.product_id, Number(d.qty) || 0, d.uom_id);
+        const f = Number(d.free_qty) ? await toBaseUnitQty(c, d.product_id, Number(d.free_qty), d.free_uom_id || d.uom_id) : 0;
+        const chicks = Math.round(q + f), value = round2(Number(d.amount || 0) - Number(d.tax_amount || 0));
+        lines.push({ product_id: d.product_id, product_name: d.product_name_snapshot || '', chicks, paid: Math.round(q), free: Math.round(f), value, cost_per_chick: chicks ? round2(value / chicks) : 0 });
+    }
+    if (!lines.length) throw httpError(`Purchase bill ${bill.doc_no} has no chick item (set the Chick role in Poultry Setup)`);
+    const unnamed = lines.filter(l => !l.product_name).map(l => l.product_id);
+    if (unnamed.length) {
+        const { data: ps } = await c.from('products').select('id, product_name').in('id', unnamed);
+        lines.forEach(l => { if (!l.product_name) l.product_name = (ps || []).find(p => p.id === l.product_id)?.product_name || ''; });
+    }
+    const total = lines.reduce((x, l) => x + l.chicks, 0), value = round2(lines.reduce((x, l) => x + l.value, 0));
+    const { data: lots } = await c.from('poultry_batches').select('chicks_placed, free_chicks').eq('tenant_id', t).eq('source_purchase_bill_id', bill.id);
+    const placed = (lots || []).reduce((x, l) => x + Number(l.chicks_placed || 0) + Number(l.free_chicks || 0), 0);
+    let vendorName = bill.vendor_name_snapshot || bill.cash_vendor_name || '';
+    if (!vendorName && bill.vendor_ledger_id) vendorName = (await c.from('ledger_accounts').select('account_name').eq('id', bill.vendor_ledger_id).maybeSingle()).data?.account_name || '';
+    return { ...bill, vendor_name: vendorName, lines, chicks_total: total, placed_in_lots: placed, chicks_available: Math.max(0, total - placed), cost_per_chick: total ? round2(value / total) : 0 };
+}
+
+/** where chicks for a new lot can come from: own hatches and chick purchases that still have chicks left */
+async function chickSources(c, t, q = {}) {
+    const since = q.since || iso(Date.now() - 120 * DAY);
+    const out = { purchases: [], hatches: [] };
+    const roles = await itemMap(c, t);
+    const chickIds = Object.values(roles).filter(r => r.role === 'chick').map(r => r.product_id);
+    if (chickIds.length) {
+        const { data: det } = await c.from('purchase_bill_details').select('bill_id').in('product_id', chickIds);
+        const ids = [...new Set((det || []).map(d => d.bill_id))];
+        const { data: bills } = ids.length ? await c.from('purchase_bills').select('id, doc_date, status').eq('tenant_id', t).in('id', ids).gte('doc_date', since) : { data: [] };
+        for (const b of (bills || []).filter(x => x.status === 'posted')) {
+            const a = await purchaseAvailability(c, t, b.id).catch(() => null);
+            if (a && a.chicks_available > 0) out.purchases.push({ id: a.id, doc_no: a.doc_no, doc_date: a.doc_date, vendor_name: a.vendor_name, vendor_ledger_id: a.vendor_ledger_id,
+                chicks_total: a.chicks_total, chicks_available: a.chicks_available, cost_per_chick: a.cost_per_chick, product_id: a.lines[0].product_id, product_name: a.lines[0].product_name });
+        }
+        out.purchases.sort((x, y) => String(y.doc_date).localeCompare(String(x.doc_date)));
+    }
+    const f = await features(c, t);
+    if (f.poultry.hatchery) {
+        const { data: hs } = await c.from('poultry_hatches').select('id').eq('tenant_id', t).eq('status', 'hatched').gte('hatch_date', since);
+        for (const h of hs || []) {
+            const a = await hatchAvailability(c, t, h.id);
+            if (a.chicks_available > 0) out.hatches.push({ id: a.id, hatch_no: a.hatch_no, hatch_date: a.hatch_date, chicks_a: a.chicks_a, chicks_available: a.chicks_available, cost_per_chick: a.chick_cost, product_id: a.chick_product_id });
+        }
+    }
+    return out;
+}
+
+/**
+ * Place chicks in several sheds at once - one lot per shed - from one source:
+ *   source 'purchase' (a Purchase Bill), 'hatch' (own hatch), or 'stock' (chick item from stock / cost by hand)
+ * rows: [{ shed_id, chicks_placed, free_chicks, breed, target_weight_kg, remarks }]; all lots or none are made.
+ */
+async function placeLots(c, t, userId, b) {
+    await requireFeature(c, t, 'broiler');
+    const rows = (Array.isArray(b.rows) ? b.rows : []).filter(r => r && r.shed_id && parseInt(r.chicks_placed, 10) > 0);
+    if (!rows.length) throw httpError('Enter the chicks for at least one shed');
+    if (new Set(rows.map(r => r.shed_id)).size !== rows.length) throw httpError('A shed is chosen twice - one lot per shed');
+    const want = rows.reduce((x, r) => x + parseInt(r.chicks_placed, 10) + (parseInt(r.free_chicks, 10) || 0), 0);
+    const common = { placement_date: b.placement_date, breed: b.breed || null, target_weight_kg: b.target_weight_kg || null, override_negative_stock: !!b.override_negative_stock };
+    if (b.source === 'purchase') {
+        const a = await purchaseAvailability(c, t, b.source_id);
+        if (want > a.chicks_available) throw httpError(`Only ${a.chicks_available} chicks of purchase ${a.doc_no} are left to place (asked ${want})`);
+        Object.assign(common, { source_purchase_bill_id: a.id, warehouse_id: b.warehouse_id || a.warehouse_id || undefined });
+    } else if (b.source === 'hatch') {
+        const a = await hatchAvailability(c, t, b.source_id);
+        if (want > a.chicks_available) throw httpError(`Only ${a.chicks_available} chicks of hatch ${a.hatch_no} are left to place (asked ${want})`);
+        Object.assign(common, { source_hatch_id: a.id, warehouse_id: b.warehouse_id || a.output_warehouse_id || undefined });
+    } else {
+        Object.assign(common, { chick_product_id: b.chick_product_id || null, chick_rate: b.chick_rate, warehouse_id: b.warehouse_id || undefined,
+            chick_source: b.chick_source || null, source_vendor_ledger_id: b.vendor_ledger_id || null });
+    }
+    const made = [];
+    try {
+        for (const r of rows) {
+            const perChickManual = b.source !== 'purchase' && b.source !== 'hatch' && !b.chick_product_id && b.chick_cost_per_bird ? round2(Number(b.chick_cost_per_bird) * parseInt(r.chicks_placed, 10)) : undefined;
+            made.push(await createBatch(c, t, userId, { ...common, shed_id: r.shed_id, chicks_placed: r.chicks_placed, free_chicks: r.free_chicks, breed: r.breed || common.breed,
+                target_weight_kg: r.target_weight_kg || common.target_weight_kg, remarks: r.remarks || null, ...(perChickManual !== undefined ? { chick_cost_manual: perChickManual } : {}) }));
+        }
+    } catch (e) {
+        for (const lot of made) { try { await deleteBatch(c, t, userId, lot.id); } catch { /* keep going */ } }
+        throw e;
+    }
+    return { lots: made.map(l => ({ id: l.id, batch_no: l.batch_no, shed_name: l.shed_name, placed: l.chicks_placed + l.free_chicks })), warnings: made.flatMap(l => l.warnings || []) };
+}
+
 async function createBatch(c, t, userId, b) {
     await requireFeature(c, t, 'broiler');
     if (!UUID.test(b.shed_id || '')) throw httpError('Choose the shed');
@@ -267,6 +362,18 @@ async function createBatch(c, t, userId, b) {
         if (!b.chick_source) b.chick_source = `Own hatch ${hatch.hatch_no}`;
         if (!b.chick_product_id && !b.chick_cost_manual && hatch.chick_cost !== null) b.chick_cost_manual = round2(hatch.chick_cost * placed);
     }
+    // chicks bought on a Purchase Bill: that bill's chick item at its cost per chick (bill value without VAT / all chicks incl. free)
+    let purchase = null;
+    if (b.source_purchase_bill_id) {
+        purchase = await purchaseAvailability(c, t, b.source_purchase_bill_id);
+        if (placed + free > purchase.chicks_available) throw httpError(`Purchase ${purchase.doc_no} has only ${purchase.chicks_available} chicks left to place`);
+        if (date < String(purchase.doc_date).slice(0, 10)) throw httpError(`Placement date cannot be before the purchase date (${String(purchase.doc_date).slice(0, 10)})`);
+        const line = purchase.lines.find(l => l.product_id === b.chick_product_id) || purchase.lines[0];
+        b.chick_product_id = line.product_id;
+        if (b.chick_rate === undefined || b.chick_rate === '' || b.chick_rate === null) b.chick_rate = line.cost_per_chick;
+        if (!b.chick_source) b.chick_source = `Purchase ${purchase.doc_no}${purchase.vendor_name ? ` - ${purchase.vendor_name}` : ''}`;
+        b.source_vendor_ledger_id = purchase.vendor_ledger_id || b.source_vendor_ledger_id || null;
+    }
     const S = await getSettings(c, t);
     const serial = await nextSerial(c, t, 'poultry_batches');
     const batchNo = `B-${String(serial).padStart(4, '0')}`;
@@ -274,13 +381,14 @@ async function createBatch(c, t, userId, b) {
     let adj = null;
     if (b.chick_product_id) {
         adj = await postAdjustment(c, t, userId, { date, direction: 'out', warehouse_id: b.warehouse_id || shed.warehouse_id, cost_center_id: ccId,
-            lines: [{ product_id: b.chick_product_id, qty: placed + free, uom_id: b.chick_uom_id || null, rate: b.chick_rate !== undefined && b.chick_rate !== '' ? Number(b.chick_rate) * placed / (placed + free) : undefined }],
+            lines: [{ product_id: b.chick_product_id, qty: placed + free, uom_id: b.chick_uom_id || null, rate: b.chick_rate !== undefined && b.chick_rate !== '' && b.chick_rate !== null ? (b.source_purchase_bill_id ? Number(b.chick_rate) : Number(b.chick_rate) * placed / (placed + free)) : undefined }],
             narration: `Chicks placed - batch ${batchNo}, ${shed.shed_name}`, override_negative: !!b.override_negative_stock });
     }
     const row = { tenant_id: t, serial_no: serial, batch_no: batchNo, shed_id: shed.id, breed: b.breed || null, chick_source: b.chick_source || null, placement_date: date,
         chicks_placed: placed, free_chicks: free, chick_product_id: b.chick_product_id || null, chick_cost_manual: b.chick_product_id ? 0 : round2(b.chick_cost_manual),
         placement_adjustment_id: adj?.id || null, cost_center_id: ccId, target_weight_kg: b.target_weight_kg ? Number(b.target_weight_kg) : null,
         expected_close_date: b.expected_close_date || iso(d2n(date) + (Number(S.cycle_days) || 45) * DAY), source_hatch_id: hatch?.id || null,
+        source_purchase_bill_id: purchase?.id || null, source_vendor_ledger_id: b.source_vendor_ledger_id && UUID.test(b.source_vendor_ledger_id) ? b.source_vendor_ledger_id : null,
         remarks: b.remarks || null, status: 'active', created_by: userId, updated_by: userId };
     const { data, error } = await c.from('poultry_batches').insert(row).select().single();
     if (error) { if (adj) await cancelAdjustment(c, t, userId, adj.id, 'Batch not saved'); throw error; }
@@ -734,6 +842,35 @@ async function report(c, t, view, q = {}) {
         return { sheds, totals: { placed: tot('placed'), dead: tot('dead'), culls: tot('culls'), lifted: tot('lifted'), alive: tot('alive'), lifted_kg: tot('lifted_kg'), sales: tot('sales'), cost: tot('cost'), profit: tot('profit') },
             unallocated_shed_costs: batches.unallocated_shed_costs || [] };
     }
+    if (view === 'chick_source') {
+        // chick supplier performance: lots grouped by where the chicks came from (supplier / own hatchery / other)
+        const vIds = [...new Set(batches.map(b => b.source_vendor_ledger_id).filter(Boolean))];
+        const { data: vs } = vIds.length ? await c.from('ledger_accounts').select('id, account_name').in('id', vIds) : { data: [] };
+        const VN = Object.fromEntries((vs || []).map(v => [v.id, v.account_name]));
+        const g = {};
+        batches.forEach(b => {
+            const key = b.source_vendor_ledger_id ? `v:${b.source_vendor_ledger_id}` : b.source_hatch_id ? 'own' : `o:${b.chick_source || ''}`;
+            const name = b.source_vendor_ledger_id ? VN[b.source_vendor_ledger_id] || 'Supplier' : b.source_hatch_id ? 'Own hatchery' : (b.chick_source || 'Not given');
+            const r = g[key] = g[key] || { source: name, kind: b.source_vendor_ledger_id ? 'supplier' : b.source_hatch_id ? 'own_hatch' : 'other', lots: [], placed: 0, dead: 0, lifted: 0, lifted_kg: 0, feed_kg: 0, chick_cost: 0, cost: 0, sales: 0, profit: 0, first_week_dead: 0 };
+            r.lots.push({ id: b.id, batch_no: b.batch_no, shed_name: b.shed_name, placement_date: b.placement_date, status: b.status, placed: b.birds.placed, mortality_pct: b.kpi.mortality_pct, fcr: b.kpi.fcr, profit: b.profit });
+            r.placed += b.birds.placed; r.dead += b.birds.dead + b.birds.culls; r.lifted += b.birds.lifted; r.lifted_kg += b.kpi.lifted_kg; r.feed_kg += b.kpi.feed_kg;
+            r.chick_cost += b.costs.chicks; r.cost += b.costs.total; r.sales += b.revenue.total; r.profit += b.profit;
+        });
+        // first-week mortality tells chick quality best
+        const ids = batches.map(b => b.id);
+        const logs = ids.length ? await fetchAll(() => c.from('poultry_daily_logs').select('batch_id, log_date, mortality, culls').in('batch_id', ids).order('id')) : [];
+        const B = Object.fromEntries(batches.map(b => [b.id, b]));
+        logs.forEach(l => {
+            const b = B[l.batch_id]; if (!b || daysBetween(b.placement_date, l.log_date) > 7) return;
+            const key = b.source_vendor_ledger_id ? `v:${b.source_vendor_ledger_id}` : b.source_hatch_id ? 'own' : `o:${b.chick_source || ''}`;
+            g[key].first_week_dead += Number(l.mortality) + Number(l.culls);
+        });
+        return Object.values(g).map(r => ({ ...r, lifted_kg: round3(r.lifted_kg), chick_cost: round2(r.chick_cost), cost: round2(r.cost), sales: round2(r.sales), profit: round2(r.profit),
+            cost_per_chick: r.placed ? round2(r.chick_cost / r.placed) : null, mortality_pct: r.placed ? round2(r.dead * 100 / r.placed) : 0,
+            first_week_mortality_pct: r.placed ? round2(r.first_week_dead * 100 / r.placed) : 0, fcr: r.lifted_kg ? round3(r.feed_kg / r.lifted_kg) : null,
+            avg_weight_kg: r.lifted ? round3(r.lifted_kg / r.lifted) : null, profit_per_bird: r.lifted ? round2(r.profit / r.lifted) : null }))
+            .sort((a, b) => b.placed - a.placed);
+    }
     if (view === 'hatch_broiler') {
         // own hatches followed into own sheds: chicks hatched -> placed -> dead -> sold -> profit
         const { data: hs } = await c.from('poultry_hatches').select('*').eq('tenant_id', t).eq('status', 'hatched').gte('hatch_date', from).lte('hatch_date', to).order('hatch_date', { ascending: false });
@@ -758,7 +895,7 @@ async function report(c, t, view, q = {}) {
 }
 function slimBatch(b) {
     return { id: b.id, batch_no: b.batch_no, shed_id: b.shed_id, shed_name: b.shed_name, breed: b.breed, placement_date: b.placement_date, status: b.status, closed_on: b.closed_on,
-        stage: b.stage, cycle: b.cycle, source_hatch_id: b.source_hatch_id || null, chick_source: b.chick_source || null, ...b.birds, ...b.kpi, costs: b.costs, revenue: b.revenue, profit: b.profit, profit_per_kg: b.profit_per_kg, profit_per_bird: b.profit_per_bird };
+        stage: b.stage, cycle: b.cycle, source_hatch_id: b.source_hatch_id || null, source_purchase_bill_id: b.source_purchase_bill_id || null, source_vendor_ledger_id: b.source_vendor_ledger_id || null, chick_source: b.chick_source || null, ...b.birds, ...b.kpi, costs: b.costs, revenue: b.revenue, profit: b.profit, profit_per_kg: b.profit_per_kg, profit_per_bird: b.profit_per_bird };
 }
 
 async function dashboard(c, t) {
@@ -789,5 +926,5 @@ async function dashboard(c, t) {
 module.exports = {
     ROLES, CONSUMABLE, features, requireFeature, getSettings, saveSettings, listItems, saveItems, itemMap, makeCostCenter, postAdjustment, cancelAdjustment, costRate,
     listSheds, saveShed, createBatch, updateBatch, closeBatch, reopenBatch, deleteBatch, saveLog, deleteLog, addLifting, deleteLifting,
-    batchDetail, batchSummary, listBatches, report, dashboard, hatchAvailability, glByCostCenter, allocateShed, nextSerial, stageOf
+    batchDetail, batchSummary, listBatches, report, dashboard, hatchAvailability, purchaseAvailability, chickSources, placeLots, glByCostCenter, allocateShed, nextSerial, stageOf
 };

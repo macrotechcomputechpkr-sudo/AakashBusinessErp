@@ -27,6 +27,10 @@ type Detail = Batch & { summary: Summary; days: Day[]; logs: Log[]; liftings: Li
 
 const STAGE_TONE: Record<string, string> = { Brooding: 'bg-yellow-100', Grower: 'bg-green-100', Finisher: 'bg-blue-100', Closed: 'bg-gray-200' };
 const blankLog = () => ({ log_date: today(), mortality: '' as number | string, culls: '' as number | string, mortality_reason: '', avg_weight_g: '' as number | string, water_l: '' as number | string, temp_min: '' as number | string, temp_max: '' as number | string, humidity: '' as number | string, remarks: '', items: [] as LogItem[] });
+interface ChickSources {
+    purchases: { id: string; doc_no: string; doc_date: string; vendor_name: string; chicks_total: number; chicks_available: number; cost_per_chick: number; product_name: string }[];
+    hatches: { id: string; hatch_no: string; hatch_date: string; chicks_a: number; chicks_available: number; cost_per_chick: number | null }[];
+}
 const blankLift = () => ({ lift_date: today(), birds: '' as number | string, weight_kg: '' as number | string, rate: '' as number | string, customer_ledger_id: '', vehicle_no: '', make_sales_bill: false, remarks: '' });
 
 export default function PoultryBatches() {
@@ -44,7 +48,9 @@ export default function PoultryBatches() {
     const [ok, setOk] = useState('');
     const [err, setErr] = useState('');
     const [warn, setWarn] = useState<string[]>([]);
-    const [place, setPlace] = useState({ shed_id: '', placement_date: today(), chicks_placed: '' as number | string, free_chicks: '' as number | string, chick_product_id: '', chick_rate: '', chick_cost_manual: '', warehouse_id: '', breed: '', chick_source: '', target_weight_kg: '', expected_close_date: '', remarks: '' });
+    const blankRow = () => ({ shed_id: '', chicks_placed: '', free_chicks: '' });
+    const [place, setPlace] = useState({ source: 'purchase', source_id: '', placement_date: today(), breed: '', target_weight_kg: '', warehouse_id: '', chick_product_id: '', chick_rate: '', chick_cost_per_bird: '', chick_source: '', vendor_ledger_id: '', rows: [blankRow()] });
+    const [sources, setSources] = useState<ChickSources>({ purchases: [], hatches: [] });
     const [log, setLog] = useState(blankLog());
     const [lift, setLift] = useState(blankLift());
     const [closeForm, setCloseForm] = useState({ closed_on: today(), write_off_remaining: false, close_notes: '' });
@@ -65,6 +71,7 @@ export default function PoultryBatches() {
         authFetch<Shed[]>('/api/poultry/sheds?shed_type=broiler').then(r => setSheds(r.data)).catch(() => undefined);
         authFetch<{ items: PItem[] }>('/api/poultry/settings').then(r => setItems(r.data.items)).catch(() => undefined);
     }, [authFetch]);
+    useEffect(() => { if (isNew) authFetch<ChickSources>('/api/poultry/chick-sources').then(r => setSources(r.data)).catch(e => setErr(errText(e))); }, [authFetch, isNew]);
 
     const run = async (fn: () => Promise<{ warnings?: string[] } | unknown>, done: string) => {
         setOk(''); setErr(''); setWarn([]);
@@ -85,63 +92,112 @@ export default function PoultryBatches() {
     const weightPoints = useMemo(() => (detail?.days || []).filter(d => d.avg_weight_g || d.std_weight_g).map(d => ({ label: `D${d.age}`, value: d.avg_weight_g || 0, value2: d.std_weight_g })), [detail]);
     const mortPoints = useMemo(() => (detail?.days || []).map(d => ({ label: `D${d.age}`, value: d.mortality + d.culls })), [detail]);
 
-    // ---------------------------------------------------------------- placement
+    // ---------------------------------------------------------------- placement (one or more sheds from one chick source)
     if (isNew) {
         const freeSheds = sheds.filter(x => x.is_active && !x.active_batch);
+        const pur = sources.purchases.find(x => x.id === place.source_id);
+        const hat = sources.hatches.find(x => x.id === place.source_id);
+        const available = place.source === 'purchase' ? pur?.chicks_available : place.source === 'hatch' ? hat?.chicks_available : undefined;
+        const placing = place.rows.reduce((t, r) => t + (Number(r.chicks_placed) || 0) + (Number(r.free_chicks) || 0), 0);
+        const setRow = (i: number, patch: Partial<ReturnType<typeof blankRow>>) => setPlace(p0 => ({ ...p0, rows: p0.rows.map((r, k) => (k === i ? { ...r, ...patch } : r)) }));
+        const canSave = placing > 0 && (place.source === 'stock' || (!!place.source_id && available !== undefined && placing <= available));
         return (
             <Layout>
-                <NavWindow title="🐣 New Batch Placement" tools={<button type="button" className="nav-tool-btn" onClick={() => setParams({})}>← Batches</button>}>
+                <NavWindow wide title="🐣 Chick Placement" tools={<button type="button" className="nav-tool-btn" onClick={() => setParams({})}>← Batches</button>}>
                     <Msg ok={ok} err={err} warn={warn} />
-                    <GroupBox title="Placement">
+                    <GroupBox title="Chicks from">
+                        <div className="flex flex-wrap gap-4 mb-2 text-sm">
+                            {([['purchase', '🛒 Purchased (Purchase Bill)'], ['hatch', '🥚 Own hatchery'], ['stock', '📦 Stock / cost by hand']] as [string, string][]).map(([k, l]) => (
+                                <label key={k} className="flex items-center gap-1"><input type="radio" name="src" checked={place.source === k} onChange={() => setPlace({ ...place, source: k, source_id: '' })} /> {l}</label>
+                            ))}
+                        </div>
                         <div className="nav-form-grid">
-                            <label className="nav-label required">Shed</label>
-                            <select className="nav-select" value={place.shed_id} onChange={e => setPlace({ ...place, shed_id: e.target.value })}>
-                                <option value="">— empty sheds —</option>{freeSheds.map(x => <option key={x.id} value={x.id}>{x.shed_code} · {x.shed_name}{x.capacity ? ` (${x.capacity})` : ''}</option>)}
-                            </select>
+                            {place.source === 'purchase' && <>
+                                <label className="nav-label required">Purchase bill</label>
+                                <select className="nav-select" value={place.source_id} onChange={e => setPlace({ ...place, source_id: e.target.value })}>
+                                    <option value="">— chick purchases with chicks left —</option>
+                                    {sources.purchases.map(x => <option key={x.id} value={x.id}>{x.doc_no} · {x.doc_date} · {x.vendor_name} · {n0(x.chicks_available)} left @ {n2(x.cost_per_chick)}</option>)}
+                                </select>
+                                {pur && <>
+                                    <label className="nav-label">Supplier / hatchery</label><div className="nav-input bg-gray-50">{pur.vendor_name}</div>
+                                    <label className="nav-label">Chicks bought / left</label><div className="nav-input bg-gray-50">{n0(pur.chicks_total)} ({pur.product_name}) / {n0(pur.chicks_available)}</div>
+                                    <label className="nav-label">Cost per chick</label><div className="nav-input bg-gray-50">{n2(pur.cost_per_chick)} <span className="text-xs text-gray-500">(bill value without VAT ÷ all chicks incl. free)</span></div>
+                                </>}
+                                {sources.purchases.length === 0 && <p className="text-xs text-orange-700" style={{ gridColumn: '1 / -1' }}>No posted Purchase Bill with chicks left. Enter the chick purchase in Purchase Bill first (item with the Chick role in Poultry Setup).</p>}
+                            </>}
+                            {place.source === 'hatch' && <>
+                                <label className="nav-label required">Hatch</label>
+                                <select className="nav-select" value={place.source_id} onChange={e => setPlace({ ...place, source_id: e.target.value })}>
+                                    <option value="">— hatches with chicks left —</option>
+                                    {sources.hatches.map(x => <option key={x.id} value={x.id}>{x.hatch_no} · {x.hatch_date} · {n0(x.chicks_available)} left{x.cost_per_chick !== null ? ` @ ${n2(x.cost_per_chick)}` : ''}</option>)}
+                                </select>
+                            </>}
+                            {place.source === 'stock' && <>
+                                <label className="nav-label">Chick product</label>
+                                <select className="nav-select" value={place.chick_product_id} onChange={e => setPlace({ ...place, chick_product_id: e.target.value })}>
+                                    <option value="">No stock issue (cost entered by hand)</option>{chickItems.map(c => <option key={c.product_id} value={c.product_id}>{c.product_name}</option>)}
+                                </select>
+                                {place.chick_product_id ? <>
+                                    <label className="nav-label">Rate per chick</label>
+                                    <input type="number" className="nav-input" placeholder="blank = stock cost" value={place.chick_rate} onChange={e => setPlace({ ...place, chick_rate: e.target.value })} />
+                                </> : <>
+                                    <label className="nav-label">Cost per chick</label>
+                                    <input type="number" className="nav-input" value={place.chick_cost_per_bird} onChange={e => setPlace({ ...place, chick_cost_per_bird: e.target.value })} />
+                                </>}
+                                <label className="nav-label">Supplier</label>
+                                <select className="nav-select" value={place.vendor_ledger_id} onChange={e => setPlace({ ...place, vendor_ledger_id: e.target.value })}>
+                                    <option value="">—</option>{L.ledgers.map(x => <option key={x.id} value={x.id}>{x.account_name}</option>)}
+                                </select>
+                                <label className="nav-label">Chick source note</label>
+                                <input className="nav-input" value={place.chick_source} onChange={e => setPlace({ ...place, chick_source: e.target.value })} />
+                            </>}
                             <label className="nav-label required">Placement date</label>
                             <input type="date" className="nav-input" value={place.placement_date} onChange={e => setPlace({ ...place, placement_date: e.target.value })} />
-                            <label className="nav-label required">Chicks placed (paid)</label>
-                            <input type="number" className="nav-input" value={place.chicks_placed} onChange={e => setPlace({ ...place, chicks_placed: e.target.value })} />
-                            <label className="nav-label">Free / extra chicks</label>
-                            <input type="number" className="nav-input" value={place.free_chicks} onChange={e => setPlace({ ...place, free_chicks: e.target.value })} />
-                            <label className="nav-label">Chick product</label>
-                            <select className="nav-select" value={place.chick_product_id} onChange={e => setPlace({ ...place, chick_product_id: e.target.value })}>
-                                <option value="">No stock issue (cost entered by hand)</option>{chickItems.map(c => <option key={c.product_id} value={c.product_id}>{c.product_name}</option>)}
-                            </select>
-                            {place.chick_product_id ? <>
-                                <label className="nav-label">Rate per chick</label>
-                                <input type="number" className="nav-input" placeholder="blank = stock cost" value={place.chick_rate} onChange={e => setPlace({ ...place, chick_rate: e.target.value })} />
-                            </> : <>
-                                <label className="nav-label">Total chick cost</label>
-                                <input type="number" className="nav-input" value={place.chick_cost_manual} onChange={e => setPlace({ ...place, chick_cost_manual: e.target.value })} />
-                            </>}
-                            <label className="nav-label">Issue from warehouse</label>
-                            <select className="nav-select" value={place.warehouse_id} onChange={e => setPlace({ ...place, warehouse_id: e.target.value })}>
-                                <option value="">Shed / farm warehouse</option>{L.warehouses.map(w => <option key={w.id} value={w.id}>{w.warehouse_name}</option>)}
-                            </select>
                             <label className="nav-label">Breed</label>
                             <input className="nav-input" list="breeds" value={place.breed} onChange={e => setPlace({ ...place, breed: e.target.value })} />
-                            <label className="nav-label">Hatchery / chick source</label>
-                            <input className="nav-input" value={place.chick_source} onChange={e => setPlace({ ...place, chick_source: e.target.value })} />
                             <label className="nav-label">Target weight (kg)</label>
                             <input type="number" className="nav-input" value={place.target_weight_kg} onChange={e => setPlace({ ...place, target_weight_kg: e.target.value })} />
-                            <label className="nav-label">Expected lifting by</label>
-                            <input type="date" className="nav-input" value={place.expected_close_date} onChange={e => setPlace({ ...place, expected_close_date: e.target.value })} />
-                            <label className="nav-label">Remarks</label>
-                            <input className="nav-input" value={place.remarks} onChange={e => setPlace({ ...place, remarks: e.target.value })} />
+                            <label className="nav-label">Issue from warehouse</label>
+                            <select className="nav-select" value={place.warehouse_id} onChange={e => setPlace({ ...place, warehouse_id: e.target.value })}>
+                                <option value="">Bill / shed / farm warehouse</option>{L.warehouses.map(w => <option key={w.id} value={w.id}>{w.warehouse_name}</option>)}
+                            </select>
                         </div>
                         <datalist id="breeds"><option value="Cobb 500" /><option value="Ross 308" /><option value="Hubbard" /><option value="Arbor Acres" /><option value="Vencobb 400" /></datalist>
                     </GroupBox>
+                    <GroupBox title="Sheds - one lot per shed (lifting due after the broiler cycle days, 45 by default)">
+                        <table className="erp-grid-table">
+                            <thead><tr><th style={{ minWidth: 220 }}>Shed (empty ones)</th><th className="text-right">Capacity</th><th>Chicks (paid)</th><th>Free / extra chicks</th><th /></tr></thead>
+                            <tbody>{place.rows.map((r, i) => {
+                                const sh = sheds.find(x => x.id === r.shed_id);
+                                return (
+                                    <tr key={i}>
+                                        <td><select className="nav-select" value={r.shed_id} onChange={e => setRow(i, { shed_id: e.target.value })}>
+                                            <option value="">—</option>{freeSheds.filter(x => x.id === r.shed_id || !place.rows.some(o => o.shed_id === x.id)).map(x => <option key={x.id} value={x.id}>{x.shed_code} · {x.shed_name}</option>)}
+                                        </select></td>
+                                        <td className="text-right">{sh?.capacity ? n0(sh.capacity) : ''}</td>
+                                        <td><input type="number" className="nav-input" style={{ width: 120 }} value={r.chicks_placed} onChange={e => setRow(i, { chicks_placed: e.target.value })} /></td>
+                                        <td><input type="number" className="nav-input" style={{ width: 100 }} value={r.free_chicks} onChange={e => setRow(i, { free_chicks: e.target.value })} /></td>
+                                        <td><button type="button" className="nav-btn small" onClick={() => setPlace(p0 => ({ ...p0, rows: p0.rows.length > 1 ? p0.rows.filter((_, k) => k !== i) : p0.rows }))}>✕</button></td>
+                                    </tr>
+                                );
+                            })}</tbody>
+                            <tfoot><tr><td colSpan={2}><button type="button" className="nav-btn small" onClick={() => setPlace(p0 => ({ ...p0, rows: [...p0.rows, blankRow()] }))}>➕ Another shed</button></td>
+                                <td colSpan={3} className={available !== undefined && placing > available ? 'text-red-700' : ''}>Placing {n0(placing)}{available !== undefined ? ` of ${n0(available)}` : ''}</td></tr></tfoot>
+                        </table>
+                        {freeSheds.length === 0 && <p className="text-xs text-orange-700 mt-1">Every broiler shed has a lot running - close one first (all-in all-out).</p>}
+                    </GroupBox>
                     <div className="flex justify-end gap-2">
                         <button type="button" className="nav-btn" onClick={() => setParams({})}>Cancel</button>
-                        <button type="button" className="nav-btn primary" onClick={async () => {
+                        <button type="button" className="nav-btn primary" disabled={!canSave} onClick={async () => {
                             setErr(''); setWarn([]);
                             try {
-                                const r = await authFetch<Batch & { warnings?: string[] }>('/api/poultry/batches', { method: 'POST', body: JSON.stringify(place) });
-                                setParams({ id: r.data.id });
-                                setOk(`Batch ${r.data.batch_no} placed${r.data.placement_adjustment_no ? ` - chicks issued on ${r.data.placement_adjustment_no}` : ''}`);
+                                const r = await authFetch<{ lots: { id: string; batch_no: string; shed_name: string }[]; warnings?: string[] }>('/api/poultry/place-lots', { method: 'POST', body: JSON.stringify(place) });
+                                if (r.data.warnings?.length) setWarn(r.data.warnings);
+                                setOk(`Placed: ${r.data.lots.map(l => `${l.batch_no} (${l.shed_name})`).join(', ')}`);
+                                if (r.data.lots.length === 1) setParams({ id: r.data.lots[0].id }); else setParams({});
+                                setPlace(p0 => ({ ...p0, source_id: '', rows: [blankRow()] }));
                             } catch (e) { setErr(errText(e)); }
-                        }}>💾 Place batch</button>
+                        }}>💾 Place lots</button>
                     </div>
                 </NavWindow>
             </Layout>
@@ -384,15 +440,15 @@ export default function PoultryBatches() {
                 <button type="button" className="nav-tool-btn" onClick={loadList}>🔄 Refresh</button>
                 <a className="nav-tool-btn" href="/poultry/reports?view=profitability">📊 Reports</a>
             </>}>
-                <Msg err={err} />
+                <Msg ok={ok} err={err} warn={warn} />
                 {id && !detail && !err && <p className="text-sm text-gray-500">Loading…</p>}
                 <div className="overflow-x-auto">
                     <table className="erp-grid-table">
-                        <thead><tr><th>Batch</th><th>Shed</th><th>Breed</th><th>Placed on</th><th className="text-right">Age</th><th>Stage</th><th>Lift due</th><th className="text-right">Placed</th><th className="text-right">Alive</th><th className="text-right">Mort %</th><th className="text-right">Feed kg</th><th className="text-right">FCR</th><th className="text-right">Avg kg</th><th className="text-right">Cost</th><th className="text-right">Profit</th></tr></thead>
+                        <thead><tr><th>Batch</th><th>Shed</th><th>Chicks from</th><th>Breed</th><th>Placed on</th><th className="text-right">Age</th><th>Stage</th><th>Lift due</th><th className="text-right">Placed</th><th className="text-right">Alive</th><th className="text-right">Mort %</th><th className="text-right">Feed kg</th><th className="text-right">FCR</th><th className="text-right">Avg kg</th><th className="text-right">Cost</th><th className="text-right">Profit</th></tr></thead>
                         <tbody>
                             {rows.map(b => (
                                 <tr key={b.id} className="cursor-pointer" onClick={() => setParams({ id: b.id })}>
-                                    <td className="font-mono text-blue-700 underline">{b.batch_no}</td><td>{b.shed_name}</td><td>{b.breed || ''}</td><td>{b.placement_date}</td>
+                                    <td className="font-mono text-blue-700 underline">{b.batch_no}</td><td>{b.shed_name}</td><td className="text-xs">{b.chick_source || ''}</td><td>{b.breed || ''}</td><td>{b.placement_date}</td>
                                     <td className="text-right">{b.kpi?.age_days}</td><td><span className={`px-1 ${STAGE_TONE[b.stage || ''] || ''}`}>{b.stage}</span></td>
                                     <td className={b.cycle?.lift_due ? 'text-orange-700 font-semibold' : ''}>{b.status === 'active' && b.cycle ? `${b.cycle.lift_due_date} (${b.cycle.days_to_lift}d)` : ''}</td>
                                     <td className="text-right">{n0(b.birds?.placed)}</td><td className="text-right">{n0(b.birds?.alive)}</td><td className="text-right">{b.kpi?.mortality_pct?.toFixed(2)}</td>
@@ -400,7 +456,7 @@ export default function PoultryBatches() {
                                     <td className="text-right">{n2(b.costs?.total)}</td><td className={`text-right ${(b.profit || 0) < 0 ? 'text-red-700' : ''}`}>{n2(b.profit)}</td>
                                 </tr>
                             ))}
-                            {rows.length === 0 && <tr><td colSpan={15} className="text-center text-gray-500 py-6">No batches. Click “New placement”.</td></tr>}
+                            {rows.length === 0 && <tr><td colSpan={16} className="text-center text-gray-500 py-6">No batches. Click “New placement”.</td></tr>}
                         </tbody>
                     </table>
                 </div>

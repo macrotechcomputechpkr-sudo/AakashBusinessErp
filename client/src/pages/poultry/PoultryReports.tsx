@@ -6,6 +6,7 @@
 //   consumption   - feed / medicine / vaccine per batch and per bird
 //   lifecycle     - age, stage, FCR, EPEF, weight, livability per batch
 //   shed_lot      - every shed with its lots: birds in, mortality, sold, profit
+//   chick_source  - chick supplier performance: cost per chick, 1st-week and total mortality, FCR, profit
 //   hatch_broiler - own hatches followed into own sheds (hatched -> placed -> sold -> profit)
 // Server: utils/poultry.js report().
 // =============================================
@@ -18,7 +19,7 @@ import type { AuthFetch, SeriesPoint } from '../../types/erp';
 import { GroupBox, Msg, NavWindow, ROLE_LABEL, errText, n0, n2, n3, pct } from '../../components/poultry/common';
 import type { FlatBatch, Shed } from '../../components/poultry/common';
 
-const VIEWS: [string, string][] = [['shed_lot', '🏠 Shed & Lot'], ['hatch_broiler', '🐣 Hatch → Broiler'], ['profitability', '💰 Profitability'], ['lifecycle', '📈 Lifecycle'], ['mortality', '☠ Mortality'], ['consumption', '🌾 Consumption']];
+const VIEWS: [string, string][] = [['shed_lot', '🏠 Shed & Lot'], ['chick_source', '🛒 Chick Supplier'], ['hatch_broiler', '🐣 Hatch → Broiler'], ['profitability', '💰 Profitability'], ['lifecycle', '📈 Lifecycle'], ['mortality', '☠ Mortality'], ['consumption', '🌾 Consumption']];
 interface ShedRow { shed_name: string; batches: number; placed: number; lifted: number; lifted_kg: number; feed_kg: number; revenue: number; cost: number; profit: number; fcr: number | null; profit_per_kg: number | null }
 interface MortRow { batch_no: string; shed_name: string; placement_date: string; status: string; placed: number; mortality: number; culls: number; mortality_pct: number; livability_pct: number; age_days: number }
 interface ConsRow { batch_no: string; shed_name: string; product_name: string; role: string; qty: number; feed_kg: number; amount: number; placed: number; per_bird: number | null }
@@ -27,6 +28,8 @@ interface LotRow { id: string; batch_no: string; placement_date: string; status:
 interface ShedLot { shed_id: string; shed_name: string; lots: LotRow[]; placed: number; dead: number; culls: number; lifted: number; alive: number; lifted_kg: number; sales: number; cost: number; profit: number; mortality_pct: number; fcr: number | null; profit_per_bird: number | null }
 interface HatchLot { id: string; batch_no: string; shed_name: string; status: string; placed: number; dead: number; mortality_pct: number; lifted: number; lifted_kg: number; sales: number; cost: number; profit: number }
 interface HatchRow { id: string; hatch_no: string; hatch_date: string; eggs_set: number; chicks_a: number; hatchability_pct: number; placed_in_own_sheds: number; not_placed: number; lots: HatchLot[]; dead: number; mortality_pct: number; lifted: number; lifted_kg: number; sales: number; cost: number; profit: number }
+interface SrcRow { source: string; kind: string; lots: { id: string; batch_no: string; shed_name: string; placement_date: string; status: string; placed: number; mortality_pct: number; fcr: number | null; profit: number }[];
+    placed: number; dead: number; lifted: number; lifted_kg: number; cost_per_chick: number | null; first_week_mortality_pct: number; mortality_pct: number; fcr: number | null; avg_weight_kg: number | null; sales: number; cost: number; profit: number; profit_per_bird: number | null }
 interface Data { totals?: Record<string, number>; batches?: (FlatBatch | MortRow)[]; sheds?: (ShedRow & ShedLot)[]; unallocated_shed_costs?: number; by_reason?: SeriesPoint[]; by_week?: SeriesPoint[]; rows?: ConsRow[]; by_role?: SeriesPoint[] }
 
 export default function PoultryReports() {
@@ -52,6 +55,7 @@ export default function PoultryReports() {
 
     const flat = (data?.batches || []) as FlatBatch[];
     const hatchRows = (Array.isArray(data) ? data : []) as HatchRow[];
+    const srcRows = (Array.isArray(data) ? data : []) as SrcRow[];
     const red = (v: number) => (v < 0 ? 'text-red-700' : '');
     const goBatch = (id: string) => { window.location.href = `/poultry/batches?id=${id}`; };
     return (
@@ -103,6 +107,37 @@ export default function PoultryReports() {
                             </GroupBox>
                         ))}
                         {(data.sheds || []).length === 0 && <p className="text-sm text-gray-500">No lots placed in this period.</p>}
+                    </>
+                )}
+
+                {data && view === 'chick_source' && (
+                    <>
+                        <GroupBox title="Where the chicks came from - compare suppliers">
+                            <div className="overflow-x-auto">
+                                <table className="erp-grid-table">
+                                    <thead><tr><th>Supplier / source</th><th className="text-right">Lots</th><th className="text-right">Chicks</th><th className="text-right">Cost / chick</th><th className="text-right">1st week mort %</th><th className="text-right">Total mort %</th>
+                                        <th className="text-right">Sold</th><th className="text-right">Avg kg</th><th className="text-right">FCR</th><th className="text-right">Sales</th><th className="text-right">Cost</th><th className="text-right">Profit</th><th className="text-right">Profit / bird</th></tr></thead>
+                                    <tbody>{srcRows.map(r => (
+                                        <tr key={r.source}><td>{r.kind === 'supplier' ? '🛒 ' : r.kind === 'own_hatch' ? '🥚 ' : ''}{r.source}</td><td className="text-right">{r.lots.length}</td><td className="text-right">{n0(r.placed)}</td>
+                                            <td className="text-right">{r.cost_per_chick === null ? '—' : n2(r.cost_per_chick)}</td><td className="text-right">{pct(r.first_week_mortality_pct)}</td><td className="text-right">{pct(r.mortality_pct)}</td>
+                                            <td className="text-right">{n0(r.lifted)}</td><td className="text-right">{n3(r.avg_weight_kg)}</td><td className="text-right">{n3(r.fcr)}</td><td className="text-right">{n2(r.sales)}</td><td className="text-right">{n2(r.cost)}</td>
+                                            <td className={`text-right ${red(r.profit)}`}>{n2(r.profit)}</td><td className="text-right">{r.profit_per_bird === null ? '—' : n2(r.profit_per_bird)}</td></tr>
+                                    ))}
+                                    {srcRows.length === 0 && <tr><td colSpan={13} className="text-center text-gray-500">No lots placed in this period.</td></tr>}</tbody>
+                                </table>
+                            </div>
+                        </GroupBox>
+                        {srcRows.map(r => (
+                            <GroupBox key={r.source} title={`${r.source} - lots`}>
+                                <table className="erp-grid-table">
+                                    <thead><tr><th>Lot</th><th>Shed</th><th>Placed on</th><th>Status</th><th className="text-right">Chicks</th><th className="text-right">Mort %</th><th className="text-right">FCR</th><th className="text-right">Profit</th></tr></thead>
+                                    <tbody>{r.lots.map(l => (
+                                        <tr key={l.id} className="cursor-pointer" onClick={() => goBatch(l.id)}><td className="font-mono text-blue-700 underline">{l.batch_no}</td><td>{l.shed_name}</td><td>{l.placement_date}</td><td>{l.status}</td>
+                                            <td className="text-right">{n0(l.placed)}</td><td className="text-right">{pct(l.mortality_pct)}</td><td className="text-right">{n3(l.fcr)}</td><td className={`text-right ${red(l.profit)}`}>{n2(l.profit)}</td></tr>
+                                    ))}</tbody>
+                                </table>
+                            </GroupBox>
+                        ))}
                     </>
                 )}
 

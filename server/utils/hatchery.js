@@ -218,27 +218,9 @@ async function summary(c, t) {
  * rows: [{ shed_id, chicks_placed, free_chicks, breed, target_weight_kg }]
  */
 async function placeInSheds(c, t, userId, id, b) {
-    await P.requireFeature(c, t, 'broiler');
     const h = await P.hatchAvailability(c, t, id);
-    const rows = (Array.isArray(b.rows) ? b.rows : []).filter(r => r && r.shed_id && parseInt(r.chicks_placed, 10) > 0);
-    if (!rows.length) throw httpError('Enter the chicks for at least one shed');
-    if (new Set(rows.map(r => r.shed_id)).size !== rows.length) throw httpError('A shed is chosen twice - one lot per shed');
-    const want = rows.reduce((x, r) => x + parseInt(r.chicks_placed, 10) + (parseInt(r.free_chicks, 10) || 0), 0);
-    if (want > h.chicks_available) throw httpError(`Only ${h.chicks_available} chicks of hatch ${h.hatch_no} are left to place (asked ${want})`);
-    const date = String(b.placement_date || h.hatch_date || today()).slice(0, 10);
-    const made = [];
-    try {
-        for (const r of rows) {
-            const lot = await P.createBatch(c, t, userId, { shed_id: r.shed_id, chicks_placed: r.chicks_placed, free_chicks: r.free_chicks, breed: r.breed || b.breed || null,
-                target_weight_kg: r.target_weight_kg || b.target_weight_kg || null, placement_date: date, source_hatch_id: h.id, warehouse_id: h.output_warehouse_id || undefined,
-                remarks: r.remarks || null, override_negative_stock: !!b.override_negative_stock });
-            made.push(lot);
-        }
-    } catch (e) {
-        for (const lot of made) { try { await P.deleteBatch(c, t, userId, lot.id); } catch { /* keep going */ } }
-        throw e;
-    }
-    return { lots: made.map(l => ({ id: l.id, batch_no: l.batch_no, shed_name: l.shed_name, placed: l.chicks_placed + l.free_chicks })), warnings: made.flatMap(l => l.warnings || []), hatch: await detail(c, t, id) };
+    const r = await P.placeLots(c, t, userId, { ...b, source: 'hatch', source_id: id, placement_date: b.placement_date || String(h.hatch_date || today()).slice(0, 10) });
+    return { ...r, hatch: await detail(c, t, id) };
 }
 
 module.exports = { list, detail, create, candle, hatch, cancel, summary, kpis, placeInSheds };
