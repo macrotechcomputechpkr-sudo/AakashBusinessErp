@@ -133,7 +133,10 @@ export default function ChartOfAccounts() {
     const [codeTick, setCodeTick] = useState(0);
     // short name: suggested from the name until the user types their own
     const shortTouched = useRef(false);
-    const nextCode = useMasterCode('ledger', accountForm.account_name, showAccountForm && !editingAccountId, codeTick);
+    // ledgers are numbered by type: Customer / Supplier / Both / General (System Control > Master Codes)
+    const ledgerType = accountForm.category_type || groups.find(g => g.id === accountForm.account_group_id)?.category_type;
+    const ledgerMaster = { sales: 'ledger_customer', purchase: 'ledger_supplier', both: 'ledger_both' }[ledgerType] || 'ledger';
+    const nextCode = useMasterCode(ledgerMaster, accountForm.account_name, showAccountForm && !editingAccountId, codeTick);
     useEffect(() => { if (!accountForm.account_name) shortTouched.current = false; }, [accountForm.account_name]);
     useEffect(() => {
         if (!editingAccountId && !shortTouched.current && nextCode.shortName) setAccountForm(f => ({ ...f, short_name: nextCode.shortName }));

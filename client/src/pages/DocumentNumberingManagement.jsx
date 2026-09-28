@@ -41,13 +41,30 @@ const VOUCHER_TYPES = [
 const emptyForm = {
     voucher_type: 'purchase_requisition', category_name: '', numbering_mode: 'auto', scope: 'global',
     prefix: '', suffix: '', digit_count: 6, start_number: 1, end_number: '',
-    include_fiscal_year: true, fy_digit_format: 'short', is_default: false
+    include_fiscal_year: true, fy_digit_format: 'short', is_default: false,
+    valid_from: '', valid_to: '', date_format: 'YYMMDD', date_type: 'nepali', fill_char: '0', max_length: 15, flexible_length: false
 };
 
+// Numbering modes (server utils/documentNumbering.js)
+const MODES = [
+    ['auto', 'Automatic - Numeric'], ['manual_numeric', 'Manual - Numeric (digits only)'], ['manual_alpha', 'Manual - Alpha (any text)'],
+    ['auto_datewise', 'Automatic - Datewise (restarts each day)'], ['auto_monthwise', 'Automatic - Monthwise (restarts each month)']
+];
+const DATE_FORMATS = ['YYMMDD', 'YYYYMMDD', 'DDMMYY', 'DDMMYYYY', 'MMDDYY', 'YYMM', 'YYYYMM', 'MMYY'];
+const isManual = m => m === 'manual' || m === 'manual_alpha' || m === 'manual_numeric';
+const isDated = m => m === 'auto_datewise' || m === 'auto_monthwise';
+const modeLabel = m => (m === 'manual' ? 'Manual - Alpha (any text)' : (MODES.find(x => x[0] === m) || [m, m])[1]);
+
 function previewFormat(f) {
+    if (isManual(f.numbering_mode)) return '(typed on the entry)';
     const fy = f.include_fiscal_year ? (f.fy_digit_format === 'full' ? '208182' : '8182') : '';
-    const padded = String(f.start_number || 1).padStart(Number(f.digit_count) || 6, '0');
-    return `${f.prefix || ''}${fy}${padded}${f.suffix || ''}`;
+    // sample date 2082-06-15 (BS) / 2025-10-01 (AD)
+    const parts = f.date_type === 'english' ? { YYYY: '2025', YY: '25', MM: '10', DD: '01' } : { YYYY: '2082', YY: '82', MM: '06', DD: '15' };
+    let fmt = f.date_format || 'YYMMDD';
+    if (f.numbering_mode === 'auto_monthwise') fmt = fmt.replace('DD', '');
+    const dp = isDated(f.numbering_mode) ? fmt.replace(/YYYY|YY|MM|DD/g, t => parts[t]) : '';
+    const padded = String(f.start_number || 1).padStart(Number(f.digit_count) || 6, (f.fill_char || '0').slice(0, 1) || '0');
+    return `${f.prefix || ''}${fy}${dp}${padded}${f.suffix || ''}`;
 }
 
 export default function DocumentNumberingManagement() {
@@ -159,7 +176,8 @@ export default function DocumentNumberingManagement() {
     const columns = [
         { key: 'voucher_type', label: 'Module', type: 'text', render: r => VOUCHER_TYPES.find(v => v.value === r.voucher_type)?.label || r.voucher_type },
         { key: 'category_name', label: 'Category', type: 'text' },
-        { key: 'numbering_mode', label: 'Mode', type: 'text' },
+        { key: 'numbering_mode', label: 'Mode', type: 'text', render: r => modeLabel(r.numbering_mode) },
+        { key: 'valid_from', label: 'Applicable', type: 'text', render: r => (r.valid_from || r.valid_to ? `${String(r.valid_from || '…').slice(0, 10)} → ${String(r.valid_to || '…').slice(0, 10)}` : 'Always') },
         { key: 'scope', label: 'Scope', type: 'text' },
         { key: 'preview', label: 'Format Preview', type: 'text', render: r => previewFormat(r) },
         { key: 'is_default', label: 'Default', type: 'text', render: r => r.is_default ? '✓' : '' }
@@ -204,14 +222,13 @@ export default function DocumentNumberingManagement() {
 
                         <div>
                             <label className="erp-label">Numbering Mode</label>
-                            <select className="erp-input" value={form.numbering_mode} onChange={e => setForm({ ...form, numbering_mode: e.target.value })}>
-                                <option value="auto">Auto</option>
-                                <option value="manual">Manual (user types the number)</option>
+                            <select className="erp-input" value={form.numbering_mode === 'manual' ? 'manual_alpha' : form.numbering_mode} onChange={e => setForm({ ...form, numbering_mode: e.target.value })}>
+                                {MODES.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                             </select>
                         </div>
                         <div>
                             <label className="erp-label">Scope</label>
-                            <select className="erp-input" value={form.scope} onChange={e => setForm({ ...form, scope: e.target.value })} disabled={form.numbering_mode === 'manual'}>
+                            <select className="erp-input" value={form.scope} onChange={e => setForm({ ...form, scope: e.target.value })} disabled={isManual(form.numbering_mode)}>
                                 <option value="global">Global (one shared counter)</option>
                                 <option value="branch_wise">Branch-wise (separate counter per Branch)</option>
                                 <option value="user_wise">User-wise (separate counter per User)</option>
@@ -219,7 +236,43 @@ export default function DocumentNumberingManagement() {
                         </div>
                     </div>
 
-                    {form.numbering_mode === 'auto' && (
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                        <div>
+                            <label className="erp-label">Applicable From <span className="text-gray-400">(blank = always)</span></label>
+                            <input type="date" className="erp-input" value={String(form.valid_from || '').slice(0, 10)} onChange={e => setForm({ ...form, valid_from: e.target.value })} />
+                        </div>
+                        <div>
+                            <label className="erp-label">Applicable To</label>
+                            <input type="date" className="erp-input" value={String(form.valid_to || '').slice(0, 10)} onChange={e => setForm({ ...form, valid_to: e.target.value })} />
+                        </div>
+                        <div>
+                            <label className="erp-label">Max Length</label>
+                            <input type="number" min="1" max="40" className="erp-input" value={form.max_length} onChange={e => setForm({ ...form, max_length: e.target.value })} />
+                        </div>
+                        <div className="flex items-end">
+                            <label className="flex items-center gap-2 text-sm mb-2"><input type="checkbox" checked={!!form.flexible_length} onChange={e => setForm({ ...form, flexible_length: e.target.checked })} /> Flexible length (may go past max)</label>
+                        </div>
+                    </div>
+
+                    {isDated(form.numbering_mode) && (
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 bg-gray-50 rounded-lg p-4">
+                            <div>
+                                <label className="erp-label">Date Format</label>
+                                <select className="erp-input" value={form.date_format} onChange={e => setForm({ ...form, date_format: e.target.value })}>
+                                    {DATE_FORMATS.filter(d => form.numbering_mode !== 'auto_monthwise' || !d.includes('DD')).map(d => <option key={d} value={d}>{d}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="erp-label">Date Type</label>
+                                <select className="erp-input" value={form.date_type} onChange={e => setForm({ ...form, date_type: e.target.value })}>
+                                    <option value="nepali">Nepali (BS)</option><option value="english">English (AD)</option>
+                                </select>
+                            </div>
+                            <p className="text-xs text-gray-500 md:col-span-2 self-end">The number restarts at the Start Number each {form.numbering_mode === 'auto_monthwise' ? 'month' : 'day'}; the date part comes from the entry date.</p>
+                        </div>
+                    )}
+
+                    {!isManual(form.numbering_mode) && (
                         <div className="bg-gray-50 rounded-lg p-4 space-y-3">
                             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
                                 <div>
@@ -231,8 +284,12 @@ export default function DocumentNumberingManagement() {
                                     <input className="erp-input" value={form.suffix} onChange={e => setForm({ ...form, suffix: e.target.value })} placeholder="e.g. -A" />
                                 </div>
                                 <div>
-                                    <label className="erp-label">Digit Count</label>
+                                    <label className="erp-label">Body Length (digits)</label>
                                     <input type="number" min="1" max="12" className="erp-input" value={form.digit_count} onChange={e => setForm({ ...form, digit_count: e.target.value })} />
+                                </div>
+                                <div>
+                                    <label className="erp-label">Fill Character</label>
+                                    <input className="erp-input" maxLength={1} value={form.fill_char} onChange={e => setForm({ ...form, fill_char: e.target.value.slice(0, 1) })} placeholder="0" />
                                 </div>
                                 <div>
                                     <label className="erp-label">Start Number</label>

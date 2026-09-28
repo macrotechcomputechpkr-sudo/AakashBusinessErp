@@ -369,7 +369,10 @@ router.get('/purchase-grns/pull-forward', requireAuth, loadUserPermissions, requ
 // moved back on edit, delete or cancel.)
 const GRN_COUNTING = ['received', 'partially_billed', 'billed'];
 const PO_PROGRESS = { sourceIdField: 'source_order_detail_id', table: 'purchase_order_details', counter: 'qty_received', altCounter: 'alt_qty_received' };
+// lines pulled straight from a Purchase Quotation use up the quotation (qty_ordered, as a PO would)
+const PQ_PROGRESS = { sourceIdField: 'source_quotation_detail_id', table: 'purchase_quotation_details', counter: 'qty_ordered', altCounter: 'alt_qty_ordered' };
 async function moveOrderProgress(tenantClient, lines, dir) {
+    await moveSourceProgress(tenantClient, (lines || []).filter(l => l.source_quotation_detail_id && !l.source_order_detail_id), PQ_PROGRESS, dir);
     await moveSourceProgress(tenantClient, lines, PO_PROGRESS, dir);
     const ids = [...new Set((lines || []).map(l => l.source_order_detail_id).filter(Boolean))];
     if (!ids.length) return;
@@ -456,7 +459,7 @@ router.post('/purchase-grns', requireAuth, loadUserPermissions, requirePermissio
         try {
             docNo = await resolveDocumentNumber(tenantClient, {
                 tenantId, voucherType: 'purchase_grn', userId: req.auth.userId,
-                categoryId: b.numbering_category_id, manualNumber: b.doc_no, tableName: 'purchase_orders',
+                categoryId: b.numbering_category_id, manualNumber: b.doc_no, docDate: b.doc_date || b.voucher_date || b.entry_date, tableName: 'purchase_orders',
                 currentFiscalYearId: currentFy?.id, currentFiscalYearName: currentFy?.fiscal_year_name,
                 userDefaultBranchId: currentUser?.default_branch_id
             });
@@ -483,7 +486,7 @@ router.post('/purchase-grns', requireAuth, loadUserPermissions, requirePermissio
                 source_order_id: b.source_order_id || null,
                 vendor_ledger_id: b.vendor_ledger_id || null, agent_id: b.agent_id || null,
                 ...snapshots,
-                invoice_type: b.invoice_type || 'credit', currency: b.currency || 'NPR',
+                invoice_type: b.invoice_type || 'credit', currency: b.currency || 'NPR', exchange_rate: Number(b.exchange_rate) > 0 ? Number(b.exchange_rate) : 1,
                 due_date: b.due_date || null, due_days: b.due_days || null,
                 warehouse_id: b.warehouse_id || null,
                 goods_account_ledger_id: b.goods_account_ledger_id || null, goods_sub_ledger_id: b.goods_sub_ledger_id || null,
@@ -569,7 +572,7 @@ router.put('/purchase-grns/:id', requireAuth, loadUserPermissions, requirePermis
         if (b.details) {
             // Edit of a received GRN: take the old lines' qty back out of its Order first.
             const countsNow = GRN_COUNTING.includes(existing.status);
-            if (countsNow) { const { data: oldLines } = await tenantClient.from('purchase_grn_details').select('source_order_detail_id, qty, alt_qty').eq('grn_id', req.params.id); await moveOrderProgress(tenantClient, oldLines, -1); }
+            if (countsNow) { const { data: oldLines } = await tenantClient.from('purchase_grn_details').select('source_order_detail_id, source_quotation_detail_id, qty, alt_qty').eq('grn_id', req.params.id); await moveOrderProgress(tenantClient, oldLines, -1); }
             const { total, detailIdByIndex } = await syncDetails(tenantClient, tenantId, req.params.id, b.details);
             if (countsNow) await moveOrderProgress(tenantClient, b.details, 1);
             const totalQty = b.details.reduce((sum, d) => sum + (Number(d.qty) || 0), 0);
@@ -581,7 +584,7 @@ router.put('/purchase-grns/:id', requireAuth, loadUserPermissions, requirePermis
 
         await logAudit(tenantId, req.auth.userId, 'update_purchase_grn', 'purchase_grn', req.params.id, { old_data: existing, new_data: data });
         const changes = diffFields(existing, b, [
-            'doc_date', 'vendor_ledger_id', 'agent_id', 'invoice_type', 'currency', 'due_date', 'due_days',
+            'doc_date', 'vendor_ledger_id', 'agent_id', 'invoice_type', 'currency', 'exchange_rate', 'due_date', 'due_days',
             'warehouse_id', 'goods_account_ledger_id', 'goods_sub_ledger_id', 'remarks_text', 'rate_type',
             'cost_center_id', 'business_unit_id', 'area_id', 'route_id', 'priority', 'narration'
         ]);
@@ -621,7 +624,7 @@ router.put('/purchase-grns/:id/status', requireAuth, loadUserPermissions, requir
         // Clearing; cancelling a previously-received GRN reverses it.
         // Guarded by existing.status so re-saving an already-received
         // GRN never double-posts.
-        const { data: progressLines } = await tenantClient.from('purchase_grn_details').select('source_order_detail_id, qty, alt_qty').eq('grn_id', req.params.id);
+        const { data: progressLines } = await tenantClient.from('purchase_grn_details').select('source_order_detail_id, source_quotation_detail_id, qty, alt_qty').eq('grn_id', req.params.id);
         if (GRN_COUNTING.includes(status) && !GRN_COUNTING.includes(existing.status)) await moveOrderProgress(tenantClient, progressLines, 1);
         if (status === 'cancelled' && GRN_COUNTING.includes(existing.status)) await moveOrderProgress(tenantClient, progressLines, -1);
         if (status === 'received' && existing.status !== 'received') {

@@ -37,7 +37,7 @@ const Adds = ({ sign }) => <span className={sign === '-' ? 'ent-less' : 'ent-add
  * onInput(termId, kind, value): a % / rate per qty / amount typed for a charge (kinds allowed by the Billing
  * Term; nothing can be typed for a charge that may not be changed in entries)
  */
-export function PurchaseProductTermPopup({ title, lines, terms, previews, productName, onToggle, onInput, subLedgerCell, onClose, lineFields }) {
+export function PurchaseProductTermPopup({ title, lines, terms, previews, productName, onToggle, onInput, subLedgerCell, onClose, lineFields, fx }) {
     const [focus, setFocus] = useState(0);
     const basicOf = l => (Number(l.qty) || 0) * (Number(l.rate) || 0);
     const basic = lines.reduce((s, t) => s + basicOf(t.line), 0);
@@ -55,11 +55,12 @@ export function PurchaseProductTermPopup({ title, lines, terms, previews, produc
                 <div><small>Quantity</small><b>{qty.toFixed(3)}</b></div>
                 <div><small>Value</small><b>{fmt(basic)}</b></div>
                 <div><small>Charges</small><b className={net < 0 ? 'ent-less' : ''}>{fmt(net)}</b></div>
-                <div><small>After charges</small><b>{fmt(basic + net)}</b></div>
+                <div><small>After charges{fx?.foreign ? ` (${fx.code})` : ''}</small><b>{fmt(basic + net)}</b></div>
+                {fx?.foreign && <div><small>In {fx.base} @ {Number(fx.rate).toFixed(4)}</small><b>{fmt((basic + net) * fx.rate)}</b></div>}
             </div>
             <div className="ent-charge-wrap">
                 <table className="erp-grid-table ent-charge-table">
-                    <thead><tr><th style={{ width: 34 }}>#</th><th style={{ width: 44 }}>Use</th><th>Charge</th><th>Sub-ledger</th><th style={{ width: 90 }}>Worked as</th><th style={{ width: 56 }}>+/-</th>{KIND_COLS.map(([k, l]) => <th key={k} className="text-right" style={{ width: 80 }}>{l}</th>)}<th className="text-right">Amount</th></tr></thead>
+                    <thead><tr><th style={{ width: 34 }}>#</th><th style={{ width: 44 }}>Use</th><th>Charge</th><th>Sub-ledger</th><th style={{ width: 90 }}>Worked as</th><th style={{ width: 56 }}>+/-</th>{KIND_COLS.map(([k, l]) => <th key={k} className="text-right" style={{ width: 80 }}>{l}</th>)}<th className="text-right">Amount</th>{fx?.foreign && <th className="text-right">Local ({fx.base})</th>}</tr></thead>
                     <tbody>
                         {(lineFields || []).map(fl => (
                             <tr key={fl.key} className="ent-line-field">
@@ -67,6 +68,7 @@ export function PurchaseProductTermPopup({ title, lines, terms, previews, produc
                                 <td className="text-right"><input type="number" step="0.01" className="erp-input text-right" style={{ height: 24 }} value={fl.value} onFocus={e => e.target.select()} onChange={e => fl.onChange(e.target.value)} /></td>
                                 <td /><td />
                                 <td className="text-right">{lines.length > 1 ? `${lines.length} lines` : ''}</td>
+                                {fx?.foreign && <td />}
                             </tr>
                         ))}
                         {terms.map((term, i) => {
@@ -95,6 +97,7 @@ export function PurchaseProductTermPopup({ title, lines, terms, previews, produc
                                         );
                                     })}
                                     <td className="text-right font-semibold">{on ? fmt(amountOf(term.id)) : ''}</td>
+                                    {fx?.foreign && <td className="text-right">{on ? fmt(amountOf(term.id) * fx.rate) : ''}</td>}
                                 </tr>
                             );
                         })}
@@ -121,7 +124,7 @@ export function PurchaseProductTermPopup({ title, lines, terms, previews, produc
  * summaryRows / overrides: the item-charge totals of the lines (amount editable, split by the charge's basis);
  * terms + billTermIds + preview: bill charges ticked on the document
  */
-export function PurchaseOverallTermPopup({ title, summaryRows, overrides, onOverride, terms, billTermIds, onToggleBillTerm, preview, subLedgerCell, onClose }) {
+export function PurchaseOverallTermPopup({ title, summaryRows, overrides, onOverride, terms, billTermIds, onToggleBillTerm, preview, subLedgerCell, onClose, fx }) {
     const termById = Object.fromEntries(terms.map(t => [t.id, t]));
     // charges set (Billing Term) not to show in the Charges Summary stay out of it
     summaryRows = summaryRows.filter(r => termById[r.billing_term_id]?.show_in_term_summary !== false);
@@ -131,7 +134,7 @@ export function PurchaseOverallTermPopup({ title, summaryRows, overrides, onOver
         <EntryPopup title={title} onClose={onClose} width={900}>
             <div className="ent-section-title">Item charges (all lines)</div>
             <table className="erp-grid-table">
-                <thead><tr><th style={{ width: 34 }}>#</th><th>Charge</th><th style={{ width: 100 }}>Split by</th><th style={{ width: 56 }}>+/-</th><th className="text-right" style={{ width: 90 }}>Rate</th><th className="text-right" style={{ width: 160 }}>Amount</th></tr></thead>
+                <thead><tr><th style={{ width: 34 }}>#</th><th>Charge</th><th style={{ width: 100 }}>Split by</th><th style={{ width: 56 }}>+/-</th><th className="text-right" style={{ width: 90 }}>Rate</th><th className="text-right" style={{ width: 160 }}>Amount{fx?.foreign ? ` (${fx.code})` : ''}</th>{fx?.foreign && <th className="text-right" style={{ width: 120 }}>Local ({fx.base})</th>}</tr></thead>
                 <tbody>
                     {summaryRows.map((r, i) => {
                         const t = termById[r.billing_term_id];
@@ -145,17 +148,18 @@ export function PurchaseOverallTermPopup({ title, summaryRows, overrides, onOver
                                 <td className="text-right">{t?.rate_percentage ? fmt(t.rate_percentage) : ''}</td>
                                 <td className="text-right">{t?.manual_override === false ? fmt(v)
                                     : <input type="number" step="0.01" className="erp-input text-right" style={{ height: 24 }} value={v} onFocus={e => e.target.select()} onChange={e => onOverride(r.billing_term_id, e.target.value)} />}</td>
+                                {fx?.foreign && <td className="text-right">{fmt(Number(v || 0) * fx.rate)}</td>}
                             </tr>
                         );
                     })}
                     {summaryRows.length === 0 && <tr><td colSpan={6} className="text-center">No item charges on the lines yet - use Item Charges.</td></tr>}
                 </tbody>
-                <tfoot><tr><td colSpan={5} className="text-right">Item charges total</td><td className="text-right">{fmt(prodTotal)}</td></tr></tfoot>
+                <tfoot><tr><td colSpan={5} className="text-right">Item charges total</td><td className="text-right">{fmt(prodTotal)}</td>{fx?.foreign && <td className="text-right">{fmt(prodTotal * fx.rate)}</td>}</tr></tfoot>
             </table>
             <p className="ent-note mt-1 mb-3">An amount changed here is split over the lines that carry the charge, by value or by quantity as set on the charge (Billing Term).</p>
             <div className="ent-section-title">Bill charges (on the bill total)</div>
             <table className="erp-grid-table">
-                <thead><tr><th style={{ width: 34 }}>#</th><th style={{ width: 44 }}>Use</th><th>Charge</th><th>Sub-ledger</th><th style={{ width: 90 }}>Worked as</th><th style={{ width: 56 }}>+/-</th><th className="text-right" style={{ width: 80 }}>Rate</th><th className="text-right" style={{ width: 130 }}>Amount</th></tr></thead>
+                <thead><tr><th style={{ width: 34 }}>#</th><th style={{ width: 44 }}>Use</th><th>Charge</th><th>Sub-ledger</th><th style={{ width: 90 }}>Worked as</th><th style={{ width: 56 }}>+/-</th><th className="text-right" style={{ width: 80 }}>Rate</th><th className="text-right" style={{ width: 130 }}>Amount</th>{fx?.foreign && <th className="text-right" style={{ width: 120 }}>Local ({fx.base})</th>}</tr></thead>
                 <tbody>
                     {terms.map((t, i) => {
                         const on = billTermIds.includes(t.id);
@@ -170,12 +174,13 @@ export function PurchaseOverallTermPopup({ title, summaryRows, overrides, onOver
                                 <td><Adds sign={t.sign} /></td>
                                 <td className="text-right">{t.rate_percentage ? fmt(t.rate_percentage) : ''}</td>
                                 <td className="text-right">{line ? (line.free_quantity !== undefined ? `+${line.free_quantity} free` : fmt(line.amount)) : ''}</td>
+                                {fx?.foreign && <td className="text-right">{line && line.free_quantity === undefined ? fmt(Number(line.amount || 0) * fx.rate) : ''}</td>}
                             </tr>
                         );
                     })}
                     {terms.length === 0 && <tr><td colSpan={8} className="text-center">No purchase charges are set up yet.</td></tr>}
                 </tbody>
-                {preview && <tfoot><tr><td colSpan={7} className="text-right">Bill total after bill charges</td><td className="text-right">{fmt(preview.total)}</td></tr></tfoot>}
+                {preview && <tfoot><tr><td colSpan={7} className="text-right">Bill total after bill charges</td><td className="text-right">{fmt(preview.total)}</td>{fx?.foreign && <td className="text-right">{fmt(Number(preview.total || 0) * fx.rate)}</td>}</tr></tfoot>}
             </table>
         </EntryPopup>
     );

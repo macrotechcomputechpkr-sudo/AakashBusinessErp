@@ -263,7 +263,7 @@ router.post('/sales-returns', requireAuth, loadUserPermissions, requirePermissio
         try {
             docNo = await resolveDocumentNumber(tenantClient, {
                 tenantId, voucherType: 'sales_return', userId: req.auth.userId,
-                categoryId: b.numbering_category_id, manualNumber: b.doc_no, tableName: 'sales_returns',
+                categoryId: b.numbering_category_id, manualNumber: b.doc_no, docDate: b.doc_date || b.voucher_date || b.entry_date, tableName: 'sales_returns',
                 currentFiscalYearId: currentFy?.id, currentFiscalYearName: currentFy?.fiscal_year_name,
                 userDefaultBranchId: currentUser?.default_branch_id
             });
@@ -283,7 +283,7 @@ router.post('/sales-returns', requireAuth, loadUserPermissions, requirePermissio
             .insert({
                 product_company_id: b.product_company_id || null,
                 tenant_id: tenantId, branch_id: currentUser?.default_branch_id || null, branch_name_snapshot: branchNameSnapshot,
-                doc_no: docNo, doc_date: b.doc_date, fiscal_year_id: currentFy?.id || null, source_bill_id: b.source_bill_id || null,
+                doc_no: docNo, doc_date: b.doc_date, fiscal_year_id: currentFy?.id || null, currency: b.currency || 'NPR', exchange_rate: Number(b.exchange_rate) > 0 ? Number(b.exchange_rate) : 1, source_bill_id: b.source_bill_id || null,
                 customer_ledger_id: b.customer_ledger_id || null, customer_sub_ledger_id: b.customer_sub_ledger_id || null, sales_sub_ledger_id: b.sales_sub_ledger_id || null, agent_id: b.agent_id || null,
                 warehouse_id: b.warehouse_id || null, sales_account_ledger_id: b.sales_account_ledger_id || null, sales_sub_ledger_id: b.sales_sub_ledger_id || null,
                 return_reason: b.return_reason || 'other', settlement_type: b.settlement_type || 'credit_note',

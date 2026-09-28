@@ -134,6 +134,7 @@ import SalesAdditionalEntry from './pages/SalesAdditionalEntry';
 import GrnOutstandingReport from './pages/GrnOutstandingReport';
 import PurchaseRegisterReport from './pages/PurchaseRegisterReport';
 import DocumentNumberingManagement from './pages/DocumentNumberingManagement';
+import CurrencyMaster from './pages/CurrencyMaster';
 
 const PrivateRoute = ({ children }) => {
     const { user, initializing } = useAuth();
@@ -294,6 +295,7 @@ function AppRoutes() {
             <Route path="/grn-outstanding-report" element={<PrivateRoute><GrnOutstandingReport /></PrivateRoute>} />
             <Route path="/purchase-register-report" element={<PrivateRoute><PurchaseRegisterReport /></PrivateRoute>} />
             <Route path="/document-numbering" element={<PrivateRoute><DocumentNumberingManagement /></PrivateRoute>} />
+            <Route path="/currencies" element={<PrivateRoute><CurrencyMaster /></PrivateRoute>} />
             <Route path="/" element={<Navigate to="/dashboard" replace />} />
             <Route path="*" element={<Navigate to="/dashboard" replace />} />
         </Routes>

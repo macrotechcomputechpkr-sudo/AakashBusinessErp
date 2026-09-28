@@ -25,6 +25,7 @@ import DocNumberField from '../components/entry/DocNumberField';
 import PendingDocsPanel, { mergePulled } from '../components/entry/PendingDocsPanel';
 import { PartyDetailsPanel, emptyPartyInfo, savePartyInfo, partyInfoFromDoc } from '../components/entry/PartyFooterTabs';
 import SalesLineGrid, { useLineGridControl, lineTotals } from '../components/entry/SalesLineGrid';
+import CurrencyField, { useCurrencies, fxOf } from '../components/entry/CurrencyField';
 import { EntryFooter, useEntryHotkeys, latestOf } from '../components/entry/EntryParts';
 import { calcLine, productLineTerms, lineForSave } from '../components/entry/lineCalc';
 import { dualHelpers } from '../components/entry/dualHelpers';
@@ -35,6 +36,7 @@ import { saveEntryDraft, finishEntryDraft } from '../components/entry/entryDraft
 const emptyDetailRow = () => ({ product_id: '', qty: '', uom_id: '', alt_qty: '', alt_unit_id: '', rate_basis: 'primary', rate: '', discount_percent: '', tax_percent: '', warehouse_id: '', batch_no: '', serial_no: '', source_bill_detail_id: '' });
 
 const emptyForm = {
+    currency: 'NPR', exchange_rate: 1,
     product_company_id: '', doc_date: new Date().toISOString().slice(0, 10), source_bill_id: '', numbering_category_id: '',
     customer_ledger_id: '', customer_sub_ledger_id: '', sales_account_ledger_id: '', sales_sub_ledger_id: '', agent_id: '', warehouse_id: '',
     return_reason: 'other', settlement_type: 'credit_note',
@@ -59,6 +61,8 @@ export default function SalesReturn() {
     const lp = useLedgerPurposes();
     const efc = useEntryFieldControls('sales_return', EFC_RENDERED_KEYS);
     const settings = useEntrySettings();
+    // currency of the entry: local amounts in the term pop-ups and the footer
+    const currencies = useCurrencies();
     // System Control: does this entry show item charges? (else only the Charges Summary)
     const itemCharges = showsProductTerms(settings, 'sales_return');
     const termCols = termColumns(settings, 'sales');
@@ -69,6 +73,7 @@ export default function SalesReturn() {
     const [rows, setRows] = useState([]);
     const [showForm, setShowForm] = useState(false);
     const [form, setForm] = useState(emptyForm);
+    const fx = fxOf(form, currencies);
     const [editingId, setEditingId] = useState(null);
     const [alert, setAlert] = useState(null);
     const [showDraftsOnly, setShowDraftsOnly] = useState(false);
@@ -322,7 +327,7 @@ export default function SalesReturn() {
                 <form onSubmit={handleSubmit} ref={formRef} className="ent-entry">
                     <EntryFillBar voucherType="sales_return" api="sales-returns" form={form} editing={!!editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={copyAsNew} />
                     <div className="erp-topbar grid-cols-1 md:grid-cols-4">
-                        <DocNumberField voucherType="sales_return" categoryId={form.numbering_category_id} docNo={editingId ? form.doc_no : ''} value={form.doc_no} onChange={v => setForm({ ...form, doc_no: v })} />
+                        <DocNumberField docDate={form.doc_date || form.voucher_date} voucherType="sales_return" categoryId={form.numbering_category_id} docNo={editingId ? form.doc_no : ''} value={form.doc_no} onChange={v => setForm({ ...form, doc_no: v })} />
                         <div className={efc.isVisible('doc_date') ? 'erp-field' : 'erp-field hidden'}>
                             <label className="erp-label">Date <span className="req">*</span> {form.doc_date && <span className="hint">({formatDateForDisplay(form.doc_date, 'nepali')} BS)</span>} {efc.isRequired('doc_date') && <span className="req">*</span>}</label>
                             <input disabled={efc.isReadonly('doc_date')} type="date" className="erp-input" value={form.doc_date} onChange={e => setForm({ ...form, doc_date: e.target.value })} required />
@@ -485,12 +490,13 @@ export default function SalesReturn() {
                                     value={form.business_unit_id} onChange={id => setForm({ ...form, business_unit_id: id })} placeholder="Select Unit"
                                 />
                             </div>
+                            <CurrencyField value={form.currency} rate={form.exchange_rate} onChange={v => setForm(f => ({ ...f, ...v }))} />
                             <div className={efc.isVisible('narration') ? 'erp-field' : 'erp-field hidden'}>
                                 <label className="erp-label">Narration {efc.isRequired('narration') && <span className="req">*</span>}</label>
                                 <input disabled={efc.isReadonly('narration')} className="erp-input" value={form.narration} onChange={e => setForm({ ...form, narration: e.target.value })} />
                             </div>
                         </div>
-                        <SalesLineGrid itemCharges={itemCharges}
+                        <SalesLineGrid fx={fx} itemCharges={itemCharges}
                             listKey="sr" title="Sales Return" ctl={lineCtl} details={form.details} onRow={updateDetailRow} onRemove={removeDetailRow} onAdd={addDetailRow}
                             products={filterProductsByCompany(products, form.product_company_id)} allProducts={products} units={units} warehouses={warehouses}
                             settings={settings} termCols={termCols} popupTerms={popupTerms} efc={efc} onProductSelect={handleProductSelect}
@@ -509,7 +515,7 @@ export default function SalesReturn() {
                         )}
                     </div>
 
-                    <EntryFooter
+                    <EntryFooter fx={fx}
 
                         title="Sales Return"
 

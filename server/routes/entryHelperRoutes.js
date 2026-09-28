@@ -41,7 +41,7 @@ router.get('/document-numbering/next', requireAuth, async (req, res) => {
         ]);
         res.json({ success: true, data: await previewDocumentNumber(c, {
             tenantId: t, voucherType: req.query.voucher_type, userId: req.auth.userId, categoryId: UUID.test(req.query.category_id || '') ? req.query.category_id : null,
-            currentFiscalYearId: fy?.id, currentFiscalYearName: fy?.fiscal_year_name, userDefaultBranchId: user?.default_branch_id
+            currentFiscalYearId: fy?.id, currentFiscalYearName: fy?.fiscal_year_name, userDefaultBranchId: user?.default_branch_id, docDate: req.query.doc_date
         }) });
     } catch (e) { fail(res, e); }
 });

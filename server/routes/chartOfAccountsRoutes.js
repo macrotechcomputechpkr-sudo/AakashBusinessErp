@@ -157,8 +157,8 @@ router.post('/account-groups', requireAuth, loadUserPermissions, requirePermissi
             }
         }
 
-        const prefix = group_name.trim().split(/\s+/).map(w => w[0]).join('').toUpperCase().slice(0, 4);
-        const { data: codeRow, error: codeErr } = await tenantClient.rpc('next_account_group_code', { prefix });
+        // Ledger Group code from System Control > Master Codes
+        const { data: codeRow, error: codeErr } = await masterCodes.nextRpc(tenantClient, tenantId, 'account_group');
         if (codeErr) throw codeErr;
 
         const { data, error } = await tenantClient
@@ -435,14 +435,15 @@ router.post('/ledger-accounts', requireAuth, loadUserPermissions, requirePermiss
         const tenantId = req.auth.tenantId;
         const tenantClient = await getTenantClient(tenantId);
 
-        const { data: group } = await tenantClient.from('account_groups').select('group_code, group_name').eq('id', data.account_group_id).single();
+        const { data: group } = await tenantClient.from('account_groups').select('group_code, group_name, category_type').eq('id', data.account_group_id).single();
         if (!group) return res.status(404).json({ success: false, error: 'Account group not found' });
 
         const { data: dupName } = await tenantClient.from('ledger_accounts').select('id').eq('tenant_id', tenantId).ilike('account_name', data.account_name.trim()).maybeSingle();
         if (dupName) return res.status(409).json({ success: false, error: 'A ledger account with this name already exists' });
 
         // the code is always system generated (read-only on the form): <FY><TYPE><number>, e.g. 8182LDG000001
-        const { data: account_code, error: codeErr } = await masterCodes.nextRpc(tenantClient, tenantId, 'ledger');
+        // numbered by ledger type (Customer / Supplier / Both / General - System Control > Master Codes)
+        const { data: account_code, error: codeErr } = await masterCodes.nextRpc(tenantClient, tenantId, masterCodes.ledgerMaster(data.category_type || group.category_type));
         if (codeErr) throw codeErr;
 
         // FEATURE: Short Name (Alias) auto-generates from the Name's

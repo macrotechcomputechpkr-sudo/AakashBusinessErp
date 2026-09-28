@@ -15,7 +15,12 @@
 // =============================================
 
 const MASTERS = {
-    ledger: { label: 'Ledger', table: 'ledger_accounts', col: 'account_code', prefix: 'LDG', sep: '', digits: 6, shortName: 'short_name', nameCol: 'account_name' },
+    ledger: { label: 'General Ledger', table: 'ledger_accounts', col: 'account_code', prefix: 'LDG', sep: '', digits: 6, shortName: 'short_name', nameCol: 'account_name' },
+    // ledgers are numbered by their type (the ledger's / its group's category)
+    ledger_customer: { label: 'Customer Ledger', table: 'ledger_accounts', col: 'account_code', prefix: 'CUS', sep: '', digits: 6, shortName: 'short_name', nameCol: 'account_name' },
+    ledger_supplier: { label: 'Supplier Ledger', table: 'ledger_accounts', col: 'account_code', prefix: 'SUP', sep: '', digits: 6, shortName: 'short_name', nameCol: 'account_name' },
+    ledger_both: { label: 'Both (Customer & Supplier) Ledger', table: 'ledger_accounts', col: 'account_code', prefix: 'BTH', sep: '', digits: 6, shortName: 'short_name', nameCol: 'account_name' },
+    account_group: { label: 'Ledger Group', table: 'account_groups', col: 'group_code', prefix: 'LGR', sep: '', digits: 6 },
     product: { label: 'Product', table: 'products', col: 'product_code', prefix: 'PRD', sep: '-', digits: 7, shortName: 'short_name', nameCol: 'product_name' },
     sub_ledger: { label: 'Sub Ledger', table: 'sub_ledgers', col: 'sub_ledger_code', prefix: 'SLG', sep: '', digits: 6 },
     product_group: { label: 'Product Group', table: 'product_groups', col: 'group_code', prefix: 'PGR', sep: '', digits: 6 },
@@ -53,6 +58,8 @@ async function formats(c, t) {
             prefix: clean(s.prefix, 6) || m.prefix,
             sep: s.sep === '-' || s.sep === '/' || s.sep === '' ? s.sep : m.sep,
             digits: Math.min(9, Math.max(3, parseInt(s.digits, 10) || m.digits)),
+            // Total Length: the longest code allowed (year + separator + type + body)
+            max_len: Math.min(40, Math.max(6, parseInt(s.max_len, 10) || (k === 'product' ? 30 : 15))),
             use_fy: useFy
         };
     }
@@ -104,6 +111,7 @@ async function next(c, t, master) {
             if (w.error) throw w.error;
         }
         const code = build(f, fy, n);
+        if (code.length > f.max_len) throw new Error(`${f.label} code ${code} is longer than its Total Length (${f.max_len}) - System Control > Master Codes`);
         // a code typed in earlier (or an older format) may already hold this number - skip it
         const { data: taken } = await c.from(m.table).select('id').eq('tenant_id', t).eq(m.col, code).limit(1);
         if (!(taken || []).length) return code;
@@ -132,4 +140,7 @@ async function shortNamePreview(c, t, master, name) {
     return `${ini}${String(max + 1).padStart(5, '0')}`;
 }
 
-module.exports = { MASTERS, formats, preview, next, nextRpc, fyCode, currentFy, shortNamePreview, initials, build };
+/** the master code key of a ledger by its type (category_type of the ledger, else of its group) */
+const ledgerMaster = categoryType => ({ sales: 'ledger_customer', customer: 'ledger_customer', purchase: 'ledger_supplier', supplier: 'ledger_supplier', both: 'ledger_both' }[categoryType] || 'ledger');
+
+module.exports = { ledgerMaster, MASTERS, formats, preview, next, nextRpc, fyCode, currentFy, shortNamePreview, initials, build };

@@ -117,7 +117,7 @@ router.post('/billing-terms', requireAuth, loadUserPermissions, requirePermissio
                 term_name: term_name.trim(),
                 description: b.description,
                 term_category: b.term_category || 'general',
-                tax_type: b.tax_type || 'none',
+                tax_type: ['vat', 'excise'].includes(b.tax_type) ? b.tax_type : 'none', // Normal, VAT or Excise only
                 calculation_mode: b.calculation_mode || 'percentage',
                 basis: b.basis || 'value',
                 quantity_unit: b.quantity_unit || 'primary',
@@ -197,6 +197,8 @@ router.put('/billing-terms/:id', requireAuth, loadUserPermissions, requirePermis
             body.base_term_ids = [...new Set((Array.isArray(body.base_term_ids) ? body.base_term_ids : []).filter(x => U.test(x || '') && x !== req.params.id))];
         }
         if ('entry_input_mode' in body && !MODE_KEYS.includes(body.entry_input_mode)) body.entry_input_mode = 'all';
+        // term type is Normal, VAT or Excise (no Service Tax / TSC / Cash Discount on sales & purchase)
+        if ('tax_type' in body && body.tax_type !== existing.tax_type && !['none', 'vat', 'excise'].includes(body.tax_type)) body.tax_type = 'none';
         const update = {
             ...body,
             formula_expression: merged.calculation_mode === 'formula' ? merged.formula_expression : null,

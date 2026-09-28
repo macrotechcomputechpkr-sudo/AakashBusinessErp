@@ -11,7 +11,7 @@
 
 const express = require('express');
 const { checkAccountPurposes } = require('../utils/ledgerPurpose');
-const { bumpAltCounter, rollHeaderStatus } = require('../utils/progressCounters');
+const { bumpAltCounter, rollHeaderStatus, moveSourceProgress } = require('../utils/progressCounters');
 const { checkCompulsoryFields, lockProtectedFields } = require('../utils/entryFieldRules');
 const { checkProductCompany } = require('../utils/productCompanyRules');
 const { applyTermSubLedgers } = require('../utils/termSubLedgers');
@@ -447,7 +447,7 @@ router.post('/purchase-bills', requireAuth, loadUserPermissions, requirePermissi
         try {
             docNo = await resolveDocumentNumber(tenantClient, {
                 tenantId, voucherType: 'purchase_bill', userId: req.auth.userId,
-                categoryId: b.numbering_category_id, manualNumber: b.doc_no, tableName: 'purchase_orders',
+                categoryId: b.numbering_category_id, manualNumber: b.doc_no, docDate: b.doc_date || b.voucher_date || b.entry_date, tableName: 'purchase_orders',
                 currentFiscalYearId: currentFy?.id, currentFiscalYearName: currentFy?.fiscal_year_name,
                 userDefaultBranchId: currentUser?.default_branch_id
             });
@@ -473,7 +473,7 @@ router.post('/purchase-bills', requireAuth, loadUserPermissions, requirePermissi
                 source_order_id: b.source_order_id || null, source_grn_id: b.source_grn_id || null,
                 vendor_ledger_id: b.vendor_ledger_id || null, agent_id: b.agent_id || null,
                 ...snapshots,
-                invoice_type: b.invoice_type || 'credit', currency: b.currency || 'NPR',
+                invoice_type: b.invoice_type || 'credit', currency: b.currency || 'NPR', exchange_rate: Number(b.exchange_rate) > 0 ? Number(b.exchange_rate) : 1,
                 due_date: b.due_date || null, due_days: b.due_days || null,
                 warehouse_id: b.warehouse_id || null,
                 goods_account_ledger_id: b.goods_account_ledger_id || null, goods_sub_ledger_id: b.goods_sub_ledger_id || null, vendor_sub_ledger_id: b.vendor_sub_ledger_id || null,
@@ -573,7 +573,7 @@ router.put('/purchase-bills/:id', requireAuth, loadUserPermissions, requirePermi
 
         await logAudit(tenantId, req.auth.userId, 'update_purchase_bill', 'purchase_bill', req.params.id, { old_data: existing, new_data: data });
         const changes = diffFields(existing, b, [
-            'doc_date', 'vendor_ledger_id', 'agent_id', 'invoice_type', 'currency', 'due_date', 'due_days',
+            'doc_date', 'vendor_ledger_id', 'agent_id', 'invoice_type', 'currency', 'exchange_rate', 'due_date', 'due_days',
             'warehouse_id', 'goods_account_ledger_id', 'goods_sub_ledger_id', 'remarks_text', 'rate_type',
             'cost_center_id', 'business_unit_id', 'area_id', 'route_id', 'priority', 'narration'
         ]);
@@ -604,6 +604,8 @@ async function adjustGrnQtyBilled(tenantClient, sourceGrnDetailId, delta, altDel
 
 // A Bill made straight from a Purchase Order (no GRN) receives the goods itself,
 // so it moves the order's received counter - otherwise the order stays pending.
+// lines pulled straight from a Purchase Quotation use up the quotation (qty_ordered, as a PO would)
+const PQ_PROGRESS = { sourceIdField: 'source_quotation_detail_id', table: 'purchase_quotation_details', counter: 'qty_ordered', altCounter: 'alt_qty_ordered' };
 async function adjustOrderQtyReceived(tenantClient, sourceOrderDetailId, delta, altDelta = 0) {
     const { data: srcLine } = await tenantClient.from('purchase_order_details').select('qty_received, order_id').eq('id', sourceOrderDetailId).maybeSingle();
     if (!srcLine) return;
@@ -653,6 +655,7 @@ router.put('/purchase-bills/:id/status', requireAuth, loadUserPermissions, requi
             for (const d of (billDetails || [])) {
                 if (d.source_grn_detail_id) await adjustGrnQtyBilled(tenantClient, d.source_grn_detail_id, Number(d.qty), Number(d.alt_qty || 0));
                 else if (d.source_order_detail_id) await adjustOrderQtyReceived(tenantClient, d.source_order_detail_id, Number(d.qty), Number(d.alt_qty || 0));
+                else if (d.source_quotation_detail_id) await moveSourceProgress(tenantClient, [d], PQ_PROGRESS, 1);
             }
             await postBillStockMovements(tenantClient, tenantId, data, billDetails || []);
 
@@ -688,6 +691,7 @@ router.put('/purchase-bills/:id/status', requireAuth, loadUserPermissions, requi
             for (const d of (billDetails || [])) {
                 if (d.source_grn_detail_id) await adjustGrnQtyBilled(tenantClient, d.source_grn_detail_id, -Number(d.qty), -Number(d.alt_qty || 0));
                 else if (d.source_order_detail_id) await adjustOrderQtyReceived(tenantClient, d.source_order_detail_id, -Number(d.qty), -Number(d.alt_qty || 0));
+                else if (d.source_quotation_detail_id) await moveSourceProgress(tenantClient, [d], PQ_PROGRESS, -1);
             }
             await reverseReferenceAndSettlements(tenantClient, 'purchase_bill', req.params.id);
             await reverseGlBatch(tenantClient, 'purchase_bill', req.params.id);

@@ -279,7 +279,7 @@ router.post('/production-orders', requireAuth, loadUserPermissions, requirePermi
         try {
             docNo = await resolveDocumentNumber(tenantClient, {
                 tenantId, voucherType: 'production', userId: req.auth.userId,
-                categoryId: b.numbering_category_id, manualNumber: b.doc_no, tableName: 'production_orders',
+                categoryId: b.numbering_category_id, manualNumber: b.doc_no, docDate: b.doc_date || b.voucher_date || b.entry_date, tableName: 'production_orders',
                 currentFiscalYearId: currentFy?.id, currentFiscalYearName: currentFy?.fiscal_year_name,
                 userDefaultBranchId: currentUser?.default_branch_id
             });

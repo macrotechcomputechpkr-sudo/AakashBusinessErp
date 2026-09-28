@@ -59,12 +59,12 @@ async function captureMasterSnapshots(tenantClient, b) {
 // stage) so the frontend can preview the allocation before saving.
 async function getSourceLines(tenantClient, { source_order_id, source_grn_id, source_bill_id }) {
     if (source_grn_id) {
-        const { data } = await tenantClient.from('purchase_grn_details').select('id, product_id, product_name_snapshot, qty, amount').eq('grn_id', source_grn_id);
-        return (data || []).map(d => ({ source_grn_detail_id: d.id, product_id: d.product_id, product_name_snapshot: d.product_name_snapshot, qty: Number(d.qty), value: Number(d.amount) }));
+        const { data } = await tenantClient.from('purchase_grn_details').select('id, product_id, product_name_snapshot, qty, alt_qty, amount').eq('grn_id', source_grn_id);
+        return (data || []).map(d => ({ source_grn_detail_id: d.id, product_id: d.product_id, product_name_snapshot: d.product_name_snapshot, qty: Number(d.qty), alt_qty: Number(d.alt_qty) || 0, value: Number(d.amount) }));
     }
     if (source_bill_id) {
-        const { data } = await tenantClient.from('purchase_bill_details').select('id, product_id, product_name_snapshot, qty, amount').eq('bill_id', source_bill_id);
-        return (data || []).map(d => ({ source_bill_detail_id: d.id, product_id: d.product_id, product_name_snapshot: d.product_name_snapshot, qty: Number(d.qty), value: Number(d.amount) }));
+        const { data } = await tenantClient.from('purchase_bill_details').select('id, product_id, product_name_snapshot, qty, alt_qty, amount').eq('bill_id', source_bill_id);
+        return (data || []).map(d => ({ source_bill_detail_id: d.id, product_id: d.product_id, product_name_snapshot: d.product_name_snapshot, qty: Number(d.qty), alt_qty: Number(d.alt_qty) || 0, value: Number(d.amount) }));
     }
     if (source_order_id) {
         const { data } = await tenantClient.from('purchase_order_details').select('id, product_id, product_name_snapshot, qty, amount').eq('order_id', source_order_id);
@@ -184,9 +184,22 @@ router.post('/purchase-additional-expenses/allocation-preview', requireAuth, loa
         const { source_order_id, source_grn_id, source_bill_id, expense_lines } = req.body;
         const tenantClient = await getTenantClient(req.auth.tenantId);
         const sourceLines = await getSourceLines(tenantClient, { source_order_id, source_grn_id, source_bill_id });
-        const allocated = computeAllocations(sourceLines, Array.isArray(expense_lines) ? expense_lines : []);
-        const netPayable = computeNetPayable(Array.isArray(expense_lines) ? expense_lines : []);
-        res.json({ success: true, data: { allocations: allocated, net_payable: netPayable } });
+        const lines = Array.isArray(expense_lines) ? expense_lines : [];
+        const allocated = computeAllocations(sourceLines, lines);
+        const netPayable = computeNetPayable(lines);
+        // the reference document (party, number, date, amount) shown above the product lines
+        const ref = source_bill_id ? ['purchase_bills', source_bill_id] : source_grn_id ? ['purchase_grns', source_grn_id] : source_order_id ? ['purchase_orders', source_order_id] : null;
+        let reference = null;
+        if (ref) {
+            const { data: h } = await tenantClient.from(ref[0]).select('doc_no, doc_date, vendor_name_snapshot, total_amount, party_bill_no, party_bill_date').eq('id', ref[1]).maybeSingle();
+            reference = h || null;
+        }
+        // additional (goes to the cost of the goods) vs non-additional (VAT that can be claimed, lines kept out of costing)
+        const additional = allocated.reduce((s, a) => s + a.allocated_amount, 0);
+        const r2 = n => Math.round(n * 100) / 100;
+        res.json({ success: true, data: { allocations: allocated, net_payable: netPayable, reference,
+            totals: { net_basic: r2(sourceLines.reduce((s, l) => s + l.value, 0)), additional: r2(additional), non_additional: r2(netPayable - additional),
+                qty: r2(sourceLines.reduce((s, l) => s + l.qty, 0)), alt_qty: r2(sourceLines.reduce((s, l) => s + (l.alt_qty || 0), 0)) } } });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
@@ -246,7 +259,7 @@ router.post('/purchase-additional-expenses', requireAuth, loadUserPermissions, r
         try {
             docNo = await resolveDocumentNumber(tenantClient, {
                 tenantId, voucherType: 'purchase_additional', userId: req.auth.userId,
-                categoryId: b.numbering_category_id, manualNumber: b.doc_no, tableName: 'purchase_additional_expenses',
+                categoryId: b.numbering_category_id, manualNumber: b.doc_no, docDate: b.doc_date || b.voucher_date || b.entry_date, tableName: 'purchase_additional_expenses',
                 currentFiscalYearId: currentFy?.id, currentFiscalYearName: currentFy?.fiscal_year_name,
                 userDefaultBranchId: currentUser?.default_branch_id
             });
@@ -266,11 +279,12 @@ router.post('/purchase-additional-expenses', requireAuth, loadUserPermissions, r
             .insert({
                 vendor_sub_ledger_id: b.vendor_sub_ledger_id || null,
                 product_company_id: b.product_company_id || null,
+                account_posting: b.account_posting !== false, // No: no ledger entry (landed cost still moves)
                 tenant_id: tenantId, branch_id: currentUser?.default_branch_id || null, branch_name_snapshot: branchNameSnapshot,
                 doc_no: docNo, doc_date: b.doc_date, fiscal_year_id: currentFy?.id || null,
                 source_order_id: b.source_order_id || null, source_grn_id: b.source_grn_id || null, source_bill_id: b.source_bill_id || null,
                 vendor_ledger_id: b.vendor_ledger_id || null, cash_vendor_name: b.invoice_type === 'cash' ? (b.cash_vendor_name || null) : null,
-                agent_id: b.agent_id || null, invoice_type: b.invoice_type || 'credit', currency: b.currency || 'NPR',
+                agent_id: b.agent_id || null, invoice_type: b.invoice_type || 'credit', currency: b.currency || 'NPR', exchange_rate: Number(b.exchange_rate) > 0 ? Number(b.exchange_rate) : 1,
                 party_bill_no: b.party_bill_no || null, party_bill_date: b.party_bill_date || null,
                 remarks_id: b.remarks_id || null, remarks_text: b.remarks_text || null,
                 cost_center_id: b.cost_center_id || null, business_unit_id: b.business_unit_id || null,
@@ -357,7 +371,7 @@ router.put('/purchase-additional-expenses/:id/status', requireAuth, loadUserPerm
         if (status === 'posted' && existing.status !== 'posted') {
             const { data: head } = await tenantClient.from('purchase_additional_expenses').select('*').eq('id', req.params.id).maybeSingle();
             const { data: lines } = await tenantClient.from('purchase_additional_expense_lines').select('*').eq('expense_id', req.params.id).order('display_order');
-            try { glPlan = await buildAdditionalExpenseGl(tenantClient, tenantId, head, lines || []); }
+            try { glPlan = head && head.account_posting === false ? null : await buildAdditionalExpenseGl(tenantClient, tenantId, head, lines || []); }
             catch (planErr) { return res.status(400).json({ success: false, error: planErr.message }); }
         }
         const update = { status, updated_by: req.auth.userId };
@@ -368,7 +382,7 @@ router.put('/purchase-additional-expenses/:id/status', requireAuth, loadUserPerm
         // net to the vendor. Previously this document never reached
         // the ledger at all.
         if (status === 'posted' && existing.status !== 'posted') {
-            await postAdditionalExpenseEntry(tenantClient, tenantId, data, glPlan, req.auth.userId);
+            if (glPlan) await postAdditionalExpenseEntry(tenantClient, tenantId, data, glPlan, req.auth.userId);
         } else if (status === 'cancelled' && existing.status === 'posted') {
             await reverseBatch(tenantClient, 'purchase_additional_expense', req.params.id);
         }

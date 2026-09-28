@@ -10,6 +10,7 @@ import TermLedgerInfo from '../components/TermLedgerInfo';
 import ProductCompanyField, { filterProductsByCompany } from '../components/ProductCompanyField';
 import { useEntryFieldControls } from '../hooks/useEntryFieldControls';
 import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
+import CurrencyField, { useCurrencies, fxOf } from '../components/entry/CurrencyField';
 import { useAuth } from '../contexts/AuthContext';
 import SearchablePopupSelect from '../components/SearchablePopupSelect';
 import ReportGrid from '../components/ReportGrid';
@@ -53,7 +54,7 @@ const emptyForm = {
     doc_date: new Date().toISOString().slice(0, 10),
     numbering_category_id: '',
     source_bill_id: '',
-    vendor_ledger_id: '', cash_vendor_name: '', agent_id: '', invoice_type: 'credit', currency: 'NPR',
+    vendor_ledger_id: '', cash_vendor_name: '', agent_id: '', invoice_type: 'credit', currency: 'NPR', exchange_rate: 1,
     warehouse_id: '', goods_account_ledger_id: '', goods_sub_ledger_id: '',
     party_bill_no: '', party_bill_date: '', return_reason: 'other',
     remarks_text: '', rate_type: 'exclusive', cost_center_id: '', business_unit_id: '',
@@ -81,6 +82,9 @@ export default function PurchaseReturn() {
     const [rows, setRows] = useState([]);
     const [showForm, setShowForm] = useState(false);
     const [form, setForm] = useState(emptyForm);
+    // currency of the entry: local amounts in the charge pop-ups and the footer
+    const currencies = useCurrencies();
+    const fx = fxOf(form, currencies);
     const [editingId, setEditingId] = useState(null);
     const [billWiseSettlements, setBillWiseSettlements] = useState(null);
     const [alert, setAlert] = useState(null);
@@ -509,7 +513,7 @@ export default function PurchaseReturn() {
                     )}
 
                     <div className="erp-topbar grid-cols-1 md:grid-cols-4">
-                        <DocNumberField voucherType="purchase_return" categoryId={form.numbering_category_id} docNo={editingId ? form.doc_no : ''} value={form.doc_no} onChange={v => setForm({ ...form, doc_no: v })} label="Doc No" />
+                        <DocNumberField docDate={form.doc_date || form.voucher_date} voucherType="purchase_return" categoryId={form.numbering_category_id} docNo={editingId ? form.doc_no : ''} value={form.doc_no} onChange={v => setForm({ ...form, doc_no: v })} label="Doc No" />
                         <div className={efc.isVisible('doc_date') ? 'erp-field' : 'erp-field hidden'}>
                             <label className="erp-label">Date <span className="req">*</span> {efc.isRequired('doc_date') && <span className="req">*</span>}</label>
                             <input disabled={efc.isReadonly('doc_date')} type="date" className="erp-input" value={form.doc_date} onChange={e => setForm({ ...form, doc_date: e.target.value })} required />
@@ -576,7 +580,7 @@ export default function PurchaseReturn() {
                             </div>
                             <div className={efc.isVisible('currency') ? 'erp-field' : 'erp-field hidden'}>
                                 <label className="erp-label">Currency {efc.isRequired('currency') && <span className="req">*</span>}</label>
-                                <input disabled={efc.isReadonly('currency')} className="erp-input" value={form.currency} onChange={e => setForm({ ...form, currency: e.target.value })} />
+                                <CurrencyField bare disabled={efc.isReadonly('currency')} value={form.currency} rate={form.exchange_rate} onChange={v => setForm(f => ({ ...f, ...v }))} />
                             </div>
                             <div className="erp-field">
                                 <label className="erp-label">Vendor Sub-Ledger</label>
@@ -807,7 +811,7 @@ export default function PurchaseReturn() {
                         onSettlementsChange={setBillWiseSettlements}
                     />
 
-                    <EntryFooter
+                    <EntryFooter fx={fx}
                         title="Purchase Return"
                         totals={{ gross: form.details.reduce((a, d) => a + (d.product_id ? grossOf(d) : 0), 0), billTerm: billTermAmount, net: grandTotal + billTermAmount, taxable: taxSplit.taxable, tax: taxSplit.tax, nonTaxable: taxSplit.nonTaxable }}
                         party={{ label: 'Supplier', name: footVendor?.account_name, creditLimit: footVendor?.credit_limit }}
@@ -852,7 +856,7 @@ export default function PurchaseReturn() {
 
         {/* ==================== CHARGE POP-UPS (item charges / charges summary) ==================== */}
         {productTermModalIndexes !== null && productTermModalIndexes.length > 0 && (
-            <PurchaseProductTermPopup
+            <PurchaseProductTermPopup fx={fx}
                 title="Purchase Return · Item Charges" terms={billingTerms} previews={lineTermPreviews}
                 lines={productTermModalIndexes.map(idx => ({ idx, line: form.details[idx] })).filter(t => t.line)}
                 productName={productTermModalIndexes.length === 1 ? (products.find(p => p.id === form.details[productTermModalIndexes[0]]?.product_id)?.product_name || '') : `${productTermModalIndexes.length} lines`}
@@ -861,7 +865,7 @@ export default function PurchaseReturn() {
                 onClose={() => setProductTermModalIndexes(null)} />
         )}
         {overallOpen && (
-            <PurchaseOverallTermPopup
+            <PurchaseOverallTermPopup fx={fx}
                 title="Purchase Return · Charges Summary" summaryRows={summaryRows} overrides={summaryOverrides} onOverride={(id, v) => setSummaryOverrides(o => ({ ...o, [id]: v }))}
                 terms={billingTerms} billTermIds={form.billing_term_ids} onToggleBillTerm={toggleBillingTerm} preview={billingPreview} subLedgerCell={t => <TermLedgerInfo term={t} isReturn={true} subLedgers={subLedgers} value={(form.term_sub_ledgers || {})[t.id]} onChange={v => setForm(f => ({ ...f, term_sub_ledgers: { ...(f.term_sub_ledgers || {}), [t.id]: v } }))} />}
                 onClose={() => setOverallOpen(false)} />

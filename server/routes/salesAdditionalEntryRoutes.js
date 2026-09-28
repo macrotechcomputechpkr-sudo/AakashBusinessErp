@@ -141,7 +141,7 @@ router.post('/sales-additional-entries', requireAuth, loadUserPermissions, requi
         try {
             docNo = await resolveDocumentNumber(tenantClient, {
                 tenantId, voucherType: 'sales_additional', userId: req.auth.userId,
-                categoryId: b.numbering_category_id, manualNumber: b.doc_no, tableName: 'sales_additional_entries',
+                categoryId: b.numbering_category_id, manualNumber: b.doc_no, docDate: b.doc_date || b.voucher_date || b.entry_date, tableName: 'sales_additional_entries',
                 currentFiscalYearId: currentFy?.id, currentFiscalYearName: currentFy?.fiscal_year_name,
                 userDefaultBranchId: currentUser?.default_branch_id
             });

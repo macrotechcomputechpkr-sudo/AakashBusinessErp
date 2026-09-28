@@ -17,7 +17,8 @@ import ReportGrid from '../components/ReportGrid';
 import Layout from '../components/Layout';
 
 // VAT and Excise terms post to the VAT / Excise ledgers and reports; Cash Discount works on credit days
-const TERM_TYPES = [{ value: 'none', label: 'Normal' }, { value: 'vat', label: 'VAT' }, { value: 'excise', label: 'Excise' }, { value: 'cash_discount', label: 'Cash Discount' }];
+// sales / purchase terms: Normal, VAT or Excise only (no Service Tax / TSC / Cash Discount)
+const TERM_TYPES = [{ value: 'none', label: 'Normal' }, { value: 'vat', label: 'VAT' }, { value: 'excise', label: 'Excise' }];
 
 // what may be typed for the term in a transaction line: % of value, rate per qty (x qty) or an amount
 const ENTRY_INPUTS = [['percent', '%'], ['rate', 'Rate (x qty)'], ['amount', 'Amount'], ['all', 'All'], ['rate_percent', 'Rate and %'],
@@ -180,12 +181,23 @@ export default function BillingTermManagement() {
                         </div>
                         <div>
                             <label className="erp-label">Category</label>
-                            <select className="erp-input" value={form.term_category} onChange={e => setForm({ ...form, term_category: e.target.value })}>
+                            <select className="erp-input" value={form.term_category} onChange={e => setForm({ ...form, term_category: e.target.value, ...(e.target.value === 'rounded_off' && (!form.rounding_method || form.rounding_method === 'none') ? { rounding_method: 'nearest', rounding_precision: form.rounding_precision || 1 } : {}) })}>
                                 <option value="general">General</option>
                                 <option value="additional">Additional</option>
                                 <option value="rounded_off">Rounded Off</option>
                             </select>
                         </div>
+                        {form.term_category === 'rounded_off' && (
+                            <div>
+                                <label className="erp-label">Rounded <span className="text-xs text-gray-400">(the bill total is rounded; this term carries the difference)</span></label>
+                                <div className="flex gap-2">
+                                    <select className="erp-input" value={form.rounding_method === 'none' ? 'nearest' : form.rounding_method} onChange={e => setForm({ ...form, rounding_method: e.target.value })}>
+                                        <option value="nearest">Nearest</option><option value="up">Up</option><option value="down">Down</option>
+                                    </select>
+                                    <input type="number" step="0.01" className="erp-input" style={{ maxWidth: 90 }} title="Round to (1 = whole rupee, 0.5, 10 ...)" value={form.rounding_precision} onChange={e => setForm({ ...form, rounding_precision: e.target.value })} />
+                                </div>
+                            </div>
+                        )}
                         <div>
                             <label className="erp-label">Display Order <span className="text-xs text-gray-400">(evaluation sequence)</span></label>
                             <input type="number" min="1" className="erp-input" value={form.display_order} onChange={e => setForm({ ...form, display_order: e.target.value })} />

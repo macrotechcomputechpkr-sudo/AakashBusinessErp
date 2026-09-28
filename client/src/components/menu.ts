@@ -181,7 +181,7 @@ export const TOP_MENUS: TopMenu[] = [
     { key: 'setup', title: 'Setup', groups: [
         { title: 'Company & Control', items: [
             i('/system-control', '⚙️ System Control (Business Nature, rates, posting)'), i('/fiscal-years', '📅 Fiscal Years'), i('/branches-warehouses', '🏢 Branches & Warehouses'),
-            i('/business-units', '🏷️ Business Units'), i('/ledger-mapping', '🔗 Ledger Mapping'), i('/document-numbering', '🔢 Document Numbering'),
+            i('/business-units', '🏷️ Business Units'), i('/ledger-mapping', '🔗 Ledger Mapping'), i('/document-numbering', '🔢 Document Numbering'), i('/currencies', '💱 Currencies'),
             i('/entry-field-control', '🔒 Entry Field Control'), i('/user-defined-fields', '🧩 User Defined Fields')
         ] },
         { title: 'Users & Security', items: [

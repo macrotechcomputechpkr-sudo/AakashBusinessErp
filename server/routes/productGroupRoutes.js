@@ -11,6 +11,7 @@
 // =============================================
 
 const express = require('express');
+const { extras } = require('../utils/masterExtras');
 const masterCodes = require('../utils/masterCodes');
 const router = express.Router();
 const { getTenantClient, loadUserPermissions, logAudit } = require('../utils/dbHelpers');
@@ -115,6 +116,7 @@ router.post('/product-groups', requireAuth, loadUserPermissions, requirePermissi
                 allow_rate_change_on_mobile_order: !!allow_rate_change_on_mobile_order,
                 is_branch_wise: !!is_branch_wise,
                 branch_id: is_branch_wise ? branch_id : null,
+                ...extras('product_group', req.body),
                 description,
                 display_order: display_order || 1,
                 created_by: req.auth.userId,
@@ -154,6 +156,7 @@ router.put('/product-groups/:id', requireAuth, loadUserPermissions, requirePermi
             depreciation_rate: merged.product_type === 'asset' ? merged.depreciation_rate : null,
             billing_term_id: (Number(merged.default_discount_percentage) || 0) !== 0 ? merged.billing_term_id : null,
             branch_id: merged.is_branch_wise ? merged.branch_id : null,
+            ...extras('product_group', req.body),
             updated_by: req.auth.userId,
             updated_at: new Date().toISOString()
         };

@@ -103,6 +103,7 @@ async function syncDetails(tenantClient, tenantId, deliveryId, details) {
         return {
             tenant_id: tenantId, delivery_id: deliveryId, display_order: i + 1,
             source_order_detail_id: d.source_order_detail_id || null,
+            source_quotation_detail_id: d.source_order_detail_id ? null : (d.source_quotation_detail_id || null),
             product_id: d.product_id, qty, uom_id: d.uom_id || null,
             alt_qty: d.alt_qty || null, alt_unit_id: d.alt_unit_id || null, rate_basis: d.rate_basis || 'primary',
             rate, amount,
@@ -122,6 +123,13 @@ async function logDocumentAudit(tenantClient, tenantId, documentType, documentId
 }
 
 async function updateOrderDeliveredProgress(tenantClient, details, delta) {
+    // lines pulled straight from a Quotation: the quotation's qty is used (qty_ordered, as an order would)
+    for (const d of (details || []).filter(x => x.source_quotation_detail_id && !x.source_order_detail_id)) {
+        const { data: q } = await tenantClient.from('sales_quotation_details').select('qty_ordered').eq('id', d.source_quotation_detail_id).maybeSingle();
+        if (!q) continue;
+        await tenantClient.from('sales_quotation_details').update({ qty_ordered: Math.max(0, Number(q.qty_ordered || 0) + delta * Number(d.qty || 0)) }).eq('id', d.source_quotation_detail_id);
+        await bumpAltCounter(tenantClient, 'sales_quotation_details', d.source_quotation_detail_id, 'alt_qty_ordered', delta * Number(d.alt_qty || 0));
+    }
     for (const d of details) {
         if (!d.source_order_detail_id) continue;
         const { data: oDetail } = await tenantClient.from('sales_order_details').select('qty_delivered').eq('id', d.source_order_detail_id).maybeSingle();
@@ -227,7 +235,7 @@ router.post('/sales-deliveries', requireAuth, loadUserPermissions, requirePermis
         try {
             docNo = await resolveDocumentNumber(tenantClient, {
                 tenantId, voucherType: 'sales_delivery', userId: req.auth.userId,
-                categoryId: b.numbering_category_id, manualNumber: b.doc_no, tableName: 'sales_deliveries',
+                categoryId: b.numbering_category_id, manualNumber: b.doc_no, docDate: b.doc_date || b.voucher_date || b.entry_date, tableName: 'sales_deliveries',
                 currentFiscalYearId: currentFy?.id, currentFiscalYearName: currentFy?.fiscal_year_name,
                 userDefaultBranchId: currentUser?.default_branch_id
             });
@@ -247,7 +255,7 @@ router.post('/sales-deliveries', requireAuth, loadUserPermissions, requirePermis
             .insert({
                 product_company_id: b.product_company_id || null,
                 tenant_id: tenantId, branch_id: currentUser?.default_branch_id || null, branch_name_snapshot: branchNameSnapshot,
-                doc_no: docNo, doc_date: b.doc_date, fiscal_year_id: currentFy?.id || null, source_order_id: b.source_order_id || null,
+                doc_no: docNo, doc_date: b.doc_date, fiscal_year_id: currentFy?.id || null, currency: b.currency || 'NPR', exchange_rate: Number(b.exchange_rate) > 0 ? Number(b.exchange_rate) : 1, source_order_id: b.source_order_id || null, source_quotation_id: b.source_quotation_id || null,
                 customer_ledger_id: b.customer_ledger_id || null, customer_sub_ledger_id: b.customer_sub_ledger_id || null, agent_id: b.agent_id || null,
                 warehouse_id: b.warehouse_id || null,
                 vehicle_no: b.vehicle_no || null, driver_name: b.driver_name || null, transport_master_id: b.transport_master_id || null, delivery_address: b.delivery_address || null,

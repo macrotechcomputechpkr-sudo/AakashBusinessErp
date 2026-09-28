@@ -32,7 +32,10 @@ const DOCS = {
 //          line link column on the entry, header link column on the entry]
 const TARGETS = {
     sales_order: [['sales_quotation', 'qty_ordered', 'source_quotation_detail_id', 'source_quotation_id']],
-    sales_delivery: [['sales_order', 'qty_delivered', 'source_order_detail_id', 'source_order_id']],
+    sales_delivery: [
+        ['sales_quotation', 'qty_ordered', 'source_quotation_detail_id', 'source_quotation_id'],
+        ['sales_order', 'qty_delivered', 'source_order_detail_id', 'source_order_id']
+    ],
     sales_bill: [
         ['sales_quotation', 'qty_ordered', 'source_quotation_detail_id', 'source_quotation_id'],
         ['sales_order', 'qty_delivered', 'source_order_detail_id', 'source_order_id'],
@@ -44,8 +47,12 @@ const TARGETS = {
         ['purchase_requisition', 'qty_ordered', 'source_requisition_detail_id', 'source_requisition_id'],
         ['purchase_quotation', 'qty_ordered', 'source_quotation_detail_id', 'source_quotation_id']
     ],
-    purchase_grn: [['purchase_order', 'qty_received', 'source_order_detail_id', 'source_order_id']],
+    purchase_grn: [
+        ['purchase_quotation', 'qty_ordered', 'source_quotation_detail_id', 'source_quotation_id'],
+        ['purchase_order', 'qty_received', 'source_order_detail_id', 'source_order_id']
+    ],
     purchase_bill: [
+        ['purchase_quotation', 'qty_ordered', 'source_quotation_detail_id', 'source_quotation_id'],
         ['purchase_order', 'qty_received', 'source_order_detail_id', 'source_order_id'],
         ['purchase_grn', 'qty_billed', 'source_grn_detail_id', 'source_grn_id']
     ],
@@ -75,21 +82,25 @@ async function pendingLines(c, t, type, counter, headerIds) {
 }
 
 /** documents of this party that still have something to pull, per type the entry allows */
-async function list(c, t, { target, party_id: partyId, types }) {
-    if (!UUID.test(partyId || '')) return [];
+async function list(c, t, { target, party_id: partyId, types, q }) {
+    // no party chosen yet: every party's pending documents (the doc no. search picks one, and its party)
+    const anyParty = !UUID.test(partyId || '');
+    const search = String(q || '').trim().toLowerCase();
     const allowed = types ? String(types).split(',') : null;
     const out = [];
     for (const [type, counter] of sourcesOf(target)) {
         if (allowed && !allowed.includes(type)) continue;
         const D = DOCS[type];
-        const { data: heads, error } = await c.from(D.table).select('*').eq('tenant_id', t).eq(D.party, partyId).order('doc_date', { ascending: false }).limit(200);
+        let hq = c.from(D.table).select('*').eq('tenant_id', t);
+        if (!anyParty) hq = hq.eq(D.party, partyId);
+        const { data: heads, error } = await hq.order('doc_date', { ascending: false }).limit(anyParty ? 300 : 200);
         if (error) throw error;
-        const open = (heads || []).filter(h => !CLOSED.includes(h.status));
+        const open = (heads || []).filter(h => !CLOSED.includes(h.status) && (!search || String(h.doc_no || '').toLowerCase().includes(search) || String(h[D.partyName] || '').toLowerCase().includes(search)));
         const lines = await pendingLines(c, t, type, counter, open.map(h => h.id));
         const byHead = {};
         lines.forEach(l => { (byHead[l[D.fk]] = byHead[l[D.fk]] || []).push(l); });
         open.filter(h => byHead[h.id]).forEach(h => out.push({
-            type, type_label: D.label, id: h.id, doc_no: h.doc_no, doc_date: h.doc_date, status: h.status, party_name: h[D.partyName] || null,
+            type, type_label: D.label, id: h.id, doc_no: h.doc_no, doc_date: h.doc_date, status: h.status, party_id: h[D.party] || null, party_name: h[D.partyName] || null,
             total_amount: Number(h.total_amount || 0), pending_lines: byHead[h.id].length,
             pending_value: round4(byHead[h.id].reduce((s, l) => s + l.pending_qty * Number(l.rate || 0), 0)),
             warehouse_id: h.warehouse_id || null
@@ -145,6 +156,8 @@ async function pull(c, t, { target, docs }) {
             lines.push(row);
         });
     }
+    // the party comes with the documents (an entry filled from a document number alone)
+    if (party) header[DOCS[picked[0].type].party] = party;
     return { party_id: party, header, lines, documents: used };
 }
 

@@ -159,7 +159,7 @@ router.post('/sales-quotations', requireAuth, loadUserPermissions, requirePermis
         try {
             docNo = await resolveDocumentNumber(tenantClient, {
                 tenantId, voucherType: 'sales_quotation', userId: req.auth.userId,
-                categoryId: b.numbering_category_id, manualNumber: b.doc_no, tableName: 'sales_quotations',
+                categoryId: b.numbering_category_id, manualNumber: b.doc_no, docDate: b.doc_date || b.voucher_date || b.entry_date, tableName: 'sales_quotations',
                 currentFiscalYearId: currentFy?.id, currentFiscalYearName: currentFy?.fiscal_year_name,
                 userDefaultBranchId: currentUser?.default_branch_id
             });
@@ -181,7 +181,7 @@ router.post('/sales-quotations', requireAuth, loadUserPermissions, requirePermis
                 tenant_id: tenantId, branch_id: currentUser?.default_branch_id || null, branch_name_snapshot: branchNameSnapshot,
                 doc_no: docNo, doc_date: b.doc_date, fiscal_year_id: currentFy?.id || null, valid_until: b.valid_until || null,
                 customer_ledger_id: b.customer_ledger_id || null, customer_sub_ledger_id: b.customer_sub_ledger_id || null, agent_id: b.agent_id || null,
-                currency: b.currency || 'NPR', warehouse_id: b.warehouse_id || null,
+                currency: b.currency || 'NPR', exchange_rate: Number(b.exchange_rate) > 0 ? Number(b.exchange_rate) : 1, warehouse_id: b.warehouse_id || null,
                 remarks_id: b.remarks_id || null, remarks_text: b.remarks_text || null, narration: b.narration || null,
                 rate_type: b.rate_type || 'exclusive', cost_center_id: b.cost_center_id || null, business_unit_id: b.business_unit_id || null,
                 area_id: b.area_id || null, route_id: b.route_id || null, terms_conditions_id: b.terms_conditions_id || null,

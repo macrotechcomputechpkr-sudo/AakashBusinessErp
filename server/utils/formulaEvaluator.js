@@ -207,6 +207,18 @@ function evaluateAllTerms(terms, baseVariables) {
             continue;
         }
 
+        // Rounded Off category: the running bill total is rounded (Nearest / Up / Down to the
+        // precision) and this term carries the difference, whatever its sign
+        if (term.term_category === 'rounded_off') {
+            const target = applyRounding(runningTotal, term.rounding_method && term.rounding_method !== 'none' ? term.rounding_method : 'nearest', term.rounding_precision || 1);
+            const diff = Math.round((target - runningTotal) * 1e6) / 1e6;
+            results.push({ term_code: term.term_code, amount: diff, rounded_off: true });
+            byCode[term.term_code] = diff;
+            if (term.id) byId[term.id] = diff;
+            runningTotal += diff;
+            continue;
+        }
+
         let baseAmount = term.base_reference === 'running_total'
             ? runningTotal
             : term.base_reference === 'specific_term'

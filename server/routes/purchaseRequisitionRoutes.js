@@ -383,7 +383,7 @@ router.post('/purchase-requisitions', requireAuth, loadUserPermissions, requireP
         try {
             docNo = await resolveDocumentNumber(tenantClient, {
                 tenantId, voucherType: 'purchase_requisition', userId: req.auth.userId,
-                categoryId: b.numbering_category_id, manualNumber: b.doc_no, tableName: 'purchase_requisitions',
+                categoryId: b.numbering_category_id, manualNumber: b.doc_no, docDate: b.doc_date || b.voucher_date || b.entry_date, tableName: 'purchase_requisitions',
                 currentFiscalYearId: currentFy?.id, currentFiscalYearName: currentFy?.fiscal_year_name,
                 userDefaultBranchId: currentUser?.default_branch_id
             });
@@ -408,7 +408,7 @@ router.post('/purchase-requisitions', requireAuth, loadUserPermissions, requireP
                 doc_no: docNo, doc_date: b.doc_date, fiscal_year_id: currentFy?.id || null,
                 vendor_ledger_id: b.vendor_ledger_id || null, agent_id: b.agent_id || null,
                 ...snapshots,
-                invoice_type: b.invoice_type || 'credit', currency: b.currency || 'NPR',
+                invoice_type: b.invoice_type || 'credit', currency: b.currency || 'NPR', exchange_rate: Number(b.exchange_rate) > 0 ? Number(b.exchange_rate) : 1,
                 due_date: b.due_date || null, due_days: b.due_days || null,
                 warehouse_id: b.warehouse_id || null,
                 goods_account_ledger_id: b.goods_account_ledger_id || null, goods_sub_ledger_id: b.goods_sub_ledger_id || null,
@@ -503,7 +503,7 @@ router.put('/purchase-requisitions/:id', requireAuth, loadUserPermissions, requi
 
         await logAudit(tenantId, req.auth.userId, 'update_purchase_requisition', 'purchase_requisition', req.params.id, { old_data: existing, new_data: data });
         const changes = diffFields(existing, b, [
-            'doc_date', 'vendor_ledger_id', 'agent_id', 'invoice_type', 'currency', 'due_date', 'due_days',
+            'doc_date', 'vendor_ledger_id', 'agent_id', 'invoice_type', 'currency', 'exchange_rate', 'due_date', 'due_days',
             'warehouse_id', 'goods_account_ledger_id', 'goods_sub_ledger_id', 'remarks_text', 'rate_type',
             'cost_center_id', 'business_unit_id', 'area_id', 'route_id', 'priority', 'expected_delivery_date', 'narration'
         ]);
