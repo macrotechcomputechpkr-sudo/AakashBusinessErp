@@ -204,7 +204,7 @@ export default function PdcVoucher() {
 
             {showForm && (
                 <form onSubmit={handleSubmit} ref={formRef}>
-                    <EntryFillBar voucherType="pdc" api="pdc-vouchers" form={form} editing={!!editingId} onFill={p => setForm(f => ({ ...f, ...p }))}
+                    <EntryFillBar voucherType="pdc" api="pdc-vouchers" form={form} editing={!!editingId} docId={editingId} onFill={p => setForm(f => ({ ...f, ...p }))}
                         onCopy={async r => { await handleEdit(r); setEditingId(null); setForm(f => asNewCopy(f, r.id)); }} />
                     <div className="erp-topbar grid-cols-1 md:grid-cols-4">
                         <div className={efc.isVisible('doc_date') ? 'erp-field' : 'erp-field hidden'}>

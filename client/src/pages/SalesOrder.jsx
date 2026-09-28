@@ -405,7 +405,7 @@ export default function SalesOrder() {
 
             {showForm && (
                 <form onSubmit={handleSubmit} ref={formRef} className="ent-entry">
-                    <EntryFillBar voucherType="sales_order" api="sales-orders" form={form} editing={!!editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={r => handleCopyFrom(r.id)} />
+                    <EntryFillBar voucherType="sales_order" api="sales-orders" form={form} editing={!!editingId} docId={editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={r => handleCopyFrom(r.id)} />
                     <div className="erp-topbar grid-cols-1 md:grid-cols-4">
                         <DocNumberField docDate={form.doc_date || form.voucher_date} voucherType="sales_order" categoryId={form.numbering_category_id} docNo={editingId ? form.doc_no : ''} value={form.doc_no} onChange={v => setForm({ ...form, doc_no: v })} />
                         <div className={efc.isVisible('doc_date') ? 'erp-field' : 'erp-field hidden'}>

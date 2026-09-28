@@ -635,7 +635,7 @@ export default function PurchaseOrder() {
 
             {showForm && (
                 <form onSubmit={handleSubmit} ref={formRef} className="ent-entry">
-                    <EntryFillBar voucherType="purchase_order" api="purchase-orders" form={form} editing={!!editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={r => handleCopyFrom(r.id)} />
+                    <EntryFillBar voucherType="purchase_order" api="purchase-orders" form={form} editing={!!editingId} docId={editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={r => handleCopyFrom(r.id)} />
                     {/* ==================== PULL FORWARD (Order-only) ==================== */}
                     {!editingId && (
                         <details className="mx-3 mt-2 text-xs"><summary className="cursor-pointer text-[#1a4a8a]">Pull from any earlier document (any party)</summary>

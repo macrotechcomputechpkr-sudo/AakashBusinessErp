@@ -735,7 +735,7 @@ export default function PurchaseBill() {
 
             {showForm && (
                 <form onSubmit={handleSubmit} ref={formRef} className="ent-entry">
-                    <EntryFillBar voucherType="purchase_bill" api="purchase-bills" form={form} editing={!!editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={r => handleCopyFrom(r.id)} />
+                    <EntryFillBar voucherType="purchase_bill" api="purchase-bills" form={form} editing={!!editingId} docId={editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={r => handleCopyFrom(r.id)} />
                     {/* ==================== PULL FORWARD (universal - any earlier stage) ==================== */}
                     {!editingId && (
                         <details className="mx-3 mt-2 text-xs"><summary className="cursor-pointer text-[#1a4a8a]">Pull from any earlier document (any party)</summary>

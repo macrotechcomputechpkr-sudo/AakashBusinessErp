@@ -299,7 +299,7 @@ export default function PurchaseAdditionalExpense() {
 
             {showForm && (
                 <form onSubmit={handleSubmit} ref={formRef}>
-                    <EntryFillBar voucherType="purchase_additional" api="purchase-additional-expenses" form={form} editing={!!editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={r => handleCopyFrom(r.id)} />
+                    <EntryFillBar voucherType="purchase_additional" api="purchase-additional-expenses" form={form} editing={!!editingId} docId={editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={r => handleCopyFrom(r.id)} />
                     <div className="erp-topbar grid-cols-1 md:grid-cols-4">
                         <div className={efc.isVisible('doc_date') ? 'erp-field' : 'erp-field hidden'}>
                             <label className="erp-label">Date <span className="req">*</span> {form.doc_date && <span className="hint">({formatDateForDisplay(form.doc_date, 'nepali')} BS)</span>} {efc.isRequired('doc_date') && <span className="req">*</span>}</label>

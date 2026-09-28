@@ -268,7 +268,7 @@ export default function CashBankEntry() {
 
             {mode === 'single' && showForm && (
                 <form onSubmit={handleSubmit} ref={formRef}>
-                    <EntryFillBar voucherType="cash_bank_entry" api="cash-bank-entries" form={form} editing={!!editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={copyAsNew} />
+                    <EntryFillBar voucherType="cash_bank_entry" api="cash-bank-entries" form={form} editing={!!editingId} docId={editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={copyAsNew} />
                     {/* ==================== MASTER ==================== */}
                     <div className="erp-topbar grid-cols-1 md:grid-cols-4">
                         <DocNumberField docDate={form.doc_date || form.voucher_date} voucherType="cash_bank_entry" categoryId={form.numbering_category_id} docNo={editingId ? form.doc_no : ''} value={form.doc_no} onChange={v => setForm({ ...form, doc_no: v })} label="Voucher No" />

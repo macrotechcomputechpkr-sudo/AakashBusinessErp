@@ -302,7 +302,7 @@ export default function SalesNonsaleableReturn() {
 
             {showForm && (
                 <form onSubmit={handleSubmit} ref={formRef} className="ent-entry">
-                    <EntryFillBar voucherType="sales_nonsalable_return" api="sales-nonsaleable-returns" form={form} editing={!!editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={copyAsNew} />
+                    <EntryFillBar voucherType="sales_nonsalable_return" api="sales-nonsaleable-returns" form={form} editing={!!editingId} docId={editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={copyAsNew} />
                     <p className="mx-4 mt-3 text-xs text-amber-700 bg-amber-50 border-l-4 border-amber-400 px-3 py-2 rounded">
                         ⚠️ These goods are tracked separately from regular sellable stock and will NOT be available for future sales.
                     </p>

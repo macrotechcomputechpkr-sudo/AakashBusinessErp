@@ -392,7 +392,7 @@ export default function JournalVoucher() {
 
             {showForm && (
                 <form onSubmit={handleSubmit} ref={formRef}>
-                    <EntryFillBar voucherType="journal" api="journal-vouchers" form={form} editing={!!editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={r => handleCopyFrom(r.id)} />
+                    <EntryFillBar voucherType="journal" api="journal-vouchers" form={form} editing={!!editingId} docId={editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={r => handleCopyFrom(r.id)} />
                     <div className="erp-topbar grid-cols-1 md:grid-cols-3">
                         <DocNumberField docDate={form.doc_date} voucherType="journal" categoryId={form.numbering_category_id} docNo={editingId ? form.doc_no : ''} value={form.doc_no} onChange={v => setForm(f => ({ ...f, doc_no: v }))} />
                         <div className={efc.isVisible('doc_date') ? 'erp-field' : 'erp-field hidden'}>

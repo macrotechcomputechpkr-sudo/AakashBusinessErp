@@ -530,7 +530,7 @@ export default function PurchaseRequisition() {
 
             {showForm && (
                 <form onSubmit={handleSubmit} ref={formRef} className="ent-entry">
-                    <EntryFillBar voucherType="purchase_requisition" api="purchase-requisitions" form={form} editing={!!editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={copyAsNew} />
+                    <EntryFillBar voucherType="purchase_requisition" api="purchase-requisitions" form={form} editing={!!editingId} docId={editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={copyAsNew} />
                     {/* ==================== TOP BAR (identity fields, Cash/Credit up front) ==================== */}
                     <div className="erp-topbar grid-cols-1 md:grid-cols-6">
                         <div className="erp-field">
