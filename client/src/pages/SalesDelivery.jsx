@@ -20,7 +20,7 @@ import UdfValuesModal from '../components/UdfValuesModal';
 import RecordHistory from '../components/RecordHistory';
 import { priceUrl, lineUnitOf, useSlabRepricing } from '../utils/salesPricing';
 import RateTypeField, { useEntryRateType } from '../components/entry/RateTypeField';
-import useEntrySettings from '../components/entry/useEntrySettings';
+import useEntrySettings, { showsProductTerms } from '../components/entry/useEntrySettings';
 import DocNumberField from '../components/entry/DocNumberField';
 import PendingDocsPanel, { mergePulled } from '../components/entry/PendingDocsPanel';
 import { PartyDetailsPanel, emptyPartyInfo, savePartyInfo, partyInfoFromDoc } from '../components/entry/PartyFooterTabs';
@@ -28,7 +28,7 @@ import SalesLineGrid, { useLineGridControl, lineTotals } from '../components/ent
 import { EntryFooter, useEntryHotkeys, latestOf } from '../components/entry/EntryParts';
 
 import { dualHelpers } from '../components/entry/dualHelpers';
-import DocActions, { HoldButtons, asNewCopy } from '../components/entry/DocActions';
+import DocActions, { asNewCopy } from '../components/entry/DocActions';
 
 const emptyDetailRow = () => ({ product_id: '', qty: '', uom_id: '', alt_qty: '', alt_unit_id: '', rate_basis: 'primary', rate: '', warehouse_id: '', batch_no: '', serial_no: '', mfg_date: '', exp_date: '', source_order_detail_id: '' });
 
@@ -50,6 +50,8 @@ export default function SalesDelivery() {
     const { authFetch } = useAuth();
     const efc = useEntryFieldControls('sales_delivery', EFC_RENDERED_KEYS);
     const settings = useEntrySettings();
+    // System Control: does this entry show item charges? (else only the Charges Summary)
+    const itemCharges = showsProductTerms(settings, 'sales_delivery');
     const termCols = [];
     const popupTerms = !!settings?.popupTerms?.includes('sales');
     const [partyInfo, setPartyInfo] = useState(emptyPartyInfo());
@@ -194,7 +196,7 @@ export default function SalesDelivery() {
     const lineCtl = useLineGridControl();
     const lineTot = lineTotals(form.details, lineAmount, termCols, false);
     const selectedCustomer = customers.find(c => c.id === form.customer_ledger_id);
-    // F7: the last challan as a new one (F8 - held entries - is on the Hold button)
+    // F7: the last challan as a new one
     useEntryHotkeys(showForm, { F7: () => { const last = latestOf(rows); if (last) copyAsNew(last); } });
 
     const handlePullFromOrder = async (orderId) => {
@@ -465,7 +467,7 @@ export default function SalesDelivery() {
                                 <input disabled={efc.isReadonly('narration')} className="erp-input" value={form.narration} onChange={e => setForm({ ...form, narration: e.target.value })} />
                             </div>
                         </div>
-                        <SalesLineGrid
+                        <SalesLineGrid itemCharges={itemCharges}
                             listKey="sd" title="Sales Delivery" ctl={lineCtl} details={form.details} onRow={updateDetailRow} onRemove={removeDetailRow} onAdd={addDetailRow}
                             products={filterProductsByCompany(products, form.product_company_id)} allProducts={products} units={units} warehouses={warehouses}
                             settings={settings} termCols={termCols} popupTerms={popupTerms} efc={efc} onProductSelect={handleProductSelect}
@@ -486,13 +488,12 @@ export default function SalesDelivery() {
 
                         remarks={{ value: form.remarks_text, onChange: v => setForm(f => ({ ...f, remarks_text: v })), options: remarks.map(r => r.remark_text) }}
 
-                        onProductTerm={false ? lineCtl.openTerms : null} onBillTerm={false ? lineCtl.openOverall : null}
+                        onProductTerm={null} onBillTerm={false ? lineCtl.openOverall : null}
 
                         panels={[{ key: 'billing', label: 'Party & Tax Info', content: <PartyDetailsPanel partyId={form.customer_ledger_id} partyLabel="Customer" info={partyInfo} onChange={setPartyInfo} /> }]}
 
                         actions={<>
 
-                            <HoldButtons hotkey voucherType="sales_delivery" form={form} disabled={!!editingId} onRecall={p => { if (p) { setForm(p); setEditingId(null); setShowForm(true); } else resetForm(); }} />
 
                             <button type="button" onClick={e => handleSubmit(e, true)} className="erp-btn">💾 Save as Draft</button>
 

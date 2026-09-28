@@ -22,7 +22,7 @@ import { formatDateForDisplay } from '../utils/nepaliDateUtils';
 import BillWiseSettlementPanel from '../components/BillWiseSettlementPanel';
 import UdfValuesModal from '../components/UdfValuesModal';
 import RecordHistory from '../components/RecordHistory';
-import DocActions, { HoldButtons, asNewCopy } from '../components/entry/DocActions';
+import DocActions, { asNewCopy } from '../components/entry/DocActions';
 import DocNumberField from '../components/entry/DocNumberField';
 
 const PAYMENT_MODES = [
@@ -457,7 +457,6 @@ export default function CashBankEntry() {
                     <div className="erp-bottombar">
                         <div />
                         <div className="erp-bottombar-actions">
-                            <HoldButtons voucherType="cash_bank_entry" form={form} disabled={!!editingId} onRecall={p => { if (p) { setForm({ ...emptyForm, ...p, lines: p.lines?.length ? p.lines : [emptyLine()] }); setEditingId(null); setShowForm(true); } else resetForm(); }} />
                             <button type="button" onClick={() => { resetForm(); setShowForm(false); }} className="erp-btn">Cancel</button>
                             <button type="button" onClick={e => handleSubmit(e, true)} className="erp-btn">💾 Save as Draft</button>
                             <button type="submit" className="erp-btn primary">{editingId ? 'Update' : 'Save'}</button>

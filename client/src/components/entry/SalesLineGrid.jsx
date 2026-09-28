@@ -20,7 +20,7 @@
 import React, { useMemo, useRef, useState } from 'react';
 import SearchablePopupSelect from '../SearchablePopupSelect';
 import BatchSerialPicker from '../BatchSerialPicker';
-import { calcLine } from './lineCalc';
+import { calcLine, allowedKinds, kindOf, termFromInput } from './lineCalc';
 import { TermPopup, OverallTermPopup } from './EntryParts';
 
 const num = v => (v === '' || v === null || v === undefined ? '' : v);
@@ -104,13 +104,14 @@ export function lineTotals(details, lineGross, termCols, useTerms = true) {
     }, { qty: 0, gross: 0, disc: 0, excise: 0, tax: 0, term: 0, amount: 0, taxable: 0, nonTaxable: 0 });
 }
 
+const KIND_HINT = { pct: '%', rate: 'rate/qty', amt: 'amount' };
 const TAXATION = { vat: 'VAT', excise: 'Excise', discount: 'Cash Discount', none: 'None' };
 const formulaOf = t => (!t ? 'BV' : t.calculation_mode === 'formula' ? t.formula_expression : t.base_reference_term ? `after ${t.base_reference_term.term_code}` : 'BV');
 
 export default function SalesLineGrid({
     details, onRow, onRemove, onAdd, products, allProducts, units, warehouses, settings, termCols = [], popupTerms = false,
     efc, onProductSelect, docWarehouseId, selected, onSelected, features = {}, dual, lineGross, onProductKeyDown, listKey = 'sl',
-    ctl: ctlIn, title = 'Entry', minRows = 10
+    ctl: ctlIn, title = 'Entry', minRows = 10, itemCharges = true
 }) {
     const f0 = { free: true, batch: true, expiry: false, terms: true, rate: true, tax: true, ...features };
     const visible = (k) => !efc || efc.isVisible(k, 'detail');
@@ -128,10 +129,11 @@ export default function SalesLineGrid({
     };
     const termById = useMemo(() => Object.fromEntries((settings?.billingTerms || []).map(t => [t.id, t])), [settings]);
     const multiWh = !!settings?.multiWarehouse;
-    const inlineTerms = f.terms && termCols.length > 0 && !popupTerms;
+    // itemCharges off (System Control): no per-line charges, only the Charges Summary - the product's values still count
+    const inlineTerms = itemCharges && f.terms && termCols.length > 0 && !popupTerms;
     const legacyTerms = f.terms && termCols.length === 0;
     // Disc % / Tax % as columns only when this entry's charges are not set to open in the pop-up
-    const legacyInline = legacyTerms && !popupTerms;
+    const legacyInline = itemCharges && legacyTerms && !popupTerms;
     const unitName = id => units.find(u => u.id === id)?.unit_name || '';
     const isDual = pid => !!dual && dual.isDual(pid);
     const grossOf = d => (lineGross ? lineGross(d) : (Number(d.qty) || 0) * (Number(d.rate) || 0));
@@ -144,20 +146,32 @@ export default function SalesLineGrid({
         if (legacyTerms || !f.terms) {
             const x = calcLine(d, g, []);
             return [
-                { key: 'discount_percent', description: 'Product Discount', sign: '-', percent: d.discount_percent, amount: x.discount_amount, calculatedOn: g, termCode: 'DISC', formula: 'BV', taxation: 'None' },
-                ...(f.tax ? [{ key: 'tax_percent', description: 'VAT / Tax', sign: '+', percent: d.tax_percent, amount: x.tax_amount, calculatedOn: g - x.discount_amount, termCode: 'TAX', formula: 'BV - Discount', taxation: 'VAT' }] : [])
+                { key: 'discount_percent', description: 'Product Discount', sign: '-', kinds: ['pct'], kind: 'pct', value: d.discount_percent, percent: d.discount_percent, amount: x.discount_amount, calculatedOn: g, termCode: 'DISC', formula: 'BV', taxation: 'None' },
+                ...(f.tax ? [{ key: 'tax_percent', description: 'VAT / Tax', sign: '+', kinds: ['pct'], kind: 'pct', value: d.tax_percent, percent: d.tax_percent, amount: x.tax_amount, calculatedOn: g - x.discount_amount, termCode: 'TAX', formula: 'BV - Discount', taxation: 'VAT' }] : [])
             ];
         }
         const x = calcLine(d, g, termCols);
         return termCols.map(c => {
             const t = termById[c.term_id];
-            const lt = d.line_terms?.[c.key] || {};
+            const lt = d.line_terms?.[c.key];
+            const kind = kindOf(lt);
             return {
-                key: c.key, description: c.label, basis: lt.basis || 'V', sign: c.kind === 'discount' ? '-' : '+', percent: lt.fixed ? '' : lt.percent,
+                key: c.key, description: c.label, sign: c.kind === 'discount' ? '-' : '+', percent: lt?.fixed ? '' : lt?.percent,
+                kinds: allowedKinds(c.input), kind, value: lt ? (kind === 'amt' ? lt.amount : lt.percent) : '', editable: c.manual !== false,
                 amount: x.line_terms?.[c.key]?.amount, calculatedOn: x.line_terms?.[c.key]?.base, termCode: t?.term_code, ledgerName: t?.billing_ledger?.account_name,
                 subLedger: t?.sub_ledger?.sub_ledger_name, formula: formulaOf(t), taxation: TAXATION[t?.tax_type || c.kind] || 'None'
             };
         });
+    };
+    // a % / rate per qty / amount typed for a charge of one line ('' clears it)
+    const setTermInput = (idx, key, kind, v) => {
+        const d = details[idx];
+        if (legacyTerms || !f.terms) { onRow(idx, { [key]: v }); return; }
+        const c = termCols.find(x => x.key === key);
+        if (!c || c.manual === false) return;
+        const lt = { ...(d.line_terms || {}) };
+        if (v === '' || v === null || v === undefined) delete lt[key]; else lt[key] = termFromInput(c.term_id, kind, v);
+        onRow(idx, { line_terms: lt });
     };
     const setLineTerm = (idx, key, patch) => {
         const d = details[idx];
@@ -171,12 +185,12 @@ export default function SalesLineGrid({
     // ---- over-all terms (every line, or the ticked lines) ----
     const scope = details.map((d, i) => i).filter(i => details[i].product_id && (!selected || !selected.length || selected.includes(i)));
     const overallRows = () => {
-        const keys = legacyTerms || !f.terms ? termRows({ qty: 0, rate: 0 }).map(r => ({ key: r.key, label: r.description, sign: r.sign })) : termCols.map(c => ({ key: c.key, label: c.label, sign: c.kind === 'discount' ? '-' : '+' }));
+        const keys = legacyTerms || !f.terms ? termRows({ qty: 0, rate: 0 }).map(r => ({ key: r.key, label: r.description, sign: r.sign })) : termCols.filter(c => c.summary !== false).map(c => ({ key: c.key, label: c.label, sign: c.kind === 'discount' ? '-' : '+', editable: c.manual !== false, pctOk: allowedKinds(c.input).includes('pct'), amtOk: allowedKinds(c.input).includes('amt') }));
         return keys.map(k => {
             let amount = 0; const pcts = new Set();
             scope.forEach(i => { const r = termRows(details[i]).find(x => x.key === k.key); if (r) { amount += Number(r.amount) || 0; pcts.add(String(Number(r.percent) || 0)); } });
             const same = pcts.size === 1 ? Number([...pcts][0]) : '';
-            return { key: k.key, term: k.label, basis: !legacyTerms && f.terms && splitByQty(k.key) ? 'Q' : 'V', sign: k.sign, percent: pcts.size > 1 ? '' : same, mixed: pcts.size > 1, amount };
+            return { key: k.key, term: k.label, editable: k.editable, pctOk: k.pctOk, amtOk: k.amtOk, basis: !legacyTerms && f.terms && splitByQty(k.key) ? 'Q' : 'V', sign: k.sign, percent: pcts.size > 1 ? '' : same, mixed: pcts.size > 1, amount };
         });
     };
     const overallPercent = (key, v) => scope.forEach(i => setLineTerm(i, key, { percent: v, basis: 'V' }));
@@ -234,7 +248,7 @@ export default function SalesLineGrid({
                             {f.rate && <th className="r">Gross</th>}
                             {legacyInline && <th className={`r ${visible('discount_percent') ? '' : 'hidden'}`}>Disc %</th>}
                             {legacyInline && f.tax && <th className={`r ${visible('tax_percent') ? '' : 'hidden'}`}>Tax %</th>}
-                            {inlineTerms && termCols.map(c => <th key={c.key} className="r" title={c.label}>{c.label} %</th>)}
+                            {inlineTerms && termCols.map(c => <th key={c.key} className="r" title={c.label}>{c.label}</th>)}
                             {f.terms && <th className="r">Charges ±</th>}
                             {f.rate && <th className="r">Net Amount</th>}
                             <th />
@@ -336,18 +350,26 @@ export default function SalesLineGrid({
                                     {f.rate && <td className="r whitespace-nowrap">{d.product_id ? fmt(gross) : ''}</td>}
                                     {legacyInline && <td className={`r ${visible('discount_percent') ? '' : 'hidden'}`}><input type="number" step="0.01" className="erp-input text-right" style={{ width: 56 }} value={num(d.discount_percent)} onChange={e => onRow(idx, { discount_percent: e.target.value })} /></td>}
                                     {legacyInline && f.tax && <td className={`r ${visible('tax_percent') ? '' : 'hidden'}`}><input disabled={readonly('tax_percent')} type="number" step="0.01" className="erp-input text-right" style={{ width: 56 }} value={num(d.tax_percent)} onChange={e => onRow(idx, { tax_percent: e.target.value })} /></td>}
-                                    {inlineTerms && termCols.map(c => (
-                                        <td key={c.key} className="r">
-                                            <input type="number" step="0.01" className="erp-input text-right" style={{ width: 70 }} value={d.line_terms?.[c.key]?.fixed ? '' : num(d.line_terms?.[c.key]?.percent)} placeholder={d.line_terms?.[c.key]?.fixed ? 'amt' : ''}
-                                                onChange={e => setLineTerm(idx, c.key, { percent: e.target.value })} />
-                                            <div className="text-[10px] text-gray-600 text-right">{fmt(calc.line_terms?.[c.key]?.amount)}</div>
-                                        </td>
-                                    ))}
+                                    {inlineTerms && termCols.map(c => {
+                                        const lt = d.line_terms?.[c.key];
+                                        const kinds = allowedKinds(c.input);
+                                        const kind = kinds.includes(kindOf(lt)) ? kindOf(lt) : kinds[0];
+                                        const v = lt && kindOf(lt) === kind ? (kind === 'amt' ? lt.amount : lt.percent) : '';
+                                        return (
+                                            <td key={c.key} className="r">
+                                                <input type="number" step="0.01" className="erp-input text-right" style={{ width: 70 }} value={num(v)} disabled={c.manual === false}
+                                                    placeholder={KIND_HINT[kind]} title={`${c.label}: ${KIND_HINT[kind]}`} onChange={e => setTermInput(idx, c.key, kind, e.target.value)} />
+                                                <div className="text-[10px] text-gray-600 text-right">{fmt(calc.line_terms?.[c.key]?.amount)}</div>
+                                            </td>
+                                        );
+                                    })}
                                     {f.terms && (
                                         <td className="r">
-                                            <button type="button" tabIndex={-1} className="ent-term-btn" onClick={() => { ctl.setActive(idx); ctl.setTermsFor(idx); }} title="Charges of this line">
-                                                {d.product_id ? fmt(amount - gross) : '…'}
-                                            </button>
+                                            {itemCharges ? (
+                                                <button type="button" tabIndex={-1} className="ent-term-btn" onClick={() => { ctl.setActive(idx); ctl.setTermsFor(idx); }} title="Charges of this line">
+                                                    {d.product_id ? fmt(amount - gross) : '…'}
+                                                </button>
+                                            ) : (d.product_id ? fmt(amount - gross) : '')}
                                         </td>
                                     )}
                                     {f.rate && <td className="r whitespace-nowrap font-semibold">{d.product_id ? fmt(amount) : ''}</td>}
@@ -384,14 +406,13 @@ export default function SalesLineGrid({
                 <button type="button" className="nav-btn small" onClick={addAndFocus}>➕ Add line</button>
                 <span>Item Code: type a code or scan a barcode + Enter · Item Name: search by {searchBy} · Enter on the last field adds a line · Charges ±: this line's charges</span>
             </div>
-            {ctl.termsFor !== null && details[ctl.termsFor] && (() => {
+            {itemCharges && ctl.termsFor !== null && details[ctl.termsFor] && (() => {
                 const d = details[ctl.termsFor];
                 const p = productById[d.product_id];
                 return (
                     <TermPopup title={`${title} · Item Charges`} productName={p ? `${p.product_code || ''} ${p.product_name}` : `Line ${ctl.termsFor + 1}`}
                         basic={grossOf(d)} qty={d.qty} unitName={unitName(d.uom_id)} rows={termRows(d)}
-                        onPercent={(key, v) => setLineTerm(ctl.termsFor, key, { percent: v })}
-                        onBasis={legacyTerms || !f.terms ? null : (key, b) => setLineTerm(ctl.termsFor, key, { basis: b })}
+                        onInput={(key, kind, v) => setTermInput(ctl.termsFor, key, kind, v)}
                         onClose={() => ctl.setTermsFor(null)} />
                 );
             })()}

@@ -23,7 +23,7 @@ import { useEnterKeyNavigation } from '../hooks/useEnterKeyNavigation';
 import { formatDateForDisplay } from '../utils/nepaliDateUtils';
 import UdfValuesModal from '../components/UdfValuesModal';
 import RecordHistory from '../components/RecordHistory';
-import DocActions, { HoldButtons } from '../components/entry/DocActions';
+import DocActions from '../components/entry/DocActions';
 
 const emptyDetailRow = () => ({
     product_id: '', batch_no: '', mfg_date: '', exp_date: '',
@@ -672,7 +672,6 @@ export default function StockTransfer() {
                     <div className="erp-bottombar">
                         <div />
                         <div className="erp-bottombar-actions">
-                            <HoldButtons voucherType="stock_transfer" form={form} disabled={!!editingId} onRecall={p => { if (p) { setForm(p); setEditingId(null); setShowForm(true); } else resetForm(); }} />
                             <button type="button" onClick={() => { resetForm(); setShowForm(false); }} className="erp-btn">Cancel</button>
                             <button type="button" onClick={e => handleSubmit(e, true)} className="erp-btn">💾 Save as Draft</button>
                             <button type="submit" className="erp-btn primary">{editingId ? 'Update' : 'Create'}</button>

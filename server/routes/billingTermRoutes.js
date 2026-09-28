@@ -16,6 +16,7 @@ const router = express.Router();
 const { getTenantClient, loadUserPermissions, logAudit } = require('../utils/dbHelpers');
 const { requireAuth, requirePermission } = require('../middleware/auth');
 const { validateFormula, evaluateAllTerms, FormulaError } = require('../utils/formulaEvaluator');
+const { MODE_KEYS, effectiveInput, applyInput, loadProductTermMap } = require('../utils/termInput');
 
 function validateTermBody(body) {
     const { calculation_mode, formula_expression, base_reference, base_reference_term_id, rate_percentage } = body;
@@ -136,6 +137,8 @@ router.post('/billing-terms', requireAuth, loadUserPermissions, requirePermissio
                 sub_ledger_id: b.sub_ledger_id || null,
                 return_sub_ledger_id: b.return_sub_ledger_id || null,
                 manual_override: b.manual_override !== undefined ? !!b.manual_override : true,
+                entry_input_mode: MODE_KEYS.includes(b.entry_input_mode) ? b.entry_input_mode : 'all',
+                show_in_term_summary: b.show_in_term_summary !== undefined ? !!b.show_in_term_summary : true,
                 suppress_if_zero: !!b.suppress_if_zero,
                 include_in_profitability: !!b.include_in_profitability,
                 product_wise: !!b.product_wise,
@@ -193,6 +196,7 @@ router.put('/billing-terms/:id', requireAuth, loadUserPermissions, requirePermis
             const U = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
             body.base_term_ids = [...new Set((Array.isArray(body.base_term_ids) ? body.base_term_ids : []).filter(x => U.test(x || '') && x !== req.params.id))];
         }
+        if ('entry_input_mode' in body && !MODE_KEYS.includes(body.entry_input_mode)) body.entry_input_mode = 'all';
         const update = {
             ...body,
             formula_expression: merged.calculation_mode === 'formula' ? merged.formula_expression : null,
@@ -239,7 +243,7 @@ router.delete('/billing-terms/:id', requireAuth, loadUserPermissions, requirePer
 //      would (used to preview the combined effect of multiple terms).
 router.post('/billing-terms/preview', requireAuth, async (req, res) => {
     try {
-        const { formula, basic_amount, quantity, term_ids } = req.body;
+        const { formula, basic_amount, quantity, term_ids, term_values, product_id, side } = req.body;
         const tenantClient = await getTenantClient(req.auth.tenantId);
 
         if (formula) {
@@ -260,6 +264,11 @@ router.post('/billing-terms/preview', requireAuth, async (req, res) => {
             // resolve base_reference_term_id -> term_code for the evaluator
             const byId = Object.fromEntries(terms.map(t => [t.id, t.term_code]));
             terms = terms.map(t => ({ ...t, base_reference_term_code: byId[t.base_reference_term_id] }));
+            // a line's own inputs (%, rate x qty, amount) or the product's value (Term Mapping)
+            if (term_values || product_id) {
+                const pmap = product_id ? ((await loadProductTermMap(tenantClient, [product_id], side || 'purchase'))[product_id] || {}) : {};
+                terms = terms.map(t => applyInput(t, effectiveInput(t, (term_values || {})[t.id], pmap[t.id]), quantity));
+            }
         }
 
         const result = evaluateAllTerms(terms, { basic_amount: basic_amount || 0, quantity: quantity || 0 });

@@ -19,7 +19,7 @@ import { amountToWords } from '../utils/numberToWords';
 import UdfValuesModal from '../components/UdfValuesModal';
 import useLedgerPurposes from '../components/useLedgerPurposes';
 import RecordHistory from '../components/RecordHistory';
-import DocActions, { HoldButtons } from '../components/entry/DocActions';
+import DocActions from '../components/entry/DocActions';
 
 const emptyExpenseLine = () => ({ expense_ledger_id: '', description: '', allocation_basis: 'value_wise', entry_sign: 'add', rate_percent: '', amount: '',
     party_ledger_id: '', bill_type: 'no_bill', party_bill_no: '', party_bill_date: '', vat_percent: '', vat_amount: '', vat_in_cost: false });
@@ -531,7 +531,6 @@ export default function PurchaseAdditionalExpense() {
                     <div className="erp-bottombar">
                         <div />
                         <div className="erp-bottombar-actions">
-                            <HoldButtons voucherType="purchase_additional" form={form} disabled={!!editingId} onRecall={p => { if (p) { setForm(p); setEditingId(null); setShowForm(true); } else resetForm(); }} />
                             <button type="button" onClick={() => { resetForm(); setShowForm(false); }} className="erp-btn">Cancel</button>
                             <button type="button" onClick={e => handleSubmit(e, true)} className="erp-btn">💾 Save as Draft</button>
                             <button type="submit" className="erp-btn primary">{editingId ? 'Update' : 'Create'}</button>

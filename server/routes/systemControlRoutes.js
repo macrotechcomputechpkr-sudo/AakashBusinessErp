@@ -14,6 +14,9 @@ const { getTenantClient, loadUserPermissions, logAudit } = require('../utils/dbH
 const { requireAuth, requirePermission } = require('../middleware/auth');
 
 const VALID_POPUP_TERMS = ['sales', 'purchase', 'sales_return', 'purchase_return'];
+// entries that show item charges (product-wise terms); the others show only the Charges Summary
+const PRODUCT_TERM_TRANSACTIONS = ['sales_quotation', 'sales_order', 'sales_delivery', 'sales_bill', 'sales_return', 'sales_nonsaleable_return',
+    'purchase_requisition', 'purchase_quotation', 'purchase_order', 'purchase_grn', 'purchase_bill', 'purchase_return', 'purchase_nonsaleable_return'];
 
 router.get('/system-control', requireAuth, async (req, res) => {
     try {
@@ -42,6 +45,11 @@ router.put('/system-control', requireAuth, loadUserPermissions, requirePermissio
         if (req.body.popup_product_wise_term_applicability) {
             const bad = req.body.popup_product_wise_term_applicability.filter(t => !VALID_POPUP_TERMS.includes(t));
             if (bad.length > 0) return res.status(400).json({ success: false, error: `Invalid applicability value(s): ${bad.join(', ')}` });
+        }
+
+        if ('product_term_transactions' in req.body) {
+            const list = Array.isArray(req.body.product_term_transactions) ? req.body.product_term_transactions : [];
+            req.body.product_term_transactions = [...new Set(list.filter(t => PRODUCT_TERM_TRANSACTIONS.includes(t)))];
         }
 
         // Make sure a row exists first (same auto-create as GET), then update it.
@@ -115,3 +123,4 @@ router.get('/app-features', requireAuth, async (req, res) => {
 });
 
 module.exports = router;
+module.exports.PRODUCT_TERM_TRANSACTIONS = PRODUCT_TERM_TRANSACTIONS;

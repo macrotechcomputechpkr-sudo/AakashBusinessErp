@@ -98,7 +98,9 @@ async function syncTermMappings(tenantClient, tenantId, productId, termMappings)
         const rows = termMappings.map(m => ({
             tenant_id: tenantId, product_id: productId, category_type: m.category_type,
             billing_term_id: m.billing_term_id, is_enabled_by_default: m.is_enabled_by_default !== undefined ? !!m.is_enabled_by_default : true,
-            override_percentage: m.override_percentage !== '' && m.override_percentage !== undefined ? m.override_percentage : null
+            override_percentage: m.override_percentage !== '' && m.override_percentage !== undefined ? m.override_percentage : null,
+            // the value above is a % of the value, a rate per quantity or an amount
+            override_basis: ['percent', 'rate', 'amount'].includes(m.override_basis) ? m.override_basis : 'percent'
         }));
         const { error } = await tenantClient.from('product_term_mappings').insert(rows);
         if (error) throw error;
@@ -151,7 +153,7 @@ router.get('/products', requireAuth, loadUserPermissions, requirePermission('led
                 product_unit_rates(*),
                 product_category_links(product_category_id),
                 product_rack_locations(id, branch_id, warehouse_id, rack_location, branches(branch_name), warehouses(warehouse_name)),
-                product_term_mappings(id, category_type, billing_term_id, is_enabled_by_default, override_percentage)
+                product_term_mappings(id, category_type, billing_term_id, is_enabled_by_default, override_percentage, override_basis)
             `)
             .eq('tenant_id', req.auth.tenantId)
             .eq('is_active', true)
@@ -217,6 +219,7 @@ router.post('/products', requireAuth, loadUserPermissions, requirePermission('le
                 base_unit_id: b.base_unit_id,
                 uom_mode: b.uom_mode || 'single', dual_uom_primary_unit_id: b.dual_uom_primary_unit_id || null,
                 dual_auto_convert: yesNoOrNull(b.dual_auto_convert), dual_reverse_conversion: yesNoOrNull(b.dual_reverse_conversion),
+                qty_from_amount_sales: !!b.qty_from_amount_sales, qty_from_amount_purchase: !!b.qty_from_amount_purchase,
                 default_discount_percent: b.default_discount_percent || 0,
                 default_vendor_id: b.default_vendor_id || null,
                 vendor_item_code: b.vendor_item_code || null,

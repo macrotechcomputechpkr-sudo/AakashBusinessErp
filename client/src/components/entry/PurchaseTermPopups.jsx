@@ -14,6 +14,7 @@
 // =============================================
 import React, { useState } from 'react';
 import { EntryPopup } from './EntryParts';
+import { allowedKinds } from './lineCalc';
 
 const fmt = n => (Number(n) || 0).toFixed(2);
 const HOW = { fixed_amount: 'Fixed', formula: 'Formula', free_quantity: 'Free qty', percentage: 'Value %', both: 'Value % + fixed' };
@@ -21,14 +22,22 @@ const howOf = t => HOW[t?.calculation_mode] || 'Value %';
 const formulaOf = t => (!t ? '' : t.calculation_mode === 'formula' ? t.formula_expression : t.base_reference_term ? `after ${t.base_reference_term.term_code}` : 'Item value');
 const TAXATION = { vat: 'VAT', excise: 'Excise', discount: 'Cash Discount', none: 'None' };
 const splitOf = t => (t?.basis === 'quantity' ? 'Quantity' : 'Value');
+const KIND_COLS = [['pct', '%'], ['rate', 'Rate / qty'], ['amt', 'Amount']];
+/** the value typed for a charge on the lines: shown when every line holds the same input */
+const typedOf = (lines, termId, kind) => {
+    const vals = lines.map(({ line }) => (line.term_values || {})[termId]).map(x => (x && x.kind === kind ? String(x.value) : ''));
+    return vals.every(v => v === vals[0]) ? vals[0] : '';
+};
 const Adds = ({ sign }) => <span className={sign === '-' ? 'ent-less' : 'ent-add'}>{sign === '-' ? 'Less' : 'Add'}</span>;
 
 /**
  * lines: [{ idx, line }] the target lines; previews: lineTermPreviews (by line index);
  * subLedgerCell(term): node for the Sub-ledger column (TermLedgerInfo);
  * lineFields: the line's own Discount % / Tax % when they are not grid columns ({ key, label, sign, value, onChange })
+ * onInput(termId, kind, value): a % / rate per qty / amount typed for a charge (kinds allowed by the Billing
+ * Term; nothing can be typed for a charge that may not be changed in entries)
  */
-export function PurchaseProductTermPopup({ title, lines, terms, previews, productName, onToggle, subLedgerCell, onClose, lineFields }) {
+export function PurchaseProductTermPopup({ title, lines, terms, previews, productName, onToggle, onInput, subLedgerCell, onClose, lineFields }) {
     const [focus, setFocus] = useState(0);
     const basicOf = l => (Number(l.qty) || 0) * (Number(l.rate) || 0);
     const basic = lines.reduce((s, t) => s + basicOf(t.line), 0);
@@ -50,12 +59,13 @@ export function PurchaseProductTermPopup({ title, lines, terms, previews, produc
             </div>
             <div className="ent-charge-wrap">
                 <table className="erp-grid-table ent-charge-table">
-                    <thead><tr><th style={{ width: 34 }}>#</th><th style={{ width: 44 }}>Use</th><th>Charge</th><th>Sub-ledger</th><th style={{ width: 90 }}>Worked as</th><th style={{ width: 56 }}>+/-</th><th className="text-right" style={{ width: 80 }}>Rate</th><th className="text-right">Amount</th></tr></thead>
+                    <thead><tr><th style={{ width: 34 }}>#</th><th style={{ width: 44 }}>Use</th><th>Charge</th><th>Sub-ledger</th><th style={{ width: 90 }}>Worked as</th><th style={{ width: 56 }}>+/-</th>{KIND_COLS.map(([k, l]) => <th key={k} className="text-right" style={{ width: 80 }}>{l}</th>)}<th className="text-right">Amount</th></tr></thead>
                     <tbody>
                         {(lineFields || []).map(fl => (
                             <tr key={fl.key} className="ent-line-field">
                                 <td>•</td><td /><td>{fl.label}</td><td /><td>Value %</td><td><Adds sign={fl.sign} /></td>
                                 <td className="text-right"><input type="number" step="0.01" className="erp-input text-right" style={{ height: 24 }} value={fl.value} onFocus={e => e.target.select()} onChange={e => fl.onChange(e.target.value)} /></td>
+                                <td /><td />
                                 <td className="text-right">{lines.length > 1 ? `${lines.length} lines` : ''}</td>
                             </tr>
                         ))}
@@ -68,14 +78,24 @@ export function PurchaseProductTermPopup({ title, lines, terms, previews, produc
                                     <td className="text-center"><input type="checkbox" data-enter-skip="true" checked={all} ref={el => { if (el) el.indeterminate = on > 0 && !all; }} onFocus={() => setFocus(i)} onChange={() => onToggle(term.id)} /></td>
                                     <td>{term.term_name} {on > 0 && !all && <span className="text-[10px] text-gray-500">({on}/{lines.length} lines)</span>}</td>
                                     <td onClick={e => e.stopPropagation()}>{subLedgerCell ? subLedgerCell(term) : ''}</td>
-                                    <td>{howOf(term)}</td>
+                                    <td>{howOf(term)}{term.manual_override === false && <span className="text-[10px] text-gray-500"> (fixed)</span>}</td>
                                     <td><Adds sign={term.sign} /></td>
-                                    <td className="text-right">{term.rate_percentage ? fmt(term.rate_percentage) : ''}</td>
+                                    {KIND_COLS.map(([k]) => {
+                                        const can = onInput && term.manual_override !== false && allowedKinds(term.entry_input_mode).includes(k);
+                                        return (
+                                            <td key={k} className="text-right" onClick={e => e.stopPropagation()}>
+                                                {can ? <input type="number" step="0.01" className="erp-input text-right" style={{ height: 24 }} value={typedOf(lines, term.id, k)}
+                                                    placeholder={k === 'pct' && term.rate_percentage ? fmt(term.rate_percentage) : ''}
+                                                    onFocus={e => { setFocus(i); e.target.select(); }} onChange={e => onInput(term.id, k, e.target.value)} />
+                                                    : <span className="text-gray-400">{k === 'pct' && term.rate_percentage ? fmt(term.rate_percentage) : ''}</span>}
+                                            </td>
+                                        );
+                                    })}
                                     <td className="text-right font-semibold">{on ? fmt(amountOf(term.id)) : ''}</td>
                                 </tr>
                             );
                         })}
-                        {terms.length === 0 && <tr><td colSpan={8} className="text-center">No purchase charges are set up yet (Master Data › Billing Terms).</td></tr>}
+                        {terms.length === 0 && <tr><td colSpan={10} className="text-center">No purchase charges are set up yet (Master Data › Billing Terms).</td></tr>}
                     </tbody>
                 </table>
                 <aside className="ent-charge-info">
@@ -100,6 +120,8 @@ export function PurchaseProductTermPopup({ title, lines, terms, previews, produc
  */
 export function PurchaseOverallTermPopup({ title, summaryRows, overrides, onOverride, terms, billTermIds, onToggleBillTerm, preview, subLedgerCell, onClose }) {
     const termById = Object.fromEntries(terms.map(t => [t.id, t]));
+    // charges set (Billing Term) not to show in the Charges Summary stay out of it
+    summaryRows = summaryRows.filter(r => termById[r.billing_term_id]?.show_in_term_summary !== false);
     const prodTotal = summaryRows.reduce((s, r) => s + (overrides[r.billing_term_id] !== undefined ? Number(overrides[r.billing_term_id]) || 0 : r.original_total), 0);
     const billLines = preview?.lines || [];
     return (
@@ -118,7 +140,8 @@ export function PurchaseOverallTermPopup({ title, summaryRows, overrides, onOver
                                 <td>{splitOf(t)}</td>
                                 <td><Adds sign={t?.sign} /></td>
                                 <td className="text-right">{t?.rate_percentage ? fmt(t.rate_percentage) : ''}</td>
-                                <td className="text-right"><input type="number" step="0.01" className="erp-input text-right" style={{ height: 24 }} value={v} onFocus={e => e.target.select()} onChange={e => onOverride(r.billing_term_id, e.target.value)} /></td>
+                                <td className="text-right">{t?.manual_override === false ? fmt(v)
+                                    : <input type="number" step="0.01" className="erp-input text-right" style={{ height: 24 }} value={v} onFocus={e => e.target.select()} onChange={e => onOverride(r.billing_term_id, e.target.value)} />}</td>
                             </tr>
                         );
                     })}

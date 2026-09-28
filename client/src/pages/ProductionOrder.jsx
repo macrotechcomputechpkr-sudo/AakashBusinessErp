@@ -16,7 +16,7 @@ import { useEnterKeyNavigation } from '../hooks/useEnterKeyNavigation';
 import { formatDateForDisplay } from '../utils/nepaliDateUtils';
 import UdfValuesModal from '../components/UdfValuesModal';
 import RecordHistory from '../components/RecordHistory';
-import DocActions, { HoldButtons, asNewCopy } from '../components/entry/DocActions';
+import DocActions, { asNewCopy } from '../components/entry/DocActions';
 
 const emptyRawMaterialRow = () => ({ product_id: '', batch_no: '', warehouse_id: '', qty: '', uom_id: '', alt_qty: '', alt_unit_id: '', rate_basis: 'primary', process_name: '', cost_rate: '', billing_term_ids: [] });
 const emptyByproductRow = () => ({ product_id: '', batch_no: '', warehouse_id: '', qty: '', uom_id: '', alt_qty: '', alt_unit_id: '', rate_basis: 'primary', allocation_basis: 'fixed_recovery', recovery_rate: '', relative_value: '' });
@@ -766,7 +766,6 @@ export default function ProductionOrder() {
                     <div className="erp-bottombar">
                         <div />
                         <div className="erp-bottombar-actions">
-                            <HoldButtons voucherType="production" form={form} disabled={!!editingId} onRecall={p => { if (p) { setForm(p); setEditingId(null); setShowForm(true); } else resetForm(); }} />
                             <button type="button" onClick={() => { resetForm(); setShowForm(false); }} className="erp-btn">Cancel</button>
                             <button type="button" onClick={e => handleSubmit(e, true)} className="erp-btn">💾 Save as Draft</button>
                             <button type="submit" className="erp-btn primary">{editingId ? 'Update' : 'Create'}</button>

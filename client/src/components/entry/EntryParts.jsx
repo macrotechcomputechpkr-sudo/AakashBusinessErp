@@ -15,7 +15,7 @@
 //                        here is split over the lines by the charge's own
 //                        basis (value or quantity, Billing Term setup)
 //   * amountInWords    - "Rupees One Lakh Twenty Thousand only" (lakh / crore)
-//   * useEntryHotkeys  - F7 copy the last entry, F8 held entries
+//   * useEntryHotkeys  - F7 copy the last entry
 // =============================================
 import React, { useEffect, useRef, useState } from 'react';
 
@@ -50,7 +50,7 @@ export function amountInWords(value, currency = 'Rupees') {
 
 const fmt = n => (Number(n) || 0).toFixed(2);
 
-/** F7 / F8 / F9 while the entry form is open */
+/** F7 / F9 while the entry form is open */
 export function useEntryHotkeys(active, keys) {
     const ref = useRef(keys);
     ref.current = keys;
@@ -94,18 +94,23 @@ export function EntryPopup({ title, onClose, children, width = 820, footer, hidd
 
 const Adds = ({ sign }) => <span className={sign === '-' ? 'ent-less' : 'ent-add'}>{sign === '-' ? 'Less' : 'Add'}</span>;
 
+const KIND_COLS = [['pct', '%'], ['rate', 'Rate / qty'], ['amt', 'Amount']];
+
 /**
  * Item Charges of one line.
- * rows: [{ key, description, basis ('V' value | 'Q' quantity), sign ('+' | '-'), percent, amount, calculatedOn,
- *          termCode, ledgerName, formula, taxation, subLedger (node, optional), editable }]
+ * rows: [{ key, description, sign ('+' | '-'), kinds (inputs allowed: 'pct' % of value, 'rate' rate x qty,
+ *          'amt' amount), kind + value (what the line holds), amount, calculatedOn, termCode, ledgerName,
+ *          formula, taxation, subLedger (optional), editable (false: cannot be changed in entries) }]
+ * onInput(key, kind, value)
  */
-export function TermPopup({ title, productName, basic, qty, unitName, rows, onPercent, onBasis, onClose }) {
+export function TermPopup({ title, productName, basic, qty, unitName, rows, onInput, onClose }) {
     const [focus, setFocus] = useState(0);
     const f = rows[focus] || rows[0] || {};
     const net = rows.reduce((s, r) => s + (r.sign === '-' ? -1 : 1) * (Number(r.amount) || 0), 0);
     const withSub = rows.some(r => r.subLedger);
+    const blank = v => v === '' || v === undefined || v === null;
     return (
-        <EntryPopup title={title} onClose={onClose} width={860}>
+        <EntryPopup title={title} onClose={onClose} width={900}>
             <div className="ent-item-strip">
                 <div><small>Item</small><b>{productName || '—'}</b></div>
                 <div><small>Quantity</small><b>{Number(qty || 0).toFixed(3)} {unitName}</b></div>
@@ -115,26 +120,29 @@ export function TermPopup({ title, productName, basic, qty, unitName, rows, onPe
             </div>
             <div className="ent-charge-wrap">
                 <table className="erp-grid-table ent-charge-table">
-                    <thead><tr><th style={{ width: 34 }}>#</th><th>Charge</th>{withSub && <th>Sub-ledger</th>}<th style={{ width: 96 }}>On</th><th style={{ width: 56 }}>+/-</th><th className="text-right" style={{ width: 90 }}>Rate</th><th className="text-right">Base Amount</th><th className="text-right">Amount</th></tr></thead>
+                    <thead><tr><th style={{ width: 34 }}>#</th><th>Charge</th>{withSub && <th>Sub-ledger</th>}<th style={{ width: 56 }}>+/-</th>{KIND_COLS.map(([k, l]) => <th key={k} className="text-right" style={{ width: 84 }}>{l}</th>)}<th className="text-right">Base Amount</th><th className="text-right">Amount</th></tr></thead>
                     <tbody>
                         {rows.map((r, i) => (
                             <tr key={r.key} className={focus === i ? 'ent-focus' : ''} onFocus={() => setFocus(i)} onClick={() => setFocus(i)}>
                                 <td>{i + 1}</td>
-                                <td>{r.description}</td>
+                                <td>{r.description}{r.editable === false && <span className="text-[10px] text-gray-500"> (fixed)</span>}</td>
                                 {withSub && <td>{r.subLedger || ''}</td>}
-                                <td>{onBasis && r.editable !== false
-                                    ? <select className="erp-select" style={{ height: 24 }} value={r.basis || 'V'} onChange={e => onBasis(r.key, e.target.value)}><option value="V">Value %</option><option value="Q">Per qty</option></select>
-                                    : (r.basis === 'Q' ? 'Per qty' : 'Value %')}</td>
                                 <td><Adds sign={r.sign} /></td>
-                                <td className="text-right">{r.editable === false ? fmt(r.percent) : (
-                                    <input type="number" step="0.01" className="erp-input text-right" style={{ height: 24 }} value={r.percent === '' || r.percent === undefined || r.percent === null ? '' : r.percent}
-                                        onFocus={e => { setFocus(i); e.target.select(); }} onChange={e => onPercent(r.key, e.target.value)} />
-                                )}</td>
+                                {KIND_COLS.map(([k]) => {
+                                    const mine = (r.kind || 'pct') === k;
+                                    const can = onInput && r.editable !== false && (r.kinds || ['pct']).includes(k);
+                                    return (
+                                        <td key={k} className="text-right">{can
+                                            ? <input type="number" step="0.01" className="erp-input text-right" style={{ height: 24 }} value={mine && !blank(r.value) ? r.value : ''}
+                                                onFocus={e => { setFocus(i); e.target.select(); }} onChange={e => onInput(r.key, k, e.target.value)} />
+                                            : (mine && !blank(r.value) ? fmt(r.value) : '')}</td>
+                                    );
+                                })}
                                 <td className="text-right">{fmt(r.calculatedOn)}</td>
                                 <td className="text-right font-semibold">{fmt(r.amount)}</td>
                             </tr>
                         ))}
-                        {rows.length === 0 && <tr><td colSpan={withSub ? 8 : 7} className="text-center">No charges are set for this entry (System Control › Term Mapping / Billing Terms).</td></tr>}
+                        {rows.length === 0 && <tr><td colSpan={withSub ? 9 : 8} className="text-center">No charges are set for this entry (System Control › Term Mapping / Billing Terms).</td></tr>}
                     </tbody>
                 </table>
                 <aside className="ent-charge-info">
@@ -145,6 +153,7 @@ export function TermPopup({ title, productName, basic, qty, unitName, rows, onPe
                         <dt>Effect</dt><dd>{f.sign === '-' ? 'Less from value' : 'Add to value'}</dd>
                         <dt>Worked on</dt><dd>{f.formula || 'Item value'}</dd>
                         <dt>Tax type</dt><dd>{f.taxation || 'None'}</dd>
+                        <dt>Typed as</dt><dd>{(f.kinds || ['pct']).map(k => KIND_COLS.find(x => x[0] === k)[1]).join(', ')}</dd>
                     </dl>
                 </aside>
             </div>
@@ -170,10 +179,10 @@ export function OverallTermPopup({ title, rows, onPercent, onAmount, onClose, no
                             <td>{r.term}</td>
                             <td>{r.basis === 'Q' ? 'Quantity' : 'Value'}</td>
                             <td><Adds sign={r.sign} /></td>
-                            <td className="text-right">{onPercent && r.editable !== false
+                            <td className="text-right">{onPercent && r.editable !== false && r.pctOk !== false
                                 ? <input type="number" step="0.01" className="erp-input text-right" style={{ height: 24 }} placeholder={r.mixed ? 'differs' : ''} value={r.percent ?? ''} onFocus={e => e.target.select()} onChange={e => onPercent(r.key, e.target.value)} />
                                 : (r.percent === '' || r.percent === null || r.percent === undefined ? '' : fmt(r.percent))}</td>
-                            <td className="text-right">{onAmount && r.editable !== false
+                            <td className="text-right">{onAmount && r.editable !== false && r.amtOk !== false
                                 ? <input type="number" step="0.01" className="erp-input text-right" style={{ height: 24 }} value={r.amountInput ?? fmt(r.amount)} onFocus={e => e.target.select()} onChange={e => onAmount(r.key, e.target.value)} />
                                 : fmt(r.amount)}</td>
                         </tr>
@@ -193,7 +202,7 @@ export function OverallTermPopup({ title, rows, onPercent, onAmount, onClose, no
  * still fill in from the ledger while closed. A panel may have several buttons ({ label, onClick }),
  * e.g. one pop-up of tabs opened on different tabs. children: more rows under Amount in Words.
  */
-export function EntryFooter({ warehouseName, totals, party, remarks, onProductTerm, onBillTerm, panels = [], actions, hints = ['F7 copy the last entry', 'F8 held entries', 'Esc closes a pop-up'], title = 'Entry', extraButtons, children }) {
+export function EntryFooter({ warehouseName, totals, party, remarks, onProductTerm, onBillTerm, panels = [], actions, hints = ['F7 copy the last entry', 'Esc closes a pop-up'], title = 'Entry', extraButtons, children }) {
     const [open, setOpen] = useState(null);
     const listId = useRef(`rmk-${Math.random().toString(36).slice(2, 8)}`).current;
     const charges = Number(totals.net || 0) - Number(totals.gross ?? totals.net ?? 0);

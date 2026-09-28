@@ -20,15 +20,15 @@ import UdfValuesModal from '../components/UdfValuesModal';
 import RecordHistory from '../components/RecordHistory';
 import { priceUrl, lineUnitOf, useSlabRepricing } from '../utils/salesPricing';
 import RateTypeField, { useEntryRateType } from '../components/entry/RateTypeField';
-import useEntrySettings, { termColumns } from '../components/entry/useEntrySettings';
+import useEntrySettings, { termColumns, showsProductTerms } from '../components/entry/useEntrySettings';
 import DocNumberField from '../components/entry/DocNumberField';
 import PendingDocsPanel, { mergePulled } from '../components/entry/PendingDocsPanel';
 import { PartyDetailsPanel, emptyPartyInfo, savePartyInfo, partyInfoFromDoc } from '../components/entry/PartyFooterTabs';
 import SalesLineGrid, { useLineGridControl, lineTotals } from '../components/entry/SalesLineGrid';
 import { EntryFooter, useEntryHotkeys, latestOf } from '../components/entry/EntryParts';
-import { defaultLineTerms, lineForSave } from '../components/entry/lineCalc';
+import { defaultLineTerms, productLineTerms, lineForSave } from '../components/entry/lineCalc';
 import { dualHelpers } from '../components/entry/dualHelpers';
-import DocActions, { HoldButtons, asNewCopy } from '../components/entry/DocActions';
+import DocActions, { asNewCopy } from '../components/entry/DocActions';
 
 const emptyDetailRow = () => ({
     product_id: '', qty: '', uom_id: '', alt_qty: '', alt_unit_id: '', rate_basis: 'primary',
@@ -54,6 +54,8 @@ export default function SalesOrder() {
     const { authFetch } = useAuth();
     const efc = useEntryFieldControls('sales_order', EFC_RENDERED_KEYS);
     const settings = useEntrySettings();
+    // System Control: does this entry show item charges? (else only the Charges Summary)
+    const itemCharges = showsProductTerms(settings, 'sales_order');
     const termCols = termColumns(settings, 'sales');
     const popupTerms = !!settings?.popupTerms?.includes('sales');
     const [partyInfo, setPartyInfo] = useState(emptyPartyInfo());
@@ -170,9 +172,9 @@ export default function SalesOrder() {
     const handleProductSelect = async (idx, productId, unitId) => {
         const product = products.find(p => p.id === productId);
         if (product?.uom_mode === 'fixed_dual') {
-            updateDetailRow(idx, { product_id: productId, line_terms: form.details[idx]?.line_terms || defaultLineTerms(termCols), uom_id: product.dual_uom_primary_unit_id || '', alt_unit_id: product.base_unit_id || '', rate_basis: 'primary' });
+            updateDetailRow(idx, { product_id: productId, line_terms: productLineTerms(termCols, product, form.details[idx]?.line_terms), uom_id: product.dual_uom_primary_unit_id || '', alt_unit_id: product.base_unit_id || '', rate_basis: 'primary' });
         } else {
-            updateDetailRow(idx, { product_id: productId, line_terms: form.details[idx]?.line_terms || defaultLineTerms(termCols), uom_id: unitId || product?.base_unit_id || '' });
+            updateDetailRow(idx, { product_id: productId, line_terms: productLineTerms(termCols, product, form.details[idx]?.line_terms), uom_id: unitId || product?.base_unit_id || '' });
         }
         if (!form.customer_ledger_id) {
             updateDetailRow(idx, { rate: product?.sales_rate_sr1 || 0 });
@@ -216,7 +218,7 @@ export default function SalesOrder() {
     const lineCtl = useLineGridControl();
     const lineTot = lineTotals(form.details, lineGross, termCols, true);
     const selectedCustomer = customers.find(c => c.id === form.customer_ledger_id);
-    // F7: the last order as a new one (F8 - held entries - is on the Hold button)
+    // F7: the last order as a new one
     useEntryHotkeys(showForm, { F7: () => { const last = latestOf(rows); if (last) copyAsNew(last); } });
     const [selectedRowIndexes, setSelectedRowIndexes] = useState([]);
 
@@ -536,7 +538,7 @@ export default function SalesOrder() {
                                 <input disabled={efc.isReadonly('narration')} className="erp-input" value={form.narration} onChange={e => setForm({ ...form, narration: e.target.value })} />
                             </div>
                         </div>
-                        <SalesLineGrid
+                        <SalesLineGrid itemCharges={itemCharges}
                             listKey="so" title="Sales Order" ctl={lineCtl} details={form.details} onRow={updateDetailRow} onRemove={removeDetailRow} onAdd={addDetailRow}
                             products={filterProductsByCompany(products, form.product_company_id)} allProducts={products} units={units} warehouses={warehouses}
                             settings={settings} termCols={termCols} popupTerms={popupTerms} efc={efc} onProductSelect={handleProductSelect}
@@ -557,13 +559,12 @@ export default function SalesOrder() {
 
                         remarks={{ value: form.remarks_text, onChange: v => setForm(f => ({ ...f, remarks_text: v })), options: remarks.map(r => r.remark_text) }}
 
-                        onProductTerm={true ? lineCtl.openTerms : null} onBillTerm={true ? lineCtl.openOverall : null}
+                        onProductTerm={itemCharges ? lineCtl.openTerms : null} onBillTerm={true ? lineCtl.openOverall : null}
 
                         panels={[{ key: 'billing', label: 'Party & Tax Info', content: <PartyDetailsPanel partyId={form.customer_ledger_id} partyLabel="Customer" info={partyInfo} onChange={setPartyInfo} /> }]}
 
                         actions={<>
 
-                            <HoldButtons hotkey voucherType="sales_order" form={form} disabled={!!editingId} onRecall={p => { if (p) { setForm(p); setEditingId(null); setShowForm(true); } else resetForm(); }} />
 
                             <button type="button" onClick={e => handleSubmit(e, true)} className="erp-btn">💾 Save as Draft</button>
 

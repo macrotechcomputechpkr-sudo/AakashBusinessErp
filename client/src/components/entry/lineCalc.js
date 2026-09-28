@@ -46,6 +46,41 @@ export function defaultLineTerms(cols) {
     return lt;
 }
 
+// what may be typed for a term (Billing Term > Typed In Entry As)
+const MODES = {
+    percent: ['pct'], rate: ['rate'], amount: ['amt'], all: ['pct', 'rate', 'amt'],
+    rate_percent: ['pct', 'rate'], rate_percent_amount: ['pct', 'rate', 'amt'], rate_amount: ['rate', 'amt']
+};
+export const allowedKinds = mode => MODES[mode] || MODES.all;
+const BASIS_KIND = { percent: 'pct', rate: 'rate', amount: 'amt' };
+
+/** a line term from an input kind: % of value, rate x qty, or an amount */
+export function termFromInput(termId, kind, value) {
+    if (kind === 'rate') return { term_id: termId, percent: value, basis: 'Q' };
+    if (kind === 'amt') return { term_id: termId, fixed: true, amount: value, percent: 0 };
+    return { term_id: termId, percent: value, basis: 'V' };
+}
+/** which input a line term holds */
+export const kindOf = x => (x?.fixed ? 'amt' : x?.basis === 'Q' ? 'rate' : 'pct');
+
+/**
+ * line_terms for a line when a product is picked: the line's own (or the default %), then the
+ * product's values (Product Master > Term Mapping, as %, rate x qty or amount); a term that may
+ * not be changed in entries always takes the product's value or its own default
+ */
+export function productLineTerms(cols, product, current, side = 'sales') {
+    if (!cols || !cols.length) return current || null;
+    const lt = { ...(current || defaultLineTerms(cols) || {}) };
+    const maps = (product?.product_term_mappings || []).filter(m => m.category_type === side);
+    cols.forEach(c => {
+        const m = maps.find(x => x.billing_term_id === c.term_id);
+        const has = m && m.override_percentage !== null && m.override_percentage !== undefined && m.override_percentage !== '';
+        if (has) lt[c.key] = termFromInput(c.term_id, BASIS_KIND[m.override_basis] || 'pct', Number(m.override_percentage));
+        else if (c.manual === false) { if (c.default_percent) lt[c.key] = { term_id: c.term_id, percent: c.default_percent }; else delete lt[c.key]; }
+    });
+    return lt;
+}
+
 /** fields to send for one line (percent columns kept for older reports) */
 export function lineForSave(d, gross, cols) {
     const x = calcLine(d, gross, cols);
@@ -56,4 +91,20 @@ export function lineForSave(d, gross, cols) {
         discount_percent: g ? Math.round((x.discount_amount / g) * 1000000) / 10000 : 0,
         tax_percent: Number(d.line_terms?.vat?.percent) || 0
     };
+}
+
+/** purchase: a line's charges once a product is picked - its own plus the product's (Term Mapping, on by default) */
+export function productTermIds(product, current, side = 'purchase') {
+    const ids = [...(current || [])];
+    (product?.product_term_mappings || []).filter(m => m.category_type === side && m.is_enabled_by_default !== false)
+        .forEach(m => { if (!ids.includes(m.billing_term_id)) ids.push(m.billing_term_id); });
+    return ids;
+}
+
+/** purchase: a line's typed charge inputs with one changed ('' clears it) */
+export function withTermValue(values, termId, kind, value) {
+    const out = { ...(values || {}) };
+    if (value === '' || value === null || value === undefined) delete out[termId];
+    else out[termId] = { kind, value };
+    return out;
 }

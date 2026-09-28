@@ -21,10 +21,11 @@ import { useEnterKeyNavigation } from '../hooks/useEnterKeyNavigation';
 import UdfValuesModal from '../components/UdfValuesModal';
 import useLedgerPurposes from '../components/useLedgerPurposes';
 import RecordHistory from '../components/RecordHistory';
-import DocActions, { HoldButtons, asNewCopy } from '../components/entry/DocActions';
+import DocActions, { asNewCopy } from '../components/entry/DocActions';
 import { EntryFooter, useEntryHotkeys, latestOf } from '../components/entry/EntryParts';
-import useEntrySettings from '../components/entry/useEntrySettings';
+import useEntrySettings, { showsProductTerms } from '../components/entry/useEntrySettings';
 import { PurchaseProductTermPopup, PurchaseOverallTermPopup } from '../components/entry/PurchaseTermPopups';
+import { productTermIds, withTermValue } from '../components/entry/lineCalc';
 
 const emptyDetailRow = () => ({
     product_id: '', qty: '', uom_id: '', alt_qty: '', alt_unit_id: '', alt1_qty: '', alt1_unit_id: '', rate_basis: 'primary',
@@ -54,6 +55,8 @@ export default function PurchaseRequisition() {
     // Compulsory check on save (incl. popup pickers, which HTML `required` can't enforce);
     // visibility / required marks on this page come from its own fieldControls.
     const settings = useEntrySettings();
+    // System Control: does this entry show item charges? (else only the Charges Summary; product values still count)
+    const itemCharges = showsProductTerms(settings, 'purchase_requisition');
     const efc = useEntryFieldControls('purchase_requisition', EFC_RENDERED_KEYS);
     const [rows, setRows] = useState([]);
     const [showForm, setShowForm] = useState(false);
@@ -193,9 +196,9 @@ export default function PurchaseRequisition() {
     const handleProductSelect = (idx, productId) => {
         const product = products.find(p => p.id === productId);
         if (product?.uom_mode === 'fixed_dual') {
-            updateDetailRow(idx, { product_id: productId, uom_id: product.dual_uom_primary_unit_id || '', alt_unit_id: product.base_unit_id || '', rate_basis: 'primary' });
+            updateDetailRow(idx, { product_id: productId, billing_term_ids: productTermIds(product, form.details[idx]?.billing_term_ids), term_values: {}, uom_id: product.dual_uom_primary_unit_id || '', alt_unit_id: product.base_unit_id || '', rate_basis: 'primary' });
         } else {
-            updateDetailRow(idx, { product_id: productId, uom_id: product?.base_unit_id || '' });
+            updateDetailRow(idx, { product_id: productId, billing_term_ids: productTermIds(product, form.details[idx]?.billing_term_ids), term_values: {}, uom_id: product?.base_unit_id || '' });
         }
     };
     const updateDetailRow = (idx, patch) => setForm(f => ({ ...f, details: f.details.map((d, i) => i === idx ? { ...d, ...patch } : d) }));
@@ -271,7 +274,7 @@ export default function PurchaseRequisition() {
                 try {
                     const res = await authFetch('/api/billing-terms/preview', {
                         method: 'POST',
-                        body: JSON.stringify({ term_ids: d.billing_term_ids, basic_amount: (Number(d.qty) || 0) * (Number(d.rate) || 0), quantity: Number(d.qty) || 0 })
+                        body: JSON.stringify({ term_ids: d.billing_term_ids, basic_amount: (Number(d.qty) || 0) * (Number(d.rate) || 0), quantity: Number(d.qty) || 0, term_values: d.term_values || {}, product_id: d.product_id || undefined, side: 'purchase' })
                     });
                     previews[i] = res.data;
                 } catch { /* leave this line's preview absent on failure */ }
@@ -280,7 +283,7 @@ export default function PurchaseRequisition() {
         })();
         return () => { cancelled = true; };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [JSON.stringify(form.details.map(d => ({ q: d.qty, r: d.rate, t: d.billing_term_ids })))]);
+    }, [JSON.stringify(form.details.map(d => ({ q: d.qty, r: d.rate, t: d.billing_term_ids, v: d.term_values, p: d.product_id })))]);
 
     const toggleLineBillingTerm = (lineIdx, termId) => {
         updateDetailRow(lineIdx, {
@@ -752,7 +755,6 @@ export default function PurchaseRequisition() {
                                         <th className={`text-left px-1 py-1 w-40 ${isVisible('warehouse_id', 'detail') ? '' : 'hidden'}`}>Details Warehouse</th>
                                         <th className={`text-left px-1 py-1 w-28 ${isVisible('barcode', 'detail') ? '' : 'hidden'}`}>Barcode</th>
                                         <th className={`text-left px-1 py-1 w-28 ${(batchOn && isVisible('batch_no', 'detail')) ? '' : 'hidden'}`}>Batch No</th>
-                                        <th className={`text-left px-1 py-1 w-40 ${isVisible('narration', 'detail') ? '' : 'hidden'}`}>Narration</th>
                                         <th className="text-left px-1 py-1 w-20">Item Charges</th>
                                         <th></th>
                                     </tr>
@@ -875,8 +877,7 @@ export default function PurchaseRequisition() {
                                                     <input disabled={efc.isReadonly('batch_no', 'detail')} className="w-full border rounded px-1.5 py-1" value={d.batch_no} onChange={e => updateDetailRow(idx, { batch_no: e.target.value })} placeholder="Batch" />
                                                 ) : <span className="text-gray-300 text-xs">—</span>}
                                             </td>
-                                            <td className={`px-1 py-1 ${isVisible('narration', 'detail') ? '' : 'hidden'}`}><input disabled={efc.isReadonly('narration', 'detail')} className="w-full border rounded px-1.5 py-1" value={d.narration} onChange={e => updateDetailRow(idx, { narration: e.target.value })} /></td>
-                                            <td className="px-1 py-1"><button type="button" tabIndex={-1} onClick={() => setProductTermModalIndexes([idx])} className="ent-term-btn" title="Charges of this line">
+                                            <td className="px-1 py-1"><button type="button" tabIndex={-1} onClick={() => itemCharges && setProductTermModalIndexes([idx])} className="ent-term-btn" title="Charges of this line">
                                                 {lineTermPreviews[idx]?.total !== undefined ? (lineTermPreviews[idx].total - (Number(d.qty) || 0) * (Number(d.rate) || 0)).toFixed(2) : '…'}
                                             </button></td>
                                             <td className="px-1 py-1"><button type="button" tabIndex={-1} onClick={() => removeDetailRow(idx)} className="text-red-500 text-xs">✕</button></td>
@@ -902,10 +903,9 @@ export default function PurchaseRequisition() {
                         totals={{ gross: form.details.reduce((a, d) => a + (d.product_id ? lineGross(d) : 0), 0), billTerm: billTermAmount, net: grandTotal + billTermAmount, taxable: taxSplit.taxable, tax: taxSplit.tax, nonTaxable: taxSplit.nonTaxable }}
                         party={{ label: 'Supplier', name: footVendor?.account_name || form.cash_vendor_name, creditLimit: footVendor?.credit_limit }}
                         remarks={{ value: form.remarks_text, onChange: v => setForm(f => ({ ...f, remarks_text: v })), options: remarks.map(r => r.remark_text) }}
-                        onProductTerm={() => setProductTermModalIndexes(selectedRowIndexes.length > 0 ? selectedRowIndexes : form.details.map((_, i) => i).filter(i => form.details[i].product_id))}
+                        onProductTerm={itemCharges ? () => setProductTermModalIndexes(selectedRowIndexes.length > 0 ? selectedRowIndexes : form.details.map((_, i) => i).filter(i => form.details[i].product_id)) : null}
                         onBillTerm={() => setOverallOpen(true)}
                         actions={<>
-                            <HoldButtons hotkey voucherType="purchase_requisition" form={form} disabled={!!editingId} onRecall={p => { if (p) { setForm(p); setEditingId(null); setShowForm(true); } else resetForm(); }} />
                             <button type="submit" className="erp-btn primary">💾 {editingId ? 'Update' : 'Save'}</button>
                             <button type="button" onClick={() => { resetForm(); setShowForm(false); }} className="erp-btn">Cancel</button>
                         </>}
@@ -942,7 +942,8 @@ export default function PurchaseRequisition() {
                     title="Purchase Requisition · Item Charges" terms={billingTerms} previews={lineTermPreviews}
                     lines={productTermModalIndexes.map(idx => ({ idx, line: form.details[idx] })).filter(t => t.line)}
                     productName={productTermModalIndexes.length === 1 ? (products.find(p => p.id === form.details[productTermModalIndexes[0]]?.product_id)?.product_name || '') : `${productTermModalIndexes.length} lines`}
-                    onToggle={id => toggleTermForLines(productTermModalIndexes, id)} lineFields={chargesInPopup ? [['discount_percent', 'Discount %', '-'], ['tax_percent', 'Tax %', '+']].map(([key, label, sign]) => ({ key, label, sign, value: form.details[productTermModalIndexes[0]]?.[key] ?? '', onChange: v => setForm(f => ({ ...f, details: f.details.map((d, i) => (productTermModalIndexes.includes(i) ? { ...d, [key]: v } : d)) })) })) : null} subLedgerCell={t => <TermLedgerInfo term={t} isReturn={false} subLedgers={subLedgers} value={(form.term_sub_ledgers || {})[t.id]} onChange={v => setForm(f => ({ ...f, term_sub_ledgers: { ...(f.term_sub_ledgers || {}), [t.id]: v } }))} />}
+                    onToggle={id => toggleTermForLines(productTermModalIndexes, id)}
+                    onInput={(id, kind, v) => setForm(f => ({ ...f, details: f.details.map((d, i) => (productTermModalIndexes.includes(i) ? { ...d, billing_term_ids: (d.billing_term_ids || []).includes(id) ? d.billing_term_ids : [...(d.billing_term_ids || []), id], term_values: withTermValue(d.term_values, id, kind, v) } : d)) }))} lineFields={chargesInPopup ? [['discount_percent', 'Discount %', '-'], ['tax_percent', 'Tax %', '+']].map(([key, label, sign]) => ({ key, label, sign, value: form.details[productTermModalIndexes[0]]?.[key] ?? '', onChange: v => setForm(f => ({ ...f, details: f.details.map((d, i) => (productTermModalIndexes.includes(i) ? { ...d, [key]: v } : d)) })) })) : null} subLedgerCell={t => <TermLedgerInfo term={t} isReturn={false} subLedgers={subLedgers} value={(form.term_sub_ledgers || {})[t.id]} onChange={v => setForm(f => ({ ...f, term_sub_ledgers: { ...(f.term_sub_ledgers || {}), [t.id]: v } }))} />}
                     onClose={() => setProductTermModalIndexes(null)} />
             )}
             {overallOpen && (

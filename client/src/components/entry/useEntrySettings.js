@@ -33,6 +33,8 @@ export default function useEntrySettings() {
                     searchBy: sc.product_search_by === 'code' ? 'code' : 'name',
                     barcode: !!sc.enable_barcode_system,
                     popupTerms: sc.popup_product_wise_term_applicability || [],
+                    // entries that show item charges (null: all of them)
+                    productTermTxns: Array.isArray(sc.product_term_transactions) ? sc.product_term_transactions : null,
                     // grid columns switched on in System Control
                     freeQty: !!sc.free_qty_system,
                     batch: !!sc.batch_system && sc.batch_system !== 'none',
@@ -69,6 +71,16 @@ export function termColumns(settings, side) {
     });
     return TERM_KEYS.filter(([k]) => map[k]).map(([k, label]) => {
         const t = (settings.billingTerms || []).find(x => x.id === map[k]);
-        return { key: k, label: t ? t.term_name : label, term_id: map[k], default_percent: Number(t?.rate_percentage) || 0, kind: k === 'vat' ? 'vat' : k === 'excise' ? 'excise' : 'discount' };
+        return {
+            key: k, label: t ? t.term_name : label, term_id: map[k], default_percent: Number(t?.rate_percentage) || 0, kind: k === 'vat' ? 'vat' : k === 'excise' ? 'excise' : 'discount',
+            // Billing Term: what may be typed, changeable in entries, shown in the Charges Summary
+            input: t?.entry_input_mode || 'all', manual: t?.manual_override !== false, summary: t?.show_in_term_summary !== false
+        };
     });
+}
+
+/** does this entry (e.g. 'sales_bill', 'purchase_grn') show item charges? (System Control) */
+export function showsProductTerms(settings, txn) {
+    const list = settings?.productTermTxns;
+    return !list || list.includes(txn);
 }

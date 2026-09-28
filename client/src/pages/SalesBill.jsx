@@ -14,8 +14,7 @@
 //             pop-ups, bill summary, remarks, amount in words, More Info
 //             (sales account + sub-ledger, rate type, narration), Party & Tax
 //             Info (customer address & PAN, optionally saved to the customer
-//             master), Hold / Save / Cancel; F7 copies the last bill, F8
-//             recalls a held one
+//             master), Save as Draft / Save / Cancel; F7 copies the last bill
 // Credit-checked; lines not from a Challan move stock.
 // =============================================
 
@@ -35,15 +34,15 @@ import useLedgerPurposes from '../components/useLedgerPurposes';
 import RecordHistory from '../components/RecordHistory';
 import { priceUrl, lineUnitOf, useSlabRepricing } from '../utils/salesPricing';
 import RateTypeField, { useEntryRateType } from '../components/entry/RateTypeField';
-import useEntrySettings, { termColumns } from '../components/entry/useEntrySettings';
+import useEntrySettings, { termColumns, showsProductTerms } from '../components/entry/useEntrySettings';
 import DocNumberField from '../components/entry/DocNumberField';
 import PendingDocsPanel, { mergePulled } from '../components/entry/PendingDocsPanel';
 import { PartyDetailsPanel, emptyPartyInfo, savePartyInfo, partyInfoFromDoc } from '../components/entry/PartyFooterTabs';
 import SalesLineGrid, { useLineGridControl, lineTotals } from '../components/entry/SalesLineGrid';
 import { EntryFooter, useEntryHotkeys, latestOf } from '../components/entry/EntryParts';
-import { calcLine, defaultLineTerms, lineForSave } from '../components/entry/lineCalc';
+import { calcLine, defaultLineTerms, productLineTerms, lineForSave } from '../components/entry/lineCalc';
 import { dualHelpers } from '../components/entry/dualHelpers';
-import DocActions, { HoldButtons, asNewCopy } from '../components/entry/DocActions';
+import DocActions, { asNewCopy } from '../components/entry/DocActions';
 
 const emptyDetailRow = () => ({ product_id: '', qty: '', uom_id: '', alt_qty: '', alt_unit_id: '', rate: '', rate_basis: 'primary', discount_percent: '', tax_percent: '', free_qty: '', free_alt_qty: '', free_uom_id: '', warehouse_id: '', batch_no: '', serial_no: '', line_terms: null, source_delivery_detail_id: '', source_order_detail_id: '', source_quotation_detail_id: '' });
 
@@ -63,6 +62,8 @@ export default function SalesBill() {
     const lp = useLedgerPurposes();
     const efc = useEntryFieldControls('sales_bill', EFC_RENDERED_KEYS);
     const settings = useEntrySettings();
+    // System Control: does this entry show item charges? (else only the Charges Summary)
+    const itemCharges = showsProductTerms(settings, 'sales_bill');
     const termCols = termColumns(settings, 'sales');
     const popupTerms = !!settings?.popupTerms.includes('sales');
     const [rows, setRows] = useState([]);
@@ -166,7 +167,7 @@ export default function SalesBill() {
 
     const handleProductSelect = async (idx, productId, unitId) => {
         const product = products.find(p => p.id === productId);
-        const base = { product_id: productId, line_terms: form.details[idx]?.line_terms || defaultLineTerms(termCols) };
+        const base = { product_id: productId, line_terms: productLineTerms(termCols, product, form.details[idx]?.line_terms) };
         if (product?.uom_mode === 'fixed_dual') {
             updateDetailRow(idx, { ...base, uom_id: product.dual_uom_primary_unit_id || '', alt_unit_id: product.base_unit_id || '', rate_basis: 'primary' });
         } else {
@@ -244,7 +245,7 @@ export default function SalesBill() {
     };
 
     const copyAsNew = async (row) => { await handleEdit(row); setEditingId(null); setForm(f => asNewCopy(f, row.id)); setShowForm(true); };
-    // F7: the last bill as a new one (F8 - held entries - is on the Hold button)
+    // F7: the last bill as a new one
     useEntryHotkeys(showForm, { F7: () => { const last = latestOf(rows); if (last) copyAsNew(last); else showAlert('No earlier bill to copy', 'info'); } });
     const selectedCustomer = customers.find(c => c.id === form.customer_ledger_id);
     const handleEdit = async (row) => {
@@ -385,7 +386,7 @@ export default function SalesBill() {
                     <PendingDocsPanel target="sales_bill" partyId={form.customer_ledger_id} efc={efc} disabled={!!editingId} onPull={handlePull} pulled={pulledDocs} />
 
                     <div className="erp-tab-content ent-lines">
-                        <SalesLineGrid
+                        <SalesLineGrid itemCharges={itemCharges}
                             listKey="sb" title="Sales Bill" ctl={lineCtl} details={form.details} onRow={updateDetailRow} onRemove={removeDetailRow} onAdd={addDetailRow}
                             products={filterProductsByCompany(products, form.product_company_id)} allProducts={products} units={units} warehouses={warehouses}
                             settings={settings} termCols={termCols} popupTerms={popupTerms} efc={efc} onProductSelect={handleProductSelect}
@@ -400,7 +401,7 @@ export default function SalesBill() {
                         totals={{ gross: totals.gross, billTerm: totals.term, net: grandTotal, taxable: totals.taxable, tax: totals.tax, nonTaxable: totals.nonTaxable }}
                         party={{ label: 'Customer', name: selectedCustomer?.account_name, creditLimit: selectedCustomer?.credit_limit }}
                         remarks={{ value: form.remarks_text, onChange: v => setForm(f => ({ ...f, remarks_text: v })), options: remarks.map(r => r.remark_text) }}
-                        onProductTerm={lineCtl.openTerms} onBillTerm={lineCtl.openOverall}
+                        onProductTerm={itemCharges ? lineCtl.openTerms : null} onBillTerm={lineCtl.openOverall}
                         panels={[
                             { key: 'other', label: 'More Info', content: (
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
@@ -428,7 +429,6 @@ export default function SalesBill() {
                             { key: 'billing', label: 'Party & Tax Info', content: <PartyDetailsPanel partyId={form.customer_ledger_id} partyLabel="Customer" info={partyInfo} onChange={setPartyInfo} /> }
                         ]}
                         actions={<>
-                            <HoldButtons hotkey voucherType="sales_bill" form={form} disabled={!!editingId} onRecall={p => { if (p) { setForm(p); setEditingId(null); setShowForm(true); } else resetForm(); }} />
                             <button type="button" onClick={e => handleSubmit(e, true)} className="erp-btn">💾 Save as Draft</button>
                             <button type="submit" className="erp-btn primary">💾 {editingId ? 'Update' : 'Save'}</button>
                             <button type="button" onClick={() => { resetForm(); setShowForm(false); }} className="erp-btn">Cancel</button>
