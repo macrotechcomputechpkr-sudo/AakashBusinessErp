@@ -79,10 +79,10 @@ export default function DualDateInput({ value, onChange, disabled, required, def
 
     if (mode === 'ad') {
         return (
-            <div className={`flex items-center gap-1 ${className}`} title={title}>
+            <div className={`flex items-center gap-1 min-w-0 ${className}`} title={title || (canBs && value ? `${bsText(value)} BS` : undefined)}>
                 <input type="date" className="erp-input" style={{ minWidth: 130 }} value={value || ''} disabled={disabled} required={required} onChange={e => onChange(e.target.value)} />
                 {toggle}
-                {canBs && value && <span className="text-xs text-gray-500 whitespace-nowrap">{bsText(value)} BS</span>}
+                {canBs && value && <span className="text-xs text-gray-500 whitespace-nowrap overflow-hidden text-ellipsis min-w-0">{bsText(value)} BS</span>}
             </div>
         );
     }
@@ -91,12 +91,12 @@ export default function DualDateInput({ value, onChange, disabled, required, def
     const lead = first ? new Date(`${first}T00:00:00`).getDay() : 0;
     const count = monthDays(view.year, view.month);
     return (
-        <div ref={wrap} className={`relative flex items-center gap-1 ${className}`} title={title}>
+        <div ref={wrap} className={`relative flex items-center gap-1 min-w-0 ${className}`} title={title || (value ? `${value} AD` : undefined)}>
             <input className={`erp-input ${bad ? 'border-red-500' : ''}`} style={{ minWidth: 110 }} value={text} disabled={disabled} required={required} placeholder="YYYY-MM-DD (BS)"
                 onChange={e => setText(e.target.value)} onBlur={commit} onKeyDown={e => { if (e.key === 'Enter') commit(); }} />
             <button type="button" tabIndex={-1} className="nav-btn small" disabled={disabled} onClick={openCal} title="Pick the Nepali date">📅</button>
             {toggle}
-            <span className={`text-xs whitespace-nowrap ${bad ? 'text-red-600' : 'text-gray-500'}`}>{bad ? 'Not a BS date' : value ? `${value} AD` : ''}</span>
+            <span className={`text-xs whitespace-nowrap overflow-hidden text-ellipsis min-w-0 ${bad ? 'text-red-600' : 'text-gray-500'}`}>{bad ? 'Not a BS date' : value ? `${value} AD` : ''}</span>
             {open && (
                 <div className="absolute z-50 top-full left-0 mt-1 bg-white border rounded shadow-lg p-2" style={{ width: 252 }}>
                     <div className="flex items-center justify-between mb-1 text-sm">

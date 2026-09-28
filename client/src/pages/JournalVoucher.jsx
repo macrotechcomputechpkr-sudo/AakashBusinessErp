@@ -406,10 +406,11 @@ export default function JournalVoucher() {
                                 {TYPE_CHOICES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                             </select>
                         </div>
-                        <div className="erp-field justify-end">
-                            <label className="flex items-center gap-2 text-sm">
+                        <div className="erp-field">
+                            <span className="erp-label">Memo Only</span>
+                            <label className="flex items-center gap-2 text-xs text-gray-600" title="A memo voucher is kept for record and never posts to the ledger">
                                 <input type="checkbox" checked={form.is_memo} onChange={e => setForm({ ...form, is_memo: e.target.checked })} />
-                                Memo Only <span className="hint">(never posts to ledger)</span>
+                                never posts to ledger
                             </label>
                         </div>
                         <div className={efc.isVisible('ref_doc_no') ? 'erp-field' : 'erp-field hidden'}>

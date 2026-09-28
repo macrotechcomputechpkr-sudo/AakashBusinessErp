@@ -241,13 +241,13 @@ export default function SearchablePopupSelect({
 
     return (
         <div className="relative" ref={containerRef}>
-            <div className="flex gap-2">
+            <div className="sps-row">
                 <input
                     ref={inputRef}
                     type="text"
                     required={required}
                     disabled={disabled}
-                    className="flex-1 border rounded-lg px-3 py-2"
+                    className="erp-input sps-input"
                     placeholder={placeholder}
                     value={open ? search : (selectedItem ? getLabel(selectedItem) : '')}
                     onFocus={openPopup}
@@ -260,10 +260,10 @@ export default function SearchablePopupSelect({
                     type="button"
                     tabIndex={-1}
                     onClick={() => setColPanelOpen(o => !o)}
-                    className="px-2 py-2 border rounded-lg text-sm text-gray-500 hover:bg-gray-50"
+                    className="sps-gear"
                     title="Column settings"
                 >
-                    ⚙️
+                    ⚙
                 </button>
             </div>
 

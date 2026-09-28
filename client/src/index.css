@@ -156,22 +156,31 @@
      24px inputs - for erp-field screens and plain "label over input" screens alike */
   @media (min-width: 768px) {
     .nav-page .erp-field, .nav-page div:has(> label:first-child + :is(input:not([type=checkbox]):not([type=radio]), select, textarea, div.flex, div.relative):last-child) {
-      display: grid; grid-template-columns: clamp(64px, 38%, 128px) minmax(0, 1fr); column-gap: 8px; row-gap: 2px; align-items: center;
+      display: grid; grid-template-columns: var(--nav-caption, 136px) minmax(0, 1fr); column-gap: 6px; row-gap: 0; align-items: center; min-height: 23px;
     }
     .nav-page .erp-field > .erp-label, .nav-page div:has(> label:first-child + :is(input:not([type=checkbox]):not([type=radio]), select, textarea, div.flex, div.relative):last-child) > label:first-child {
-      grid-column: 1; margin: 0; text-align: right; font-size: 12px; font-weight: 400; color: #1a1a1a; line-height: 1.15; overflow-wrap: anywhere;
+      grid-column: 1; margin: 0; text-align: left; font-size: 12px; font-weight: 400; color: #1a1a1a; line-height: 22px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
     .nav-page .erp-field > :not(.erp-label) { grid-column: 2; min-width: 0; }
+    /* one-line captions: side notes in a caption are left out of the card layout */
+    .nav-page .erp-field > .erp-label .hint { display: none; }
+    .nav-page .erp-field input[type=date] { min-width: 112px !important; flex: 1 1 auto; }
     .nav-page .erp-field :is(input, select) { min-width: 0; }
     .nav-page .erp-field .flex > * { min-width: 0; }
     .nav-page .erp-field button { flex-shrink: 0; }
     .nav-page .erp-field:has(> textarea), .nav-page div:has(> label:first-child + textarea:last-child) { align-items: start; }
     .nav-page .erp-field:has(> textarea) > .erp-label, .nav-page div:has(> label:first-child + textarea:last-child) > label:first-child { padding-top: 4px; }
     .nav-page :is(input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):not([type=file]), select:not([multiple])) {
-      height: 24px; padding-top: 1px; padding-bottom: 1px; font-size: 12px;
+      height: 22px; padding-top: 0; padding-bottom: 0; font-size: 12px;
     }
     .nav-page :is(button, a):is([class*="py-2"], [class*="py-3"]):not(.nav-tool-btn):not(.nav-ribbon-tab) { padding-top: 3px; padding-bottom: 3px; }
-    .nav-page .erp-topbar { gap: 5px 14px; padding: 12px 12px 8px; }
+    .nav-page .erp-topbar { gap: 3px 22px; padding: 8px 10px 6px; margin: 8px 10px 4px; }
+    .nav-page .erp-tab-content { padding-top: 6px; }
+    /* grids: one line of 22px fields per row */
+    .nav-page .erp-grid-table tbody td { padding: 1px 3px; }
+    .nav-page .erp-grid-table thead th { padding: 3px 5px; }
+    .nav-page .sps-gear { height: 22px; width: 22px; }
   }
   /* caption-left fields need room: wide field rows drop to 2 (laptop) or 3 columns */
   @media (min-width: 768px) and (max-width: 1279px) {
@@ -274,11 +283,16 @@
   /* NAV-style FastTab: a collapsible section of a card - bold caption with an arrow, a thin
      rule under it, its summary on the right while folded, fields in even caption-left columns */
   .nav-fasttab { margin: 2px 10px 0; }
-  .nav-fasttab-head { display: flex; align-items: center; gap: 6px; width: 100%; padding: 5px 2px 4px; background: none; border: 0;
+  .sps-row { display: flex; align-items: stretch; }
+  .sps-row > .sps-input { flex: 1; min-width: 0; }
+  .sps-gear { flex: 0 0 auto; width: 26px; height: 28px; padding: 0; margin-left: -1px; font-size: 11px; line-height: 1; color: #6b6b6b;
+    background: linear-gradient(180deg, #fdfdfb 0%, #e6e4dc 100%); border: 1px solid #a0a0a0; cursor: pointer; }
+  .sps-gear:hover { background: #dde8f6; border-color: #4a7ab5; }
+  .nav-fasttab-head { display: flex; align-items: center; gap: 6px; width: 100%; padding: 3px 2px; background: none; border: 0;
     border-bottom: 1px solid #c9c6ba; font-size: 13px; font-weight: 700; color: #1a4a8a; text-align: left; cursor: pointer; }
   .nav-fasttab-head:hover { color: #0f3470; background: #f6f5ef; }
   .nav-fasttab-sum { margin-left: auto; font-size: 11px; font-weight: 400; color: #555; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 60%; }
-  .nav-fasttab-body { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px 18px; padding: 7px 4px 6px; }
+  .nav-fasttab-body { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3px 22px; padding: 5px 4px 4px; }
   @media (max-width: 1279px) { .nav-fasttab-body { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
   @media (max-width: 767px) { .nav-fasttab-body { grid-template-columns: minmax(0, 1fr); } }
   .erp-topbar { display: grid; gap: 7px 12px; background: #f0f0f0; border: 1px solid #aca899; border-right-color: #d4d0c8; border-bottom-color: #d4d0c8; margin: 12px 10px 6px; padding: 14px 12px 10px; position: relative; }
