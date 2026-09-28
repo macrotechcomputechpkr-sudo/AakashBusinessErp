@@ -541,6 +541,18 @@ export default function PurchaseReturn() {
                                 />
                             )}
                         </div>
+                        {/* the vendor's sub-ledger, next to the vendor */}
+                        <div className="erp-field">
+                            <label className="erp-label">Vendor Sub-Ledger</label>
+                            <SearchablePopupSelect
+                                listKey="purchase_return_vendor_subledger_picker"
+                                columns={[{ key: 'code', label: 'Code' }, { key: 'name', label: 'Name' }]}
+                                defaultVisibleKeys={['name']}
+                                items={subLedgers.filter(x => x.main_ledger_id === form.vendor_ledger_id).map(x => ({ id: x.id, code: x.sub_ledger_code, name: x.sub_ledger_name }))} getId={x => x.id} getLabel={x => x.name}
+                                searchKeys={['name', 'code']}
+                                value={form.vendor_sub_ledger_id} onChange={id => setForm({ ...form, vendor_sub_ledger_id: id })} placeholder={form.vendor_ledger_id ? 'None' : 'Choose the vendor first'}
+                            />
+                        </div>
                         <ProductCompanyField side="purchase" form={form} setForm={setForm} products={products} emptyRow={emptyDetailRow} />
                         {!editingId && (
                             <NumberingCategorySelector voucherType="purchase_return" value={form.numbering_category_id} onChange={id => setForm({ ...form, numbering_category_id: id })} />
@@ -581,17 +593,6 @@ export default function PurchaseReturn() {
                             <div className={efc.isVisible('currency') ? 'erp-field' : 'erp-field hidden'}>
                                 <label className="erp-label">Currency {efc.isRequired('currency') && <span className="req">*</span>}</label>
                                 <CurrencyField bare disabled={efc.isReadonly('currency')} value={form.currency} rate={form.exchange_rate} onChange={v => setForm(f => ({ ...f, ...v }))} />
-                            </div>
-                            <div className="erp-field">
-                                <label className="erp-label">Vendor Sub-Ledger</label>
-                                <SearchablePopupSelect
-                                    listKey="purchase_return_vendor_subledger_picker"
-                                    columns={[{ key: 'code', label: 'Code' }, { key: 'name', label: 'Name' }]}
-                                    defaultVisibleKeys={['name']}
-                                    items={subLedgers.filter(x => x.main_ledger_id === form.vendor_ledger_id).map(x => ({ id: x.id, code: x.sub_ledger_code, name: x.sub_ledger_name }))} getId={x => x.id} getLabel={x => x.name}
-                                    searchKeys={['name', 'code']}
-                                    value={form.vendor_sub_ledger_id} onChange={id => setForm({ ...form, vendor_sub_ledger_id: id })} placeholder="None"
-                                />
                             </div>
                             <div className={efc.isVisible('goods_account_ledger_id') ? 'erp-field' : 'erp-field hidden'}>
                                 <label className="erp-label">Goods Account {efc.isRequired('goods_account_ledger_id') && <span className="req">*</span>}</label>

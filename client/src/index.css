@@ -135,14 +135,15 @@
   .nav-ribbon-path { margin-left: auto; padding: 4px; font-size: 11px; color: #5a5a5a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .nav-page-toolbar { min-height: 30px; }
   a.nav-tool-btn { text-decoration: none; }
-  .nav-page-body { flex: 1; min-width: 0; background: #f0f0f0; padding: 8px 10px 14px; }
+  .nav-page-body { flex: 1; min-width: 0; background: #f0f0f0; padding: 4px 8px 12px; }
 
   /* screens keep their own erp-card: inside the window it is a framed panel with a
      beige tool strip (the window title bar above already names the screen) */
   .nav-page .erp-shell { background: transparent; padding: 0; min-height: 0; }
   .nav-page .erp-shell + .erp-shell { margin-top: 10px; }
   .nav-page .erp-card { max-width: none !important; box-shadow: none; border: 1px solid; border-color: #aca899 #d4d0c8 #d4d0c8 #aca899; margin-bottom: 10px; }
-  .nav-page .erp-header { background: #ece9d8; border-bottom: 1px solid #aca899; min-height: 30px; padding: 2px 8px; }
+  .nav-page .erp-header { background: #ece9d8; border-bottom: 1px solid #aca899; min-height: 24px; padding: 0 8px; }
+  .nav-page .erp-header .erp-header-btn { padding-top: 1px; padding-bottom: 1px; }
   .nav-page .erp-header-title { color: #1a4a8a; text-shadow: none; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; }
   .nav-page .erp-header-btn { background: transparent; border-color: transparent; padding: 3px 10px; }
   .nav-page .erp-header-btn:hover { background: #d4d0c8; border-color: #aca899; }
@@ -175,7 +176,8 @@
       height: 22px; padding-top: 0; padding-bottom: 0; font-size: 12px;
     }
     .nav-page :is(button, a):is([class*="py-2"], [class*="py-3"]):not(.nav-tool-btn):not(.nav-ribbon-tab) { padding-top: 3px; padding-bottom: 3px; }
-    .nav-page .erp-topbar { gap: 3px 22px; padding: 8px 10px 6px; margin: 8px 10px 4px; }
+    .nav-page .erp-topbar { gap: 3px 22px; padding: 6px 10px 5px; margin: 4px 10px 4px; }
+    .nav-page .ent-fillbar .nav-btn.small { padding-top: 0; padding-bottom: 0; min-height: 20px; }
     .nav-page .erp-tab-content { padding-top: 6px; }
     /* grids: one line of 22px fields per row */
     .nav-page .erp-grid-table tbody td { padding: 1px 3px; }
@@ -282,6 +284,10 @@
 
   /* NAV-style FastTab: a collapsible section of a card - bold caption with an arrow, a thin
      rule under it, its summary on the right while folded, fields in even caption-left columns */
+  /* pull-from boxes (PendingDocsPanel): one more row of the master part, one caption + box per source */
+  .ent-pullbar { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3px 22px; background: #f0f0f0;
+    border: 1px solid #aca899; border-top: 0; border-right-color: #d4d0c8; border-bottom-color: #d4d0c8; margin: -5px 10px 4px; padding: 3px 10px 5px; }
+  @media (max-width: 767px) { .ent-pullbar { grid-template-columns: minmax(0, 1fr); } }
   .nav-fasttab { margin: 2px 10px 0; }
   .sps-row { display: flex; align-items: stretch; }
   .sps-row > .sps-input { flex: 1; min-width: 0; }
@@ -456,7 +462,7 @@ label {
 }
 
 /* fill bar at the top of a transaction form: template / previous entry / draft */
-.ent-fillbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 4px 8px; margin-bottom: 6px; border: 1px dashed var(--nav-border, #c9cfd8); border-radius: 4px; background: rgba(120, 140, 170, 0.06); font-size: 12px; }
+.ent-fillbar { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 2px 8px; margin-bottom: 0; border: 1px dashed var(--nav-border, #c9cfd8); border-radius: 4px; background: rgba(120, 140, 170, 0.06); font-size: 12px; }
 .ent-fillbar-cap { font-weight: 600; color: #55607a; margin-right: 2px; }
 .ent-fillbar-sep { width: 1px; height: 18px; background: #c9cfd8; margin: 0 4px; }
 .ent-fillbar .nav-btn:disabled { opacity: .45; cursor: not-allowed; }

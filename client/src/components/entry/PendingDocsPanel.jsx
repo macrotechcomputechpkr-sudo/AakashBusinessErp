@@ -2,7 +2,9 @@
 // components/entry/PendingDocsPanel.jsx
 // Header part of a sales / purchase entry: the earlier documents that still
 // have qty left - only the types switched on in Entry Field Control
-// (ref_<type>):
+// (ref_<type>), each with its own caption and box right under the master
+// part (Quotation No. / Order No. / Challan No.); ▾ / Enter opens that
+// type's pending list in a pop-up:
 //   Order <- Quotation; Challan / GRN <- Quotation + Order;
 //   Bill <- Quotation + Order + Challan (sales) / GRN (purchase)
 // With a party chosen: that party's documents. Without one: search by
@@ -13,6 +15,7 @@
 // =============================================
 import React, { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
+import { EntryPopup } from './EntryParts';
 
 const SOURCES = {
     sales_order: ['sales_quotation'], sales_delivery: ['sales_quotation', 'sales_order'], sales_bill: ['sales_quotation', 'sales_order', 'sales_delivery'],
@@ -35,6 +38,8 @@ export default function PendingDocsPanel({ target, partyId, efc, onPull, disable
     const [busy, setBusy] = useState(false);
     const [err, setErr] = useState('');
     const [q, setQ] = useState('');
+    const [qs, setQs] = useState({});          // number typed per source type
+    const [open, setOpen] = useState(null);    // source type whose pending list is open
     const typesKey = types.join(',');
 
     const load = useCallback(async () => {
@@ -64,35 +69,55 @@ export default function PendingDocsPanel({ target, partyId, efc, onPull, disable
         } catch (e) { setErr(e.message); } finally { setBusy(false); }
     };
 
+    // one caption + box per source (Quotation No. / Order No. / Challan No.), right under the
+    // master part; its list of pending documents opens in a pop-up
+    const docsOf = t => docs.filter(d => d.type === t);
+    const shown = open ? docsOf(open) : [];
+    const chosenHere = shown.filter(d => ticked[keyOf(d)]);
+    const openType = t => { setOpen(t); setErr(''); };
+
     return (
-        <div className="nav-groupbox" style={{ margin: '14px 10px 6px' }}>
-            <span className="nav-groupbox-title">Pull from {types.map(t => LABEL[t]).join(' / ')}{partyId ? ' of this party' : ''}</span>
-            {err && <div className="nav-msg err">{err}</div>}
-            <div className="flex items-center gap-2 mb-1" data-enter-nav="off">
-                <label className="text-xs text-gray-600 whitespace-nowrap">Doc No.</label>
-                <input className="erp-input" style={{ maxWidth: 260 }} placeholder={partyId ? 'Filter by number…' : 'Type a number (or party) to find it…'} value={q} onChange={e => setQ(e.target.value)} />
-            </div>
-            {docs.length === 0 ? <p className="text-xs text-gray-600">{partyId ? 'Nothing pending for this party.' : q ? 'No pending document with this number.' : 'Choose the party, or type a document number.'}</p> : (
-                <>
-                    <div className="overflow-x-auto max-h-48 overflow-y-auto">
-                        <table className="erp-grid-table" data-no-excel>
-                            <thead><tr><th style={{ width: 30 }}><input type="checkbox" checked={chosen.length === docs.length} onChange={e => setTicked(e.target.checked ? Object.fromEntries(docs.map(d => [keyOf(d), true])) : {})} /></th>
-                                <th>Type</th><th>Doc No</th><th>Date</th>{!partyId && <th>Party</th>}<th className="text-right">Lines pending</th><th className="text-right">Pending value</th><th className="text-right">Doc total</th><th /></tr></thead>
-                            <tbody>{docs.map(d => (
-                                <tr key={keyOf(d)} className={pulled.includes(d.id) ? 'text-gray-400' : ''}>
-                                    <td><input type="checkbox" checked={!!ticked[keyOf(d)]} onChange={e => setTicked(t => ({ ...t, [keyOf(d)]: e.target.checked }))} /></td>
-                                    <td>{d.type_label}</td><td className="font-mono">{d.doc_no}</td><td>{String(d.doc_date || '').slice(0, 10)}</td>{!partyId && <td>{d.party_name || ''}</td>}
-                                    <td className="text-right">{d.pending_lines}</td><td className="text-right">{money(d.pending_value)}</td><td className="text-right">{money(d.total_amount)}</td>
-                                    <td><button type="button" className="nav-btn small" onClick={() => view(d)}>👁 View</button></td>
-                                </tr>
-                            ))}</tbody>
-                        </table>
+        <div className="ent-pullbar" data-enter-nav="off">
+            {types.map(t => {
+                const n = docsOf(t).length;
+                return (
+                    <div key={t} className="erp-field">
+                        <label className="erp-label">{LABEL[t]} No.</label>
+                        <div className="sps-row">
+                            <input className="erp-input sps-input" value={qs[t] || ''} placeholder={partyId ? (n ? `${n} pending - pick or type` : 'none pending') : 'type the number'}
+                                onChange={e => { setQs(x => ({ ...x, [t]: e.target.value })); setQ(e.target.value); openType(t); }}
+                                onKeyDown={e => { if (e.key === 'Enter' || e.key === 'F4') { e.preventDefault(); openType(t); } }} />
+                            <button type="button" tabIndex={-1} className="sps-gear" title={`Pending ${LABEL[t]}s`} onClick={() => { setQ(qs[t] || ''); openType(t); }}>▾</button>
+                        </div>
                     </div>
-                    <div className="flex items-center gap-2 mt-2">
-                        <button type="button" className="nav-btn primary small" disabled={!chosen.length || busy} onClick={pull}>⬇ Pull {chosen.length || ''} selected</button>
-                        <span className="text-xs text-gray-600">Pulled lines replace the empty lines of the entry; qty can be reduced before saving.</span>
-                    </div>
-                </>
+                );
+            })}
+            {open && (
+                <EntryPopup title={`Pull from ${LABEL[open]}${partyId ? ' - this party' : ''}`} onClose={() => setOpen(null)} width={820}>
+                    {err && <div className="nav-msg err">{err}</div>}
+                    {shown.length === 0 ? <p className="text-xs text-gray-600">{partyId ? `No pending ${LABEL[open]} for this party.` : (qs[open] ? `No pending ${LABEL[open]} with this number.` : 'Choose the party, or type a document number.')}</p> : (
+                        <>
+                            <div className="overflow-auto" style={{ maxHeight: 300 }}>
+                                <table className="erp-grid-table" data-no-excel>
+                                    <thead><tr><th style={{ width: 30 }}><input type="checkbox" checked={chosenHere.length === shown.length} onChange={e => setTicked(x => ({ ...x, ...Object.fromEntries(shown.map(d => [keyOf(d), e.target.checked])) }))} /></th>
+                                        <th>Doc No</th><th>Date</th>{!partyId && <th>Party</th>}<th className="text-right">Lines pending</th><th className="text-right">Pending value</th><th className="text-right">Doc total</th><th /></tr></thead>
+                                    <tbody>{shown.filter(d => !qs[open] || String(d.doc_no || '').toLowerCase().includes(String(qs[open]).toLowerCase()) || !partyId).map(d => (
+                                        <tr key={keyOf(d)} className={pulled.includes(d.id) ? 'text-gray-400' : ''}>
+                                            <td><input type="checkbox" checked={!!ticked[keyOf(d)]} onChange={e => setTicked(x => ({ ...x, [keyOf(d)]: e.target.checked }))} /></td>
+                                            <td className="font-mono">{d.doc_no}</td><td>{String(d.doc_date || '').slice(0, 10)}</td>{!partyId && <td>{d.party_name || ''}</td>}
+                                            <td className="text-right">{d.pending_lines}</td><td className="text-right">{money(d.pending_value)}</td><td className="text-right">{money(d.total_amount)}</td>
+                                            <td><button type="button" className="nav-btn small" onClick={() => view(d)}>👁 View</button></td>
+                                        </tr>
+                                    ))}</tbody>
+                                </table>
+                            </div>
+                            <div className="flex items-center gap-2 mt-2">
+                                <button type="button" className="nav-btn primary small" disabled={!chosen.length || busy} onClick={async () => { await pull(); setOpen(null); }}>⬇ Pull {chosen.length || ''} selected</button>
+                                <span className="text-xs text-gray-600">Pulled lines replace the empty lines of the entry; qty can be reduced before saving.</span>
+                            </div>
+                        </>
+                    )}
+                </EntryPopup>
             )}
             {viewing && (
                 <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setViewing(null)}>

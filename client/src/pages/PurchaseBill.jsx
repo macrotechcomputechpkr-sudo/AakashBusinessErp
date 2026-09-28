@@ -816,6 +816,18 @@ export default function PurchaseBill() {
                                 </div>
                             )}
                         </div>
+                        {/* the vendor's sub-ledger, next to the vendor */}
+                        <div className="erp-field">
+                            <label className="erp-label">Vendor Sub-Ledger</label>
+                            <SearchablePopupSelect
+                                listKey="purchase_bill_vendor_subledger_picker"
+                                columns={[{ key: 'code', label: 'Code' }, { key: 'name', label: 'Name' }]}
+                                defaultVisibleKeys={['name']}
+                                items={subLedgers.filter(x => x.main_ledger_id === form.vendor_ledger_id).map(x => ({ id: x.id, code: x.sub_ledger_code, name: x.sub_ledger_name }))} getId={x => x.id} getLabel={x => x.name}
+                                searchKeys={['name', 'code']}
+                                value={form.vendor_sub_ledger_id} onChange={id => setForm({ ...form, vendor_sub_ledger_id: id })} placeholder={form.vendor_ledger_id ? 'None' : 'Choose the vendor first'}
+                            />
+                        </div>
                         <ProductCompanyField side="purchase" form={form} setForm={setForm} products={products} emptyRow={emptyDetailRow} />
                         <div className={isVisible('priority') ? 'erp-field' : 'erp-field hidden'}>
                             <label className="erp-label">Priority</label>
@@ -1100,17 +1112,6 @@ export default function PurchaseBill() {
                                 </div>
 
                                 <div className={activeTab === 'accounts' ? 'grid grid-cols-1 md:grid-cols-4 gap-3' : 'hidden'}>
-                                    <div className="erp-field">
-                                        <label className="erp-label">Vendor Sub-Ledger</label>
-                                        <SearchablePopupSelect
-                                            listKey="purchase_bill_vendor_subledger_picker"
-                                            columns={[{ key: 'code', label: 'Code' }, { key: 'name', label: 'Name' }]}
-                                            defaultVisibleKeys={['name']}
-                                            items={subLedgers.filter(x => x.main_ledger_id === form.vendor_ledger_id).map(x => ({ id: x.id, code: x.sub_ledger_code, name: x.sub_ledger_name }))} getId={x => x.id} getLabel={x => x.name}
-                                            searchKeys={['name', 'code']}
-                                            value={form.vendor_sub_ledger_id} onChange={id => setForm({ ...form, vendor_sub_ledger_id: id })} placeholder="None"
-                                        />
-                                    </div>
                                     <div className={isVisible('goods_account_ledger_id') ? 'erp-field' : 'erp-field hidden'}>
                                         <label className="erp-label">Goods Account</label>
                                         <SearchablePopupSelect
