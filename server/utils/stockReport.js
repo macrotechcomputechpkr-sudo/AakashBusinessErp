@@ -19,6 +19,7 @@
 // =============================================
 const { itemMovement: rawMovement, METHODS, MODULE_LABEL, TRANSFER_KEYS, costingSettings, methodFor, keyEvents } = require('./stockEngine');
 const { reportScope } = require('./dataAccess');
+const { landedCostPerUnit, withLanded } = require('./landedCost');
 // Batch / serial products are costed per System Control (FIFO / LIFO / average or batch-wise / serial-wise).
 const moveOf = (f, p, events, from, to) => { const e = methodFor(p, f.method, f.cs); return rawMovement(keyEvents(events, e.keyBy), e.method, from, to); };
 
@@ -205,6 +206,7 @@ async function loadEvents(c, t, f, products) {
         fetchAll(() => c.from('warehouses').select('id, warehouse_name').eq('tenant_id', t).order('id'))
     ]);
     const whName = Object.fromEntries(warehouses.map(w => [w.id, w.warehouse_name]));
+    const landed = moves.length ? await landedCostPerUnit(c, t, f.to) : {};    // additional expense on receipts
     const batchMeta = {}, openingBatches = {};
     batches.filter(b => ids.has(b.product_id)).forEach(b => {
         batchMeta[`${b.product_id}|${b.batch_no}`] = b;
@@ -247,7 +249,7 @@ async function loadEvents(c, t, f, products) {
         const p = byId[m.product_id];
         if (!p || !batchOk(m.batch_no)) return;
         rowFor(p, m.batch_no, m.warehouse_id).events.push({
-            date: String(m.movement_date).slice(0, 10), seq: m.created_at || '', qin: Number(m.qty_in) || 0, qout: Number(m.qty_out) || 0, cost: Number(m.unit_cost) || 0,
+            date: String(m.movement_date).slice(0, 10), seq: m.created_at || '', qin: Number(m.qty_in) || 0, qout: Number(m.qty_out) || 0, cost: withLanded(landed, m),
             src: m.source_type === 'stock_transfer' && byWh ? 'transfer_wh' : m.source_type || 'other', src_type: m.source_type,
             id: m.id, source_id: m.source_id, source_detail_id: m.source_detail_id, batch_no: m.batch_no, serial_no: m.serial_no || null, warehouse_id: m.warehouse_id, narration: m.narration
         });

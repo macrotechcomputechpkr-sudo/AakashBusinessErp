@@ -21,7 +21,11 @@
 // A two-step branch transfer dispatched but not yet received (or received
 // for a dispatch of an earlier period) leaves its in and out unequal; the
 // difference is still company stock and is shown as "Goods in Transit".
+// A posted Purchase Additional Expense adds its allocated amount to the cost
+// of the receipt it was allocated to (utils/landedCost.js).
 // =============================================
+
+const { landedCostPerUnit, withLanded } = require('./landedCost');
 
 const round2 = n => Math.round((Number(n) || 0) * 100) / 100;
 const round4 = n => Math.round((Number(n) || 0) * 10000) / 10000;
@@ -180,7 +184,9 @@ async function loadItems(tenantClient, tenantId, to, filters = {}) {
         });
         if (total - used > 1e-9) events[p.id].push({ date: openingDay, seq: '', qin: round4(total - used), qout: 0, cost: Number(p.opening_rate) || 0, src: 'opening' });
     });
-    moves.forEach(m => events[m.product_id].push({ date: String(m.movement_date).slice(0, 10), seq: m.created_at || '', qin: Number(m.qty_in) || 0, qout: Number(m.qty_out) || 0, cost: Number(m.unit_cost) || 0,
+    // Purchase Additional Expense allocated to a receipt is part of its cost (utils/landedCost.js).
+    const landed = await landedCostPerUnit(tenantClient, tenantId, to);
+    moves.forEach(m => events[m.product_id].push({ date: String(m.movement_date).slice(0, 10), seq: m.created_at || '', qin: Number(m.qty_in) || 0, qout: Number(m.qty_out) || 0, cost: withLanded(landed, m),
         src: m.source_type || 'other', batch_no: m.batch_no || null, serial_no: m.serial_no || null }));
     Object.values(events).forEach(ev => ev.sort((a, b) => a.date.localeCompare(b.date) || String(a.seq).localeCompare(String(b.seq))));
     return { products, events };

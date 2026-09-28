@@ -3,7 +3,8 @@
 // Extra costs (freight, customs duty, insurance, etc.) linked to an
 // Order, GRN, and/or Bill, automatically allocated across that
 // document's product lines for landed cost - by Value share, Qty
-// share, or an Equal split.
+// share, or an Equal split. Once posted, the allocation is added to the
+// cost of those receipts in stock valuation (utils/landedCost.js).
 // =============================================
 
 const express = require('express');
@@ -14,6 +15,7 @@ const { getTenantClient, loadUserPermissions, logAudit } = require('../utils/dbH
 const { requireAuth, requirePermission } = require('../middleware/auth');
 const { resolveDocumentNumber } = require('../utils/documentNumbering');
 const { postAdditionalExpenseEntry, buildAdditionalExpenseGl, reverseBatch } = require('../utils/grnAccounting');
+const { classifyLedgers, describe: describeLedger } = require('../utils/stockAccounting');
 
 function validateBody(b, isDraft) {
     if (!b.doc_date) return 'Date is required';
@@ -57,18 +59,21 @@ async function captureMasterSnapshots(tenantClient, b) {
 // of Order/GRN/Bill was linked - GRN wins if more than one is given,
 // since it's the most physically-grounded "what actually arrived"
 // stage) so the frontend can preview the allocation before saving.
+// Value share is on the goods' own cost (net of VAT): a line with VAT would
+// otherwise take more of the expense than a VAT-exempt line of the same value.
+const netValue = d => (Number(d.amount) || 0) - (Number(d.tax_amount) || 0);
 async function getSourceLines(tenantClient, { source_order_id, source_grn_id, source_bill_id }) {
     if (source_grn_id) {
-        const { data } = await tenantClient.from('purchase_grn_details').select('id, product_id, product_name_snapshot, qty, alt_qty, amount').eq('grn_id', source_grn_id);
-        return (data || []).map(d => ({ source_grn_detail_id: d.id, product_id: d.product_id, product_name_snapshot: d.product_name_snapshot, qty: Number(d.qty), alt_qty: Number(d.alt_qty) || 0, value: Number(d.amount) }));
+        const { data } = await tenantClient.from('purchase_grn_details').select('id, product_id, product_name_snapshot, qty, alt_qty, amount, tax_amount').eq('grn_id', source_grn_id);
+        return (data || []).map(d => ({ source_grn_detail_id: d.id, product_id: d.product_id, product_name_snapshot: d.product_name_snapshot, qty: Number(d.qty), alt_qty: Number(d.alt_qty) || 0, value: netValue(d) }));
     }
     if (source_bill_id) {
-        const { data } = await tenantClient.from('purchase_bill_details').select('id, product_id, product_name_snapshot, qty, alt_qty, amount').eq('bill_id', source_bill_id);
-        return (data || []).map(d => ({ source_bill_detail_id: d.id, product_id: d.product_id, product_name_snapshot: d.product_name_snapshot, qty: Number(d.qty), alt_qty: Number(d.alt_qty) || 0, value: Number(d.amount) }));
+        const { data } = await tenantClient.from('purchase_bill_details').select('id, product_id, product_name_snapshot, qty, alt_qty, amount, tax_amount').eq('bill_id', source_bill_id);
+        return (data || []).map(d => ({ source_bill_detail_id: d.id, product_id: d.product_id, product_name_snapshot: d.product_name_snapshot, qty: Number(d.qty), alt_qty: Number(d.alt_qty) || 0, value: netValue(d) }));
     }
     if (source_order_id) {
-        const { data } = await tenantClient.from('purchase_order_details').select('id, product_id, product_name_snapshot, qty, amount').eq('order_id', source_order_id);
-        return (data || []).map(d => ({ source_order_detail_id: d.id, product_id: d.product_id, product_name_snapshot: d.product_name_snapshot, qty: Number(d.qty), value: Number(d.amount) }));
+        const { data } = await tenantClient.from('purchase_order_details').select('id, product_id, product_name_snapshot, qty, amount, tax_amount').eq('order_id', source_order_id);
+        return (data || []).map(d => ({ source_order_detail_id: d.id, product_id: d.product_id, product_name_snapshot: d.product_name_snapshot, qty: Number(d.qty), value: netValue(d) }));
     }
     return [];
 }
@@ -159,6 +164,27 @@ async function syncAllocations(tenantClient, tenantId, expenseId, b, expenseLine
     }));
     const { error } = await tenantClient.from('purchase_expense_allocations').insert(rows);
     if (error) throw error;
+}
+
+// The allocated (costing) part of the entry becomes stock value on the
+// receipt (utils/landedCost.js), while the GL debit stays on the line's
+// ledger. Stock is periodic, so that ledger should be a Purchase / direct
+// expense (or Inventory) ledger: then COGS = purchases incl. the expense -
+// closing stock incl. its unsold share. An indirect-expense ledger keeps
+// net profit right but overstates gross profit by the part left in stock.
+async function costingWarnings(tenantClient, tenantId, head, lines) {
+    const costing = lines.filter(l => l.allocation_basis !== 'none' && Number(l.amount) > 0);
+    if (!costing.length) return [];
+    const warnings = [];
+    const cls = await classifyLedgers(tenantClient, tenantId, costing.map(l => l.expense_ledger_id));
+    costing.forEach(l => {
+        const c = cls[l.expense_ledger_id];
+        if (c && !c.neutral) warnings.push(`${l.description || c.name}: "${c.name}" is a ${describeLedger(c)} ledger, but this line is added to stock cost - use a Purchase / direct expense ledger so gross profit is not overstated.`);
+    });
+    if (head && !head.source_grn_id && !head.source_bill_id) {
+        warnings.push('Linked to an Order only: the cost is added to stock when the goods are received (GRN / Bill made from this Order). Until then it stays in the expense.');
+    }
+    return warnings;
 }
 
 async function logDocumentAudit(tenantClient, tenantId, documentType, documentId, action, userId) {
@@ -367,12 +393,13 @@ router.put('/purchase-additional-expenses/:id/status', requireAuth, loadUserPerm
         if (!existing) return res.status(404).json({ success: false, error: 'Additional Expense not found' });
         if (existing.status === 'cancelled') return res.status(400).json({ success: false, error: 'This document is already cancelled' });
         if (status === 'draft' && existing.status === 'posted') return res.status(400).json({ success: false, error: 'A posted document cannot go back to draft - cancel it instead' });
-        let glPlan = null;
+        let glPlan = null, warnings = [];
         if (status === 'posted' && existing.status !== 'posted') {
             const { data: head } = await tenantClient.from('purchase_additional_expenses').select('*').eq('id', req.params.id).maybeSingle();
             const { data: lines } = await tenantClient.from('purchase_additional_expense_lines').select('*').eq('expense_id', req.params.id).order('display_order');
             try { glPlan = head && head.account_posting === false ? null : await buildAdditionalExpenseGl(tenantClient, tenantId, head, lines || []); }
             catch (planErr) { return res.status(400).json({ success: false, error: planErr.message }); }
+            warnings = await costingWarnings(tenantClient, tenantId, head, lines || []);
         }
         const update = { status, updated_by: req.auth.userId };
         if (status === 'cancelled') { update.cancellation_reason = cancellation_reason; update.cancelled_at = new Date().toISOString(); update.cancelled_by = req.auth.userId; }
@@ -388,7 +415,7 @@ router.put('/purchase-additional-expenses/:id/status', requireAuth, loadUserPerm
         }
         await logAudit(tenantId, req.auth.userId, 'change_additional_expense_status', 'purchase_additional_expense', req.params.id, { new_status: status, cancellation_reason });
         await logDocumentAudit(tenantClient, tenantId, 'purchase_additional_expense', req.params.id, 'status_change', req.auth.userId);
-        res.json({ success: true, data });
+        res.json({ success: true, data, warnings: warnings.length ? warnings : undefined });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }

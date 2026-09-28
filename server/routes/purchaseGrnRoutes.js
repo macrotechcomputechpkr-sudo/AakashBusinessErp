@@ -112,6 +112,11 @@ async function postGrnStockMovements(tenantClient, tenantId, grn, details) {
             baseQty = await toBaseUnitQty(tenantClient, d.product_id, d.qty, d.uom_id);
             unitCost = d.rate || 0;
         }
+        // Stock cost per BASE unit = the line's net value (after discount, without
+        // VAT - what the goods account gets) over base qty. d.rate is per the
+        // line's own unit, so "5 Carton @ 1200" must not become 60 Pcs @ 1200.
+        const netValue = (Number(d.amount) || 0) - (Number(d.tax_amount) || 0);
+        if (baseQty > 0 && netValue > 0) unitCost = Math.round(netValue / baseQty * 10000) / 10000;
         rows.push({ tenant_id: tenantId, product_id: d.product_id, warehouse_id: wh, batch_no: d.batch_no, serial_no: d.serial_no || null, movement_date: grn.doc_date, qty_in: baseQty, qty_out: 0, unit_cost: unitCost, source_type: 'purchase_grn', source_id: grn.id, source_detail_id: d.id, narration: `GRN ${grn.doc_no} received` });
     }
     if (rows.length > 0) {
