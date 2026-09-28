@@ -44,6 +44,7 @@ export const JV_TYPES = [
     { key: 'tds', label: 'TDS', side: 'tds', purposes: ['expense', 'purchase_goods', 'fixed_asset'], acct: 'Expense A/c' }
 ];
 const typeOf = k => JV_TYPES.find(t => t.key === k) || JV_TYPES[0];
+const Arrow = ({ open }) => <span className="inline-block w-3 text-center" style={{ transform: open ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform .15s' }}>▾</span>;
 
 const emptyForm = {
     doc_no: '', doc_date: new Date().toISOString().slice(0, 10),
@@ -169,6 +170,11 @@ export default function JournalVoucher() {
     });
     // TDS journal against bills: the party's open bills (newest first), several can be chosen
     const [openBills, setOpenBills] = useState([]);
+    // the bill list folds away with the arrow; the chosen bills' total stays visible
+    const [billsOpen, setBillsOpen] = useState(false);
+    // the type's option panel and the (optional) TDS part fold with their arrows too
+    const [panelOpen, setPanelOpen] = useState(true);
+    const [tdsOpen, setTdsOpen] = useState(false);
     useEffect(() => {
         if (!isTds || !form.party_ledger_id) { setOpenBills([]); return; }
         const q = new URLSearchParams({ side: form.tds_side || 'purchase', party_id: form.party_ledger_id, ...(editingId ? { jv_id: editingId } : {}) });
@@ -437,11 +443,15 @@ export default function JournalVoucher() {
 
                     <div className="erp-tab-content">
                         {jt.key !== 'normal' && (
-                        <div className="border rounded p-3 mb-4 bg-blue-50/40">
-                            <p className="text-sm font-semibold mb-2">{jt.label}</p>
-                            <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
+                        <div className="border rounded px-3 py-2 mb-3 bg-blue-50/40">
+                            <button type="button" className="flex items-center gap-1 text-sm font-semibold" onClick={() => setPanelOpen(o => !o)} aria-expanded={panelOpen} title={panelOpen ? 'Collapse' : 'Expand'}>
+                                <Arrow open={panelOpen} /> {jt.label}
+                                {!panelOpen && <span className="font-normal text-gray-500 text-xs ml-2">{ledgers.find(l => l.id === form.party_ledger_id)?.account_name || 'no party'}{isTax ? ` · bill ${taxTotal.toFixed(2)}` : ''}{tdsAmount > 0 ? ` · TDS ${tdsAmount.toFixed(2)}` : ''}</span>}
+                            </button>
+                            {panelOpen && (<>
+                            <div className="grid grid-cols-2 md:grid-cols-6 gap-x-3 gap-y-1 mt-1">
                                 {isTds && (
-                                    <div className="erp-field md:col-span-6 flex-row gap-4 text-sm">
+                                    <div className="md:col-span-6 col-span-2 flex flex-wrap items-center gap-x-6 gap-y-1 text-sm py-1">
                                         {[['purchase', 'TDS on Purchase (supplier\'s bills - TDS payable)'], ['sales', 'TDS on Sales (customer\'s bills - TDS receivable)']].map(([k, t]) => (
                                             <label key={k} className="flex items-center gap-1 mr-4"><input type="radio" name="jv_tds_side" checked={(form.tds_side || 'purchase') === k} onChange={() => changeTdsSide(k)} /> {t}</label>
                                         ))}
@@ -475,9 +485,16 @@ export default function JournalVoucher() {
                                         value={taxAcct.vat} onChange={id => { setAutoLines(true); setTaxAcct(a => ({ ...a, vat: id })); }} placeholder="VAT ledger" /></div>}
                             </div>
                             {isTds && form.party_ledger_id && (
-                                <fieldset className="border rounded p-2 mt-3">
-                                    <legend className="px-1 text-xs font-semibold text-gray-600 uppercase">{tdsSales ? 'Sales bills' : 'Purchase bills / additional expenses'} of this party without TDS (newest first)</legend>
-                                    <div className="overflow-x-auto" style={{ maxHeight: 260 }}>
+                                <fieldset className="border rounded px-2 py-1 mt-2">
+                                    <legend className="px-1 text-xs font-semibold text-gray-600 uppercase">
+                                        <button type="button" className="flex items-center gap-1 uppercase" onClick={() => setBillsOpen(o => !o)} title={billsOpen ? 'Collapse the bill list' : 'Expand the bill list'} aria-expanded={billsOpen}>
+                                            <Arrow open={billsOpen} />
+                                            {tdsSales ? 'Sales bills' : 'Purchase bills / additional expenses'} of this party without TDS (newest first)
+                                            <span className="normal-case font-normal text-gray-500">- {shownBills.length} bill(s){(form.tds_bills || []).length ? `, ${form.tds_bills.length} chosen` : ''}</span>
+                                        </button>
+                                    </legend>
+                                    {billsOpen && (
+                                    <div className="overflow-auto" style={{ maxHeight: 180 }}>
                                         <table className="erp-grid-table">
                                             <thead><tr>
                                                 <th style={{ width: 30 }}><input type="checkbox" checked={shownBills.length > 0 && shownBills.every(b => (form.tds_bills || []).some(x => billKey(x) === billKey(b)))}
@@ -501,12 +518,20 @@ export default function JournalVoucher() {
                                             </tbody>
                                         </table>
                                     </div>
-                                    {billMode && <p className="text-xs text-gray-600 mt-1">{form.tds_bills.length} bill(s): base {r2(form.tds_base_amount).toFixed(2)}, TDS {tdsAmount.toFixed(2)} - {tdsSales ? 'Dr TDS receivable, Cr customer.' : 'Dr supplier, Cr TDS payable.'} These bills will not be offered for TDS again.</p>}
+                                    )}
+                                    {billMode && <p className="text-xs text-gray-600 mt-1">{form.tds_bills.length} bill(s): base {r2(form.tds_base_amount).toFixed(2)}, TDS {tdsAmount.toFixed(2)} - {tdsSales ? 'Dr TDS receivable, Cr customer.' : 'Dr supplier, Cr TDS payable.'}</p>}
                                 </fieldset>
                             )}
-                            <fieldset className="border rounded p-2 mt-3">
-                                <legend className="px-1 text-xs font-semibold text-gray-600 uppercase">TDS {partySales ? '(deducted by the customer - receivable)' : '(withheld from the supplier - payable)'}{jt.side !== 'tds' && <span className="font-normal normal-case"> - optional</span>}</legend>
-                                <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
+                            <fieldset className="border rounded px-2 py-1 mt-2">
+                                <legend className="px-1 text-xs font-semibold text-gray-600 uppercase">
+                                    <button type="button" className="flex items-center gap-1 uppercase" onClick={() => setTdsOpen(o => !o)} aria-expanded={isTds || tdsOpen || tdsAmount > 0}>
+                                        <Arrow open={isTds || tdsOpen || tdsAmount > 0} />
+                                        TDS {partySales ? '(deducted by the customer - receivable)' : '(withheld from the supplier - payable)'}{jt.side !== 'tds' && <span className="font-normal normal-case"> - optional</span>}
+                                        {tdsAmount > 0 && <span className="normal-case font-normal text-gray-500">- {tdsAmount.toFixed(2)}</span>}
+                                    </button>
+                                </legend>
+                                {(isTds || tdsOpen || tdsAmount > 0) && (<>
+                                <div className="grid grid-cols-2 md:grid-cols-6 gap-x-3 gap-y-1">
                                     <div className="erp-field"><label className="erp-label">{isTds ? (billMode ? 'Base of the bills' : 'Amount (TDS base) *') : 'TDS Base'}</label><input type="number" step="0.01" className="erp-input" readOnly={billMode} value={form.tds_base_amount} onChange={e => setTax({ tds_base_amount: e.target.value })} placeholder={isTds ? '' : goodsAmount.toFixed(2)} /></div>
                                     <div className="erp-field"><label className="erp-label">TDS %</label><input type="number" step="0.001" className="erp-input" value={form.tds_percent} onChange={e => setTax({ tds_percent: e.target.value })} placeholder={sysCtl.default_tds_percent ? String(sysCtl.default_tds_percent) : '1.5'} /></div>
                                     <div className="erp-field"><label className="erp-label">TDS Amount</label><input type="number" step="0.01" className="erp-input" value={form.tds_amount} onChange={e => setTax({ tds_amount: e.target.value })} /></div>
@@ -520,13 +545,15 @@ export default function JournalVoucher() {
                                             value={form.tds_sub_ledger_id} onChange={id => { setAutoLines(true); setForm(f => ({ ...f, tds_sub_ledger_id: id, tds_ledger_id: f.tds_ledger_id || defaultTdsLedger || '' })); }} placeholder={(form.tds_ledger_id || defaultTdsLedger) ? 'None' : 'Choose the TDS ledger first'} /></div>
                                 </div>
                                 {tdsAmount > 0 && !billMode && <p className="text-xs text-gray-500 mt-1">TDS {tdsBase.toFixed(2)} x {Number(form.tds_percent || 0)}% = {tdsAmount.toFixed(2)} · {partySales ? 'Dr TDS receivable.' : 'Cr TDS payable.'}</p>}
+                                </>)}
                             </fieldset>
-                            <div className="flex items-center gap-3 text-sm mt-2 flex-wrap">
+                            <div className="flex items-center gap-3 text-sm mt-1 flex-wrap">
                                 {isTax && <span>Bill total <b>{taxTotal.toFixed(2)}</b>{tdsAmount > 0 && <> · {jt.side === 'sales' ? 'Customer' : 'Supplier'} <b>{r2(taxTotal - tdsAmount).toFixed(2)}</b></>}</span>}
                                 {isTds && !billMode && !tdsSales && <span>Party gets <b>{r2(tdsBase - tdsAmount).toFixed(2)}</b></span>}
                                 {!autoLines && <button type="button" className="erp-btn" onClick={() => setAutoLines(true)}>↻ Refill voucher lines from these</button>}
-                                <span className="text-xs text-gray-500">{autoLines ? 'Voucher lines below are filled automatically - edit any line to change it.' : 'Voucher lines were edited by hand.'}{isTax ? ` Shown in the VAT ${jt.side} register and VAT return.` : ''}{tdsAmount > 0 ? ' Shown in the TDS report.' : ''}</span>
+                                <span className="text-xs text-gray-500">{autoLines ? 'Lines below are filled automatically - edit any line to change it.' : 'Lines were edited by hand.'}</span>
                             </div>
+                            </>)}
                         </div>
                         )}
 
