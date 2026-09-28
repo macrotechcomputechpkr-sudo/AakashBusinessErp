@@ -23,6 +23,10 @@
 // difference is still company stock and is shown as "Goods in Transit".
 // =============================================
 
+// Goods a customer returns come back at their COST (the cost that batch / serial
+// went out at, else the current average) - never at the selling rate stored on
+// the return line, which would put sales margin into the stock value.
+const RETURN_IN = new Set(['sales_return', 'sales_nonsalable_return']);
 const round2 = n => Math.round((Number(n) || 0) * 100) / 100;
 const round4 = n => Math.round((Number(n) || 0) * 10000) / 10000;
 const dayBefore = d => new Date(new Date(d + 'T00:00:00Z').getTime() - 86400000).toISOString().slice(0, 10);
@@ -180,7 +184,7 @@ async function loadItems(tenantClient, tenantId, to, filters = {}) {
         });
         if (total - used > 1e-9) events[p.id].push({ date: openingDay, seq: '', qin: round4(total - used), qout: 0, cost: Number(p.opening_rate) || 0, src: 'opening' });
     });
-    moves.forEach(m => events[m.product_id].push({ date: String(m.movement_date).slice(0, 10), seq: m.created_at || '', qin: Number(m.qty_in) || 0, qout: Number(m.qty_out) || 0, cost: Number(m.unit_cost) || 0,
+    moves.forEach(m => events[m.product_id].push({ date: String(m.movement_date).slice(0, 10), seq: m.created_at || '', qin: Number(m.qty_in) || 0, qout: Number(m.qty_out) || 0, cost: RETURN_IN.has(m.source_type) ? 0 : Number(m.unit_cost) || 0,
         src: m.source_type || 'other', batch_no: m.batch_no || null, serial_no: m.serial_no || null }));
     Object.values(events).forEach(ev => ev.sort((a, b) => a.date.localeCompare(b.date) || String(a.seq).localeCompare(String(b.seq))));
     return { products, events };

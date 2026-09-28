@@ -7,6 +7,8 @@
 // =============================================
 
 const express = require('express');
+const { checkNegativeStock: sharedNegativeStock } = require('../utils/negativeStock');
+const { stockLines } = require('../utils/stockItems');
 const { bumpAltCounter, rollHeaderStatus } = require('../utils/progressCounters');
 const { checkCompulsoryFields, lockProtectedFields } = require('../utils/entryFieldRules');
 const { checkProductCompany } = require('../utils/productCompanyRules');
@@ -149,26 +151,13 @@ async function updateOrderDeliveredProgress(tenantClient, details, delta) {
     }
 }
 
+// shared rule (utils/negativeStock): stock items only, same product / warehouse / batch added up
 async function checkNegativeStock(tenantClient, tenantId, details) {
-    const { data: sysControl } = await tenantClient.from('system_control_settings').select('negative_stock_control').eq('tenant_id', tenantId).maybeSingle();
-    const control = sysControl?.negative_stock_control || 'warn';
-    if (control === 'none') return { blocked: false, warnings: [] };
-    const warnings = [];
-    for (const d of details) {
-        if (!d.warehouse_id) continue;
-        let query = tenantClient.from('v_current_stock').select('on_hand_qty').eq('tenant_id', tenantId).eq('product_id', d.product_id).eq('warehouse_id', d.warehouse_id);
-        query = d.batch_no ? query.eq('batch_no', d.batch_no) : query.is('batch_no', null);
-        const { data: stockRow } = await query.maybeSingle();
-        const available = Number(stockRow?.on_hand_qty) || 0;
-        const { baseQty } = await resolveBaseQtyAndCost(tenantClient, d);
-        if (available - baseQty < 0) {
-            warnings.push(`${d.product_name_snapshot || d.product_id}: available ${available} (base unit), delivering ${baseQty} - would go negative`);
-        }
-    }
-    return { blocked: warnings.length > 0 && control === 'block', warnings };
+    return sharedNegativeStock(tenantClient, tenantId, {}, details);
 }
 
 async function postDeliveryStockMovements(tenantClient, tenantId, delivery, details) {
+    details = await stockLines(tenantClient, details);   // only stock items move stock (utils/stockItems)
     const rows = [];
     for (const d of details) {
         const wh = d.warehouse_id || delivery.warehouse_id;

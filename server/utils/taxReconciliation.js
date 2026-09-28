@@ -38,6 +38,7 @@
 // =============================================
 
 const { allVatLedgerIds } = require('./vatLedger');
+const { nonStockIds } = require('./stockItems');
 
 const round2 = n => Math.round((Number(n) || 0) * 100) / 100;
 
@@ -297,8 +298,9 @@ function finish(section, rows, ledgerList, from, to) {
 
 
 // ---------- Purchase vs Stock ----------
-// Register: purchase bills (with their GRN), purchase returns and the costing
-// part of additional bills. Books: the value those documents put into stock -
+// Register: purchase bills (with their GRN), purchase returns - the share of
+// their stock items (services, non-inventory and fixed assets never go to
+// stock) - and the costing part of additional bills. Books: the value those documents put into stock -
 // receipts at their cost without landed cost (base_unit_cost), returns at
 // their cost, and the landed cost of each additional bill that reached a
 // stock receipt.
@@ -327,9 +329,24 @@ async function reconcileStock(c, t, { from, to, loadTaxDocs }) {
     const billHeads = await inChunks(bills.map(b => b.id), 200, async ch => safe(c.from('purchase_bills').select('id, source_grn_id').in('id', ch)));
     const grnOfBill = Object.fromEntries(billHeads.filter(b => b.source_grn_id).map(b => [b.id, b.source_grn_id]));
     const keyOf = (type, id) => (type === 'purchase_bill' && grnOfBill[id] ? `purchase_grn:${grnOfBill[id]}` : `${type}:${id}`);
-    bills.forEach(d => addReg(keyOf('purchase_bill', d.id), { amount: d.taxable + d.exempt, doc_no: d.doc_no, doc_date: d.doc_date, party_name: d.party_name, label: 'Purchase Bill' }));
-    (await loadTaxDocs(c, t, 'purchase_return', { dateFrom: from, dateTo: to }))
-        .forEach(d => addReg(`purchase_return:${d.id}`, { amount: -(d.taxable + d.exempt), doc_no: d.doc_no, doc_date: d.doc_date, party_name: d.party_name, label: 'Purchase Return' }));
+    // only the stock items' share of a document goes to stock (no service / non-inventory / fixed asset lines)
+    const stockShare = async (detail, fk, ids) => {
+        const lines = await inChunks(ids, 200, async ch => safe(c.from(detail).select(`${fk}, product_id, amount, tax_amount, rate, qty`).in(fk, ch)));
+        const skip = await nonStockIds(c, lines.map(l => l.product_id));
+        const w = l => { const b = Number(l.amount || 0) - Number(l.tax_amount || 0); return b > 0 ? b : Number(l.rate || 0) * Number(l.qty || 0); };
+        const out = {};
+        ids.forEach(id => {
+            const mine = lines.filter(l => l[fk] === id);
+            const all = mine.reduce((a, l) => a + w(l), 0), stock = mine.filter(l => !skip.has(l.product_id)).reduce((a, l) => a + w(l), 0);
+            out[id] = all > 0 ? stock / all : 1;
+        });
+        return out;
+    };
+    const billShare = await stockShare('purchase_bill_details', 'bill_id', bills.map(b => b.id));
+    bills.forEach(d => { const v = round2((d.taxable + d.exempt) * billShare[d.id]); if (Math.abs(v) >= 0.01) addReg(keyOf('purchase_bill', d.id), { amount: v, doc_no: d.doc_no, doc_date: d.doc_date, party_name: d.party_name, label: 'Purchase Bill' }); });
+    const rets = await loadTaxDocs(c, t, 'purchase_return', { dateFrom: from, dateTo: to });
+    const retShare = await stockShare('purchase_return_details', 'return_id', rets.map(r => r.id));
+    rets.forEach(d => { const v = round2((d.taxable + d.exempt) * retShare[d.id]); if (Math.abs(v) >= 0.01) addReg(`purchase_return:${d.id}`, { amount: -v, doc_no: d.doc_no, doc_date: d.doc_date, party_name: d.party_name, label: 'Purchase Return' }); });
     const exps = await safe(dated(c.from('purchase_additional_expenses').select('id, doc_no, doc_date, vendor_name_snapshot').eq('tenant_id', t).eq('status', 'posted'), from, to).limit(20000));
     const expLines = await inChunks(exps.map(e => e.id), 200, async ch => safe(c.from('purchase_additional_expense_lines').select('*').in('expense_id', ch)));
     exps.forEach(e => {

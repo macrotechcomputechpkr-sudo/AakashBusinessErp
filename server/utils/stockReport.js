@@ -22,6 +22,10 @@ const { reportScope } = require('./dataAccess');
 // Batch / serial products are costed per System Control (FIFO / LIFO / average or batch-wise / serial-wise).
 const moveOf = (f, p, events, from, to) => { const e = methodFor(p, f.method, f.cs); return rawMovement(keyEvents(events, e.keyBy), e.method, from, to); };
 
+// Goods a customer returns come back at their COST (the cost that batch / serial
+// went out at, else the current average) - never at the selling rate stored on
+// the return line, which would put sales margin into the stock value.
+const RETURN_IN = new Set(['sales_return', 'sales_nonsalable_return']);
 const round2 = n => Math.round((Number(n) || 0) * 100) / 100;
 const round4 = n => Math.round((Number(n) || 0) * 10000) / 10000;
 const dayBefore = d => new Date(new Date(d + 'T00:00:00Z').getTime() - 86400000).toISOString().slice(0, 10);
@@ -247,7 +251,7 @@ async function loadEvents(c, t, f, products) {
         const p = byId[m.product_id];
         if (!p || !batchOk(m.batch_no)) return;
         rowFor(p, m.batch_no, m.warehouse_id).events.push({
-            date: String(m.movement_date).slice(0, 10), seq: m.created_at || '', qin: Number(m.qty_in) || 0, qout: Number(m.qty_out) || 0, cost: Number(m.unit_cost) || 0,
+            date: String(m.movement_date).slice(0, 10), seq: m.created_at || '', qin: Number(m.qty_in) || 0, qout: Number(m.qty_out) || 0, cost: RETURN_IN.has(m.source_type) ? 0 : Number(m.unit_cost) || 0,
             src: m.source_type === 'stock_transfer' && byWh ? 'transfer_wh' : m.source_type || 'other', src_type: m.source_type,
             id: m.id, source_id: m.source_id, source_detail_id: m.source_detail_id, batch_no: m.batch_no, serial_no: m.serial_no || null, warehouse_id: m.warehouse_id, narration: m.narration
         });

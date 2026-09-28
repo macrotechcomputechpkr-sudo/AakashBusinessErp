@@ -11,6 +11,8 @@
 // =============================================
 
 const express = require('express');
+const { checkNegativeStock } = require('../utils/negativeStock');
+const { stockLines } = require('../utils/stockItems');
 const { cleanLineTerms, exciseOf } = require('../utils/lineTerms');
 const { disposeOnSale, undoSaleDisposals } = require('../utils/fixedAssets');
 const { checkAccountPurposes } = require('../utils/ledgerPurpose');
@@ -168,6 +170,7 @@ async function updateOrderProgressFromBill(tenantClient, details, delta) {
 }
 
 async function postBillStockMovements(tenantClient, tenantId, bill, details) {
+    details = await stockLines(tenantClient, details);   // only stock items move stock (utils/stockItems)
     const rows = [];
     for (const d of details) {
         if (d.source_delivery_detail_id) continue;
@@ -473,6 +476,12 @@ async function changeSalesBillStatus(req, res) {
         if (status === 'posted' && existing.status !== 'posted') {
             const blocker = await postingPreflight(tenantClient, tenantId, existing);
             if (blocker) return res.status(400).json({ success: false, error: blocker });
+            // System Control > Negative Stock also for a direct bill (lines from a delivery already went out)
+            const { data: outLines } = await tenantClient.from('sales_bill_details').select('*').eq('bill_id', req.params.id);
+            const stockCheck = await checkNegativeStock(tenantClient, tenantId, existing, (outLines || []).filter(d => !d.source_delivery_detail_id));
+            if (stockCheck.blocked && !req.body.override_negative_stock_warning) {
+                return res.status(400).json({ success: false, error: 'Insufficient stock to post this bill', warnings: stockCheck.warnings });
+            }
             // TDS ledger / cash receipt resolved and checked before anything posts
             try { Object.assign(update, await billExtras.prepareExtras(tenantClient, tenantId, 'sales', existing)); }
             catch (e) { return res.status(e.status || 500).json({ success: false, error: e.message }); }

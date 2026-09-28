@@ -10,6 +10,8 @@
 // =============================================
 
 const express = require('express');
+const { checkNegativeStock } = require('../utils/negativeStock');
+const { stockLines } = require('../utils/stockItems');
 const { purchaseVatByLedger } = require('../utils/vatLedger');
 const { lineUnitCosts } = require('../utils/purchaseStockCost');
 const { checkAccountPurposes } = require('../utils/ledgerPurpose');
@@ -54,6 +56,8 @@ function validateBody(b, isDraft) {
 // GRN now writes to needs an OUT movement here too, or "current stock"
 // would stay wrong even after fixing GRN's side.
 async function postReturnStockMovements(tenantClient, tenantId, returnDoc, details) {
+    const allDetails = details;   // every line (value shares); only stock items move stock (utils/stockItems)
+    details = await stockLines(tenantClient, details);
     const rows = [];
     for (const d of details) {
         const wh = d.warehouse_id || returnDoc.warehouse_id;
@@ -78,7 +82,7 @@ async function postReturnStockMovements(tenantClient, tenantId, returnDoc, detai
     if (rows.length > 0) {
         // cost = the line's share of the goods value without VAT / base qty (same rule as GRN / Bill)
         const vatTotal = (await purchaseVatByLedger(tenantClient, tenantId, 'purchase_return', returnDoc.id)).reduce((s, p) => s + Number(p.amount || 0), 0);
-        const costs = lineUnitCosts(returnDoc, details, d => (rows.find(r => r._detail === d) || {})._baseQty, vatTotal);
+        const costs = lineUnitCosts(returnDoc, allDetails, d => (rows.find(r => r._detail === d) || {})._baseQty, vatTotal);
         rows.forEach(r => { const c = costs[r._detail.id]; if (c !== null && c !== undefined) r.unit_cost = c; else if (r.unit_cost === null) r.unit_cost = Number(r._detail.rate) || 0; delete r._detail; delete r._baseQty; });
         const { error } = await tenantClient.from('stock_movements').insert(rows);
         if (error) throw error;
@@ -589,8 +593,16 @@ router.put('/purchase-returns/:id/status', requireAuth, loadUserPermissions, req
         const tenantId = req.auth.tenantId;
         const tenantClient = await getTenantClient(tenantId);
 
-        const { data: existing } = await tenantClient.from('purchase_returns').select('status').eq('id', req.params.id).eq('tenant_id', tenantId).single();
+        const { data: existing } = await tenantClient.from('purchase_returns').select('status, warehouse_id').eq('id', req.params.id).eq('tenant_id', tenantId).single();
         if (!existing) return res.status(404).json({ success: false, error: 'Purchase Return not found' });
+        if (status === 'posted' && existing.status !== 'posted') {
+            // goods go back to the supplier: System Control > Negative Stock applies
+            const { data: outLines } = await tenantClient.from('purchase_return_details').select('*').eq('return_id', req.params.id);
+            const stockCheck = await checkNegativeStock(tenantClient, tenantId, existing, outLines || []);
+            if (stockCheck.blocked && !req.body.override_negative_stock_warning) {
+                return res.status(400).json({ success: false, error: 'Insufficient stock to post this return', warnings: stockCheck.warnings });
+            }
+        }
 
         if (status === 'cancelled' && existing.status === 'posted') {
             const blockMsg = await checkCanCancelIfSettled(tenantClient, tenantId, 'purchase_return', req.params.id);

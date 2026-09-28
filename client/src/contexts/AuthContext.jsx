@@ -72,6 +72,9 @@ export const AuthProvider = ({ children }) => {
         if (!res.ok) {
             const err = new Error(data.error || `Request failed (${res.status})`);
             err.status = res.status;
+            // the server's extra fields (warnings, credit_blocked, ...) travel with the error so
+            // screens can offer "post anyway" / credit override
+            Object.entries(data || {}).forEach(([k, v]) => { if (!['error', 'message', 'status', 'stack'].includes(k)) err[k] = v; });
             throw err;
         }
         return data;

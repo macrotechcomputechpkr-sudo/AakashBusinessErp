@@ -423,7 +423,13 @@ export default function PurchaseReturn() {
             if (!cancellationReason || !cancellationReason.trim()) return;
         }
         try {
-            await authFetch(`/api/purchase-returns/${row.id}/status`, { method: 'PUT', body: JSON.stringify({ status, cancellation_reason: cancellationReason }) });
+            try {
+                await authFetch(`/api/purchase-returns/${row.id}/status`, { method: 'PUT', body: JSON.stringify({ status, cancellation_reason: cancellationReason }) });
+            } catch (e) {
+                // not enough stock (System Control > Negative Stock = block): post only if the user insists
+                if (!(e.warnings?.length > 0) || !window.confirm(`${e.message}\n\n${e.warnings.join('\n')}\n\nPost anyway?`)) throw e;
+                await authFetch(`/api/purchase-returns/${row.id}/status`, { method: 'PUT', body: JSON.stringify({ status, cancellation_reason: cancellationReason, override_negative_stock_warning: true }) });
+            }
             showAlert(`Marked as ${status}`, 'success');
             load();
         } catch (err) {

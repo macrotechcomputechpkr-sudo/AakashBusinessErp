@@ -10,6 +10,7 @@
 // =============================================
 
 const express = require('express');
+const { stockLines } = require('../utils/stockItems');
 const { lineUnitCosts, refreshLandedCost } = require('../utils/purchaseStockCost');
 const { purchaseVatByLedger } = require('../utils/vatLedger');
 const { checkAccountPurposes } = require('../utils/ledgerPurpose');
@@ -37,6 +38,8 @@ const { toBaseQtyFromDual, computeDualAmount, getDualUomMode, rateBasisFor } = r
 // A GRN-sourced line is skipped entirely - the GRN already recorded
 // that stock, writing it again here would double-count it.
 async function postBillStockMovements(tenantClient, tenantId, bill, details) {
+    const allDetails = details;   // every line (value shares); only stock items move stock (utils/stockItems)
+    details = await stockLines(tenantClient, details);
     const rows = [];
     for (const d of details) {
         if (d.source_grn_detail_id) continue;
@@ -57,7 +60,7 @@ async function postBillStockMovements(tenantClient, tenantId, bill, details) {
     if (rows.length > 0) {
         // cost = the line's share of the goods value without VAT (what the purchase account gets) / base qty
         const vatTotal = (await purchaseVatByLedger(tenantClient, tenantId, 'purchase_bill', bill.id)).reduce((s, p) => s + Number(p.amount || 0), 0);
-        const costs = lineUnitCosts(bill, details, d => (rows.find(r => r._detail === d) || {})._baseQty, vatTotal);
+        const costs = lineUnitCosts(bill, allDetails, d => (rows.find(r => r._detail === d) || {})._baseQty, vatTotal);
         rows.forEach(r => { const c = costs[r._detail.id]; if (c !== null && c !== undefined) r.unit_cost = c; else if (r.unit_cost === null) r.unit_cost = Number(r._detail.rate) || 0; delete r._detail; delete r._baseQty; });
         const { error } = await tenantClient.from('stock_movements').insert(rows);
         if (error) throw error;
@@ -69,6 +72,18 @@ async function postBillStockMovements(tenantClient, tenantId, bill, details) {
 
 async function reverseBillStockMovements(tenantClient, billId) {
     await tenantClient.from('stock_movements').delete().eq('source_type', 'purchase_bill').eq('source_id', billId);
+}
+
+// The supplier's bill no can be entered only once per supplier (as NAV's Vendor
+// Invoice No. / Tally's duplicate supplier invoice check) - a second entry of
+// the same bill would book the purchase and its VAT credit twice.
+async function duplicatePartyBill(c, t, vendorId, partyBillNo, exceptId) {
+    const no = String(partyBillNo || '').trim();
+    if (!no || !vendorId) return null;
+    const { data } = await c.from('purchase_bills').select('id, doc_no, party_bill_no, status').eq('tenant_id', t).eq('vendor_ledger_id', vendorId)
+        .ilike('party_bill_no', no.replace(/[%_\\]/g, m => '\\' + m));
+    const hit = (data || []).find(x => x.id !== exceptId && x.status !== 'cancelled' && String(x.party_bill_no || '').trim().toLowerCase() === no.toLowerCase());
+    return hit ? `Supplier bill no ${no} of this supplier is already entered on Purchase Bill ${hit.doc_no}` : null;
 }
 
 function validateBody(b, isDraft) {
@@ -443,6 +458,10 @@ router.post('/purchase-bills', requireAuth, loadUserPermissions, requirePermissi
         const tenantId = req.auth.tenantId;
         const tenantClient = await getTenantClient(tenantId);
         const b = req.body;
+        if (!isDraft) {
+            const dup = await duplicatePartyBill(tenantClient, tenantId, b.vendor_ledger_id, b.party_bill_no, null);
+            if (dup) return res.status(400).json({ success: false, error: dup });
+        }
 
         const { data: currentUser } = await tenantClient.from('users').select('default_branch_id').eq('id', req.auth.userId).single();
         let branchNameSnapshot = null;
@@ -548,6 +567,10 @@ router.put('/purchase-bills/:id', requireAuth, loadUserPermissions, requirePermi
         const companyError = await checkProductCompany(tenantClient, tenantId, 'purchase', { ...existing, ...b, details: b.details }, false);
 
         if (companyError) return res.status(400).json({ success: false, error: companyError });
+        if (!(b.save_as_draft || b.status === 'draft')) {
+            const dup = await duplicatePartyBill(tenantClient, tenantId, b.vendor_ledger_id || existing.vendor_ledger_id, b.party_bill_no !== undefined ? b.party_bill_no : existing.party_bill_no, existing.id);
+            if (dup) return res.status(400).json({ success: false, error: dup });
+        }
 
         // Readonly / disabled header fields keep their stored value (before snapshots + update).
 
@@ -640,8 +663,12 @@ router.put('/purchase-bills/:id/status', requireAuth, loadUserPermissions, requi
         const tenantId = req.auth.tenantId;
         const tenantClient = await getTenantClient(tenantId);
 
-        const { data: existing } = await tenantClient.from('purchase_bills').select('status').eq('id', req.params.id).eq('tenant_id', tenantId).single();
+        const { data: existing } = await tenantClient.from('purchase_bills').select('status, vendor_ledger_id, party_bill_no').eq('id', req.params.id).eq('tenant_id', tenantId).single();
         if (!existing) return res.status(404).json({ success: false, error: 'Purchase Bill not found' });
+        if (status === 'posted' && existing.status !== 'posted') {
+            const dup = await duplicatePartyBill(tenantClient, tenantId, existing.vendor_ledger_id, existing.party_bill_no, req.params.id);
+            if (dup) return res.status(400).json({ success: false, error: dup });
+        }
 
         if (status === 'cancelled' && existing.status === 'posted') {
             const blockMsg = await checkCanCancelIfSettled(tenantClient, tenantId, 'purchase_bill', req.params.id);
@@ -768,3 +795,4 @@ router.delete('/purchase-bills/:id', requireAuth, loadUserPermissions, requirePe
 });
 
 module.exports = router;
+module.exports._internals = { duplicatePartyBill };

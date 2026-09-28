@@ -10,6 +10,7 @@
 // =============================================
 
 const express = require('express');
+const { stockLines } = require('../utils/stockItems');
 const { lineUnitCosts, refreshLandedCost } = require('../utils/purchaseStockCost');
 const { purchaseVatByLedger } = require('../utils/vatLedger');
 const { checkAccountPurposes } = require('../utils/ledgerPurpose');
@@ -100,6 +101,8 @@ async function captureDetailSnapshots(tenantClient, detail) {
 // stock_movements ledger, converted to each product's base unit first
 // like every other document that touches it.
 async function postGrnStockMovements(tenantClient, tenantId, grn, details) {
+    const allDetails = details;   // every line (value shares); only stock items move stock (utils/stockItems)
+    details = await stockLines(tenantClient, details);
     const rows = [];
     for (const d of details) {
         const wh = d.warehouse_id || grn.warehouse_id;
@@ -119,7 +122,7 @@ async function postGrnStockMovements(tenantClient, tenantId, grn, details) {
     if (rows.length > 0) {
         // cost = the line's share of the goods value without VAT (what the purchase account gets) / base qty
         const vatTotal = (await purchaseVatByLedger(tenantClient, tenantId, 'purchase_grn', grn.id)).reduce((s, p) => s + Number(p.amount || 0), 0);
-        const costs = lineUnitCosts(grn, details, d => (rows.find(r => r._detail === d) || {})._baseQty, vatTotal);
+        const costs = lineUnitCosts(grn, allDetails, d => (rows.find(r => r._detail === d) || {})._baseQty, vatTotal);
         rows.forEach(r => { const c = costs[r._detail.id]; if (c !== null && c !== undefined) r.unit_cost = c; else if (r.unit_cost === null) r.unit_cost = Number(r._detail.rate) || 0; delete r._detail; delete r._baseQty; });
         const { error } = await tenantClient.from('stock_movements').insert(rows);
         if (error) throw error;

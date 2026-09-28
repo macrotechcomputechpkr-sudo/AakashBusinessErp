@@ -1,5 +1,5 @@
 -- =============================================
--- 145: purchase stock cost + landed cost (utils/purchaseStockCost.js)
+-- 145: purchase stock cost + landed cost (utils/purchaseStockCost.js), production output cost per base unit
 --   stock_movements.base_unit_cost - the cost of a purchase receipt
 --       without landed cost; unit_cost = base_unit_cost + posted
 --       additional expense allocated to that line / qty in.
@@ -69,3 +69,15 @@ UPDATE tenant_master.stock_movements m
    SET unit_cost = ROUND(m.base_unit_cost + COALESCE(pm.amt, 0) / m.qty_in, 4)
   FROM recv r LEFT JOIN per_move pm ON pm.id = r.id
  WHERE m.id = r.id AND m.base_unit_cost IS NOT NULL;
+
+-- 3. production output / by-products at cost per BASE unit (total cost / base qty);
+--    the entered-unit rate was stored before (wrong when the output unit is not the base unit)
+UPDATE tenant_master.stock_movements m
+   SET unit_cost = ROUND(p.output_unit_cost * p.output_qty / m.qty_in, 4)
+  FROM tenant_master.production_orders p
+ WHERE m.source_type = 'production' AND m.source_id = p.id AND m.source_detail_id IS NULL
+   AND m.product_id = p.output_product_id AND m.qty_in > 0 AND COALESCE(p.output_qty, 0) > 0;
+UPDATE tenant_master.stock_movements m
+   SET unit_cost = ROUND(b.amount / m.qty_in, 4)
+  FROM tenant_master.production_byproducts b
+ WHERE m.source_type = 'production' AND m.source_detail_id = b.id AND m.qty_in > 0 AND COALESCE(b.amount, 0) > 0;
