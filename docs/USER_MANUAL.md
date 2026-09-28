@@ -84,7 +84,7 @@ The effect of each transaction is shown in a box like this:
   - **Basis**: value or quantity.
   - **Calculation**: percentage, fixed rate, or formula, with an optional cap.
   - **Order** of calculation.
-  - **Ledger** and sub-ledgers.
+  - **Ledger** and sub-ledgers: Billing Ledger + Billing Sub-Ledger, Return Ledger + Return Sub-Ledger, Expiry Return Ledger + Expiry Return Sub-Ledger.
   - **Category**: e.g. Rounded Off, which rounds the bill and posts the difference.
   - **Entry input**: which of %, rate and amount the user may type.
   - **Manual override**: whether the value can be changed in the entry.
@@ -116,7 +116,7 @@ The effect of each transaction is shown in a box like this:
 - **Rate basis** for fixed dual items: any, primary or secondary unit.
 - Sales rates Sr1-Sr5, purchase rate, MRP.
 - VAT or non-VAT, excise.
-- Sales / purchase / return accounts (with sub-ledgers).
+- Sales / purchase / return / non-saleable return accounts, each with its own sub-ledger (e.g. Sales Return Account + Sales Return Sub-Ledger).
 - Product-wise term values.
 - Flags "qty from amount" for sales and for purchase.
 - Batch/serial, expiry, re-order level, fixed-asset item.
@@ -280,7 +280,16 @@ Only quantities still pending are offered. The source document shows as partiall
 
 - The tax invoice. Cash or credit. Includes product-wise and bill-wise terms, currency, and bill-wise settlement of advances.
 
-> **Accounts:** Dr Customer (or Cash) with the bill total; Cr Sales account per product line; Cr VAT Payable; each term to its ledger. **Stock:** OUT only for lines **not** already delivered by a challan. **IRD:** the bill goes to the IRD sales register and is sent to CBMS when enabled.
+> **Accounts:** Dr Customer with the bill total; Cr Sales account per product line; Cr VAT Payable; each term to its ledger. **Stock:** OUT only for lines **not** already delivered by a challan. **IRD:** the bill goes to the IRD sales register and is sent to CBMS when enabled.
+
+**Receipt / TDS button** (footer of the Sales Bill):
+
+- **Received with this bill**: one line per cash or bank ledger, e.g. a 500 bill with 100 in cash and 400 in NIC Asia Bank. Use **+ Cash** / **+ Bank**, choose the ledger, type the amount (and cheque no.).
+- **Cash bill**: cash + bank + TDS must equal the bill total. If you enter nothing, the whole bill is taken as received in the default Cash ledger (System Control).
+- **Credit bill**: enter what was paid now, e.g. 300 of a 500 bill; the remaining 200 stays outstanding on the customer.
+- **TDS** deducted by the customer: TDS % (or amount) on the VAT-exclusive value, TDS Receivable ledger (default from System Control).
+
+> **Accounts:** Dr each cash / bank with its amount, Dr TDS Receivable, Cr Customer. The bill shows only the balance as outstanding. Cancelling the bill reverses all of it.
 
 **Sales Return**
 
@@ -336,6 +345,8 @@ The flow is Quotation → Order → GRN → Bill → Return, with the same pull 
 >
 > Any advance paid to the supplier is settled first (FIFO).
 >
+> **TDS** (TDS button in the footer): TDS % or amount on the VAT-exclusive value. Dr Supplier, Cr TDS Payable - the supplier is owed the bill less TDS. Shown in the TDS Report.
+>
 > **Stock:** IN only for lines **not** already received by a GRN.
 
 **Purchase Bill from Image / PDF**
@@ -348,7 +359,8 @@ The flow is Quotation → Order → GRN → Bill → Return, with the same pull 
 
 - Freight, customs, insurance or labour linked to an Order, GRN or Bill.
 - Choose the reference bill(s) and see their product lines and totals.
-- Each expense line has its ledger, party, bill type (taxable, non-taxable, no bill), add or deduct (e.g. TDS), and allocation (by value, qty, equal, or none).
+- Each expense line has its ledger, party, bill type (taxable, non-taxable, no bill), add or deduct, and allocation (by value, qty, equal, or none).
+- **Add TDS Line** adds a TDS line: TDS Payable ledger (System Control), default TDS % of the other lines, never added to cost. It appears in the TDS Report.
 - Account Posting shows the resulting entry before saving.
 
 > **Accounts:** Dr expense ledger (+ VAT when VAT is part of cost), Dr VAT (claimable), Cr supplier/party; a deduct line credits the ledger and reduces the party. **Stock value:** the allocated amount is added to the cost of the linked purchase lines (landed cost).

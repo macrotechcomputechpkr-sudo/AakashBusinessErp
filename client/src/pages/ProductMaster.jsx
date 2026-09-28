@@ -28,7 +28,7 @@ const emptyForm = {
     product_name: '', short_name: '', item_type: 'trading_item', product_group_id: '', product_company_id: '',
     hs_code: '', is_blocked: false, product_category_ids: [], tags: [],
     base_unit_id: '', unit_rates: [], uom_mode: 'single', dual_uom_primary_unit_id: '', dual_auto_convert: null, dual_reverse_conversion: null, dual_rate_basis: 'any', qty_from_amount_sales: false, qty_from_amount_purchase: false,
-    sales_account_ledger_id: '', purchase_account_ledger_id: '', sales_return_account_ledger_id: '', sales_nonsaleable_return_account_ledger_id: '', purchase_return_account_ledger_id: '', purchase_nonsaleable_return_account_ledger_id: '', sales_sub_ledger_id: '', purchase_sub_ledger_id: '', inventory_account_ledger_id: '', cogs_account_ledger_id: '', discount_account_ledger_id: '',
+    sales_account_ledger_id: '', purchase_account_ledger_id: '', sales_return_account_ledger_id: '', sales_nonsaleable_return_account_ledger_id: '', purchase_return_account_ledger_id: '', purchase_nonsaleable_return_account_ledger_id: '', sales_sub_ledger_id: '', purchase_sub_ledger_id: '', sales_return_sub_ledger_id: '', sales_nonsaleable_return_sub_ledger_id: '', purchase_return_sub_ledger_id: '', purchase_nonsaleable_return_sub_ledger_id: '', inventory_account_ledger_id: '', cogs_account_ledger_id: '', discount_account_ledger_id: '',
     default_vendor_id: '', vendor_item_code: '', lead_time_days: 0, default_discount_percent: 0,
     opening_qty: 0, opening_rate: 0, minimum_stock: 0, maximum_stock: 0, reorder_qty: 0, allow_negative_stock: null,
     costing_method: 'average',
@@ -53,7 +53,12 @@ const TABS = [
 
 // Account field -> its sub-ledger field (product-level posting, see utils/accountResolver).
 const PRODUCT_ACCOUNT_PURPOSE = { sales_account_ledger_id: 'sales_goods', purchase_account_ledger_id: 'purchase_goods', sales_return_account_ledger_id: 'sales_goods', sales_nonsaleable_return_account_ledger_id: 'sales_goods', purchase_return_account_ledger_id: 'purchase_goods', purchase_nonsaleable_return_account_ledger_id: 'purchase_goods', inventory_account_ledger_id: 'inventory', cogs_account_ledger_id: 'cogs', discount_account_ledger_id: 'discount' };
-const ACCOUNT_SUB = { sales_account_ledger_id: 'sales_sub_ledger_id', purchase_account_ledger_id: 'purchase_sub_ledger_id' };
+const ACCOUNT_SUB = { sales_account_ledger_id: 'sales_sub_ledger_id', purchase_account_ledger_id: 'purchase_sub_ledger_id', sales_return_account_ledger_id: 'sales_return_sub_ledger_id',
+    sales_nonsaleable_return_account_ledger_id: 'sales_nonsaleable_return_sub_ledger_id', purchase_return_account_ledger_id: 'purchase_return_sub_ledger_id', purchase_nonsaleable_return_account_ledger_id: 'purchase_nonsaleable_return_sub_ledger_id' };
+// the account a sub-ledger belongs to: its own account, else the one the entry falls back to
+const SUB_PARENT = { sales_nonsaleable_return_account_ledger_id: ['sales_return_account_ledger_id', 'sales_account_ledger_id'], sales_return_account_ledger_id: ['sales_account_ledger_id'],
+    purchase_nonsaleable_return_account_ledger_id: ['purchase_return_account_ledger_id', 'purchase_account_ledger_id'], purchase_return_account_ledger_id: ['purchase_account_ledger_id'] };
+const subParentOf = (form, key) => [key, ...(SUB_PARENT[key] || [])].map(k => form[k]).find(Boolean) || '';
 
 // dual-UOM entry switches of an item: true / false, or null = follow System Control
 const triValue = v => (v === true ? 'true' : v === false ? 'false' : '');
@@ -505,38 +510,53 @@ export default function ProductMaster() {
 
                     {/* ==================== ACCOUNT MAPPING ==================== */}
                     <div className={tab === 'mapping' ? 'space-y-4' : 'hidden'}>
-                        <p className="text-xs text-gray-400">Leave blank to use the System Control defaults. A return account left blank uses the sales / purchase account.</p>
+                        <p className="text-xs text-gray-400">Leave blank to use the System Control defaults. A return account left blank uses the sales / purchase account. Each account has its own sub-ledger (a return sub-ledger with no return account is a sub-ledger of the sales / purchase account).</p>
                         {[
-                            ['Sales', 'sales_sub_ledger_id', 'sales_account_ledger_id', [['sales_account_ledger_id', 'Sales Account'], ['sales_return_account_ledger_id', 'Sales Return Account'], ['sales_nonsaleable_return_account_ledger_id', 'Sales Non-saleable Return Account']]],
-                            ['Purchase', 'purchase_sub_ledger_id', 'purchase_account_ledger_id', [['purchase_account_ledger_id', 'Purchase Account'], ['purchase_return_account_ledger_id', 'Purchase Return Account'], ['purchase_nonsaleable_return_account_ledger_id', 'Purchase Non-saleable Return Account']]],
-                            ['Other', null, null, [['inventory_account_ledger_id', 'Inventory/Stock Account'], ['cogs_account_ledger_id', 'Cost of Goods Sold Account'], ['discount_account_ledger_id', 'Discount Account']]]
-                        ].map(([part, subKey, mainKey, accounts]) => (
+                            ['Sales', [['sales_account_ledger_id', 'Sales Account'], ['sales_return_account_ledger_id', 'Sales Return Account'], ['sales_nonsaleable_return_account_ledger_id', 'Sales Non-saleable Return Account']]],
+                            ['Purchase', [['purchase_account_ledger_id', 'Purchase Account'], ['purchase_return_account_ledger_id', 'Purchase Return Account'], ['purchase_nonsaleable_return_account_ledger_id', 'Purchase Non-saleable Return Account']]],
+                            ['Other', [['inventory_account_ledger_id', 'Inventory/Stock Account'], ['cogs_account_ledger_id', 'Cost of Goods Sold Account'], ['discount_account_ledger_id', 'Discount Account']]]
+                        ].map(([part, accounts]) => (
                             <fieldset key={part} className="border rounded-lg p-3">
                                 <legend className="px-1 text-xs font-semibold text-gray-600 uppercase">{part}</legend>
-                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                                    {accounts.map(([key, label]) => (
-                                        <div key={key}>
-                                            <label className="erp-label">{label}</label>
-                                            <SearchablePopupSelect
-                                                listKey={`product_ledger_${key}`}
-                                                columns={[{ key: 'account_code', label: 'Code' }, { key: 'account_name', label: 'Name' }]}
-                                                defaultVisibleKeys={['account_name']}
-                                                items={lp.filter(ledgers, PRODUCT_ACCOUNT_PURPOSE[key], form[key])} getId={l => l.id} getLabel={l => l.account_name}
-                                                searchKeys={['account_name', 'account_code']}
-                                                value={form[key]} onChange={id => setForm({ ...form, [key]: id, ...(ACCOUNT_SUB[key] ? { [ACCOUNT_SUB[key]]: '' } : {}) })}
-                                                placeholder={key === mainKey ? 'System Control default' : 'Same as the main account'}
-                                            />
-                                        </div>
-                                    ))}
-                                    {subKey && (
-                                        <div>
-                                            <label className="erp-label">{part} Sub-Ledger</label>
-                                            <select className="erp-select" value={form[subKey] || ''} disabled={!form[mainKey]} onChange={e => setForm({ ...form, [subKey]: e.target.value })}>
-                                                <option value="">{form[mainKey] ? 'None' : `Choose the ${part.toLowerCase()} account first`}</option>
-                                                {subLedgers.filter(sl => sl.main_ledger_id === form[mainKey]).map(sl => <option key={sl.id} value={sl.id}>{sl.sub_ledger_name}</option>)}
-                                            </select>
-                                        </div>
-                                    )}
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-x-4 gap-y-3">
+                                    {accounts.map(([key, label]) => {
+                                        const subKey = ACCOUNT_SUB[key];
+                                        const parent = subKey ? subParentOf(form, key) : '';
+                                        const main = key === 'sales_account_ledger_id' || key === 'purchase_account_ledger_id';
+                                        return (
+                                            <React.Fragment key={key}>
+                                                <div>
+                                                    <label className="erp-label">{label}</label>
+                                                    <SearchablePopupSelect
+                                                        listKey={`product_ledger_${key}`}
+                                                        columns={[{ key: 'account_code', label: 'Code' }, { key: 'account_name', label: 'Name' }]}
+                                                        defaultVisibleKeys={['account_name']}
+                                                        items={lp.filter(ledgers, PRODUCT_ACCOUNT_PURPOSE[key], form[key])} getId={l => l.id} getLabel={l => l.account_name}
+                                                        searchKeys={['account_name', 'account_code']}
+                                                        value={form[key]} onChange={id => setForm(f => {
+                                                            const next = { ...f, [key]: id };
+                                                            // a sub-ledger that no longer belongs to its account is cleared
+                                                            Object.entries(ACCOUNT_SUB).forEach(([acct, sk]) => {
+                                                                const pid = subParentOf(next, acct);
+                                                                if (next[sk] && !subLedgers.some(sl => sl.id === next[sk] && sl.main_ledger_id === pid)) next[sk] = '';
+                                                            });
+                                                            return next;
+                                                        })}
+                                                        placeholder={main || !subKey ? 'System Control default' : 'Same as the main account'}
+                                                    />
+                                                </div>
+                                                {subKey ? (
+                                                    <div>
+                                                        <label className="erp-label">{label.replace(' Account', '')} Sub-Ledger</label>
+                                                        <select className="erp-select" value={form[subKey] || ''} disabled={!parent} onChange={e => setForm({ ...form, [subKey]: e.target.value })}>
+                                                            <option value="">{parent ? 'None' : 'Choose the account first'}</option>
+                                                            {subLedgers.filter(sl => sl.main_ledger_id === parent).map(sl => <option key={sl.id} value={sl.id}>{sl.sub_ledger_name}</option>)}
+                                                        </select>
+                                                    </div>
+                                                ) : null}
+                                            </React.Fragment>
+                                        );
+                                    })}
                                 </div>
                             </fieldset>
                         ))}

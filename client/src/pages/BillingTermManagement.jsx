@@ -32,7 +32,7 @@ const emptyForm = {
     base_reference: 'basic_amount', base_reference_term_id: '', base_term_ids: [],
     rate_percentage: 0, fixed_amount: 0, maximum_amount: 0, formula_expression: '',
     sign: '+', rounding_method: 'none', rounding_precision: 1,
-    billing_ledger_id: '', return_ledger_id: '', expiry_return_ledger_id: '', sub_ledger_id: '', return_sub_ledger_id: '',
+    billing_ledger_id: '', return_ledger_id: '', expiry_return_ledger_id: '', sub_ledger_id: '', return_sub_ledger_id: '', expiry_return_sub_ledger_id: '',
     manual_override: true, suppress_if_zero: false, include_in_profitability: false,
     product_wise: false, show_product_term_summary: false, allow_summary: false, is_enabled: true,
     entry_input_mode: 'all', show_in_term_summary: true,
@@ -444,13 +444,14 @@ export default function BillingTermManagement() {
                                     defaultVisibleKeys={['account_name']}
                                     items={ledgers} getId={l => l.id} getLabel={l => l.account_name}
                                     searchKeys={['account_name', 'account_code']}
-                                    value={form.expiry_return_ledger_id} onChange={id => setForm({ ...form, expiry_return_ledger_id: id })}
+                                    value={form.expiry_return_ledger_id} onChange={id => setForm({ ...form, expiry_return_ledger_id: id, expiry_return_sub_ledger_id: '' })}
                                     placeholder="Select Expiry Return Ledger"
                                 />
                             </div>
                             {/* Real sub-ledgers, limited to the ledger each one sits under. */}
                             {[['sub_ledger_id', 'Billing Sub-Ledger', form.billing_ledger_id, 'Billing Ledger'],
-                              ['return_sub_ledger_id', 'Return Sub-Ledger', form.return_ledger_id || form.billing_ledger_id, 'Return Ledger']].map(([key, label, parentId, parentLabel]) => {
+                              ['return_sub_ledger_id', 'Return Sub-Ledger', form.return_ledger_id || form.billing_ledger_id, 'Return Ledger'],
+                              ['expiry_return_sub_ledger_id', 'Expiry Return Sub-Ledger', form.expiry_return_ledger_id || form.return_ledger_id || form.billing_ledger_id, 'Expiry Return Ledger']].map(([key, label, parentId, parentLabel]) => {
                                 const options = subLedgers.filter(sl => sl.main_ledger_id === parentId);
                                 return (
                                     <div key={key}>

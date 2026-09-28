@@ -524,7 +524,7 @@ router.get('/vat-reports/vat-ledger', requireAuth, loadUserPermissions, requireP
     }
 });
 
-// ---------- TDS (Journal Voucher lines with TDS %) ----------
+// ---------- TDS (Journal Voucher lines with TDS %, additional expense TDS lines, bills with TDS) ----------
 router.get('/vat-reports/tds', requireAuth, loadUserPermissions, requirePermission('reports', 'view'), async (req, res) => {
     try {
         const q = req.query, tenantId = req.auth.tenantId;
@@ -550,7 +550,7 @@ router.get('/vat-reports/tds', requireAuth, loadUserPermissions, requirePermissi
         const { data: exps } = await eq.limit(20000);
         const expById = Object.fromEntries((exps || []).map(e => [e.id, e]));
         const expLines = await inChunks((exps || []).map(e => e.id), 200, async chunk => (await tenantClient.from('purchase_additional_expense_lines').select('*').in('expense_id', chunk)).data);
-        const tdsLines = expLines.filter(l => l.entry_sign === 'deduct' && Number(l.rate_percent) > 0);
+        const tdsLines = expLines.filter(l => l.entry_sign === 'deduct' && (l.is_tds || Number(l.rate_percent) > 0));
         const expPartyIds = [...new Set(tdsLines.map(l => l.party_ledger_id || expById[l.expense_id]?.vendor_ledger_id).filter(Boolean))];
         const expParties = await inChunks(expPartyIds, 200, async chunk => (await tenantClient.from('ledger_accounts').select('id, account_name, pan_number, vat_pan_number').in('id', chunk)).data);
         const expPartyById = Object.fromEntries(expParties.map(x => [x.id, x]));
@@ -558,8 +558,21 @@ router.get('/vat-reports/tds', requireAuth, loadUserPermissions, requirePermissi
             const h = expById[l.expense_id], pid = l.party_ledger_id || h.vendor_ledger_id, party = expPartyById[pid];
             const base = round2(expLines.filter(x => x.expense_id === l.expense_id && x.entry_sign !== 'deduct' && (x.party_ledger_id || h.vendor_ledger_id) === pid).reduce((a, x) => a + Number(x.amount || 0), 0));
             rows.push({ doc_label: 'Additional Expense', doc_date: h.doc_date, doc_no: h.doc_no, party_name: party?.account_name || h.vendor_name_snapshot || '', party_pan: party?.vat_pan_number || party?.pan_number || null,
-                base_amount: base, tds_percent: Number(l.rate_percent), tds_amount: round2(l.amount) });
+                base_amount: base, tds_percent: Number(l.rate_percent) || (base ? round2(Number(l.amount) * 100 / base) : 0), tds_amount: round2(l.amount) });
         });
+        // Sales / purchase bills with TDS: withheld from the supplier (payable) or by the customer (receivable)
+        for (const [table, party, label] of [['purchase_bills', 'vendor', 'Purchase Bill'], ['sales_bills', 'customer', 'Sales Bill (TDS by customer)']]) {
+            let bq = tenantClient.from(table).select(`id, doc_no, doc_date, ${party}_ledger_id, ${party}_name_snapshot, tds_percent, tds_base_amount, tds_amount`).eq('tenant_id', tenantId).eq('status', 'posted').gt('tds_amount', 0);
+            if (q.date_from) bq = bq.gte('doc_date', q.date_from);
+            if (q.date_to) bq = bq.lte('doc_date', q.date_to);
+            const { data: bills, error: billErr } = await bq.limit(20000);
+            if (billErr) continue;   // migration 142 not run yet
+            const ids = [...new Set((bills || []).map(x => x[`${party}_ledger_id`]).filter(Boolean))];
+            const pans = await inChunks(ids, 200, async chunk => (await tenantClient.from('ledger_accounts').select('id, pan_number, vat_pan_number').in('id', chunk)).data);
+            const panOf = Object.fromEntries(pans.map(x => [x.id, x.vat_pan_number || x.pan_number || null]));
+            (bills || []).forEach(x => rows.push({ doc_label: label, doc_date: x.doc_date, doc_no: x.doc_no, party_name: x[`${party}_name_snapshot`] || '', party_pan: panOf[x[`${party}_ledger_id`]] || null,
+                base_amount: round2(x.tds_base_amount), tds_percent: Number(x.tds_percent) || 0, tds_amount: round2(x.tds_amount) }));
+        }
         rows.sort((a, b) => String(a.doc_date).localeCompare(String(b.doc_date)));
         const totals = rows.reduce((t, r) => ({ base_amount: round2(t.base_amount + r.base_amount), tds_amount: round2(t.tds_amount + r.tds_amount) }), { base_amount: 0, tds_amount: 0 });
         res.json({ success: true, data: { rows, totals } });

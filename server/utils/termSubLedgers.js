@@ -5,11 +5,14 @@
 // that choice is stored on document_billing_terms /
 // document_line_billing_terms.sub_ledger_id and used by GL posting.
 // A term the user didn't touch gets the master's default:
-// Return Sub-Ledger on return documents (else Billing Sub-Ledger),
+// Expiry Return Sub-Ledger on non-saleable returns, Return Sub-Ledger on
+// return documents (else Billing Sub-Ledger),
 // Billing Sub-Ledger everywhere else.
 // =============================================
 
-const RETURN_DOC_TYPES = new Set(['purchase_return', 'purchase_nonsalable_return']);
+const RETURN_DOC_TYPES = new Set(['purchase_return', 'purchase_nonsalable_return', 'sales_return', 'sales_nonsalable_return']);
+// non-saleable (expiry / damage) returns use the Expiry Return Sub-Ledger first
+const EXPIRY_DOC_TYPES = new Set(['purchase_nonsalable_return', 'sales_nonsalable_return']);
 
 async function applyTermSubLedgers(tenantClient, tenantId, documentType, documentId, chosen) {
     const map = chosen && typeof chosen === 'object' ? chosen : {};
@@ -19,10 +22,10 @@ async function applyTermSubLedgers(tenantClient, tenantId, documentType, documen
     ]);
     const termIds = [...new Set([...(dt || []), ...(lt || [])].map(r => r.billing_term_id))];
     if (!termIds.length) return;
-    const { data: terms } = await tenantClient.from('billing_terms').select('id, sub_ledger_id, return_sub_ledger_id').eq('tenant_id', tenantId).in('id', termIds);
+    const { data: terms } = await tenantClient.from('billing_terms').select('id, sub_ledger_id, return_sub_ledger_id, expiry_return_sub_ledger_id').eq('tenant_id', tenantId).in('id', termIds);
     const isReturn = RETURN_DOC_TYPES.has(documentType);
     for (const t of terms || []) {
-        const fallback = isReturn ? (t.return_sub_ledger_id || t.sub_ledger_id) : t.sub_ledger_id;
+        const fallback = (EXPIRY_DOC_TYPES.has(documentType) && t.expiry_return_sub_ledger_id) || (isReturn ? (t.return_sub_ledger_id || t.sub_ledger_id) : t.sub_ledger_id);
         const value = Object.prototype.hasOwnProperty.call(map, t.id) ? (map[t.id] || null) : (fallback || null);
         for (const table of ['document_billing_terms', 'document_line_billing_terms']) {
             const { error } = await tenantClient.from(table).update({ sub_ledger_id: value })

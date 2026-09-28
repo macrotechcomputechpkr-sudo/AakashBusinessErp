@@ -31,6 +31,7 @@ import { CodeCell } from '../components/entry/SalesLineGrid';
 import DocActions, { finalizeEntry } from '../components/entry/DocActions';
 import EntryFillBar from '../components/entry/EntryFillBar';
 import { saveEntryDraft, finishEntryDraft } from '../components/entry/entryDrafts';
+import BillReceiptTds from '../components/entry/BillReceiptTds';
 import { EntryFooter, useEntryHotkeys, latestOf } from '../components/entry/EntryParts';
 import { PurchaseProductTermPopup, PurchaseOverallTermPopup } from '../components/entry/PurchaseTermPopups';
 import { productTermIds, withTermValue } from '../components/entry/lineCalc';
@@ -53,6 +54,7 @@ const emptyForm = {
     source_quotation_id: '', source_order_id: '', source_grn_id: '', party_bill_no: '', party_bill_date: '',
     import_detail_mode: '', customs_office_id: '', customs_declaration_no: '', customs_declaration_date: '',
     bill_wise_import_taxable_amount: '', bill_wise_import_tax_free_amount: '',
+    tds_percent: '', tds_base_amount: '', tds_amount: '', tds_ledger_id: '', tds_sub_ledger_id: '',
     details: [emptyDetailRow()]
 };
 
@@ -61,6 +63,7 @@ const EFC_RENDERED_KEYS = ['agent_id', 'area_id', 'business_unit_id', 'cost_cent
 
 export default function PurchaseBill() {
     const [dualUomEntryMode, setDualUomEntryMode] = useState({ mode: 'fixed', reverseEnabled: false });
+    const [sysCtl, setSysCtl] = useState({});
     // a product's own dual-UOM entry mode (Product Master) over System Control's
     const dualModeOf = pid => productDualMode(products.find(p => p.id === pid), dualUomEntryMode);
     const { authFetch } = useAuth();
@@ -216,6 +219,7 @@ export default function PurchaseBill() {
             setFieldControls(controlsMap);
             setBillingTerms((bt.data || []).filter(t => t.applicable_purchase_entry && t.is_enabled));
             setDualUomEntryMode(resolveDualUomEntryMode(sysCtrl.data));
+            setSysCtl(sysCtrl.data || {});
         } catch (err) {
             showAlert(err.message, 'danger');
         }
@@ -1043,7 +1047,8 @@ export default function PurchaseBill() {
                         remarks={{ value: form.remarks_text, onChange: v => setForm(f => ({ ...f, remarks_text: v })), options: remarks.map(r => r.remark_text) }}
                         onProductTerm={itemCharges ? () => setProductTermModalIndexes(selectedRowIndexes.length > 0 ? selectedRowIndexes : form.details.map((_, i) => i).filter(i => form.details[i].product_id)) : null}
                         onBillTerm={() => setOverallOpen(true)}
-                        panels={[{ key: 'other', label: 'More Info', buttons: [{ label: 'More Info', onClick: () => setActiveTab('general') }, { label: 'Party & Tax Info', onClick: () => setActiveTab('party') }], content: (
+                        panels={[{ key: 'tds', label: '🧾 TDS', content: <BillReceiptTds side="purchase" form={form} setForm={setForm} ledgers={ledgers} subLedgers={subLedgers} billTotal={grandTotal + billTermAmount} tax={taxSplit.tax} sysCtl={sysCtl} lp={lp} /> },
+                            { key: 'other', label: 'More Info', buttons: [{ label: 'More Info', onClick: () => setActiveTab('general') }, { label: 'Party & Tax Info', onClick: () => setActiveTab('party') }], content: (
                             <>
                             <div className="erp-tabs">
                                 <button type="button" className={`erp-tab ${activeTab === 'general' ? 'active' : ''}`} onClick={() => setActiveTab('general')}>General</button>

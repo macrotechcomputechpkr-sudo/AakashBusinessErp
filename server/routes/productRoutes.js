@@ -170,6 +170,29 @@ router.get('/products', requireAuth, loadUserPermissions, requirePermission('led
     }
 });
 
+// Each account's sub-ledger must be a sub-ledger OF that account. A return
+// sub-ledger with no return account belongs to the main (sales / purchase)
+// account, since the return then posts there.
+const ACCOUNT_SUBS = [
+    ['Sales Sub-Ledger', 'sales_sub_ledger_id', 'sales_account_ledger_id'],
+    ['Sales Return Sub-Ledger', 'sales_return_sub_ledger_id', 'sales_return_account_ledger_id', 'sales_account_ledger_id'],
+    ['Sales Non-saleable Return Sub-Ledger', 'sales_nonsaleable_return_sub_ledger_id', 'sales_nonsaleable_return_account_ledger_id', 'sales_return_account_ledger_id', 'sales_account_ledger_id'],
+    ['Purchase Sub-Ledger', 'purchase_sub_ledger_id', 'purchase_account_ledger_id'],
+    ['Purchase Return Sub-Ledger', 'purchase_return_sub_ledger_id', 'purchase_return_account_ledger_id', 'purchase_account_ledger_id'],
+    ['Purchase Non-saleable Return Sub-Ledger', 'purchase_nonsaleable_return_sub_ledger_id', 'purchase_nonsaleable_return_account_ledger_id', 'purchase_return_account_ledger_id', 'purchase_account_ledger_id']
+];
+async function checkAccountSubLedgers(tenantClient, tenantId, p) {
+    for (const [label, subKey, ...accountKeys] of ACCOUNT_SUBS) {
+        if (!p[subKey]) continue;
+        const ledgerId = accountKeys.map(k => p[k]).find(Boolean);
+        if (!ledgerId) return `${label} needs its account first`;
+        const { data: sub } = await tenantClient.from('sub_ledgers').select('main_ledger_id, sub_ledger_name').eq('id', p[subKey]).eq('tenant_id', tenantId).maybeSingle();
+        if (!sub) return `${label} not found`;
+        if (sub.main_ledger_id !== ledgerId) return `${label} "${sub.sub_ledger_name}" does not belong to its account`;
+    }
+    return null;
+}
+
 router.post('/products', requireAuth, loadUserPermissions, requirePermission('ledger', 'create'), async (req, res) => {
     try {
         const b = req.body;
@@ -180,6 +203,8 @@ router.post('/products', requireAuth, loadUserPermissions, requirePermission('le
         if (unitError) return res.status(400).json({ success: false, error: unitError });
         const acctError = await checkAccountPurposes(await getTenantClient(req.auth.tenantId), req.auth.tenantId, b, { sales_account_ledger_id: 'sales_goods', purchase_account_ledger_id: 'purchase_goods', sales_return_account_ledger_id: 'sales_goods', sales_nonsaleable_return_account_ledger_id: 'sales_goods', purchase_return_account_ledger_id: 'purchase_goods', purchase_nonsaleable_return_account_ledger_id: 'purchase_goods', inventory_account_ledger_id: 'inventory', cogs_account_ledger_id: 'cogs', discount_account_ledger_id: 'discount' });
         if (acctError) return res.status(400).json({ success: false, error: acctError });
+        const subError = await checkAccountSubLedgers(await getTenantClient(req.auth.tenantId), req.auth.tenantId, b);
+        if (subError) return res.status(400).json({ success: false, error: subError });
 
         if (['production', 'assembly'].includes(b.replenishment_method) && !['semi_finished', 'finished_good'].includes(b.item_type)) {
             return res.status(400).json({ success: false, error: `Replenishment Method "${b.replenishment_method === 'production' ? 'Production' : 'Assembly'}" requires Item Type to be Semi-Finished or Finished Good` });
@@ -216,6 +241,10 @@ router.post('/products', requireAuth, loadUserPermissions, requirePermission('le
                 purchase_return_account_ledger_id: b.purchase_return_account_ledger_id || null,
                 sales_nonsaleable_return_account_ledger_id: b.sales_nonsaleable_return_account_ledger_id || null,
                 purchase_nonsaleable_return_account_ledger_id: b.purchase_nonsaleable_return_account_ledger_id || null,
+                sales_return_sub_ledger_id: b.sales_return_sub_ledger_id || null,
+                sales_nonsaleable_return_sub_ledger_id: b.sales_nonsaleable_return_sub_ledger_id || null,
+                purchase_return_sub_ledger_id: b.purchase_return_sub_ledger_id || null,
+                purchase_nonsaleable_return_sub_ledger_id: b.purchase_nonsaleable_return_sub_ledger_id || null,
                 base_unit_id: b.base_unit_id,
                 uom_mode: b.uom_mode || 'single', dual_uom_primary_unit_id: b.dual_uom_primary_unit_id || null,
                 dual_auto_convert: yesNoOrNull(b.dual_auto_convert), dual_reverse_conversion: yesNoOrNull(b.dual_reverse_conversion),
@@ -302,6 +331,9 @@ router.put('/products/:id', requireAuth, loadUserPermissions, requirePermission(
         const acctError = await checkAccountPurposes(tenantClient, tenantId, b, { sales_account_ledger_id: 'sales_goods', purchase_account_ledger_id: 'purchase_goods', sales_return_account_ledger_id: 'sales_goods', sales_nonsaleable_return_account_ledger_id: 'sales_goods', purchase_return_account_ledger_id: 'purchase_goods', purchase_nonsaleable_return_account_ledger_id: 'purchase_goods', inventory_account_ledger_id: 'inventory', cogs_account_ledger_id: 'cogs', discount_account_ledger_id: 'discount' });
         if (acctError) return res.status(400).json({ success: false, error: acctError });
         const merged = { ...existing, ...b };
+        Object.keys(merged).forEach(k => { if (/_id$/.test(k) && merged[k] === '') merged[k] = null; });
+        const subError = await checkAccountSubLedgers(tenantClient, tenantId, merged);
+        if (subError) return res.status(400).json({ success: false, error: subError });
 
         if (b.unit_rates) {
             const unitError = validateUnitRates(b.unit_rates, merged.base_unit_id);

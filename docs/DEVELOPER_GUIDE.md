@@ -100,7 +100,7 @@ All reports (Ledger, Trial Balance, P&L, Balance Sheet, Day Book, Party Summary)
 
 `utils/accountResolver.js` `splitByAccount` splits a document's VAT-exclusive value per line:
 
-1. The product's own account (`products.sales_account_ledger_id` / `purchase_account_ledger_id` with its sub-ledger). A return uses the product's Return Account; a non-saleable return uses its Non-saleable Return Account when set.
+1. The product's own account (`products.sales_account_ledger_id` / `purchase_account_ledger_id` with its sub-ledger). A return uses the product's Return Account with the Return Sub-Ledger; a non-saleable return uses its Non-saleable Return Account and sub-ledger when set. With no return account, the main account is used with the return sub-ledger (else the main sub-ledger). Product save checks each sub-ledger belongs to its account.
 2. The document's account (`sales_account_ledger_id` / `goods_account_ledger_id` + sub-ledger chosen on the entry).
 3. The System Control default (`sales_[return_]account_ledger_id` / `purchase_[return_]account_ledger_id`).
 
@@ -118,6 +118,15 @@ Document-level terms that are not VAT (freight, bill discount) go to the documen
 
 Other billing terms post to the ledger set on the term (Billing Terms master), with the sub-ledger chosen in the entry popup (`utils/termSubLedgers.js`: Return Sub-Ledger on returns, Billing Sub-Ledger elsewhere). Excise terms (`tax_type = 'excise'`) post to their ledger and are reported by `exciseOf`.
 
+### 3.3a TDS and money received on the bill (`utils/billExtras.js`, migration 142)
+
+- **TDS** on Sales Bill and Purchase Bill: `tds_percent`, `tds_base_amount` (default: VAT-exclusive bill value), `tds_amount` (default: base x %), `tds_ledger_id` (default: System Control `sales_tds_ledger_id` for sales, `tds_ledger_id` for purchase).
+- **Receipts** on Sales Bill: `receipts` JSON `[{ ledger_id, sub_ledger_id, amount, ref_no }]`; every ledger must be a Cash / Bank (or overdraft) ledger (`ledgerPurpose` purpose `cash_bank`).
+  - Cash bill: received + TDS must equal the bill total. With no lines, the whole amount goes to System Control `default_cash_ledger_id`.
+  - Credit bill: part payment allowed; the balance stays outstanding.
+- `prepareExtras` runs before the status changes (a problem returns 400 and nothing posts); `glLines` adds the lines to the bill's voucher; `settleOnBill` makes one extra bill-wise reference settled against the bill; `unsettleOnBill` removes it on cancel. `checkCanCancelIfSettled` ignores a document's own settlement.
+- TDS Report (`/vat-reports/tds`) lists JV TDS lines, additional-expense TDS lines and bills with TDS.
+
 ### 3.4 Posting rules per transaction
 
 Dr = debit, Cr = credit. "Goods account" means the per-line result of 3.2.
@@ -127,16 +136,16 @@ Dr = debit, Cr = credit. "Goods account" means the per-line result of 3.2.
 | Sales Quotation (`salesQuotationRoutes`) | sent / accepted | None | None | None |
 | Sales Order (`salesOrderRoutes`) | confirmed | None (credit limit checked) | None | None |
 | Sales Delivery / Challan (`salesDeliveryRoutes`) | posted | None | OUT from warehouse; order `qty_delivered` + | None |
-| Sales Bill (`salesBillRoutes`) | posted | Dr Customer (grand total); Cr Sales account per line; Cr VAT; Cr/Dr term ledgers | OUT only for lines **not** pulled from a delivery (direct bill) | `dr` reference for the customer |
+| Sales Bill (`salesBillRoutes`) | posted | Dr Customer (grand total); Cr Sales account per line; Cr VAT; Cr/Dr term ledgers. Same voucher: TDS by customer (Dr TDS receivable, Cr Customer) and money received with the bill (Dr each cash / bank, Cr Customer) | OUT only for lines **not** pulled from a delivery (direct bill) | `dr` reference for the customer; TDS + receipts settle it (`sales_bill_settle`) |
 | Sales Return (`salesReturnRoutes`) | posted | Dr Sales Return account per line; Dr VAT; Cr Customer | IN to warehouse; bill `qty_returned` + | `cr` reference, settles open `dr` bills FIFO |
 | Sales Non-saleable Return | posted | `credit_note` settlement: like Sales Return using the non-saleable return account. `no_credit`: none | IN to the **separate** `nonsaleable_stock_movements` ledger, never main stock | `cr` when credited |
 | Sales Additional Entry | posted | Dr Customer (net); Cr income ledger per `add` line; Dr income ledger per `deduct` line | None | `dr` reference |
 | Purchase Requisition / Quotation / Order | approved / accepted / confirmed | None | None | None |
 | Purchase GRN (`purchaseGrnRoutes`) | received | Dr Goods account (VAT-inclusive); Cr GRN Clearing (only when System Control has a GRN Clearing ledger) | IN to warehouse; order `qty_received` + | None |
-| Purchase Bill (`purchaseBillRoutes`) | posted | Direct bill: Dr Goods per line (VAT-exclusive), Dr VAT, Cr Vendor. From GRN: Dr GRN Clearing, Cr Vendor, and the VAT moved out of the goods account into the VAT ledger | IN only for lines **not** pulled from a GRN | `cr` reference; clears any `dr` advance FIFO first |
+| Purchase Bill (`purchaseBillRoutes`) | posted | Direct bill: Dr Goods per line (VAT-exclusive), Dr VAT, Cr Vendor. From GRN: Dr GRN Clearing, Cr Vendor, and the VAT moved out of the goods account into the VAT ledger. TDS: Dr Vendor, Cr TDS payable (own batch) | IN only for lines **not** pulled from a GRN | `cr` reference; clears any `dr` advance FIFO first; TDS settles it (`purchase_bill_settle`) |
 | Purchase Return | posted | Dr Vendor; Cr Goods / return account per line; Cr VAT | OUT; bill `qty_returned` + | `dr` reference, settles open `cr` bills FIFO |
 | Purchase Non-saleable Return | posted | `write_off`: Dr Write-off Expense, Cr Non-saleable Stock Asset. `credit_note`: like Purchase Return | OUT of `nonsaleable_stock_movements` | `dr` when credit note |
-| Purchase Additional Expense | posted | `add` line: Dr expense ledger (+VAT if VAT is part of cost), Dr VAT (claimable), Cr party. `deduct` line (e.g. TDS): Cr expense ledger, Dr party. Parties are netted. | None directly; the amount is allocated to the linked Order/GRN/Bill lines for landed cost (value, qty or equal share) | None |
+| Purchase Additional Expense | posted | `add` line: Dr expense ledger (+VAT if VAT is part of cost), Dr VAT (claimable), Cr party. `deduct` line (e.g. TDS, `is_tds`): Cr that ledger (TDS payable), Dr party - a TDS line is never costed. Parties are netted. | None directly; the amount is allocated to the linked Order/GRN/Bill lines for landed cost (value, qty or equal share) | None |
 | Journal Voucher | posted | The lines as typed (Dr total must equal Cr total). Taxable purchase/sales JV adds the VAT line. | None | Party lines create `dr`/`cr` references |
 | Cash / Bank Entry | posted | Receipt: Dr Cash/Bank, Cr each line ledger. Payment: Dr each line ledger, Cr Cash/Bank | None | Receipt = `cr` (settles `dr`); Payment = `dr` (settles `cr`) |
 | Debit Note | posted | Dr party; Cr the ledger lines | None | `dr` reference |
@@ -247,7 +256,7 @@ A term has:
 - Sign (add / deduct) and basis (value or quantity).
 - Calculation: percentage, fixed rate, or a safe formula (`utils/formulaEvaluator.js` - no `eval`; variables `{basic_amount}`, `{quantity}`, `{rate}`, `{running_total}`, `{term:CODE}`).
 - An optional cap and display order.
-- A ledger and sub-ledgers.
+- A ledger and sub-ledgers: Billing, Return and Expiry Return ledger, each with its own default sub-ledger (`termSubLedgers`: expiry sub-ledger on non-saleable returns, return sub-ledger on sales / purchase returns).
 - `tax_type`: none, vat or excise.
 - Category, including `rounded_off`, which rounds the running total by `rounding_method` / `precision`; the term carries the difference.
 - `entry_input_mode`: which of %, rate x qty, and amount the user may type.

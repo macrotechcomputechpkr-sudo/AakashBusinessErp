@@ -40,7 +40,9 @@ const PURPOSES = {
     supplier: { label: 'Supplier', need: 'a Balance Sheet (party) ledger', ok: x => x.statement === 'bs' },
     expense: { label: 'Expense ledger', need: 'a Profit & Loss expense, stock / fixed-asset, or liability ledger',
         ok: x => EXPENSE(x.section) || (x.section === 'assets' && ['INVENTORY', 'FIXED_ASSETS'].includes(x.anchor)) || x.section === 'liabilities' },
-    vat: { label: 'VAT ledger', need: 'a Balance Sheet ledger', ok: x => x.statement === 'bs' }
+    vat: { label: 'VAT ledger', need: 'a Balance Sheet ledger', ok: x => x.statement === 'bs' },
+    tds: { label: 'TDS ledger', need: 'a Balance Sheet ledger', ok: x => x.statement === 'bs' },
+    cash_bank: { label: 'Cash / Bank ledger', need: 'a Cash / Bank (or bank overdraft) ledger', ok: x => ['CASH_BANK', 'BANK_OVERDRAFT'].includes(x.anchor) }
 };
 
 async function fetchAll(build) {

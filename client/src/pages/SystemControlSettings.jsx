@@ -308,7 +308,8 @@ export default function SystemControlSettings() {
                         <p className="text-xs font-semibold text-gray-500 uppercase pt-2 border-t">Tax & Default Ledgers</p>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                             <LedgerField label="VAT Ledger Mapping" value={settings.vat_ledger_id} onChange={v => set('vat_ledger_id', v)} ledgers={ledgers} />
-                            <LedgerField label="TDS Ledger Mapping" value={settings.tds_ledger_id} onChange={v => set('tds_ledger_id', v)} ledgers={ledgers} />
+                            <LedgerField label="TDS Payable Ledger (purchase)" value={settings.tds_ledger_id} onChange={v => set('tds_ledger_id', v)} ledgers={ledgers} />
+                            <LedgerField label="TDS Receivable Ledger (sales)" value={settings.sales_tds_ledger_id} onChange={v => set('sales_tds_ledger_id', v)} ledgers={ledgers} />
                             <LedgerField label="Excise Duty Mapping" value={settings.excise_duty_ledger_id} onChange={v => set('excise_duty_ledger_id', v)} ledgers={ledgers} />
                             <LedgerField label="Default Cash Ledger" value={settings.default_cash_ledger_id} onChange={v => set('default_cash_ledger_id', v)} ledgers={ledgers} />
                             <LedgerField label="Default Bank Ledger" value={settings.default_bank_ledger_id} onChange={v => set('default_bank_ledger_id', v)} ledgers={ledgers} />

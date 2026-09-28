@@ -77,6 +77,7 @@ export default function PurchaseAdditionalExpense() {
 
     const showAlert = (message, type = 'info') => { setAlert({ message, type }); setTimeout(() => setAlert(null), 6000); };
 
+    const [sysCtl, setSysCtl] = useState({});
     const load = useCallback(async () => {
         try {
             const [req, v1, v2, ag, ldg, rmk, cc, bu, pords, pgrns, pbills, subl] = await Promise.all([
@@ -94,6 +95,7 @@ export default function PurchaseAdditionalExpense() {
                 authFetch('/api/sub-ledgers')
             ]);
             setSubLedgers(subl.data || []);
+            try { setSysCtl((await authFetch('/api/system-control')).data || {}); } catch { /* TDS line then needs its ledger picked */ }
             setRows(req.data || []);
             setVendors([...(v1.data || []), ...(v2.data || [])]);
             setAgents(ag.data || []);
@@ -112,6 +114,15 @@ export default function PurchaseAdditionalExpense() {
 
     const resetForm = () => { setForm(emptyForm); setEditingId(null); setAllocationPreview([]); };
     const addExpenseLine = () => setForm(f => ({ ...f, expense_lines: [...f.expense_lines, emptyExpenseLine()] }));
+    // TDS withheld from a party: a "−" line on the TDS payable ledger, never in costing,
+    // TDS % of the other "+" lines (of the same party when one is chosen)
+    const addTdsLine = () => setForm(f => {
+        const pct = Number(sysCtl.default_tds_percent) || 1.5;
+        const base = f.expense_lines.reduce((s, l) => s + (l.entry_sign !== 'deduct' ? (Number(l.amount) || 0) : 0), 0);
+        const party = (f.expense_lines.find(l => l.entry_sign !== 'deduct' && l.party_ledger_id) || {}).party_ledger_id || '';
+        return { ...f, expense_lines: [...f.expense_lines, { ...emptyExpenseLine(), expense_ledger_id: sysCtl.tds_ledger_id || '', description: 'TDS', entry_sign: 'deduct', is_tds: true,
+            allocation_basis: 'none', bill_type: 'no_bill', party_ledger_id: party, rate_percent: pct, amount: Math.round(base * pct) / 100 }] };
+    });
     const removeExpenseLine = (idx) => setForm(f => ({ ...f, expense_lines: f.expense_lines.length > 1 ? f.expense_lines.filter((_, i) => i !== idx) : f.expense_lines }));
     const updateExpenseLine = (idx, patch) => setForm(f => ({ ...f, expense_lines: f.expense_lines.map((l, i) => {
         if (i !== idx) return l;
@@ -451,12 +462,13 @@ export default function PurchaseAdditionalExpense() {
                                                     defaultVisibleKeys={['account_name']}
                                                     items={lp.filter(ledgers, 'expense', l.expense_ledger_id)} getId={x => x.id} getLabel={x => x.account_name}
                                                     searchKeys={['account_name', 'account_code']}
-                                                    value={l.expense_ledger_id} onChange={id => updateExpenseLine(idx, { expense_ledger_id: id })} placeholder="e.g. Freight, Wages, TDS"
+                                                    value={l.expense_ledger_id} onChange={id => updateExpenseLine(idx, { expense_ledger_id: id })} placeholder={l.is_tds ? 'TDS payable ledger' : 'e.g. Freight, Wages, TDS'}
                                                 />
+                                                {l.is_tds && <span className="text-xs font-semibold text-amber-700" title="TDS withheld: Cr this ledger, Dr the party; not in costing">TDS line</span>}
                                             </td>
                                             <td className={efc.isVisible('description', 'detail') ? '' : 'hidden'}><input disabled={efc.isReadonly('description', 'detail')} className="erp-input" value={l.description} onChange={e => updateExpenseLine(idx, { description: e.target.value })} placeholder="e.g. Transportation" /></td>
                                             <td className={efc.isVisible('allocation_basis', 'detail') ? '' : 'hidden'}>
-                                                <select disabled={efc.isReadonly('allocation_basis', 'detail')} className="erp-select" value={l.allocation_basis} onChange={e => updateExpenseLine(idx, { allocation_basis: e.target.value })}>
+                                                <select disabled={efc.isReadonly('allocation_basis', 'detail') || l.is_tds} className="erp-select" value={l.allocation_basis} onChange={e => updateExpenseLine(idx, { allocation_basis: e.target.value })}>
                                                     <option value="value_wise">In cost · Value-wise</option>
                                                     <option value="qty_wise">In cost · Qty-wise</option>
                                                     <option value="equal">In cost · Equal Split</option>
@@ -518,7 +530,10 @@ export default function PurchaseAdditionalExpense() {
                         </div>
                         <p className="text-xs text-gray-400 mb-2">Each line can be a separate bill: its own supplier (or the cash / labour ledger for wages, loading / unloading with no bill), bill no and VAT. Taxable and non-taxable bills appear in the VAT purchase register and VAT return; "No bill" lines do not. "Not in costing" keeps a line out of landed cost; VAT is left out of cost unless it is marked not claimable. A "−" line with Rate % (e.g. 1.5% TDS) is shown in the TDS report.</p>
                         <div className="flex justify-between items-start mb-1">
-                            <button type="button" onClick={addExpenseLine} className="text-xs text-blue-600">➕ Add Line</button>
+                            <span className="flex gap-3">
+                                <button type="button" onClick={addExpenseLine} className="text-xs text-blue-600">➕ Add Line</button>
+                                <button type="button" onClick={addTdsLine} className="text-xs text-blue-600" title="TDS withheld from the supplier: Cr TDS payable, less paid to the supplier">➕ Add TDS Line</button>
+                            </span>
                             <span className="text-sm font-semibold">{vatTotal ? <span className="font-normal text-gray-600 mr-3">VAT {vatTotal.toFixed(2)}</span> : null}Net Payable: {netPayable.toFixed(2)}{fx.foreign ? ` ${fx.code} = ${(netPayable * fx.rate).toFixed(2)} ${fx.base}` : ''}</span>
                         </div>
                         {netPayable !== 0 && (

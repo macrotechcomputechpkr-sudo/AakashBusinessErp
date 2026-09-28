@@ -46,6 +46,7 @@ import { dualHelpers } from '../components/entry/dualHelpers';
 import DocActions, { asNewCopy, finalizeEntry } from '../components/entry/DocActions';
 import EntryFillBar from '../components/entry/EntryFillBar';
 import { saveEntryDraft, finishEntryDraft } from '../components/entry/entryDrafts';
+import BillReceiptTds, { receiptSummary } from '../components/entry/BillReceiptTds';
 
 const emptyDetailRow = () => ({ product_id: '', qty: '', uom_id: '', alt_qty: '', alt_unit_id: '', rate: '', rate_basis: 'primary', discount_percent: '', tax_percent: '', free_qty: '', free_alt_qty: '', free_uom_id: '', warehouse_id: '', batch_no: '', serial_no: '', line_terms: null, source_delivery_detail_id: '', source_order_detail_id: '', source_quotation_detail_id: '' });
 
@@ -54,6 +55,7 @@ const emptyForm = {
     customer_ledger_id: '', customer_sub_ledger_id: '', sales_account_ledger_id: '', sales_sub_ledger_id: '', agent_id: '', invoice_type: 'credit', currency: 'NPR', exchange_rate: 1,
     due_date: '', warehouse_id: '', numbering_category_id: '', remarks_text: '', narration: '', rate_type: 'exclusive',
     cost_center_id: '', business_unit_id: '', area_id: '', route_id: '',
+    tds_percent: '', tds_base_amount: '', tds_amount: '', tds_ledger_id: '', tds_sub_ledger_id: '', receipts: [],
     details: [emptyDetailRow()]
 };
 
@@ -96,6 +98,7 @@ export default function SalesBill() {
     const [remarks, setRemarks] = useState([]);
     const [selectedRowIndexes, setSelectedRowIndexes] = useState([]);
     const [dualUomEntryMode, setDualUomEntryMode] = useState({ mode: 'fixed', reverseEnabled: false });
+    const [sysCtl, setSysCtl] = useState({});
 
     const formRef = useRef(null);
     useEnterKeyNavigation(formRef, { onLastField: () => { addDetailRow(); return true; } });
@@ -132,6 +135,7 @@ export default function SalesBill() {
             setRoutes(rt.data || []);
             setRemarks(rmk.data || []);
             setDualUomEntryMode(resolveDualUomEntryMode(sysCtrl.data));
+            setSysCtl(sysCtrl.data || {});
         } catch (err) {
             showAlert(err.message, 'danger');
         }
@@ -420,6 +424,7 @@ export default function SalesBill() {
                         remarks={{ value: form.remarks_text, onChange: v => setForm(f => ({ ...f, remarks_text: v })), options: remarks.map(r => r.remark_text) }}
                         onProductTerm={itemCharges ? lineCtl.openTerms : null} onBillTerm={lineCtl.openOverall}
                         panels={[
+                            { key: 'receipt', label: '💰 Receipt / TDS', content: <BillReceiptTds side="sales" form={form} setForm={setForm} ledgers={customers} subLedgers={subLedgers} billTotal={grandTotal} tax={totals.tax} sysCtl={sysCtl} lp={lp} /> },
                             { key: 'other', label: 'More Info', content: (
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                                     <div className="erp-field">
@@ -447,6 +452,9 @@ export default function SalesBill() {
                             { key: 'billing', label: 'Party & Tax Info', content: <PartyDetailsPanel partyId={form.customer_ledger_id} partyLabel="Customer" info={partyInfo} onChange={setPartyInfo} /> }
                         ]}
                         actions={<>
+                            {(() => { const rs = receiptSummary(form, grandTotal); return (
+                                <span className="ent-note" title="Receipt / TDS">{form.invoice_type === 'cash' ? 'Cash bill' : 'Credit bill'} · Received {rs.received.toFixed(2)}{rs.tds ? ` · TDS ${rs.tds.toFixed(2)}` : ''} · Balance {(form.invoice_type === 'cash' && !(form.receipts || []).some(r => r.ledger_id) ? 0 : rs.balance).toFixed(2)}</span>
+                            ); })()}
                             <button type="button" onClick={e => handleSubmit(e, true)} className="erp-btn">💾 Save as Draft</button>
                             <button type="submit" className="erp-btn primary">💾 {editingId ? 'Update' : 'Save'}</button>
                             <button type="button" onClick={() => { resetForm(); setShowForm(false); }} className="erp-btn">Cancel</button>

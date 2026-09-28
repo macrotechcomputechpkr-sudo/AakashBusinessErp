@@ -23,6 +23,7 @@ const { effectiveInput, applyInput, loadProductTermMap } = require('../utils/ter
 const { resolveDocumentNumber } = require('../utils/documentNumbering');
 const { isBillWiseTrackingEnabled, getOutstandingReferences, computeFifoAllocation, createReferenceAndSettle, reverseReferenceAndSettlements, checkCanCancelIfSettled } = require('../utils/billWiseSettlement');
 const { postBillPayableEntry, reverseBatch: reverseGlBatch } = require('../utils/grnAccounting');
+const billExtras = require('../utils/billExtras');
 const { toBaseUnitQty } = require('../utils/unitConversion');
 const { toBaseQtyFromDual, computeDualAmount, getDualUomMode, rateBasisFor } = require('../utils/dualUomCalculation');
 
@@ -493,6 +494,7 @@ router.post('/purchase-bills', requireAuth, loadUserPermissions, requirePermissi
                 cash_billing_details: b.cash_billing_details || null,
                 status: b.status || 'draft',
                 pending_bill_wise_settlements: b.bill_wise_settlements ? JSON.stringify(b.bill_wise_settlements) : null,
+                ...billExtras.extraFields(b, 'purchase'),
                 created_by: req.auth.userId, updated_by: req.auth.userId
             })
             .select().single();
@@ -557,6 +559,7 @@ router.put('/purchase-bills/:id', requireAuth, loadUserPermissions, requirePermi
         delete update.summary_overrides;
         delete update.details;
         delete update.bill_wise_settlements;
+        Object.assign(update, billExtras.extraFields(b, 'purchase'));
         if (b.bill_wise_settlements) update.pending_bill_wise_settlements = JSON.stringify(b.bill_wise_settlements);
 
         const { data, error } = await tenantClient.from('purchase_bills').update(update).eq('id', req.params.id).eq('tenant_id', tenantId).select().single();
@@ -642,6 +645,12 @@ router.put('/purchase-bills/:id/status', requireAuth, loadUserPermissions, requi
             update.cancelled_at = new Date().toISOString();
             update.cancelled_by = req.auth.userId;
         }
+        if (status === 'posted' && existing.status !== 'posted') {
+            // TDS ledger / amount resolved and checked before anything posts
+            const { data: full } = await tenantClient.from('purchase_bills').select('*').eq('id', req.params.id).single();
+            try { Object.assign(update, await billExtras.prepareExtras(tenantClient, tenantId, 'purchase', full)); }
+            catch (e) { return res.status(e.status || 500).json({ success: false, error: e.message }); }
+        }
         const { data, error } = await tenantClient.from('purchase_bills').update(update).eq('id', req.params.id).eq('tenant_id', tenantId).select().single();
         if (error) throw error;
 
@@ -664,6 +673,8 @@ router.put('/purchase-bills/:id/status', requireAuth, loadUserPermissions, requi
             // liability and books the real payable; a Bill with no GRN
             // lineage books the goods directly instead.
             await postBillPayableEntry(tenantClient, tenantId, data, req.auth.userId);
+            // TDS withheld from the supplier: Dr Supplier, Cr TDS payable
+            await billExtras.postExtrasBatch(tenantClient, tenantId, 'purchase', data, req.auth.userId);
 
             // FEATURE: "Bill Entry garda ... Dr xa vane FIFO method ma
             // kun doc ma kati balance xa kati adjust garne milaune" - a
@@ -686,6 +697,7 @@ router.put('/purchase-bills/:id/status', requireAuth, loadUserPermissions, requi
                         docNo: data.doc_no, date: data.doc_date, nature: 'cr', totalAmount: data.total_amount, settlements
                     });
                 }
+                await billExtras.settleOnBill(tenantClient, tenantId, 'purchase', data);
             }
         } else if (status === 'cancelled' && existing.status === 'posted') {
             for (const d of (billDetails || [])) {
@@ -693,6 +705,7 @@ router.put('/purchase-bills/:id/status', requireAuth, loadUserPermissions, requi
                 else if (d.source_order_detail_id) await adjustOrderQtyReceived(tenantClient, d.source_order_detail_id, -Number(d.qty), -Number(d.alt_qty || 0));
                 else if (d.source_quotation_detail_id) await moveSourceProgress(tenantClient, [d], PQ_PROGRESS, -1);
             }
+            await billExtras.unsettleOnBill(tenantClient, 'purchase', req.params.id);
             await reverseReferenceAndSettlements(tenantClient, 'purchase_bill', req.params.id);
             await reverseGlBatch(tenantClient, 'purchase_bill', req.params.id);
             await reverseBillStockMovements(tenantClient, req.params.id);

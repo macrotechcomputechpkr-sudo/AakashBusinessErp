@@ -26,6 +26,7 @@ function validateBody(b, isDraft) {
         if (l.allocation_basis && !['value_wise', 'qty_wise', 'equal', 'none'].includes(l.allocation_basis)) return 'Invalid allocation basis on an expense line';
         if (l.entry_sign && !['add', 'deduct'].includes(l.entry_sign)) return 'Invalid sign on an expense line';
         const n = b.expense_lines.indexOf(l) + 1;
+        if (l.is_tds && (l.bill_type || 'no_bill') !== 'no_bill') return `Line ${n}: a TDS line has no bill of its own (bill type: No Bill)`;
         const bt = l.bill_type || 'no_bill';
         if (!['taxable', 'non_taxable', 'no_bill'].includes(bt)) return `Line ${n}: invalid bill type`;
         if (bt !== 'taxable' && Number(l.vat_amount) > 0) return `Line ${n}: VAT is only for a taxable bill`;
@@ -98,7 +99,7 @@ function computeLineShare(sourceLines, signedAmount, basis) {
 function computeAllocations(sourceLines, expenseLines) {
     const totals = sourceLines.map(() => 0);
     for (const line of expenseLines) {
-        if (line.allocation_basis === 'none') continue;
+        if (line.allocation_basis === 'none' || line.is_tds) continue;   // TDS is withheld tax, never part of the goods cost
         // costing: the line's amount, plus its VAT when that VAT cannot be claimed (vat_in_cost)
         const signedAmount = (line.entry_sign === 'deduct' ? -1 : 1) * (Number(line.amount) + (line.vat_in_cost ? Number(line.vat_amount) || 0 : 0));
         const shares = computeLineShare(sourceLines, signedAmount, line.allocation_basis);
@@ -131,7 +132,8 @@ async function syncExpenseLines(tenantClient, tenantId, expenseId, expenseLines)
         return {
             tenant_id: tenantId, expense_id: expenseId, display_order: i + 1,
             expense_ledger_id: l.expense_ledger_id, description: l.description || null,
-            allocation_basis: l.allocation_basis || 'value_wise', entry_sign: l.entry_sign || 'add',
+            // a TDS line is a deduction from the party, credited to the TDS payable ledger, never costed
+            allocation_basis: l.is_tds ? 'none' : l.allocation_basis || 'value_wise', entry_sign: l.is_tds ? 'deduct' : l.entry_sign || 'add', is_tds: !!l.is_tds,
             rate_percent: l.rate_percent || null, amount: Number(l.amount) || 0,
             party_ledger_id: l.party_ledger_id || null, party_sub_ledger_id: l.party_sub_ledger_id || null,
             party_name_snapshot: party?.account_name || l.party_name_snapshot || null, party_pan: l.party_pan || party?.vat_pan_number || party?.pan_number || null,
