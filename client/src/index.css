@@ -498,7 +498,13 @@ label {
 .rg-chip { background: #dde8f6 !important; color: #1a4a8a !important; border: 1px solid #8aaad5; }
 /* older master pages: page / form headings and the entry box in the NAV look
    (same as .erp-header-title and .nav-groupbox) */
-.nav-page-body :is(h1, h2) { font-size: 12px !important; font-weight: 700 !important; color: #1a4a8a; text-transform: uppercase; letter-spacing: .03em; line-height: 1.6; }
+/* the module name is already in the window title bar - no second caption below it
+   (page h1 and the card header title), same as the sales / purchase forms */
+.nav-page-body h1[class*="text-"] { display: none !important; }
+.nav-page .erp-card > .erp-header .erp-header-title { display: none; }
+.nav-page .erp-card > .erp-header:not(:has(button, a, select, input, .nav-toolbar)) { display: none; }
+.nav-page .erp-card > .erp-header { justify-content: flex-end; min-height: 0; }
+.nav-page-body h2 { font-size: 12px !important; font-weight: 700 !important; color: #1a4a8a; text-transform: uppercase; letter-spacing: .03em; line-height: 1.6; }
 .nav-page-body form[class~="rounded-xl"], .nav-page-body form[class~="rounded-lg"] {
   background: #f0f0f0 !important; border: 1px solid; border-color: #aca899 #d4d0c8 #d4d0c8 #aca899 !important; border-radius: 0 !important;
   padding: 10px 12px !important; margin-bottom: 10px !important; box-shadow: none !important;
