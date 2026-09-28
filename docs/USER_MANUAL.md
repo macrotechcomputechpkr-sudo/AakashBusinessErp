@@ -176,11 +176,24 @@ The effect of each transaction is shown in a box like this:
 
 **Journal Voucher**
 
-- Free Dr/Cr lines; the Dr total must equal the Cr total.
-- A taxable purchase/sales JV adds the VAT line.
-- Line remarks are allowed.
+- Top: Voucher No. (from Document Numbering), Date, **JV Type**, Ref Doc No / Date, Memo Only, Cost Center, Unit.
+- **Dates** can be English (AD) or Nepali (BS): the **AD / BS** button switches. In BS you type the date (2083-06-01 or 2083.6.1) or pick it from the Nepali calendar (📅); the other calendar's date shows beside it. The choice is remembered on your computer.
+- **JV Type** decides which options show:
 
-> **Accounts:** exactly the lines you enter. Party lines create bill-wise references. **Stock:** none.
+| JV Type | Options | Voucher lines made for you |
+|---|---|---|
+| Normal Journal | none | you type the lines |
+| Taxable / Non-taxable Purchase | supplier, PAN, bill no / date, taxable, non-taxable, VAT, purchase / expense A/c, TDS | Dr purchase, Dr VAT, Cr supplier (less TDS), Cr TDS payable |
+| Taxable / Non-taxable Sales | customer, invoice no, amounts, VAT, sales A/c, TDS | Dr customer (less TDS), Dr TDS receivable, Cr sales, Cr VAT |
+| Asset Purchase / Asset Sales | as above, with a Fixed Asset A/c (sales may use a disposal income A/c) | same pattern; an asset purchase is a capital purchase in the VAT return |
+| Service Purchase / Service Sales | as above, with a service expense / service income A/c | same pattern |
+| TDS | party (paid to), expense A/c, amount, TDS %, TDS amount, TDS ledger + sub-ledger | Dr expense (amount), Cr TDS payable (TDS), Cr party (amount less TDS) |
+
+- TDS is only on the types that have it (not on a normal journal). The TDS ledger defaults from System Control and has its own **TDS Sub-Ledger**.
+- The lines are filled automatically and can still be edited; **Refill** puts them back.
+- **Narration** is one field in the footer (saved remarks are offered as you type).
+
+> **Accounts:** exactly the voucher lines. Tax types appear in the VAT register and VAT return; any TDS appears in the TDS report. Party lines create bill-wise references. **Stock:** none.
 
 **Cash / Bank Entry**
 

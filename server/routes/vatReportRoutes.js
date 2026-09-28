@@ -542,6 +542,20 @@ router.get('/vat-reports/tds', requireAuth, loadUserPermissions, requirePermissi
             const base = round2(Number(l.debit_amount || 0) || Number(l.credit_amount || 0));
             return { doc_label: 'Journal', doc_date: jvById[l.jv_id]?.doc_date, doc_no: jvById[l.jv_id]?.doc_no, party_name: l.ledger_name_snapshot, party_pan: panById[l.ledger_id], base_amount: base, tds_percent: Number(l.tds_percent), tds_amount: round2(base * Number(l.tds_percent) / 100) };
         });
+        // Journal Vouchers with TDS on the voucher (TDS type, and purchase / sales types with TDS)
+        {
+            let tq = tenantClient.from('journal_vouchers').select('id, doc_no, doc_date, jv_type, party_ledger_id, party_name_snapshot, party_pan, tds_percent, tds_base_amount, tds_amount').eq('tenant_id', tenantId).eq('status', 'posted').gt('tds_amount', 0);
+            if (q.date_from) tq = tq.gte('doc_date', q.date_from);
+            if (q.date_to) tq = tq.lte('doc_date', q.date_to);
+            const { data: tdsJvs, error: tdsErr } = await tq.limit(20000);
+            if (!tdsErr) {   // migration 143 not run yet -> skipped
+                const ids = [...new Set((tdsJvs || []).map(x => x.party_ledger_id).filter(Boolean))];
+                const pans = await inChunks(ids, 200, async chunk => (await tenantClient.from('ledger_accounts').select('id, pan_number, vat_pan_number').in('id', chunk)).data);
+                const panOf = Object.fromEntries(pans.map(x => [x.id, x.vat_pan_number || x.pan_number || null]));
+                (tdsJvs || []).forEach(x => rows.push({ doc_label: `Journal (${String(x.jv_type || 'tds').replace('_', ' ')})`, doc_date: x.doc_date, doc_no: x.doc_no, party_name: x.party_name_snapshot || '',
+                    party_pan: x.party_pan || panOf[x.party_ledger_id] || null, base_amount: round2(x.tds_base_amount), tds_percent: Number(x.tds_percent) || 0, tds_amount: round2(x.tds_amount) }));
+            }
+        }
         // Additional expense entries: a "deduct" line with a rate % is TDS withheld from that
         // line's party; its base is the party's (VAT-exclusive) expense amount in the entry.
         let eq = tenantClient.from('purchase_additional_expenses').select('id, doc_no, doc_date, vendor_ledger_id, vendor_name_snapshot').eq('tenant_id', tenantId).eq('status', 'posted');
