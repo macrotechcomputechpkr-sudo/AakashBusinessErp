@@ -19,6 +19,10 @@ import Layout from '../components/Layout';
 // VAT and Excise terms post to the VAT / Excise ledgers and reports; Cash Discount works on credit days
 const TERM_TYPES = [{ value: 'none', label: 'Normal' }, { value: 'vat', label: 'VAT' }, { value: 'excise', label: 'Excise' }, { value: 'cash_discount', label: 'Cash Discount' }];
 
+// what may be typed for the term in a transaction line: % of value, rate per qty (x qty) or an amount
+const ENTRY_INPUTS = [['percent', '%'], ['rate', 'Rate (x qty)'], ['amount', 'Amount'], ['all', 'All'], ['rate_percent', 'Rate and %'],
+    ['rate_percent_amount', 'Rate, % and Amount'], ['rate_amount', 'Rate and Amount']];
+
 const emptyForm = {
     term_name: '', description: '',
     term_category: 'general', tax_type: 'none',
@@ -30,6 +34,7 @@ const emptyForm = {
     billing_ledger_id: '', return_ledger_id: '', expiry_return_ledger_id: '', sub_ledger_id: '', return_sub_ledger_id: '',
     manual_override: true, suppress_if_zero: false, include_in_profitability: false,
     product_wise: false, show_product_term_summary: false, allow_summary: false, is_enabled: true,
+    entry_input_mode: 'all', show_in_term_summary: true,
     applicable_sales_entry: true, applicable_purchase_entry: false, applicable_additional_expense: false, applicable_production_entry: false,
     credit_days: 0, grace_days: 0, discount_percentage: 0,
     display_order: 1
@@ -233,6 +238,12 @@ export default function BillingTermManagement() {
                                     <option value="both">Both (Rate + Amount)</option>
                                     <option value="formula">Formula (advanced)</option>
                                     <option value="free_quantity">Free Quantity (no charge)</option>
+                                </select>
+                            </div>
+                            <div>
+                                <label className="erp-label">Typed In Entry As <span className="text-xs text-gray-400">(what the user may type)</span></label>
+                                <select className="erp-input" value={form.entry_input_mode || 'all'} onChange={e => setForm({ ...form, entry_input_mode: e.target.value })}>
+                                    {ENTRY_INPUTS.map(([v, l]) => <option key={v} value={v}>{l}</option>)}
                                 </select>
                             </div>
                             <div>
@@ -453,16 +464,12 @@ export default function BillingTermManagement() {
                         </div>
                         <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Options</p>
                         <div className="flex flex-wrap gap-4 mb-3">
-                            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.manual_override} onChange={e => setForm({ ...form, manual_override: e.target.checked })} /> Manual Override</label>
+                            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.manual_override} onChange={e => setForm({ ...form, manual_override: e.target.checked })} /> Can Change In Entry</label>
+                            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.show_in_term_summary !== false} onChange={e => setForm({ ...form, show_in_term_summary: e.target.checked })} /> Show In Charges Summary</label>
                             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.suppress_if_zero} onChange={e => setForm({ ...form, suppress_if_zero: e.target.checked })} /> Suppress If Zero</label>
                             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.include_in_profitability} onChange={e => setForm({ ...form, include_in_profitability: e.target.checked })} /> Include In Profitability</label>
                             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.allow_summary} onChange={e => setForm({ ...form, allow_summary: e.target.checked })} /> Allow Summary</label>
                             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.product_wise} onChange={e => setForm({ ...form, product_wise: e.target.checked, show_product_term_summary: e.target.checked ? form.show_product_term_summary : false })} /> Product Wise</label>
-                            <label className={`flex items-center gap-2 text-sm ${!form.product_wise ? 'text-gray-400' : ''}`}>
-                                <input type="checkbox" checked={form.show_product_term_summary} disabled={!form.product_wise}
-                                    onChange={e => setForm({ ...form, show_product_term_summary: e.target.checked })} />
-                                Show Product Term Summary
-                            </label>
                             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.is_enabled} onChange={e => setForm({ ...form, is_enabled: e.target.checked })} /> Enabled</label>
                         </div>
                         {form.tax_type === 'cash_discount' && (

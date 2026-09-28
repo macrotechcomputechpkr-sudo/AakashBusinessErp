@@ -27,7 +27,7 @@ const emptyBomRow = () => ({ component_product_id: '', quantity_required: '', un
 const emptyForm = {
     product_name: '', short_name: '', item_type: 'trading_item', product_group_id: '', product_company_id: '',
     hs_code: '', is_blocked: false, product_category_ids: [], tags: [],
-    base_unit_id: '', unit_rates: [], uom_mode: 'single', dual_uom_primary_unit_id: '', dual_auto_convert: null, dual_reverse_conversion: null,
+    base_unit_id: '', unit_rates: [], uom_mode: 'single', dual_uom_primary_unit_id: '', dual_auto_convert: null, dual_reverse_conversion: null, qty_from_amount_sales: false, qty_from_amount_purchase: false,
     sales_account_ledger_id: '', purchase_account_ledger_id: '', sales_return_account_ledger_id: '', sales_nonsaleable_return_account_ledger_id: '', purchase_return_account_ledger_id: '', purchase_nonsaleable_return_account_ledger_id: '', sales_sub_ledger_id: '', purchase_sub_ledger_id: '', inventory_account_ledger_id: '', cogs_account_ledger_id: '', discount_account_ledger_id: '',
     default_vendor_id: '', vendor_item_code: '', lead_time_days: 0, default_discount_percent: 0,
     opening_qty: 0, opening_rate: 0, minimum_stock: 0, maximum_stock: 0, reorder_qty: 0, allow_negative_stock: null,
@@ -175,7 +175,7 @@ export default function ProductMaster() {
             product_category_ids: row.product_category_ids || [],
             bom_lines: row.bom_lines || [],
             rack_locations: (row.product_rack_locations || []).map(r => ({ branch_id: r.branch_id, warehouse_id: r.warehouse_id, rack_location: r.rack_location })),
-            term_mappings: (row.product_term_mappings || []).map(m => ({ category_type: m.category_type, billing_term_id: m.billing_term_id, is_enabled_by_default: m.is_enabled_by_default, override_percentage: m.override_percentage ?? '' }))
+            term_mappings: (row.product_term_mappings || []).map(m => ({ category_type: m.category_type, billing_term_id: m.billing_term_id, is_enabled_by_default: m.is_enabled_by_default, override_percentage: m.override_percentage ?? '', override_basis: m.override_basis || 'percent' }))
         });
         setShowForm(true);
         setTab('basic');
@@ -232,7 +232,7 @@ export default function ProductMaster() {
         setForm(f => {
             const exists = f.term_mappings.find(m => m.category_type === categoryType && m.billing_term_id === billingTermId);
             if (exists) return { ...f, term_mappings: f.term_mappings.filter(m => !(m.category_type === categoryType && m.billing_term_id === billingTermId)) };
-            return { ...f, term_mappings: [...f.term_mappings, { category_type: categoryType, billing_term_id: billingTermId, is_enabled_by_default: true, override_percentage: '' }] };
+            return { ...f, term_mappings: [...f.term_mappings, { category_type: categoryType, billing_term_id: billingTermId, is_enabled_by_default: true, override_percentage: '', override_basis: 'percent' }] };
         });
     };
     const updateTermMappingOverride = (categoryType, billingTermId, value) => {
@@ -442,6 +442,14 @@ export default function ProductMaster() {
                                     </div>
                                 </>
                             )}
+                            <div className="md:col-span-2">
+                                <label className="erp-label">Amount typed on a line changes <span className="hint">(this item only)</span></label>
+                                <div className="flex flex-wrap gap-4 border rounded-lg px-3 py-2 text-sm">
+                                    <label className="flex items-center gap-1.5"><input type="checkbox" data-enter-skip="true" checked={!!form.qty_from_amount_sales} onChange={e => setForm({ ...form, qty_from_amount_sales: e.target.checked })} /> Sales: quantity (amount ÷ rate)</label>
+                                    <label className="flex items-center gap-1.5"><input type="checkbox" data-enter-skip="true" checked={!!form.qty_from_amount_purchase} onChange={e => setForm({ ...form, qty_from_amount_purchase: e.target.checked })} /> Purchase: quantity (amount ÷ rate)</label>
+                                    <span className="text-xs text-gray-400">Unticked: the rate is worked out (amount ÷ quantity)</span>
+                                </div>
+                            </div>
                         </div>
                         <div className="overflow-x-auto border rounded-lg">
                             <table className="min-w-[900px] w-full text-sm">
@@ -528,7 +536,7 @@ export default function ProductMaster() {
 
                     {/* ==================== TERM MAPPING ==================== */}
                     <div className={tab === 'term_mapping' ? 'space-y-4' : 'hidden'}>
-                        <p className="text-xs text-gray-400">Which Billing Terms apply to this product by default, for Sales and for Purchase - pre-selected when this product is added to a transaction line. An override % replaces the term's usual rate just for this product.</p>
+                        <p className="text-xs text-gray-400">Which Billing Terms apply to this product by default, for Sales and for Purchase - pre-selected when this product is added to a transaction line. The product value (a %, a rate per quantity or an amount) replaces the term's usual value for this product; it is worked out in entries even where item charges are not shown.</p>
                         {['sales', 'purchase'].map(categoryType => (
                             <div key={categoryType}>
                                 <p className="text-xs font-semibold text-gray-500 uppercase mb-2">{categoryType}</p>
@@ -537,7 +545,7 @@ export default function ProductMaster() {
                                         <tr>
                                             <th className="text-left px-3 py-1.5 w-10"></th>
                                             <th className="text-left px-3 py-1.5">Term</th>
-                                            <th className="text-left px-3 py-1.5 w-32">Override %</th>
+                                            <th className="text-left px-3 py-1.5 w-56">Product Value</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -549,8 +557,14 @@ export default function ProductMaster() {
                                                     <td className="px-3 py-1.5">{t.term_name} <span className="text-xs text-gray-400">({t.term_code})</span></td>
                                                     <td className="px-3 py-1.5">
                                                         {mapping && (
-                                                            <input type="number" step="0.0001" className="w-24 border rounded px-2 py-1" placeholder={`Default ${t.rate_percentage ?? 0}`}
-                                                                value={mapping.override_percentage} onChange={e => updateTermMappingOverride(categoryType, t.id, e.target.value)} />
+                                                            <div className="flex items-center gap-1">
+                                                                <input type="number" step="0.0001" className="w-24 border rounded px-2 py-1" placeholder={`Default ${t.rate_percentage ?? 0}`}
+                                                                    value={mapping.override_percentage} onChange={e => updateTermMappingOverride(categoryType, t.id, e.target.value)} />
+                                                                <select className="border rounded px-1 py-1 text-xs" value={mapping.override_basis || 'percent'} title="The value is a % of the item value, a rate per quantity or an amount"
+                                                                    onChange={e => setForm(f => ({ ...f, term_mappings: f.term_mappings.map(m => (m.category_type === categoryType && m.billing_term_id === t.id ? { ...m, override_basis: e.target.value } : m)) }))}>
+                                                                    <option value="percent">%</option><option value="rate">Rate / qty</option><option value="amount">Amount</option>
+                                                                </select>
+                                                            </div>
                                                         )}
                                                     </td>
                                                 </tr>

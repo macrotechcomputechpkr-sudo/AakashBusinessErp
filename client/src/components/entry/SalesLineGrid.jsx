@@ -22,6 +22,7 @@ import SearchablePopupSelect from '../SearchablePopupSelect';
 import BatchSerialPicker from '../BatchSerialPicker';
 import { calcLine, allowedKinds, kindOf, termFromInput } from './lineCalc';
 import { TermPopup, OverallTermPopup } from './EntryParts';
+import AmountCell, { patchFromGross, grossForNet } from './AmountCell';
 
 const num = v => (v === '' || v === null || v === undefined ? '' : v);
 const fmt = n => (Number(n) || 0).toFixed(2);
@@ -45,34 +46,55 @@ export function findByCode(products, text) {
     return p ? { product: p, unit_id: null } : null;
 }
 
-export function CodeCell({ products, product, onPick }) {
+/**
+ * Item Code cell: a code, short name or barcode + Enter brings the product (qty next).
+ * pos (System Control > Barcode System): scanning works like a counter - onPosPick(productId, unitId)
+ * adds the item (or one more of it) and the cursor goes straight to the Item Code of the next line
+ */
+export function CodeCell({ products, product, onPick, pos, onPosPick }) {
     const [text, setText] = useState(null);
     const [matches, setMatches] = useState([]);
     const shown = text !== null ? text : (product ? product.product_code || '' : '');
-    const go = () => {
+    const choose = (hit, el) => {
+        if (pos && onPosPick) {
+            onPosPick(hit.product.id, hit.unit_id);
+            setText(null); setMatches([]);
+            // next line's Item Code (a new line is added when this was the last)
+            setTimeout(() => {
+                const all = [...(el?.closest('tbody')?.querySelectorAll('input[data-code]') || [])];
+                const next = all[all.indexOf(el) + 1];
+                if (next) next.focus(); else if (el) { el.focus(); el.select && el.select(); }
+            }, 90);
+            return 'pos';
+        }
+        onPick(hit.product.id, hit.unit_id); setText(null); setMatches([]);
+        return true;
+    };
+    const go = (el) => {
         const hit = findByCode(products, shown);
-        if (hit) { onPick(hit.product.id, hit.unit_id); setText(null); setMatches([]); return true; }
+        if (hit) return choose(hit, el);
         const t = shown.trim().toLowerCase();
         if (!t) return false;
-        setMatches(products.filter(p => String(p.product_code || '').toLowerCase().includes(t) || String(p.product_name || '').toLowerCase().includes(t)).slice(0, 12));
+        setMatches(products.filter(p => String(p.product_code || '').toLowerCase().includes(t) || String(p.short_name || '').toLowerCase().includes(t) || String(p.product_name || '').toLowerCase().includes(t)).slice(0, 12));
         return false;
     };
     return (
         <div className="relative" data-enter-nav="off">
-            <input className="erp-input" style={{ width: 110 }} placeholder="Code / barcode" value={shown}
+            <input data-code className="erp-input" style={{ width: 110 }} placeholder={pos ? 'Scan / code' : 'Code / barcode'} value={shown}
                 onChange={e => { setText(e.target.value); setMatches([]); }}
                 onKeyDown={e => {
                     if (e.key !== 'Enter') return;
                     e.preventDefault();
-                    const tr = e.currentTarget.closest('tr');
-                    const found = text === null ? !!product : go();
+                    const el = e.currentTarget;
+                    const tr = el.closest('tr');
+                    const found = text === null ? !!product : go(el);
                     // found: straight to the qty of this line (after the product fills in)
-                    if (found && tr) setTimeout(() => { const q = tr.querySelector('[data-qty]'); if (q) { q.focus(); q.select && q.select(); } }, 60);
+                    if (found === true && tr) setTimeout(() => { const q = tr.querySelector('[data-qty]'); if (q) { q.focus(); q.select && q.select(); } }, 60);
                 }}
-                onBlur={() => { if (text !== null && !matches.length) { if (!go()) setText(null); } }} />
+                onBlur={() => { if (text !== null && !matches.length && !pos) { if (!go(null)) setText(null); } }} />
             {matches.length > 0 && (
                 <div className="nav-dropdown" style={{ minWidth: 300 }}>
-                    {matches.map(p => <button type="button" key={p.id} className="nav-dropdown-item w-full" onMouseDown={e => { e.preventDefault(); onPick(p.id, null); setText(null); setMatches([]); }}>
+                    {matches.map(p => <button type="button" key={p.id} className="nav-dropdown-item w-full" onMouseDown={e => { e.preventDefault(); const el = e.currentTarget.closest('.relative')?.querySelector('input[data-code]'); if (choose({ product: p, unit_id: null }, el) === true && el) { const tr = el.closest('tr'); setTimeout(() => { const q = tr && tr.querySelector('[data-qty]'); if (q) { q.focus(); q.select && q.select(); } }, 60); } }}>
                         <span className="font-mono">{p.product_code}</span><span className="truncate">{p.product_name}</span></button>)}
                 </div>
             )}
@@ -111,7 +133,7 @@ const formulaOf = t => (!t ? 'BV' : t.calculation_mode === 'formula' ? t.formula
 export default function SalesLineGrid({
     details, onRow, onRemove, onAdd, products, allProducts, units, warehouses, settings, termCols = [], popupTerms = false,
     efc, onProductSelect, docWarehouseId, selected, onSelected, features = {}, dual, lineGross, onProductKeyDown, listKey = 'sl',
-    ctl: ctlIn, title = 'Entry', minRows = 10, itemCharges = true
+    ctl: ctlIn, title = 'Entry', minRows = 10, itemCharges = true, amountSide = 'sales'
 }) {
     const f0 = { free: true, batch: true, expiry: false, terms: true, rate: true, tax: true, ...features };
     const visible = (k) => !efc || efc.isVisible(k, 'detail');
@@ -138,7 +160,29 @@ export default function SalesLineGrid({
     const isDual = pid => !!dual && dual.isDual(pid);
     const grossOf = d => (lineGross ? lineGross(d) : (Number(d.qty) || 0) * (Number(d.rate) || 0));
 
+    // Gross / Net Amount typed in: the rate (or, per product, the quantity) is worked out
+    const applyGross = (idx, g) => {
+        const d = details[idx];
+        const p = productById[d.product_id];
+        const patch = patchFromGross(d, g, grossOf, !!p?.[`qty_from_amount_${amountSide}`], isDual(d.product_id));
+        if (patch) onRow(idx, patch);
+    };
+    const applyNet = (idx, n) => {
+        const d = details[idx];
+        const g = grossForNet(n, gg => (f.terms ? calcLine(d, gg, termCols).amount : gg));
+        if (g !== null && g >= 0) applyGross(idx, g);
+    };
+
     const pick = (idx, productId, unitId) => onProductSelect(idx, productId, unitId || null);
+    // barcode counter mode: the same item again adds one to its line, a new one takes this line with qty 1
+    const posMode = !!settings?.barcode;
+    const posPick = (idx, productId, unitId) => {
+        const other = details.findIndex((d, i) => i !== idx && d.product_id === productId && (!unitId || d.uom_id === unitId) && !isDual(productId));
+        if (other >= 0 && !details[idx].product_id) { onRow(other, { qty: (Number(details[other].qty) || 0) + 1 }); ctl.setActive(other); return; }
+        pick(idx, productId, unitId);
+        if (!(Number(details[idx].qty) > 0)) onRow(idx, { qty: 1 });
+        if (idx === details.length - 1) onAdd();
+    };
 
     // ---- product-wise terms of one line ----
     const termRows = (d) => {
@@ -271,7 +315,7 @@ export default function SalesLineGrid({
                                             </label>
                                         ) : idx + 1}
                                     </td>
-                                    <td><CodeCell products={products} product={p} onPick={(pid, uid) => pick(idx, pid, uid)} /></td>
+                                    <td><CodeCell products={products} product={p} onPick={(pid, uid) => pick(idx, pid, uid)} pos={posMode} onPosPick={(pid, uid) => posPick(idx, pid, uid)} /></td>
                                     <td onKeyDown={e => onProductKeyDown && onProductKeyDown(e, d.product_id)}>
                                         <SearchablePopupSelect
                                             listKey={`${listKey}_product_picker_${searchBy}`}
@@ -347,7 +391,7 @@ export default function SalesLineGrid({
                                             )}
                                         </td>
                                     )}
-                                    {f.rate && <td className="r whitespace-nowrap">{d.product_id ? fmt(gross) : ''}</td>}
+                                    {f.rate && <td className="r whitespace-nowrap">{d.product_id ? <AmountCell value={gross} disabled={readonly('rate')} title="Type the amount: the rate (or the quantity) is worked out" onChange={g => applyGross(idx, g)} /> : ''}</td>}
                                     {legacyInline && <td className={`r ${visible('discount_percent') ? '' : 'hidden'}`}><input type="number" step="0.01" className="erp-input text-right" style={{ width: 56 }} value={num(d.discount_percent)} onChange={e => onRow(idx, { discount_percent: e.target.value })} /></td>}
                                     {legacyInline && f.tax && <td className={`r ${visible('tax_percent') ? '' : 'hidden'}`}><input disabled={readonly('tax_percent')} type="number" step="0.01" className="erp-input text-right" style={{ width: 56 }} value={num(d.tax_percent)} onChange={e => onRow(idx, { tax_percent: e.target.value })} /></td>}
                                     {inlineTerms && termCols.map(c => {
@@ -372,7 +416,7 @@ export default function SalesLineGrid({
                                             ) : (d.product_id ? fmt(amount - gross) : '')}
                                         </td>
                                     )}
-                                    {f.rate && <td className="r whitespace-nowrap font-semibold">{d.product_id ? fmt(amount) : ''}</td>}
+                                    {f.rate && <td className="r whitespace-nowrap">{d.product_id ? <AmountCell bold value={amount} disabled={readonly('rate')} title="Type the net amount: taken back through the charges to the rate (or quantity)" onChange={n => applyNet(idx, n)} /> : ''}</td>}
                                     <td className="c"><button type="button" tabIndex={-1} onClick={() => onRemove(idx)} className="ent-x" title="Remove line">✕</button></td>
                                 </tr>
                             );
@@ -404,7 +448,7 @@ export default function SalesLineGrid({
             </div>
             <div className="flex items-center gap-2 mt-1 text-xs text-gray-600">
                 <button type="button" className="nav-btn small" onClick={addAndFocus}>➕ Add line</button>
-                <span>Item Code: type a code or scan a barcode + Enter · Item Name: search by {searchBy} · Enter on the last field adds a line · Charges ±: this line's charges</span>
+                <span>Item Code: type a code / short name or scan a barcode + Enter · Gross / Net Amount can be typed · Item Name: search by {searchBy} · Enter on the last field adds a line · Charges ±: this line's charges</span>
             </div>
             {itemCharges && ctl.termsFor !== null && details[ctl.termsFor] && (() => {
                 const d = details[ctl.termsFor];

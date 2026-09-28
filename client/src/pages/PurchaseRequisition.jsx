@@ -26,6 +26,7 @@ import { EntryFooter, useEntryHotkeys, latestOf } from '../components/entry/Entr
 import useEntrySettings, { showsProductTerms } from '../components/entry/useEntrySettings';
 import { PurchaseProductTermPopup, PurchaseOverallTermPopup } from '../components/entry/PurchaseTermPopups';
 import { productTermIds, withTermValue } from '../components/entry/lineCalc';
+import AmountCell, { patchFromGross } from '../components/entry/AmountCell';
 
 const emptyDetailRow = () => ({
     product_id: '', qty: '', uom_id: '', alt_qty: '', alt_unit_id: '', alt1_qty: '', alt1_unit_id: '', rate_basis: 'primary',
@@ -332,6 +333,18 @@ export default function PurchaseRequisition() {
     const chargesInPopup = !!settings?.popupTerms?.includes('purchase');
     // net of a line: gross, less / plus its Disc % / Tax %, plus its item charges
     const lineNet = (d, idx) => lineAmount(d) + (lineTermPreviews[idx]?.total !== undefined ? lineTermPreviews[idx].total - (Number(d.qty) || 0) * (Number(d.rate) || 0) : 0);
+    // Gross / Net Amount typed in: the rate (or, per product, the quantity) is worked out; a net goes back through the charges
+    const typeGross = (idx, g) => {
+        const d = form.details[idx];
+        const p = products.find(x => x.id === d.product_id);
+        const patch = patchFromGross(d, g, lineGross, !!p?.qty_from_amount_purchase, p?.uom_mode === 'fixed_dual');
+        if (patch) updateDetailRow(idx, patch);
+    };
+    const typeNet = (idx, n) => {
+        const d = form.details[idx];
+        const g0 = lineGross(d), n0 = lineNet(d, idx);
+        typeGross(idx, n0 && g0 ? g0 * n / n0 : n);
+    };
     const billTermAmount = (billingPreview ? billingPreview.total - grandTotal : 0) + summaryGrandTotal;
     const taxSplit = form.details.reduce((t, d) => {
         if (!d.product_id) return t;
@@ -855,9 +868,9 @@ export default function PurchaseRequisition() {
                                             </td>
                                             <td className={`px-1 py-1 ${(!chargesInPopup && isVisible('discount_percent', 'detail')) ? '' : 'hidden'}`}><input disabled={efc.isReadonly('discount_percent', 'detail')} type="number" step="0.01" className="w-full border rounded px-1.5 py-1" value={d.discount_percent} onChange={e => updateDetailRow(idx, { discount_percent: e.target.value })} /></td>
                                             <td className={`px-1 py-1 ${(!chargesInPopup && isVisible('tax_percent', 'detail')) ? '' : 'hidden'}`}><input disabled={efc.isReadonly('tax_percent', 'detail')} type="number" step="0.01" className="w-full border rounded px-1.5 py-1" value={d.tax_percent} onChange={e => updateDetailRow(idx, { tax_percent: e.target.value })} /></td>
-                                            <td className="px-1 py-1 r">{d.product_id ? lineGross(d).toFixed(2) : ''}</td>
+                                            <td className="px-1 py-1 r">{d.product_id ? <AmountCell value={lineGross(d)} title="Type the amount: the rate (or the quantity) is worked out" onChange={g => typeGross(idx, g)} /> : ''}</td>
                                             <td className="px-1 py-1 r">{d.product_id ? (lineNet(d, idx) - lineGross(d)).toFixed(2) : ''}</td>
-                                            <td className="px-1 py-1 r font-semibold">{d.product_id ? lineNet(d, idx).toFixed(2) : ''}</td>
+                                            <td className="px-1 py-1 r">{d.product_id ? <AmountCell bold value={lineNet(d, idx)} title="Type the net amount: taken back through the charges" onChange={n => typeNet(idx, n)} /> : ''}</td>
                                             <td className={`px-1 py-1 ${(settings?.freeQty && isVisible('free_qty', 'detail')) ? '' : 'hidden'}`}><input disabled={efc.isReadonly('free_qty', 'detail')} type="number" step="0.0001" className="w-full border rounded px-1.5 py-1" value={d.free_qty} onChange={e => updateDetailRow(idx, { free_qty: e.target.value })} /></td>
                                             <td className={`px-1 py-1 ${(settings?.freeQty && isVisible('free_uom_id', 'detail')) ? '' : 'hidden'}`}>
                                                 <select disabled={efc.isReadonly('free_uom_id', 'detail')} className="w-full border rounded px-1.5 py-1" value={d.free_uom_id} onChange={e => updateDetailRow(idx, { free_uom_id: e.target.value })}>

@@ -30,6 +30,7 @@ import DocActions from '../components/entry/DocActions';
 import { EntryFooter, useEntryHotkeys, latestOf } from '../components/entry/EntryParts';
 import { PurchaseProductTermPopup, PurchaseOverallTermPopup } from '../components/entry/PurchaseTermPopups';
 import { productTermIds, withTermValue } from '../components/entry/lineCalc';
+import AmountCell, { patchFromGross } from '../components/entry/AmountCell';
 
 const emptyDetailRow = () => ({
     product_id: '', qty: '', uom_id: '', alt_qty: '', alt_unit_id: '', alt1_qty: '', alt1_unit_id: '', rate_basis: 'primary',
@@ -232,6 +233,14 @@ export default function PurchaseOrder() {
     const isReadonly = (key, section = 'master') => fieldControls[`${section}:${key}`] === 'readonly';
 
     const addDetailRow = () => setForm(f => ({ ...f, details: [...f.details, emptyDetailRow()] }));
+    // barcode counter mode (System Control > Barcode System): the same item again adds one to its line
+    const posPick = (idx, pid, uid) => {
+        const other = form.details.findIndex((d, i) => i !== idx && d.product_id === pid && (!uid || d.uom_id === uid));
+        if (other >= 0 && !form.details[idx]?.product_id) { updateDetailRow(other, { qty: (Number(form.details[other].qty) || 0) + 1 }); return; }
+        handleProductSelect(idx, pid, uid);
+        if (!(Number(form.details[idx]?.qty) > 0)) updateDetailRow(idx, { qty: 1 });
+        if (idx === form.details.length - 1) addDetailRow();
+    };
     const removeDetailRow = (idx) => {
         setForm(f => ({ ...f, details: f.details.length > 1 ? f.details.filter((_, i) => i !== idx) : f.details }));
         setSelectedRowIndexes(cur => cur.filter(i => i !== idx).map(i => i > idx ? i - 1 : i));
@@ -375,6 +384,18 @@ export default function PurchaseOrder() {
     const chargesInPopup = !!settings?.popupTerms?.includes('purchase');
     // net of a line: gross, less / plus its Disc % / Tax %, plus its item charges
     const lineNet = (d, idx) => lineAmount(d) + (lineTermPreviews[idx]?.total !== undefined ? lineTermPreviews[idx].total - (Number(d.qty) || 0) * (Number(d.rate) || 0) : 0);
+    // Gross / Net Amount typed in: the rate (or, per product, the quantity) is worked out; a net goes back through the charges
+    const typeGross = (idx, g) => {
+        const d = form.details[idx];
+        const p = products.find(x => x.id === d.product_id);
+        const patch = patchFromGross(d, g, lineGross, !!p?.qty_from_amount_purchase, p?.uom_mode === 'fixed_dual');
+        if (patch) updateDetailRow(idx, patch);
+    };
+    const typeNet = (idx, n) => {
+        const d = form.details[idx];
+        const g0 = lineGross(d), n0 = lineNet(d, idx);
+        typeGross(idx, n0 && g0 ? g0 * n / n0 : n);
+    };
     const billTermAmount = (billingPreview ? billingPreview.total - grandTotal : 0) + summaryGrandTotal;
     const taxSplit = form.details.reduce((t, d) => {
         if (!d.product_id) return t;
@@ -741,7 +762,7 @@ export default function PurchaseOrder() {
                                                     onChange={e => setSelectedRowIndexes(cur => e.target.checked ? [...cur, idx] : cur.filter(i => i !== idx))}
                                                 />{' '}{idx + 1}
                                             </td>
-                                            <td className="px-1 py-1"><CodeCell products={filterProductsByCompany(products, form.product_company_id)} product={products.find(p => p.id === d.product_id)} onPick={(pid, uid) => handleProductSelect(idx, pid, uid)} /></td>
+                                            <td className="px-1 py-1"><CodeCell products={filterProductsByCompany(products, form.product_company_id)} product={products.find(p => p.id === d.product_id)} onPick={(pid, uid) => handleProductSelect(idx, pid, uid)} pos={!!settings?.barcode} onPosPick={(pid, uid) => posPick(idx, pid, uid)} /></td>
                                             <td className="px-1 py-1">
                                                 <SearchablePopupSelect
                                                     listKey="purchase_ord_product_picker"
@@ -846,9 +867,9 @@ export default function PurchaseOrder() {
                                             </td>
                                             <td className={`px-1 py-1 ${(!chargesInPopup && isVisible('discount_percent', 'detail')) ? '' : 'hidden'}`}><input disabled={efc.isReadonly('discount_percent', 'detail')} type="number" step="0.01" className="w-full border rounded px-1.5 py-1" value={d.discount_percent} onChange={e => updateDetailRow(idx, { discount_percent: e.target.value })} /></td>
                                             <td className={`px-1 py-1 ${(!chargesInPopup && isVisible('tax_percent', 'detail')) ? '' : 'hidden'}`}><input disabled={efc.isReadonly('tax_percent', 'detail')} type="number" step="0.01" className="w-full border rounded px-1.5 py-1" value={d.tax_percent} onChange={e => updateDetailRow(idx, { tax_percent: e.target.value })} /></td>
-                                            <td className="px-1 py-1 r">{d.product_id ? lineGross(d).toFixed(2) : ''}</td>
+                                            <td className="px-1 py-1 r">{d.product_id ? <AmountCell value={lineGross(d)} title="Type the amount: the rate (or the quantity) is worked out" onChange={g => typeGross(idx, g)} /> : ''}</td>
                                             <td className="px-1 py-1 r">{d.product_id ? (lineNet(d, idx) - lineGross(d)).toFixed(2) : ''}</td>
-                                            <td className="px-1 py-1 r font-semibold">{d.product_id ? lineNet(d, idx).toFixed(2) : ''}</td>
+                                            <td className="px-1 py-1 r">{d.product_id ? <AmountCell bold value={lineNet(d, idx)} title="Type the net amount: taken back through the charges" onChange={n => typeNet(idx, n)} /> : ''}</td>
                                             <td className={`px-1 py-1 ${isVisible('barcode', 'detail') ? '' : 'hidden'}`}><input disabled={efc.isReadonly('barcode', 'detail')} className="w-full border rounded px-1.5 py-1" value={d.barcode} onChange={e => updateDetailRow(idx, { barcode: e.target.value })} /></td>
                                             <td className="px-1 py-1 text-xs text-gray-500">{d.source_doc_no || (d.source_requisition_detail_id || d.source_quotation_detail_id ? '…' : '—')}</td>
                                             {inlineTerms ? termCols.map(c => { const on = (d.billing_term_ids || []).includes(c.term_id); const pos = (d.billing_term_ids || []).indexOf(c.term_id); const amt = on ? lineTermPreviews[idx]?.lines?.[pos]?.amount : null; return (<td key={c.key} className="px-1 py-1 whitespace-nowrap"><input type="checkbox" checked={on} onChange={() => updateDetailRow(idx, { billing_term_ids: on ? d.billing_term_ids.filter(x => x !== c.term_id) : [...(d.billing_term_ids || []), c.term_id] })} /> <span className="text-xs">{amt !== null && amt !== undefined ? Number(amt).toFixed(2) : ''}</span></td>); }) : (<td className="px-1 py-1"><button type="button" tabIndex={-1} onClick={() => itemCharges && setProductTermModalIndexes([idx])} className="ent-term-btn" title="Charges of this line">

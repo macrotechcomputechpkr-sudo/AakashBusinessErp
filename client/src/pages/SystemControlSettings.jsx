@@ -93,6 +93,14 @@ const TERM_JOBS = [['vat', 'VAT'], ['excise', 'Excise Duty'], ['disc1', 'Product
 
 const YES_NO = [{ value: 'true', label: 'Yes' }, { value: 'false', label: 'No' }];
 
+// entries that can show item charges (product-wise terms) - System Control > product_term_transactions
+const PRODUCT_TERM_TXNS = [
+    ['sales_quotation', 'Sales Quotation'], ['sales_order', 'Sales Order'], ['sales_delivery', 'Sales Challan'], ['sales_bill', 'Sales Bill'],
+    ['sales_return', 'Sales Return'], ['sales_nonsaleable_return', 'Sales Non-saleable Return'],
+    ['purchase_requisition', 'Purchase Requisition'], ['purchase_quotation', 'Purchase Quotation'], ['purchase_order', 'Purchase Order'],
+    ['purchase_grn', 'Goods Receipt (GRN)'], ['purchase_bill', 'Purchase Bill'], ['purchase_return', 'Purchase Return'], ['purchase_nonsaleable_return', 'Purchase Non-saleable Return']
+];
+
 export default function SystemControlSettings() {
     const { authFetch } = useAuth();
     const enterAreaRef = useRef(null);
@@ -545,6 +553,21 @@ export default function SystemControlSettings() {
                                         {t.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase())}
                                     </label>
                                 ))}
+                            </div>
+                        </div>
+
+                        <div>
+                            <label className="erp-label">Item Charges (Product Wise Terms) Shown In <span className="text-xs text-gray-400">(unticked entries show only the Charges Summary; a product's own term values still count)</span></label>
+                            <div className="flex flex-wrap gap-x-4 gap-y-1 border rounded-lg px-3 py-2">
+                                {PRODUCT_TERM_TXNS.map(([t, label]) => {
+                                    const list = Array.isArray(settings.product_term_transactions) ? settings.product_term_transactions : PRODUCT_TERM_TXNS.map(x => x[0]);
+                                    return (
+                                        <label key={t} className="flex items-center gap-1.5 text-sm">
+                                            <input type="checkbox" data-enter-skip="true" checked={list.includes(t)} onChange={() => set('product_term_transactions', list.includes(t) ? list.filter(x => x !== t) : [...list, t])} />
+                                            {label}
+                                        </label>
+                                    );
+                                })}
                             </div>
                         </div>
 
