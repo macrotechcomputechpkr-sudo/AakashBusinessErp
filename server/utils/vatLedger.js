@@ -43,7 +43,7 @@ async function allVatLedgerIds(tenantClient, tenantId) {
 // Split a purchase document's VAT by destination ledger.
 // Returns [{ ledgerId, subLedgerId, amount }] (resolvable ledgers, amounts > 0).
 async function purchaseVatByLedger(tenantClient, tenantId, documentType, documentId) {
-    const cfg = { purchase_bill: ['purchase_bill_details', 'bill_id', false], purchase_return: ['purchase_return_details', 'return_id', true] }[documentType];
+    const cfg = { purchase_bill: ['purchase_bill_details', 'bill_id', false], purchase_grn: ['purchase_grn_details', 'grn_id', false], purchase_return: ['purchase_return_details', 'return_id', true] }[documentType];
     if (!cfg) return [];
     const [detailTable, fk, isReturn] = cfg;
     const terms = await getVatTerms(tenantClient, tenantId);

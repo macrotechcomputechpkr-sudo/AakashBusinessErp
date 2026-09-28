@@ -4,7 +4,9 @@
 // One letter per ledger, per billing name, or per PAN (ledgers sharing it
 // are added up). Built-in formats (English, Nepali, with reply slip) and a
 // designer: subject / body with placeholders, letterhead, font, margins,
-// statement of account, open bills and a reply slip - saved as templates
+// statement of account, open bills, purchases / sales with the party by
+// nature (Inventory, Fixed Asset, Service - net of returns, without VAT)
+// and a reply slip - saved as templates
 // (document_templates, type confirmation_letter).
 // =============================================
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
@@ -16,20 +18,20 @@ import { amountToWords } from '../utils/numberToWords';
 const fmt2 = n => Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const iso = d => d.toISOString().slice(0, 10);
 const PLACEHOLDERS = ['date', 'as_on', 'from', 'party_name', 'party_address', 'party_pan', 'party_phone', 'ledger_names', 'balance', 'dr_cr', 'balance_words', 'balance_side_text',
-    'company_name', 'company_address', 'company_pan', 'company_phone', 'company_email'];
+    'company_name', 'company_address', 'company_pan', 'company_phone', 'company_email', 'purchased_total', 'sold_total', 'trade_from'];
 export const BUILTIN_LETTERS = [
     { id: 'builtin-en', template_name: 'Standard (English)', builtin: true, config: {
         font_family: 'Georgia, serif', font_size: 11, margin_mm: 20, letterhead: true, subject: 'Confirmation of Account Balance as on {{as_on}}',
         body: 'Date: {{date}}\n\nTo,\n{{party_name}}\n{{party_address}}\nPAN / VAT: {{party_pan}}\n\nDear Sir / Madam,\n\nAs per our books of account, the balance of your account as on {{as_on}} is NRs. {{balance}} ({{dr_cr}}) - {{balance_side_text}}.\n\n({{balance_words}})\n\nPlease check the balance with your books and confirm it by signing and returning a copy of this letter. If the balance differs, please send us a statement of your account so that the difference can be reconciled. If we do not hear from you within 15 days, the balance will be treated as correct.\n\nThank you.',
-        signature: 'For {{company_name}}\n\n\n______________________\nAuthorised Signatory', show_statement: false, show_bills: false, reply_slip: false } },
+        signature: 'For {{company_name}}\n\n\n______________________\nAuthorised Signatory', show_statement: false, show_bills: false, show_trade: true, reply_slip: false } },
     { id: 'builtin-np', template_name: 'Standard (Nepali)', builtin: true, config: {
         font_family: "'Noto Sans Devanagari', 'Mangal', sans-serif", font_size: 12, margin_mm: 20, letterhead: true, subject: 'मिति {{as_on}} सम्मको हिसाब मिलान सम्बन्धमा',
         body: 'मिति: {{date}}\n\nश्री {{party_name}}\n{{party_address}}\nपान / भ्याट नं.: {{party_pan}}\n\nमहोदय,\n\nहाम्रो लेखा अनुसार मिति {{as_on}} सम्म तपाईंको खातामा रु. {{balance}} ({{dr_cr}}) बाँकी देखिएको छ - {{balance_side_text}}।\n\nकृपया उक्त रकम तपाईंको हिसाबसँग भिडाई यो पत्रको प्रतिलिपिमा हस्ताक्षर गरी पठाइदिनुहुन अनुरोध छ। रकम फरक परेमा तपाईंको हिसाब विवरण पठाइदिनुहोला। १५ दिनभित्र जानकारी प्राप्त नभएमा उक्त रकम सही मानिनेछ।\n\nधन्यवाद।',
-        signature: '{{company_name}} को तर्फबाट\n\n\n______________________\nअधिकृत हस्ताक्षर', show_statement: false, show_bills: false, reply_slip: false } },
+        signature: '{{company_name}} को तर्फबाट\n\n\n______________________\nअधिकृत हस्ताक्षर', show_statement: false, show_bills: false, show_trade: true, reply_slip: false } },
     { id: 'builtin-reply', template_name: 'With statement + reply slip', builtin: true, config: {
         font_family: 'Arial, sans-serif', font_size: 10, margin_mm: 15, letterhead: true, subject: 'Balance Confirmation - {{as_on}}',
         body: 'Date: {{date}}\n\n{{party_name}}\n{{party_address}}   PAN: {{party_pan}}\n\nWe give below your account in our books for the period {{from}} to {{as_on}}. The closing balance is NRs. {{balance}} {{dr_cr}} ({{balance_side_text}}). Kindly confirm by returning the slip below.',
-        signature: 'For {{company_name}}\nAccounts Department', show_statement: true, show_bills: true, reply_slip: true } }
+        signature: 'For {{company_name}}\nAccounts Department', show_statement: true, show_bills: true, show_trade: true, reply_slip: true } }
 ];
 
 function fill(text, ctx) { return String(text || '').replace(/\{\{(\w+)\}\}/g, (m, k) => (ctx[k] !== undefined && ctx[k] !== null ? ctx[k] : '')); }
@@ -40,7 +42,8 @@ function contextFor(row, data) {
         date: today, as_on: data.as_on, from: data.from || '', party_name: row.name, party_address: row.address, party_pan: row.pan, party_phone: row.phone,
         ledger_names: row.ledgers.map(l => l.name).join(', '), balance: fmt2(row.balance_abs), dr_cr: row.dr_cr, balance_words: amountToWords(row.balance_abs, 'Nrs'),
         balance_side_text: row.balance === 0 ? 'nil balance' : receivable ? 'receivable from you' : 'payable to you',
-        company_name: data.company.name, company_address: data.company.address, company_pan: data.company.pan, company_phone: data.company.phone, company_email: data.company.email
+        company_name: data.company.name, company_address: data.company.address, company_pan: data.company.pan, company_phone: data.company.phone, company_email: data.company.email,
+        purchased_total: row.trade ? fmt2(row.trade.net_bought.total) : '', sold_total: row.trade ? fmt2(row.trade.net_sold.total) : '', trade_from: row.trade ? row.trade.from : ''
     };
 }
 
@@ -58,6 +61,27 @@ export function Letter({ row, data, cfg }) {
             )}
             {cfg.subject && <div style={{ fontWeight: 700, textAlign: 'center', textDecoration: 'underline', margin: '0 0 5mm' }}>{fill(cfg.subject, ctx)}</div>}
             <div>{para(cfg.body)}</div>
+            {cfg.show_trade && row.trade && (row.trade.net_bought.total !== 0 || row.trade.net_sold.total !== 0) && (
+                <div style={{ margin: '4mm 0' }}>
+                    <div style={{ fontWeight: 700, marginBottom: '1mm' }}>Our transactions with you from {row.trade.from} to {row.trade.to} (without VAT, net of returns)</div>
+                    <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: `${cfg.font_size - 1}pt` }}>
+                        <thead><tr>{['Nature', 'Purchased from you', 'Sold to you'].map(h => <th key={h} style={{ border: '1px solid #999', padding: '1mm 2mm', textAlign: h === 'Nature' ? 'left' : 'right' }}>{h}</th>)}</tr></thead>
+                        <tbody>
+                            {[['inventory', 'Inventory (goods)'], ['asset', 'Fixed Asset'], ['service', 'Service']].map(([k, l]) => (
+                                <tr key={k}><td style={{ border: '1px solid #ccc', padding: '1mm 2mm' }}>{l}</td>
+                                    <td style={{ border: '1px solid #ccc', padding: '1mm 2mm', textAlign: 'right' }}>{fmt2(row.trade.net_bought[k])}</td>
+                                    <td style={{ border: '1px solid #ccc', padding: '1mm 2mm', textAlign: 'right' }}>{fmt2(row.trade.net_sold[k])}</td></tr>
+                            ))}
+                            <tr style={{ fontWeight: 700 }}><td style={{ border: '1px solid #999', padding: '1mm 2mm' }}>Total</td>
+                                <td style={{ border: '1px solid #999', padding: '1mm 2mm', textAlign: 'right' }}>{fmt2(row.trade.net_bought.total)}</td>
+                                <td style={{ border: '1px solid #999', padding: '1mm 2mm', textAlign: 'right' }}>{fmt2(row.trade.net_sold.total)}</td></tr>
+                            <tr><td style={{ border: '1px solid #ccc', padding: '1mm 2mm' }}>VAT</td>
+                                <td style={{ border: '1px solid #ccc', padding: '1mm 2mm', textAlign: 'right' }}>{fmt2(row.trade.vat_bought)}</td>
+                                <td style={{ border: '1px solid #ccc', padding: '1mm 2mm', textAlign: 'right' }}>{fmt2(row.trade.vat_sold)}</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            )}
             {cfg.show_bills && (row.open_bills || []).length > 0 && (
                 <table style={{ width: '100%', borderCollapse: 'collapse', margin: '4mm 0', fontSize: `${cfg.font_size - 1}pt` }}>
                     <thead><tr>{['Bill No', 'Date', 'Bill Amount', 'Unpaid'].map(h => <th key={h} style={{ border: '1px solid #999', padding: '1mm 2mm', textAlign: h === 'Bill No' || h === 'Date' ? 'left' : 'right' }}>{h}</th>)}</tr></thead>
@@ -122,7 +146,7 @@ export default function ConfirmationLetters() {
     const allTemplates = useMemo(() => [...BUILTIN_LETTERS, ...templates], [templates]);
     const tpl = allTemplates.find(x => x.id === tplId) || BUILTIN_LETTERS[0];
     const activeCfg = design ? design.config : tpl.config;
-    const needStatement = activeCfg.show_statement, needBills = activeCfg.show_bills;
+    const needStatement = activeCfg.show_statement, needBills = activeCfg.show_bills, needTrade = activeCfg.show_trade;
 
     const run = useCallback(async () => {
         setLoading(true); setError('');
@@ -133,11 +157,12 @@ export default function ConfirmationLetters() {
             ['party_ids', 'area_ids', 'agent_ids'].forEach(k => { if (cfg[k].length) p.set(k, cfg[k].join(',')); });
             if (needStatement && cfg.from) p.set('with_statement', 'true');
             if (needBills) p.set('with_open_bills', 'true');
+            if (needTrade) p.set('with_trade', 'true');
             const r = await authFetch(`/api/confirmation-letters?${p}`);
             setData(r.data); setTagged(new Set((r.data.rows || []).map(x => x.key)));
         } catch (e) { setError(e.message); setData(null); }
         setLoading(false);
-    }, [authFetch, cfg, needStatement, needBills]);
+    }, [authFetch, cfg, needStatement, needBills, needTrade]);
 
     const rows = data?.rows || [];
     const chosen = rows.filter(r => tagged.has(r.key));
@@ -217,7 +242,7 @@ export default function ConfirmationLetters() {
                                 <label>Margin <input type="number" className="border rounded px-1 w-14" value={design.config.margin_mm} onChange={e => setDesign(d => ({ ...d, config: { ...d.config, margin_mm: Number(e.target.value) || 15 } }))} /> mm</label>
                             </div>
                             <div className="flex flex-wrap gap-3">
-                                {[['letterhead', 'Company letterhead'], ['show_statement', 'Statement of account'], ['show_bills', 'Open bills'], ['reply_slip', 'Reply slip']].map(([k, l]) => (
+                                {[['letterhead', 'Company letterhead'], ['show_statement', 'Statement of account'], ['show_bills', 'Open bills'], ['show_trade', 'Purchases / sales by nature'], ['reply_slip', 'Reply slip']].map(([k, l]) => (
                                     <label key={k} className="flex items-center gap-1"><input type="checkbox" checked={!!design.config[k]} onChange={e => setDesign(d => ({ ...d, config: { ...d.config, [k]: e.target.checked } }))} /> {l}</label>
                                 ))}
                                 <label className="flex items-center gap-1"><input type="checkbox" checked={!!design.is_default} onChange={e => setDesign(d => ({ ...d, is_default: e.target.checked }))} /> Default format</label>

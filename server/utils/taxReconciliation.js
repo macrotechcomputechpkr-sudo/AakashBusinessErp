@@ -12,6 +12,13 @@
 //                                              <->  purchase / goods accounts
 //   tds       TDS on bills, JVs (TDS type and taxable JVs), expense
 //             bills and JV lines with TDS %    <->  TDS ledgers
+//   stock     Purchase vs Stock: what each purchase is worth in the
+//             purchase register (bill / GRN goods value without VAT,
+//             returns, the costing part of additional bills) <-> the value
+//             it put into stock (stock receipts at their cost, landed cost
+//             of additional bills that reached a receipt). No GL here.
+// Credit Notes (sales) and Debit Notes (purchase) that post to a sales /
+// purchase account are part of those registers too.
 //
 // One signed figure per section so that register and books add up the
 // same way:  vat / sales / tds = Cr - Dr,  purchase = Dr - Cr.
@@ -57,8 +64,11 @@ const SECTIONS = {
     vat: { label: 'VAT', convention: 'Cr - Dr (output VAT +, input VAT -)', types: ['sales', 'sales_return', 'credit_note', 'jv_sales', 'purchase', 'purchase_return', 'debit_note', 'purchase_expense', 'jv_purchase'] },
     sales: { label: 'Sales Account', convention: 'Cr - Dr (sales +, returns -)', types: ['sales', 'sales_return', 'jv_sales', 'sales_nonsalable_return'] },
     purchase: { label: 'Purchase Account', convention: 'Dr - Cr (purchases +, returns -)', types: ['purchase', 'purchase_return', 'purchase_expense', 'jv_purchase', 'purchase_nonsalable_return'] },
-    tds: { label: 'TDS', convention: 'Cr - Dr (TDS payable +, TDS receivable -)', types: [] }
+    tds: { label: 'TDS', convention: 'Cr - Dr (TDS payable +, TDS receivable -)', types: [] },
+    stock: { label: 'Purchase vs Stock', convention: 'Purchase value vs the value put into stock (returns -)', types: [] }
 };
+// a friendlier name for the register rows
+const LABEL = { purchase_expense: 'Purchase Additional' };
 
 async function inChunks(ids, size, fn) {
     const out = [];
@@ -119,7 +129,7 @@ async function nonSaleable(c, t, type, { from, to }) {
     }));
 }
 
-async function registerRows(c, t, section, { from, to, loadTaxDocs }) {
+async function registerRows(c, t, section, { from, to, loadTaxDocs, ledgers }) {
     const out = [];
     if (section === 'tds') {
         for (const [table, party, label, sign] of [['purchase_bills', 'vendor', 'Purchase Bill', 1], ['sales_bills', 'customer', 'Sales Bill', -1]]) {
@@ -145,6 +155,19 @@ async function registerRows(c, t, section, { from, to, loadTaxDocs }) {
             .forEach(l => { const h = expById[l.expense_id]; out.push({ type: 'purchase_expense', id: h.id, label: 'Additional Expense TDS', doc_no: h.doc_no, doc_date: h.doc_date, party_name: l.party_name_snapshot || h.vendor_name_snapshot || '', amount: round2(l.amount), side: 'purchase' }); });
         return out;
     }
+    // Credit Note (sales) / Debit Note (purchase) lines posted to this section's accounts
+    if ((section === 'sales' || section === 'purchase') && ledgers && ledgers.length) {
+        const [table, detail, fk, label, type] = section === 'sales'
+            ? ['credit_notes', 'credit_note_details', 'credit_note_id', 'Credit Note', 'credit_note']
+            : ['debit_notes', 'debit_note_details', 'debit_note_id', 'Debit Note', 'debit_note'];
+        const heads = await safe(dated(c.from(table).select('id, doc_no, doc_date, party_name_snapshot').eq('tenant_id', t).eq('status', 'posted'), from, to).limit(20000));
+        const set = new Set(ledgers);
+        const lines = await inChunks(heads.map(h => h.id), 200, async ch => safe(c.from(detail).select(`${fk}, ledger_id, amount`).in(fk, ch)));
+        heads.forEach(h => {
+            const amt = round2(lines.filter(l => l[fk] === h.id && set.has(l.ledger_id)).reduce((a, l) => a + Number(l.amount || 0), 0));
+            if (amt) out.push({ type, id: h.id, label, doc_no: h.doc_no, doc_date: h.doc_date, party_name: h.party_name_snapshot || '', amount: -amt, side: section });
+        });
+    }
     for (const type of SECTIONS[section].types) {
         if (type.endsWith('nonsalable_return')) { out.push(...await nonSaleable(c, t, type, { from, to })); continue; }
         const docs = await loadTaxDocs(c, t, type, { dateFrom: from, dateTo: to });
@@ -154,7 +177,7 @@ async function registerRows(c, t, section, { from, to, loadTaxDocs }) {
             if (section === 'vat') amount = (d.side === 'sales' ? 1 : -1) * d.sign * (d.vat - notClaimed);
             else if (section === 'sales') amount = d.sign * (d.taxable + d.exempt);
             else amount = d.sign * (d.taxable + d.exempt + notClaimed);
-            out.push({ type, id: d.document_id || d.id, label: d.doc_label, doc_no: d.doc_no, doc_date: d.doc_date, party_name: d.party_name, amount: round2(amount), side: d.side });
+            out.push({ type, id: d.document_id || d.id, label: LABEL[type] || d.doc_label, doc_no: d.doc_no, doc_date: d.doc_date, party_name: d.party_name, amount: round2(amount), side: d.side });
         });
     }
     return out;
@@ -182,8 +205,9 @@ async function bookLines(c, t, ledgerIds, { from, to }) {
 
 async function reconcile(c, t, section, { from, to, ledgerIds, loadTaxDocs }) {
     if (!SECTIONS[section]) throw Object.assign(new Error(`Unknown section "${section}"`), { status: 400 });
+    if (section === 'stock') return reconcileStock(c, t, { from, to, loadTaxDocs });
     const ledgers = ledgerIds && ledgerIds.length ? ledgerIds : await sectionLedgers(c, t, section, { from, to });
-    const reg = await registerRows(c, t, section, { from, to, loadTaxDocs });
+    const reg = await registerRows(c, t, section, { from, to, loadTaxDocs, ledgers });
     const book = ledgers.length ? await bookLines(c, t, ledgers, { from, to }) : [];
 
     // a Bill that came from a GRN is reconciled together with that GRN
@@ -237,6 +261,11 @@ async function reconcile(c, t, section, { from, to, ledgerIds, loadTaxDocs }) {
     // a GRN row that also holds its bills
     rows.forEach(r => { if (r.key.startsWith('purchase_grn:') && r.in_register) r.label = 'Purchase Bill (with GRN)'; });
 
+    return finish(section, rows, ledgers.map(id => ({ id, code: names[id]?.account_code || '', name: names[id]?.account_name || id })), from, to);
+}
+
+// rows (Map of { key, label, docs, register, books, ... }) -> the report
+function finish(section, rows, ledgerList, from, to) {
     const out = [...rows.values()].map(r => {
         const diff = round2(r.books - r.register);
         const status = !r.in_books ? 'register_only' : !r.in_register ? 'books_only' : Math.abs(diff) < 0.01 ? 'matched' : 'difference';
@@ -263,11 +292,113 @@ async function reconcile(c, t, section, { from, to, ledgerIds, loadTaxDocs }) {
         by_type: Object.values(byType).map(x => ({ ...x, difference: round2(x.books - x.register) })).sort((a, b) => a.label.localeCompare(b.label))
     };
     summary.tallied = Math.abs(summary.difference) < 0.01 && summary.count.difference === 0 && summary.count.register_only === 0 && summary.count.books_only === 0;
-    return {
-        section, label: SECTIONS[section].label, convention: SECTIONS[section].convention, period: { from: from || null, to: to || null },
-        ledgers: ledgers.map(id => ({ id, code: names[id]?.account_code || '', name: names[id]?.account_name || id })),
-        summary, rows: out
+    return { section, label: SECTIONS[section].label, convention: SECTIONS[section].convention, period: { from: from || null, to: to || null }, ledgers: ledgerList, summary, rows: out };
+}
+
+
+// ---------- Purchase vs Stock ----------
+// Register: purchase bills (with their GRN), purchase returns and the costing
+// part of additional bills. Books: the value those documents put into stock -
+// receipts at their cost without landed cost (base_unit_cost), returns at
+// their cost, and the landed cost of each additional bill that reached a
+// stock receipt.
+async function reconcileStock(c, t, { from, to, loadTaxDocs }) {
+    const rows = new Map();
+    const rowFor = key => {
+        if (!rows.has(key)) rows.set(key, { key, label: '', doc_no: '', doc_date: null, party_name: '', register: 0, books: 0, books_debit: 0, books_credit: 0, docs: [], ledgers: {}, in_register: false, in_books: false });
+        return rows.get(key);
     };
+    const addReg = (key, r) => {
+        const row = rowFor(key);
+        row.in_register = true; row.register = round2(row.register + r.amount);
+        if (r.doc_no && !row.docs.includes(r.doc_no)) row.docs.push(r.doc_no);
+        row.label = row.label || r.label; row.doc_date = row.doc_date || r.doc_date; row.party_name = row.party_name || r.party_name;
+    };
+    const addBook = (key, amt, what, date) => {
+        const row = rowFor(key);
+        row.in_books = true; row.books = round2(row.books + amt);
+        if (amt > 0) row.books_debit = round2(row.books_debit + amt); else row.books_credit = round2(row.books_credit - amt);
+        row.ledgers[what] = round2((row.ledgers[what] || 0) + amt);
+        row.doc_date = row.doc_date || date;
+    };
+
+    // register
+    const bills = await loadTaxDocs(c, t, 'purchase', { dateFrom: from, dateTo: to });
+    const billHeads = await inChunks(bills.map(b => b.id), 200, async ch => safe(c.from('purchase_bills').select('id, source_grn_id').in('id', ch)));
+    const grnOfBill = Object.fromEntries(billHeads.filter(b => b.source_grn_id).map(b => [b.id, b.source_grn_id]));
+    const keyOf = (type, id) => (type === 'purchase_bill' && grnOfBill[id] ? `purchase_grn:${grnOfBill[id]}` : `${type}:${id}`);
+    bills.forEach(d => addReg(keyOf('purchase_bill', d.id), { amount: d.taxable + d.exempt, doc_no: d.doc_no, doc_date: d.doc_date, party_name: d.party_name, label: 'Purchase Bill' }));
+    (await loadTaxDocs(c, t, 'purchase_return', { dateFrom: from, dateTo: to }))
+        .forEach(d => addReg(`purchase_return:${d.id}`, { amount: -(d.taxable + d.exempt), doc_no: d.doc_no, doc_date: d.doc_date, party_name: d.party_name, label: 'Purchase Return' }));
+    const exps = await safe(dated(c.from('purchase_additional_expenses').select('id, doc_no, doc_date, vendor_name_snapshot').eq('tenant_id', t).eq('status', 'posted'), from, to).limit(20000));
+    const expLines = await inChunks(exps.map(e => e.id), 200, async ch => safe(c.from('purchase_additional_expense_lines').select('*').in('expense_id', ch)));
+    exps.forEach(e => {
+        // what goes to the cost of the goods: add lines less deduct lines (not TDS, not 'none'), plus VAT that cannot be claimed
+        const amt = expLines.filter(l => l.expense_id === e.id && !l.is_tds && l.allocation_basis !== 'none')
+            .reduce((a, l) => a + (l.entry_sign === 'deduct' ? -1 : 1) * (Number(l.amount || 0) + (l.vat_in_cost ? Number(l.vat_amount || 0) : 0)), 0);
+        if (Math.abs(amt) >= 0.01) addReg(`purchase_additional_expense:${e.id}`, { amount: amt, doc_no: e.doc_no, doc_date: e.doc_date, party_name: e.vendor_name_snapshot || '', label: 'Purchase Additional' });
+    });
+
+    // books: stock receipts / returns of the period
+    const moves = [];
+    for (const type of ['purchase_grn', 'purchase_bill', 'purchase_return']) {
+        for (let at = 0; ; at += 1000) {
+            const { data, error } = await dated(c.from('stock_movements').select('*').eq('tenant_id', t).eq('source_type', type), from, to, 'movement_date').range(at, at + 999);
+            if (error) throw error;
+            moves.push(...(data || []));
+            if (!data || data.length < 1000) break;
+        }
+    }
+    const moveBillIds = [...new Set(moves.filter(m => m.source_type === 'purchase_bill' && !(m.source_id in grnOfBill)).map(m => m.source_id))];
+    (await inChunks(moveBillIds, 200, async ch => safe(c.from('purchase_bills').select('id, source_grn_id').in('id', ch)))).forEach(b => { if (b.source_grn_id) grnOfBill[b.id] = b.source_grn_id; });
+    moves.forEach(m => {
+        const base = m.base_unit_cost !== null && m.base_unit_cost !== undefined ? Number(m.base_unit_cost) : Number(m.unit_cost) || 0;
+        const val = (Number(m.qty_in) || 0) * base - (Number(m.qty_out) || 0) * (Number(m.unit_cost) || 0);
+        addBook(keyOf(m.source_type, m.source_id), round2(val), 'Stock', String(m.movement_date).slice(0, 10));
+        const row = rows.get(keyOf(m.source_type, m.source_id));
+        if (!row.in_register) { row.book_type = m.source_type; row.book_id = m.source_id; }
+    });
+    // books: landed cost of each additional bill that reached a stock receipt
+    if (exps.length) {
+        const allocs = await inChunks(exps.map(e => e.id), 200, async ch => safe(c.from('purchase_expense_allocations').select('*').in('expense_id', ch)));
+        const grnD = [...new Set(allocs.map(a => a.source_grn_detail_id).filter(Boolean))];
+        const billD = [...new Set(allocs.map(a => a.source_bill_detail_id).filter(Boolean))];
+        const ordD = [...new Set(allocs.map(a => a.source_order_detail_id).filter(Boolean))];
+        const billLines = billD.length ? await inChunks(billD, 200, async ch => safe(c.from('purchase_bill_details').select('id, source_grn_detail_id').in('id', ch))) : [];
+        const recvDetail = new Set();
+        const detailIds = [...grnD, ...billD, ...billLines.map(b => b.source_grn_detail_id).filter(Boolean)];
+        (await inChunks([...new Set(detailIds)], 200, async ch => safe(c.from('stock_movements').select('source_detail_id, qty_in').in('source_detail_id', ch))))
+            .filter(m => Number(m.qty_in) > 0).forEach(m => recvDetail.add(m.source_detail_id));
+        const ordRecv = new Set();
+        if (ordD.length) {
+            for (const tb of ['purchase_grn_details', 'purchase_bill_details']) {
+                const ls = await inChunks(ordD, 200, async ch => safe(c.from(tb).select('id, source_order_detail_id').in('source_order_detail_id', ch)));
+                const got = new Set((await inChunks(ls.map(l => l.id), 200, async ch => safe(c.from('stock_movements').select('source_detail_id, qty_in').in('source_detail_id', ch)))).filter(m => Number(m.qty_in) > 0).map(m => m.source_detail_id));
+                ls.forEach(l => { if (got.has(l.id)) ordRecv.add(l.source_order_detail_id); });
+            }
+        }
+        const grnOfBillLine = Object.fromEntries(billLines.map(b => [b.id, b.source_grn_detail_id]));
+        const reached = a => a.source_grn_detail_id ? recvDetail.has(a.source_grn_detail_id)
+            : a.source_bill_detail_id ? recvDetail.has(grnOfBillLine[a.source_bill_detail_id] || a.source_bill_detail_id)
+                : a.source_order_detail_id ? ordRecv.has(a.source_order_detail_id) : false;
+        exps.forEach(e => {
+            const amt = round2(allocs.filter(a => a.expense_id === e.id && reached(a)).reduce((s, a) => s + Number(a.allocated_amount || 0), 0));
+            if (Math.abs(amt) >= 0.01) addBook(`purchase_additional_expense:${e.id}`, amt, 'Landed cost', e.doc_date);
+        });
+    }
+
+    // numbers of receipts with no bill yet (GRN not billed)
+    const grnOnly = [...rows.values()].filter(r => !r.in_register && r.book_type === 'purchase_grn');
+    const grnNos = Object.fromEntries((await inChunks([...new Set(grnOnly.map(r => r.book_id))], 200, async ch => safe(c.from('purchase_grns').select('id, doc_no, vendor_name_snapshot').in('id', ch)))).map(g => [g.id, g]));
+    rows.forEach(r => {
+        if (r.key.startsWith('purchase_grn:') && r.in_register) r.label = 'Purchase Bill (with GRN)';
+        if (!r.in_register) {
+            const g = grnNos[r.book_id];
+            r.label = r.book_type === 'purchase_grn' ? 'GRN (not billed yet)' : r.book_type === 'purchase_bill' ? 'Purchase Bill' : r.book_type === 'purchase_return' ? 'Purchase Return' : 'Purchase Additional';
+            if (g) { r.docs = [g.doc_no]; r.party_name = g.vendor_name_snapshot || ''; }
+        }
+    });
+    return finish('stock', rows, [], from, to);
 }
 
 module.exports = { reconcile, sectionLedgers, SECTIONS };

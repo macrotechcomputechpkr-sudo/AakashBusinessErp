@@ -8,6 +8,7 @@
 //   Sales Account     sales register incl. JV sales      <-> sales accounts
 //   Purchase Account  purchase register incl. expense bills and JV
 //                     purchases (bills from a GRN with that GRN) <-> purchase accounts
+//   Purchase vs Stock purchase value (bills, returns, additional) <-> value put into stock
 //   TDS               TDS on bills, JVs, expense bills   <-> TDS ledgers
 // Each row: Register, Books, Difference and why (Matched / Difference /
 // Only in register / Only in books). The accounts compared are found
@@ -20,7 +21,11 @@ import Layout from '../components/Layout';
 import ReportGrid from '../components/ReportGrid';
 import SearchablePopupSelect from '../components/SearchablePopupSelect';
 
-const TABS = [['overview', 'Overview'], ['vat', 'VAT'], ['sales', 'Sales Account'], ['purchase', 'Purchase Account'], ['tds', 'TDS']];
+const TABS = [['overview', 'Overview'], ['vat', 'VAT'], ['sales', 'Sales Account'], ['purchase', 'Purchase Account'], ['stock', 'Purchase vs Stock'], ['tds', 'TDS']];
+// what the two sides are called: books (GL) for the account checks, the stock value for Purchase vs Stock
+const SIDES = { stock: ['Purchase value', 'Stock value', 'only in purchase', 'only in stock'] };
+const ucFirst = x => x.charAt(0).toUpperCase() + x.slice(1);
+const sidesOf = k => SIDES[k] || ['Register', 'Books (GL)', 'only in register', 'only in books'];
 const STATUS = {
     matched: ['Matched', 'bg-green-100 text-green-800'], difference: ['Difference', 'bg-red-100 text-red-800'],
     register_only: ['Only in register', 'bg-amber-100 text-amber-800'], books_only: ['Only in books', 'bg-blue-100 text-blue-800']
@@ -72,10 +77,10 @@ export default function TaxReconciliation() {
         { key: 'label', label: 'Type', type: 'text' },
         { key: 'doc_no', label: 'Doc No', type: 'text', render: r => r.doc_no || <span className="text-gray-400">{r.narration || '—'}</span> },
         { key: 'party_name', label: 'Party', type: 'text' },
-        { key: 'register', label: 'Register', type: 'number' },
-        { key: 'books', label: 'Books (GL)', type: 'number' },
+        { key: 'register', label: sidesOf(tab)[0], type: 'number' },
+        { key: 'books', label: sidesOf(tab)[1], type: 'number' },
         { key: 'difference', label: 'Difference', type: 'number', render: r => <span className={Math.abs(r.difference) >= 0.01 ? 'text-red-700 font-semibold' : ''}>{money(r.difference)}</span> },
-        { key: 'status', label: 'Status', type: 'text', render: r => <span className={`px-1.5 rounded text-xs ${STATUS[r.status][1]}`}>{STATUS[r.status][0]}</span> },
+        { key: 'status', label: 'Status', type: 'text', render: r => <span className={`px-1.5 rounded text-xs ${STATUS[r.status][1]}`}>{r.status === 'register_only' || r.status === 'books_only' ? ucFirst(sidesOf(tab)[r.status === 'register_only' ? 2 : 3]) : STATUS[r.status][0]}</span> },
         { key: 'books_debit', label: 'Books Dr', type: 'number' },
         { key: 'books_credit', label: 'Books Cr', type: 'number' },
         { key: 'accounts', label: 'Posted to', type: 'text' }
@@ -96,7 +101,7 @@ export default function TaxReconciliation() {
                             <div className="erp-field"><label className="erp-label">Show</label>
                                 <select className="erp-select" value={status} onChange={e => setStatus(e.target.value)}>
                                     <option value="">All documents</option>
-                                    {Object.entries(STATUS).map(([k, [l]]) => <option key={k} value={k}>{l}</option>)}
+                                    {Object.entries(STATUS).map(([k, [l]]) => <option key={k} value={k}>{k === 'register_only' ? ucFirst(sidesOf(tab)[2]) : k === 'books_only' ? ucFirst(sidesOf(tab)[3]) : l}</option>)}
                                 </select>
                             </div>
                         )}
@@ -114,15 +119,15 @@ export default function TaxReconciliation() {
                                     </div>
                                     <table className="w-full text-sm">
                                         <tbody>
-                                            <tr><td>Register</td><td className="text-right font-mono">{money(x.summary.register)}</td></tr>
-                                            <tr><td>Books (GL)</td><td className="text-right font-mono">{money(x.summary.books)}</td></tr>
+                                            <tr><td>{sidesOf(k)[0]}</td><td className="text-right font-mono">{money(x.summary.register)}</td></tr>
+                                            <tr><td>{sidesOf(k)[1]}</td><td className="text-right font-mono">{money(x.summary.books)}</td></tr>
                                             <tr className="font-semibold"><td>Difference</td><td className={`text-right font-mono ${Math.abs(x.summary.difference) >= 0.01 ? 'text-red-700' : ''}`}>{money(x.summary.difference)}</td></tr>
                                         </tbody>
                                     </table>
                                     <div className="text-xs text-gray-600 mt-1">
-                                        {x.summary.count.matched} matched · {x.summary.count.difference} with difference · {x.summary.count.register_only} only in register · {x.summary.count.books_only} only in books
+                                        {x.summary.count.matched} matched · {x.summary.count.difference} with difference · {x.summary.count.register_only} {sidesOf(k)[2]} · {x.summary.count.books_only} {sidesOf(k)[3]}
                                     </div>
-                                    <div className="text-xs text-gray-400">{x.convention} · {x.ledgers.length} account(s): {x.ledgers.map(l => l.name).join(', ') || 'none found - set them in System Control'}</div>
+                                    <div className="text-xs text-gray-400">{x.convention}{k !== 'stock' && <> · {x.ledgers.length} account(s): {x.ledgers.map(l => l.name).join(', ') || 'none found - set them in System Control'}</>}</div>
                                 </div>
                             ))}
                         </div>
@@ -131,18 +136,18 @@ export default function TaxReconciliation() {
                     {tab !== 'overview' && data && data.rows && (
                         <div className="p-3">
                             <div className="grid grid-cols-2 md:grid-cols-6 gap-2 mb-2 text-sm">
-                                <div className="border rounded p-2"><div className="text-xs text-gray-500">Register</div><div className="font-mono font-semibold">{money(s.register)}</div></div>
-                                <div className="border rounded p-2"><div className="text-xs text-gray-500">Books (GL)</div><div className="font-mono font-semibold">{money(s.books)}</div></div>
+                                <div className="border rounded p-2"><div className="text-xs text-gray-500">{sidesOf(tab)[0]}</div><div className="font-mono font-semibold">{money(s.register)}</div></div>
+                                <div className="border rounded p-2"><div className="text-xs text-gray-500">{sidesOf(tab)[1]}</div><div className="font-mono font-semibold">{money(s.books)}</div></div>
                                 <div className="border rounded p-2"><div className="text-xs text-gray-500">Difference</div><div className={`font-mono font-semibold ${Math.abs(s.difference) >= 0.01 ? 'text-red-700' : 'text-green-700'}`}>{money(s.difference)}</div></div>
                                 <button type="button" className="border rounded p-2 text-left hover:bg-red-50" onClick={() => setStatus('difference')}><div className="text-xs text-gray-500">Differences ({s.count.difference})</div><div className="font-mono">{money(s.amount.difference)}</div></button>
-                                <button type="button" className="border rounded p-2 text-left hover:bg-amber-50" onClick={() => setStatus('register_only')}><div className="text-xs text-gray-500">Only in register ({s.count.register_only})</div><div className="font-mono">{money(s.amount.register_only)}</div></button>
-                                <button type="button" className="border rounded p-2 text-left hover:bg-blue-50" onClick={() => setStatus('books_only')}><div className="text-xs text-gray-500">Only in books ({s.count.books_only})</div><div className="font-mono">{money(s.amount.books_only)}</div></button>
+                                <button type="button" className="border rounded p-2 text-left hover:bg-amber-50" onClick={() => setStatus('register_only')}><div className="text-xs text-gray-500 first-letter:uppercase">{sidesOf(tab)[2]} ({s.count.register_only})</div><div className="font-mono">{money(s.amount.register_only)}</div></button>
+                                <button type="button" className="border rounded p-2 text-left hover:bg-blue-50" onClick={() => setStatus('books_only')}><div className="text-xs text-gray-500 first-letter:uppercase">{sidesOf(tab)[3]} ({s.count.books_only})</div><div className="font-mono">{money(s.amount.books_only)}</div></button>
                             </div>
                             <div className="flex flex-wrap items-center gap-2 mb-2 text-xs">
                                 <Tally s={s} />
-                                <span className="text-gray-500">{data.convention}. Difference = Books − Register.</span>
+                                <span className="text-gray-500">{data.convention}. Difference = {sidesOf(tab)[1]} − {sidesOf(tab)[0]}.</span>
                             </div>
-                            <div className="flex flex-wrap items-center gap-1 mb-2 text-xs">
+                            {tab !== 'stock' && <div className="flex flex-wrap items-center gap-1 mb-2 text-xs">
                                 <span className="font-semibold">Accounts compared:</span>
                                 {(data.ledgers || []).map(l => (
                                     <span key={l.id} className="px-1.5 py-0.5 bg-gray-100 border rounded">{l.name}
@@ -154,10 +159,10 @@ export default function TaxReconciliation() {
                                         value="" onChange={id => id && setAccounts([...accountIds, id])} placeholder="+ add an account" />
                                 </div>
                                 {custom[tab]?.length > 0 && <button type="button" className="nav-btn small" onClick={() => setAccounts([])}>Automatic</button>}
-                            </div>
+                            </div>}
                             <details className="mb-2 text-sm"><summary className="cursor-pointer text-[#1a4a8a]">By document type</summary>
                                 <table className="erp-grid-table mt-1" data-no-excel>
-                                    <thead><tr><th>Type</th><th className="text-right">Docs</th><th className="text-right">Register</th><th className="text-right">Books</th><th className="text-right">Difference</th></tr></thead>
+                                    <thead><tr><th>Type</th><th className="text-right">Docs</th><th className="text-right">{sidesOf(tab)[0]}</th><th className="text-right">{sidesOf(tab)[1]}</th><th className="text-right">Difference</th></tr></thead>
                                     <tbody>{s.by_type.map(x => (
                                         <tr key={x.label}><td>{x.label}</td><td className="text-right">{x.count}</td><td className="text-right">{money(x.register)}</td><td className="text-right">{money(x.books)}</td>
                                             <td className={`text-right ${Math.abs(x.difference) >= 0.01 ? 'text-red-700 font-semibold' : ''}`}>{money(x.difference)}</td></tr>

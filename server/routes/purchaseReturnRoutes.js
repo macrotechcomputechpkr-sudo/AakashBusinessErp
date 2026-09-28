@@ -10,6 +10,8 @@
 // =============================================
 
 const express = require('express');
+const { purchaseVatByLedger } = require('../utils/vatLedger');
+const { lineUnitCosts } = require('../utils/purchaseStockCost');
 const { checkAccountPurposes } = require('../utils/ledgerPurpose');
 const { bumpAltCounter } = require('../utils/progressCounters');
 const { checkCompulsoryFields, lockProtectedFields } = require('../utils/entryFieldRules');
@@ -65,15 +67,19 @@ async function postReturnStockMovements(tenantClient, tenantId, returnDoc, detai
                 unitCost = d.rate_basis === 'primary' ? Number(d.rate || 0) / conversionFactor : Number(d.rate || 0);
             } else {
                 baseQty = await toBaseUnitQty(tenantClient, d.product_id, d.qty, d.uom_id);
-                unitCost = d.rate || 0;
+                unitCost = null;
             }
         } else {
             baseQty = await toBaseUnitQty(tenantClient, d.product_id, d.qty, d.uom_id);
-            unitCost = d.rate || 0;
+            unitCost = null;
         }
-        rows.push({ tenant_id: tenantId, product_id: d.product_id, warehouse_id: wh, batch_no: d.batch_no, serial_no: d.serial_no || null, movement_date: returnDoc.doc_date, qty_out: baseQty, qty_in: 0, unit_cost: unitCost, source_type: 'purchase_return', source_id: returnDoc.id, source_detail_id: d.id, narration: `Return ${returnDoc.doc_no}` });
+        rows.push({ _detail: d, _baseQty: baseQty, tenant_id: tenantId, product_id: d.product_id, warehouse_id: wh, batch_no: d.batch_no, serial_no: d.serial_no || null, movement_date: returnDoc.doc_date, qty_out: baseQty, qty_in: 0, unit_cost: unitCost, source_type: 'purchase_return', source_id: returnDoc.id, source_detail_id: d.id, narration: `Return ${returnDoc.doc_no}` });
     }
     if (rows.length > 0) {
+        // cost = the line's share of the goods value without VAT / base qty (same rule as GRN / Bill)
+        const vatTotal = (await purchaseVatByLedger(tenantClient, tenantId, 'purchase_return', returnDoc.id)).reduce((s, p) => s + Number(p.amount || 0), 0);
+        const costs = lineUnitCosts(returnDoc, details, d => (rows.find(r => r._detail === d) || {})._baseQty, vatTotal);
+        rows.forEach(r => { const c = costs[r._detail.id]; if (c !== null && c !== undefined) r.unit_cost = c; else if (r.unit_cost === null) r.unit_cost = Number(r._detail.rate) || 0; delete r._detail; delete r._baseQty; });
         const { error } = await tenantClient.from('stock_movements').insert(rows);
         if (error) throw error;
     }

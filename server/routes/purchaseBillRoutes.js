@@ -10,6 +10,8 @@
 // =============================================
 
 const express = require('express');
+const { lineUnitCosts, refreshLandedCost } = require('../utils/purchaseStockCost');
+const { purchaseVatByLedger } = require('../utils/vatLedger');
 const { checkAccountPurposes } = require('../utils/ledgerPurpose');
 const { bumpAltCounter, rollHeaderStatus, moveSourceProgress } = require('../utils/progressCounters');
 const { checkCompulsoryFields, lockProtectedFields } = require('../utils/entryFieldRules');
@@ -48,13 +50,20 @@ async function postBillStockMovements(tenantClient, tenantId, bill, details) {
             unitCost = d.rate_basis === 'primary' ? Number(d.rate) / conversionFactor : Number(d.rate);
         } else {
             baseQty = await toBaseUnitQty(tenantClient, d.product_id, d.qty, d.uom_id);
-            unitCost = d.rate || 0;
+            unitCost = null;   // from the goods value below
         }
-        rows.push({ tenant_id: tenantId, product_id: d.product_id, warehouse_id: wh, batch_no: d.batch_no, serial_no: d.serial_no || null, movement_date: bill.doc_date, qty_in: baseQty, qty_out: 0, unit_cost: unitCost, source_type: 'purchase_bill', source_id: bill.id, source_detail_id: d.id, narration: `Bill ${bill.doc_no} - direct purchase` });
+        rows.push({ _detail: d, _baseQty: baseQty, tenant_id: tenantId, product_id: d.product_id, warehouse_id: wh, batch_no: d.batch_no, serial_no: d.serial_no || null, movement_date: bill.doc_date, qty_in: baseQty, qty_out: 0, unit_cost: unitCost, source_type: 'purchase_bill', source_id: bill.id, source_detail_id: d.id, narration: `Bill ${bill.doc_no} - direct purchase` });
     }
     if (rows.length > 0) {
+        // cost = the line's share of the goods value without VAT (what the purchase account gets) / base qty
+        const vatTotal = (await purchaseVatByLedger(tenantClient, tenantId, 'purchase_bill', bill.id)).reduce((s, p) => s + Number(p.amount || 0), 0);
+        const costs = lineUnitCosts(bill, details, d => (rows.find(r => r._detail === d) || {})._baseQty, vatTotal);
+        rows.forEach(r => { const c = costs[r._detail.id]; if (c !== null && c !== undefined) r.unit_cost = c; else if (r.unit_cost === null) r.unit_cost = Number(r._detail.rate) || 0; delete r._detail; delete r._baseQty; });
         const { error } = await tenantClient.from('stock_movements').insert(rows);
         if (error) throw error;
+        // additional expenses already posted against these lines
+        const landed = await refreshLandedCost(tenantClient, tenantId, { billDetailIds: details.map(d => d.id) });
+        if (landed.error) console.warn('landed cost not applied:', landed.error);
     }
 }
 

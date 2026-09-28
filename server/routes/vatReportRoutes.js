@@ -37,7 +37,7 @@ const VAT_DOCS = {
     purchase:        { label: 'Purchase',        label_np: 'खरिद',            side: 'purchase', sign: 1,  header: 'purchase_bills',   detail: 'purchase_bill_details',   fk: 'bill_id',        party: 'vendor_ledger_id',   partyName: 'vendor_name_snapshot', termDocType: 'purchase_bill' },
     purchase_return: { label: 'Purchase Return', label_np: 'खरिद फिर्ता',       side: 'purchase', sign: -1, header: 'purchase_returns', detail: 'purchase_return_details', fk: 'return_id',      party: 'vendor_ledger_id',   partyName: 'vendor_name_snapshot', termDocType: 'purchase_return' },
     // Additional expense bills (transport, clearing ...) - each taxable / non-taxable bill line
-    purchase_expense: { label: 'Purchase Expense Bill', label_np: 'खर्च बिल (खरिद)', side: 'purchase', sign: 1, custom: 'expense', party: 'vendor_ledger_id' },
+    purchase_expense: { label: 'Purchase Additional Bill', label_np: 'थप खर्च बिल (खरिद)', side: 'purchase', sign: 1, custom: 'expense', party: 'vendor_ledger_id' },
     // Journal Vouchers entered as a taxable / non-taxable purchase or sale
     jv_purchase:     { label: 'Purchase (JV)',   label_np: 'खरिद (जर्नल)',      side: 'purchase', sign: 1,  custom: 'jv', jvType: 'purchase', party: 'party_ledger_id' },
     jv_sales:        { label: 'Sales (JV)',      label_np: 'बिक्री (जर्नल)',     side: 'sales',    sign: 1,  custom: 'jv', jvType: 'sales', party: 'party_ledger_id' },

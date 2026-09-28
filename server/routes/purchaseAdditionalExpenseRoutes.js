@@ -14,6 +14,7 @@ const { getTenantClient, loadUserPermissions, logAudit } = require('../utils/dbH
 const { requireAuth, requirePermission } = require('../middleware/auth');
 const { resolveDocumentNumber } = require('../utils/documentNumbering');
 const { postAdditionalExpenseEntry, buildAdditionalExpenseGl, reverseBatch } = require('../utils/grnAccounting');
+const { refreshLandedCost } = require('../utils/purchaseStockCost');
 
 function validateBody(b, isDraft) {
     if (!b.doc_date) return 'Date is required';
@@ -387,6 +388,11 @@ router.put('/purchase-additional-expenses/:id/status', requireAuth, loadUserPerm
             if (glPlan) await postAdditionalExpenseEntry(tenantClient, tenantId, data, glPlan, req.auth.userId);
         } else if (status === 'cancelled' && existing.status === 'posted') {
             await reverseBatch(tenantClient, 'purchase_additional_expense', req.params.id);
+        }
+        // landed cost: the allocated amounts go into (or come out of) the stock value of the purchase lines
+        if ((status === 'posted' && existing.status !== 'posted') || (status === 'cancelled' && existing.status === 'posted')) {
+            const landed = await refreshLandedCost(tenantClient, tenantId, { expenseIds: [req.params.id] });
+            if (landed.error) console.warn('landed cost not applied:', landed.error);
         }
         await logAudit(tenantId, req.auth.userId, 'change_additional_expense_status', 'purchase_additional_expense', req.params.id, { new_status: status, cancellation_reason });
         await logDocumentAudit(tenantClient, tenantId, 'purchase_additional_expense', req.params.id, 'status_change', req.auth.userId);
