@@ -771,14 +771,13 @@ export default function PurchaseRequisition() {
                                         <th className={`text-left px-1 py-1 w-20 ${(!chargesInPopup && isVisible('discount_percent', 'detail')) ? '' : 'hidden'}`}>Disc %</th>
                                         <th className={`text-left px-1 py-1 w-20 ${(!chargesInPopup && isVisible('tax_percent', 'detail')) ? '' : 'hidden'}`}>Tax %</th>
                                         <th className="r">Gross</th>
-                                        <th className="r">Charges ±</th>
+                                        <th className="r">Add / Less</th>
                                         <th className="r">Net Amount</th>
                                         <th className={`text-left px-1 py-1 w-20 ${(settings?.freeQty && isVisible('free_qty', 'detail')) ? '' : 'hidden'}`}>Free Qty</th>
                                         <th className={`text-left px-1 py-1 w-32 ${(settings?.freeQty && isVisible('free_uom_id', 'detail')) ? '' : 'hidden'}`}>Free UOM</th>
                                         <th className={`text-left px-1 py-1 w-40 ${isVisible('warehouse_id', 'detail') ? '' : 'hidden'}`}>Details Warehouse</th>
                                         <th className={`text-left px-1 py-1 w-28 ${isVisible('barcode', 'detail') ? '' : 'hidden'}`}>Barcode</th>
                                         <th className={`text-left px-1 py-1 w-28 ${(batchOn && isVisible('batch_no', 'detail')) ? '' : 'hidden'}`}>Batch No</th>
-                                        <th className="text-left px-1 py-1 w-20">Item Charges</th>
                                         <th></th>
                                     </tr>
                                 </thead>
@@ -879,7 +878,7 @@ export default function PurchaseRequisition() {
                                             <td className={`px-1 py-1 ${(!chargesInPopup && isVisible('discount_percent', 'detail')) ? '' : 'hidden'}`}><input disabled={efc.isReadonly('discount_percent', 'detail')} type="number" step="0.01" className="w-full border rounded px-1.5 py-1" value={d.discount_percent} onChange={e => updateDetailRow(idx, { discount_percent: e.target.value })} /></td>
                                             <td className={`px-1 py-1 ${(!chargesInPopup && isVisible('tax_percent', 'detail')) ? '' : 'hidden'}`}><input disabled={efc.isReadonly('tax_percent', 'detail')} type="number" step="0.01" className="w-full border rounded px-1.5 py-1" value={d.tax_percent} onChange={e => updateDetailRow(idx, { tax_percent: e.target.value })} /></td>
                                             <td className="px-1 py-1 r">{d.product_id ? <AmountCell value={lineGross(d)} title="Type the amount: the rate (or the quantity) is worked out" onChange={g => typeGross(idx, g)} /> : ''}</td>
-                                            <td className="px-1 py-1 r">{d.product_id ? (lineNet(d, idx) - lineGross(d)).toFixed(2) : ''}</td>
+                                            <td className="px-1 py-1 r">{d.product_id ? (itemCharges ? <button type="button" tabIndex={-1} className="ent-term-btn" onClick={() => setProductTermModalIndexes([idx])} title="Add / Less of this line - opens its Item Charges">{(lineNet(d, idx) - lineGross(d)).toFixed(2)}</button> : (lineNet(d, idx) - lineGross(d)).toFixed(2)) : ''}</td>
                                             <td className="px-1 py-1 r">{d.product_id ? <AmountCell bold value={lineNet(d, idx)} title="Type the net amount: taken back through the charges" onChange={n => typeNet(idx, n)} /> : ''}</td>
                                             <td className={`px-1 py-1 ${(settings?.freeQty && isVisible('free_qty', 'detail')) ? '' : 'hidden'}`}><input disabled={efc.isReadonly('free_qty', 'detail')} type="number" step="0.0001" className="w-full border rounded px-1.5 py-1" value={d.free_qty} onChange={e => updateDetailRow(idx, { free_qty: e.target.value })} /></td>
                                             <td className={`px-1 py-1 ${(settings?.freeQty && isVisible('free_uom_id', 'detail')) ? '' : 'hidden'}`}>
@@ -900,9 +899,6 @@ export default function PurchaseRequisition() {
                                                     <input disabled={efc.isReadonly('batch_no', 'detail')} className="w-full border rounded px-1.5 py-1" value={d.batch_no} onChange={e => updateDetailRow(idx, { batch_no: e.target.value })} placeholder="Batch" />
                                                 ) : <span className="text-gray-300 text-xs">—</span>}
                                             </td>
-                                            <td className="px-1 py-1"><button type="button" tabIndex={-1} onClick={() => itemCharges && setProductTermModalIndexes([idx])} className="ent-term-btn" title="Charges of this line">
-                                                {lineTermPreviews[idx]?.total !== undefined ? (lineTermPreviews[idx].total - (Number(d.qty) || 0) * (Number(d.rate) || 0)).toFixed(2) : '…'}
-                                            </button></td>
                                             <td className="px-1 py-1"><button type="button" tabIndex={-1} onClick={() => removeDetailRow(idx)} className="text-red-500 text-xs">✕</button></td>
                                         </tr>
                                     ))}
@@ -915,7 +911,7 @@ export default function PurchaseRequisition() {
                         </div>
                         <div className="flex items-center gap-2 mt-1 text-xs text-gray-600">
                             <button type="button" className="nav-btn small" onClick={addDetailRow}>➕ Add line</button>
-                            <span>Enter on the last field adds a line · Charges ±: this line's charges · tick lines (#) and use Item Charges to set them together</span>
+                            <span>Enter on the last field adds a line · Add / Less: this line's item charges (click to open them) · tick lines (#) and use Item Charges to set them together</span>
                         </div>
                     </div>
 

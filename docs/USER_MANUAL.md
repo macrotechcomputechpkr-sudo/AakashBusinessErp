@@ -51,7 +51,7 @@ The effect of each transaction is shown in a box like this:
 
 - **Master part** (top): date (BS/AD), document number (automatic or manual, following Document Numbering), Cash/Credit, party, currency and exchange rate, sales rate type (Sr1-Sr5), agent, warehouse, and the source documents to pull from.
 - **Item Code cell**: type a code, short name or barcode. In POS mode, scanning a barcode adds the item straight away.
-- **Grid**: qty (and alternate unit for dual-unit items), free qty, rate, gross amount, term +/-, net amount. You may type the gross or net amount; the rate (or the qty, when the product allows it) is worked out for you.
+- **Grid**: qty (and alternate unit for dual-unit items), free qty, rate, **Gross**, **Add / Less**, **Net Amount**. When System Control shows item charges for the entry, Add / Less is a button: it opens the line's Item Charges pop-up (discount, tax, excise ...) and shows the pop-up's total. When item charges are off, Add / Less only shows the amount (the product's term values still count). You may type the gross or net amount; the rate (or the qty, when the product allows it) is worked out for you.
 - **Product-wise term popup**: discount, excise and similar terms for one line. You may type %, rate x qty or amount, depending on the term; the other values are worked out.
 - **Overall term popup**: bill-level terms (VAT, freight, bill discount, rounding off). Amounts are split over the lines by value or quantity. The Local Amount shows the value in NPR when a foreign currency is used.
 - **Footer tabs**: accounts, party address/PAN (with an option to update the master), remarks, and the total in words.

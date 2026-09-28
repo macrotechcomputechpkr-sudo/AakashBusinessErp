@@ -4,7 +4,7 @@
 // Bill, Return ...), one layout everywhere:
 //   # | Item Code (code / barcode) | Item Name | Unit | Warehouse* | Batch /
 //   Serial | Mfg | Expiry | Qty | Free Qty | Free Unit | Rate (+ per unit for
-//   dual items) | Gross | inline charges | Charges ± | Net Amount
+//   dual items) | Gross | Add / Less (item charges: the pop-up's total) | Net Amount
 //   * only when System Control > Multi Warehouse is on
 // At least 10 rows show (click an empty one to start a line), the line being
 // typed is yellow and the Total row sits under Quantity / Gross / Term / Amount.
@@ -294,7 +294,7 @@ export default function SalesLineGrid({
                             {legacyInline && <th className={`r ${visible('discount_percent') ? '' : 'hidden'}`}>Disc %</th>}
                             {legacyInline && f.tax && <th className={`r ${visible('tax_percent') ? '' : 'hidden'}`}>Tax %</th>}
                             {inlineTerms && termCols.map(c => <th key={c.key} className="r" title={c.label}>{c.label}</th>)}
-                            {f.terms && <th className="r">Charges ±</th>}
+                            {f.terms && <th className="r">Add / Less</th>}
                             {f.rate && <th className="r">Net Amount</th>}
                             <th />
                         </tr>
@@ -449,7 +449,7 @@ export default function SalesLineGrid({
             </div>
             <div className="flex items-center gap-2 mt-1 text-xs text-gray-600">
                 <button type="button" className="nav-btn small" onClick={addAndFocus}>➕ Add line</button>
-                <span>Item Code: type a code / short name or scan a barcode + Enter · Gross / Net Amount can be typed · Item Name: search by {searchBy} · Enter on the last field adds a line · Charges ±: this line's charges</span>
+                <span>Item Code: type a code / short name or scan a barcode + Enter · Gross / Net Amount can be typed · Item Name: search by {searchBy} · Enter on the last field adds a line · Add / Less: this line's item charges (click to open them)</span>
             </div>
             {itemCharges && ctl.termsFor !== null && details[ctl.termsFor] && (() => {
                 const d = details[ctl.termsFor];
