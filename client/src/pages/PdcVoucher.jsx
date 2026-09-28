@@ -333,16 +333,13 @@ export default function PdcVoucher() {
                                     value={form.business_unit_id} onChange={id => setForm({ ...form, business_unit_id: id })} placeholder="Select Unit"
                                 />
                             </div>
-                            <div className="erp-field">
-                                <label className="erp-label">Remarks</label>
-                                <input list="pdc-remarks-suggestions" className="erp-input" value={form.remarks_text} onChange={e => setForm({ ...form, remarks_text: e.target.value })} placeholder="Type or pick" />
+                            {/* one Narration for the voucher (saved remarks offered as suggestions) */}
+                            <div className={efc.isVisible('narration') ? 'erp-field md:col-span-2' : 'erp-field md:col-span-2 hidden'}>
+                                <label className="erp-label">Narration {efc.isRequired('narration') && <span className="req">*</span>}</label>
+                                <input list="pdc-remarks-suggestions" disabled={efc.isReadonly('narration')} className="erp-input" value={form.narration || form.remarks_text || ''} onChange={e => setForm({ ...form, narration: e.target.value, remarks_text: '' })} placeholder="Type, or pick a saved remark" />
                                 <datalist id="pdc-remarks-suggestions">
                                     {remarks.map(r => <option key={r.id} value={r.remark_text} />)}
                                 </datalist>
-                            </div>
-                            <div className={efc.isVisible('narration') ? 'erp-field md:col-span-2' : 'erp-field md:col-span-2 hidden'}>
-                                <label className="erp-label">Narration {efc.isRequired('narration') && <span className="req">*</span>}</label>
-                                <input disabled={efc.isReadonly('narration')} className="erp-input" value={form.narration} onChange={e => setForm({ ...form, narration: e.target.value })} />
                             </div>
                         </div>
 

@@ -170,11 +170,6 @@ export default function SystemControlSettings() {
         }
     };
 
-    const toggleTermApplicability = (term) => {
-        const current = settings.popup_product_wise_term_applicability || [];
-        set('popup_product_wise_term_applicability', current.includes(term) ? current.filter(t => t !== term) : [...current, term]);
-    };
-
     if (!settings) return <Layout><div className="max-w-5xl mx-auto p-4 text-gray-400">Loading...</div></Layout>;
 
     return (
@@ -544,18 +539,6 @@ export default function SystemControlSettings() {
                                 options={[{ value: 'single', label: 'Single' }, { value: 'multiple', label: 'Multiple' }]} />
                             <SelectField label="Amount Wise Qty Change" value={settings.amount_wise_qty_change} onChange={v => set('amount_wise_qty_change', v)}
                                 options={[{ value: 'sales_only', label: 'Only Sales' }, { value: 'purchase_only', label: 'Only Purchase' }, { value: 'both', label: 'Both' }]} />
-                        </div>
-
-                        <div>
-                            <label className="erp-label">Popup Product Wise Term - Applicable To <span className="text-xs text-gray-400">(multiple selection)</span></label>
-                            <div className="flex flex-wrap gap-4 border rounded-lg px-3 py-2">
-                                {['sales', 'purchase', 'sales_return', 'purchase_return'].map(t => (
-                                    <label key={t} className="flex items-center gap-1.5 text-sm">
-                                        <input type="checkbox" data-enter-skip="true" checked={(settings.popup_product_wise_term_applicability || []).includes(t)} onChange={() => toggleTermApplicability(t)} />
-                                        {t.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase())}
-                                    </label>
-                                ))}
-                            </div>
                         </div>
 
                         <div>
