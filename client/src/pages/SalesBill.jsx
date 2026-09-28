@@ -28,7 +28,7 @@ import Layout from '../components/Layout';
 import { useEnterKeyNavigation } from '../hooks/useEnterKeyNavigation';
 import { formatDateForDisplay } from '../utils/nepaliDateUtils';
 import NumberingCategorySelector from '../components/NumberingCategorySelector';
-import { resolveDualUomEntryMode } from '../utils/dualUomEntryMode';
+import { resolveDualUomEntryMode, productRateBasis } from '../utils/dualUomEntryMode';
 import UdfValuesModal from '../components/UdfValuesModal';
 import useLedgerPurposes from '../components/useLedgerPurposes';
 import RecordHistory from '../components/RecordHistory';
@@ -44,6 +44,7 @@ import { calcLine, defaultLineTerms, productLineTerms, lineForSave } from '../co
 import { dualHelpers } from '../components/entry/dualHelpers';
 import DocActions, { asNewCopy, finalizeEntry } from '../components/entry/DocActions';
 import EntryFillBar from '../components/entry/EntryFillBar';
+import { saveEntryDraft, finishEntryDraft } from '../components/entry/entryDrafts';
 
 const emptyDetailRow = () => ({ product_id: '', qty: '', uom_id: '', alt_qty: '', alt_unit_id: '', rate: '', rate_basis: 'primary', discount_percent: '', tax_percent: '', free_qty: '', free_alt_qty: '', free_uom_id: '', warehouse_id: '', batch_no: '', serial_no: '', line_terms: null, source_delivery_detail_id: '', source_order_detail_id: '', source_quotation_detail_id: '' });
 
@@ -170,7 +171,7 @@ export default function SalesBill() {
         const product = products.find(p => p.id === productId);
         const base = { product_id: productId, line_terms: productLineTerms(termCols, product, form.details[idx]?.line_terms) };
         if (product?.uom_mode === 'fixed_dual') {
-            updateDetailRow(idx, { ...base, uom_id: product.dual_uom_primary_unit_id || '', alt_unit_id: product.base_unit_id || '', rate_basis: 'primary' });
+            updateDetailRow(idx, { ...base, uom_id: product.dual_uom_primary_unit_id || '', alt_unit_id: product.base_unit_id || '', rate_basis: productRateBasis(product) });
         } else {
             updateDetailRow(idx, { ...base, uom_id: unitId || product?.base_unit_id || '' });
         }
@@ -212,6 +213,10 @@ export default function SalesBill() {
     };
 
     const handleSubmit = async (e, saveAsDraft = false, overrideCreditBlock = false) => {
+
+        // Save as Draft (new entry): kept apart as a temporary draft - no number, no accounts / stock effect
+
+        if (saveAsDraft && !editingId) { if (e) e.preventDefault(); if (await saveEntryDraft(authFetch, 'sales_bill', form)) { resetForm(); setShowForm(false); } return; }
         if (e) e.preventDefault();
         if (!saveAsDraft) {
             const missing = efc.missingRequired(form);
@@ -241,6 +246,7 @@ export default function SalesBill() {
             // Save (not Save as Draft): post it now, after its party details are stored
             if (!saveAsDraft) await finalizeEntry(authFetch, 'sales-bills', postId, 'posted');
             if (res.warning) showAlert(res.warning, 'warning');
+            await finishEntryDraft(authFetch, 'sales_bill');
             resetForm();
             setShowForm(false);
             load();
@@ -331,7 +337,7 @@ export default function SalesBill() {
 
             {showForm && (
                 <form onSubmit={handleSubmit} ref={formRef} className="ent-entry">
-                    <EntryFillBar voucherType="sales_bill" api="sales-bills" form={form} editing={!!editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={copyAsNew} onOpenDraft={r => handleEdit({ ...r, status: 'draft' })} />
+                    <EntryFillBar voucherType="sales_bill" api="sales-bills" form={form} editing={!!editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={copyAsNew} />
                     <div className="erp-topbar grid-cols-1 md:grid-cols-4">
                         <DocNumberField voucherType="sales_bill" categoryId={form.numbering_category_id} docNo={editingId ? form.doc_no : ''} value={form.doc_no} onChange={v => setForm({ ...form, doc_no: v })} />
                         <div className={efc.isVisible('doc_date') ? 'erp-field' : 'erp-field hidden'}>
@@ -449,7 +455,7 @@ export default function SalesBill() {
             <div className="flex items-center gap-2 mb-2">
                 <label className="flex items-center gap-1.5 text-sm">
                     <input type="checkbox" checked={showDraftsOnly} onChange={e => setShowDraftsOnly(e.target.checked)} />
-                    Show Drafts only
+                    Show unposted (awaiting approval) only
                 </label>
             </div>
             <ReportGrid

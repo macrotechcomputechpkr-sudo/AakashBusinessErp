@@ -15,7 +15,7 @@ import Layout from '../components/Layout';
 import { useEnterKeyNavigation } from '../hooks/useEnterKeyNavigation';
 import { formatDateForDisplay } from '../utils/nepaliDateUtils';
 import NumberingCategorySelector from '../components/NumberingCategorySelector';
-import { resolveDualUomEntryMode, dualBaseQty, productDualMode } from '../utils/dualUomEntryMode';
+import { resolveDualUomEntryMode, dualBaseQty, productDualMode, productRateBasis } from '../utils/dualUomEntryMode';
 import UdfValuesModal from '../components/UdfValuesModal';
 import RecordHistory from '../components/RecordHistory';
 import { priceUrl, lineUnitOf, useSlabRepricing } from '../utils/salesPricing';
@@ -30,6 +30,7 @@ import { EntryFooter, useEntryHotkeys, latestOf } from '../components/entry/Entr
 import { dualHelpers } from '../components/entry/dualHelpers';
 import DocActions, { asNewCopy, finalizeEntry } from '../components/entry/DocActions';
 import EntryFillBar from '../components/entry/EntryFillBar';
+import { saveEntryDraft, finishEntryDraft } from '../components/entry/entryDrafts';
 
 const emptyDetailRow = () => ({ product_id: '', qty: '', uom_id: '', alt_qty: '', alt_unit_id: '', rate_basis: 'primary', rate: '', warehouse_id: '', batch_no: '', serial_no: '', mfg_date: '', exp_date: '', source_order_detail_id: '' });
 
@@ -172,7 +173,7 @@ export default function SalesDelivery() {
     const handleProductSelect = async (idx, productId, unitId) => {
         const product = products.find(p => p.id === productId);
         if (product?.uom_mode === 'fixed_dual') {
-            updateDetailRow(idx, { product_id: productId, uom_id: product.dual_uom_primary_unit_id || '', alt_unit_id: product.base_unit_id || '', rate_basis: 'primary', rate: product?.sales_rate_sr1 || 0 });
+            updateDetailRow(idx, { product_id: productId, uom_id: product.dual_uom_primary_unit_id || '', alt_unit_id: product.base_unit_id || '', rate_basis: productRateBasis(product), rate: product?.sales_rate_sr1 || 0 });
         } else {
             updateDetailRow(idx, { product_id: productId, uom_id: unitId || product?.base_unit_id || '', rate: product?.sales_rate_sr1 || 0 });
         }
@@ -225,6 +226,10 @@ export default function SalesDelivery() {
     };
 
     const handleSubmit = async (e, saveAsDraft = false) => {
+
+        // Save as Draft (new entry): kept apart as a temporary draft - no number, no accounts / stock effect
+
+        if (saveAsDraft && !editingId) { if (e) e.preventDefault(); if (await saveEntryDraft(authFetch, 'sales_delivery', form)) { resetForm(); setShowForm(false); } return; }
         e.preventDefault();
         if (!saveAsDraft) {
             const missing = efc.missingRequired(form);
@@ -253,6 +258,7 @@ export default function SalesDelivery() {
             try { await savePartyInfo(authFetch, 'sales_delivery', savedId, partyInfo); } catch (pe) { showAlert(`Saved, but the party details were not: ${pe.message}`, 'warning'); }
             // Save (not Save as Draft): post it now, after its party details are stored
             if (!saveAsDraft) await finalizeEntry(authFetch, 'sales-deliveries', postId, 'posted');
+            await finishEntryDraft(authFetch, 'sales_delivery');
             resetForm();
             setShowForm(false);
             load();
@@ -335,7 +341,7 @@ export default function SalesDelivery() {
 
             {showForm && (
                 <form onSubmit={handleSubmit} ref={formRef} className="ent-entry">
-                    <EntryFillBar voucherType="sales_delivery" api="sales-deliveries" form={form} editing={!!editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={copyAsNew} onOpenDraft={r => handleEdit({ ...r, status: 'draft' })} />
+                    <EntryFillBar voucherType="sales_delivery" api="sales-deliveries" form={form} editing={!!editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={copyAsNew} />
                     <div className="erp-topbar grid-cols-1 md:grid-cols-4">
                         <DocNumberField voucherType="sales_delivery" categoryId={form.numbering_category_id} docNo={editingId ? form.doc_no : ''} value={form.doc_no} onChange={v => setForm({ ...form, doc_no: v })} />
                         <div className={efc.isVisible('doc_date') ? 'erp-field' : 'erp-field hidden'}>
@@ -519,7 +525,7 @@ export default function SalesDelivery() {
             <div className="flex items-center gap-2 mb-2">
                 <label className="flex items-center gap-1.5 text-sm">
                     <input type="checkbox" checked={showDraftsOnly} onChange={e => setShowDraftsOnly(e.target.checked)} />
-                    Show Drafts only
+                    Show unposted (awaiting approval) only
                 </label>
             </div>
             <ReportGrid

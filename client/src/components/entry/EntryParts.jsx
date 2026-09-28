@@ -131,11 +131,13 @@ export function TermPopup({ title, productName, basic, qty, unitName, rows, onIn
                                 {KIND_COLS.map(([k]) => {
                                     const mine = (r.kind || 'pct') === k;
                                     const can = onInput && r.editable !== false && (r.kinds || ['pct']).includes(k);
+                                    // a rate or amount typed: the % it works out to, shown in the % column
+                                    const derived = k === 'pct' && !mine && Number(r.calculatedOn) && Number(r.amount) ? `${(Math.abs(Number(r.amount)) / Number(r.calculatedOn) * 100).toFixed(2)}%` : '';
                                     return (
                                         <td key={k} className="text-right">{can
-                                            ? <input type="number" step="0.01" className="erp-input text-right" style={{ height: 24 }} value={mine && !blank(r.value) ? r.value : ''}
+                                            ? <input type="number" step="0.01" className="erp-input text-right" style={{ height: 24 }} value={mine && !blank(r.value) ? r.value : ''} placeholder={derived ? `= ${derived}` : ''}
                                                 onFocus={e => { setFocus(i); e.target.select(); }} onChange={e => onInput(r.key, k, e.target.value)} />
-                                            : (mine && !blank(r.value) ? fmt(r.value) : '')}</td>
+                                            : (mine && !blank(r.value) ? fmt(r.value) : derived ? <span className="text-gray-500">= {derived}</span> : '')}</td>
                                     );
                                 })}
                                 <td className="text-right">{fmt(r.calculatedOn)}</td>

@@ -219,6 +219,7 @@ router.post('/products', requireAuth, loadUserPermissions, requirePermission('le
                 base_unit_id: b.base_unit_id,
                 uom_mode: b.uom_mode || 'single', dual_uom_primary_unit_id: b.dual_uom_primary_unit_id || null,
                 dual_auto_convert: yesNoOrNull(b.dual_auto_convert), dual_reverse_conversion: yesNoOrNull(b.dual_reverse_conversion),
+                dual_rate_basis: ['primary', 'secondary'].includes(b.dual_rate_basis) ? b.dual_rate_basis : 'any',
                 qty_from_amount_sales: !!b.qty_from_amount_sales, qty_from_amount_purchase: !!b.qty_from_amount_purchase,
                 default_discount_percent: b.default_discount_percent || 0,
                 default_vendor_id: b.default_vendor_id || null,
@@ -324,6 +325,7 @@ router.put('/products/:id', requireAuth, loadUserPermissions, requirePermission(
         // an empty picker is sent as '' - a uuid column needs null
         Object.keys(update).forEach(k => { if (/_id$/.test(k) && update[k] === '') update[k] = null; });
         ['dual_auto_convert', 'dual_reverse_conversion'].forEach(k => { if (k in update) update[k] = yesNoOrNull(update[k]); });
+        if ('dual_rate_basis' in update) update.dual_rate_basis = ['primary', 'secondary'].includes(update.dual_rate_basis) ? update.dual_rate_basis : 'any';
 
         const { data, error } = await tenantClient
             .from('products').update(update).eq('id', req.params.id).eq('tenant_id', tenantId).select().single();

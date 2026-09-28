@@ -101,6 +101,7 @@ export default function DocActions({ type, api, row, onOpen, onCopy, onReverse, 
     const canRemove = removable && (isDraft || !locked);
     return (
         <>
+            {isDraft && policy?.approval_required && <span className="px-1.5 py-0.5 rounded text-[10px] bg-amber-100 text-amber-800" title="Waiting for approval - no accounts / stock effect yet">Awaiting approval</span>}
             {canModify && <button type="button" disabled={busy} onClick={modify} className={`${btn} bg-sky-700`} title={isDraft ? 'Edit this draft' : 'Reverse, reopen as draft and edit'}>✏️ Modify</button>}
             {onCopy && !isDraft && <button type="button" disabled={busy} onClick={() => onCopy(row)} className={`${btn} bg-teal-600`} title="Copy into a new entry">⧉ Copy</button>}
             {canReverse && onReverse && !isDraft && !isClosed && status !== 'closed' && (
@@ -111,18 +112,38 @@ export default function DocActions({ type, api, row, onOpen, onCopy, onReverse, 
     );
 }
 
+// list endpoint -> document type (approval settings are per document type)
+const API_TYPE = {
+    'sales-quotations': 'sales_quotation', 'sales-orders': 'sales_order', 'sales-deliveries': 'sales_delivery', 'sales-bills': 'sales_bill', 'sales-returns': 'sales_return',
+    'sales-nonsaleable-returns': 'sales_nonsalable_return', 'sales-additional-entries': 'sales_additional', 'purchase-requisitions': 'purchase_requisition',
+    'purchase-quotations': 'purchase_quotation', 'purchase-orders': 'purchase_order', 'purchase-grns': 'purchase_grn', 'purchase-bills': 'purchase_bill',
+    'purchase-returns': 'purchase_return', 'purchase-nonsaleable-returns': 'purchase_nonsalable_return', 'purchase-additional-expenses': 'purchase_additional',
+    'cash-bank-entries': 'cash_bank_entry', 'journal-vouchers': 'journal', 'stock-transfers': 'stock_transfer', 'production-orders': 'production'
+};
+
 /**
- * Save (not Save as Draft) makes the entry a transaction: the saved document is posted by its
- * module's own status route (ledger / stock effect), so a draft that was finished does not stay
- * a draft. A posting refusal (credit limit, stock ...) leaves it saved as a draft and says why.
+ * Save (not Save as Draft) makes the entry a transaction:
+ *   - module without approval (System Control): posted at once by its own status route (ledger / stock effect)
+ *   - module with approval: it waits for an approver (no effect yet); a user who holds the approval right
+ *     is asked whether to approve it now
+ * A posting refusal (credit limit, stock ...) leaves it waiting and says why.
  */
 export async function finalizeEntry(authFetch, api, id, status = 'posted') {
     if (!id) return true;
+    const type = API_TYPE[api];
+    let policy = null;
+    try { policy = type ? (await authFetch(`/api/document-actions/policy?type=${type}`)).data : null; } catch { policy = null; }
+    if (policy?.approval_required) {
+        if (!policy.can_approve || !window.confirm('Saved - this document needs approval before it posts.\n\nYou can approve it: approve and post it now?')) {
+            if (!policy.can_approve) window.alert('Saved and sent for approval. It posts (accounts / stock) once an approver approves it.');
+            return false;
+        }
+    }
     try {
         await authFetch(`/api/${api}/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) });
         return true;
     } catch (e) {
-        window.alert(`Saved as a draft, but it could not be ${status}: ${e.message}\n\nOpen it from the Draft list to finish it.`);
+        window.alert(`Saved, but it could not be ${status}: ${e.message}\n\nIt waits in the list (not posted) - open it with Modify to finish it.`);
         return false;
     }
 }

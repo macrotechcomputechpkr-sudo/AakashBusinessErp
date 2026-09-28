@@ -17,6 +17,9 @@
 //   GET    /held-entries?voucher_type=              this user's held entries
 //   POST   /held-entries  { voucher_type, label, payload }
 //   DELETE /held-entries/:id
+//   GET    /entry-drafts?voucher_type=              temporary drafts of this screen (never in the module's table)
+//   POST   /entry-drafts { voucher_type, label, payload, id? }   save / update a draft
+//   DELETE /entry-drafts/:id                        finished (the entry was saved) or discarded
 //   GET    /entry-templates?voucher_type=           company templates + this user's own
 //   POST   /entry-templates { voucher_type, template_name, payload, is_personal }
 //   DELETE /entry-templates/:id
@@ -25,6 +28,7 @@ const express = require('express');
 const router = express.Router();
 const { getTenantClient, loadUserPermissions, logAudit } = require('../utils/dbHelpers');
 const { requireAuth, requirePermission } = require('../middleware/auth');
+const { approvalModules, canApprove } = require('../utils/approval');
 
 const DOC_TABLES = {
     sales_quotation: 'sales_quotations', sales_order: 'sales_orders', sales_delivery: 'sales_deliveries', sales_bill: 'sales_bills',
@@ -56,7 +60,10 @@ router.get('/document-actions/policy', requireAuth, async (req, res) => {
         const ird = await irdBilling(c, req.auth.tenantId);
         const type = req.query.type;
         const locked = ird && IRD_LOCKED.includes(type);
-        res.json({ success: true, data: { ird_billing: ird, locked, locked_types: ird ? IRD_LOCKED : [],
+        // approval system: Save waits for an approver in these modules, else it posts at once
+        const approvalRequired = (await approvalModules(c, req.auth.tenantId)).includes(type);
+        const approver = approvalRequired ? await canApprove(c, req.auth, type) : false;
+        res.json({ success: true, data: { ird_billing: ird, locked, locked_types: ird ? IRD_LOCKED : [], approval_required: approvalRequired, can_approve: approver,
             // IRD (computerized) billing: a posted Sales Bill / Return is only reversed; otherwise the full set
             actions: locked ? ['create', 'copy', 'template', 'print', 'reverse', 'modify_draft', 'remove_draft'] : ['create', 'copy', 'template', 'print', 'cancel', 'modify', 'remove', 'draft'] } });
     } catch (e) { fail(res, e); }
@@ -118,6 +125,55 @@ router.delete('/held-entries/:id', requireAuth, async (req, res) => {
     try {
         const c = await getTenantClient(req.auth.tenantId);
         const { error } = await c.from('held_entries').delete().eq('tenant_id', req.auth.tenantId).eq('user_id', req.auth.userId).eq('id', req.params.id);
+        if (error) throw error;
+        res.json({ success: true });
+    } catch (e) { fail(res, e); }
+});
+
+// Temporary drafts ------------------------------------------------------------
+// Save as Draft keeps the typed entry here (company-wide, per screen) - it gets no
+// number and no ledger / stock effect; finishing it saves the real entry and deletes the draft.
+const MAX_DRAFTS = 200;
+
+router.get('/entry-drafts', requireAuth, async (req, res) => {
+    try {
+        const vt = req.query.voucher_type;
+        if (!DOC_TABLES[vt] && !/^[a-z_]{3,50}$/.test(vt || '')) return res.status(400).json({ success: false, error: 'Invalid voucher_type' });
+        const c = await getTenantClient(req.auth.tenantId);
+        const { data, error } = await c.from('entry_drafts').select('*').eq('tenant_id', req.auth.tenantId).eq('voucher_type', vt).order('updated_at', { ascending: false });
+        if (error) throw error;
+        res.json({ success: true, data: data || [] });
+    } catch (e) { fail(res, e); }
+});
+
+router.post('/entry-drafts', requireAuth, async (req, res) => {
+    try {
+        const { voucher_type: vt, label, payload, id } = req.body || {};
+        if (!DOC_TABLES[vt] && !/^[a-z_]{3,50}$/.test(vt || '')) return res.status(400).json({ success: false, error: 'Invalid voucher_type' });
+        if (!payload || typeof payload !== 'object') return res.status(400).json({ success: false, error: 'Nothing to save' });
+        if (JSON.stringify(payload).length > MAX_PAYLOAD) return res.status(400).json({ success: false, error: 'This entry is too large for a draft' });
+        const t = req.auth.tenantId, c = await getTenantClient(t);
+        const row = { label: String(label || '').slice(0, 200) || null, payload, party_name: String(req.body.party_name || '').slice(0, 200) || null,
+            amount: Number(req.body.amount) || 0, updated_by: req.auth.userId, updated_at: new Date().toISOString() };
+        if (id) {
+            if (!UUID.test(id)) return res.status(400).json({ success: false, error: 'Invalid id' });
+            const { data, error } = await c.from('entry_drafts').update(row).eq('tenant_id', t).eq('id', id).eq('voucher_type', vt).select().maybeSingle();
+            if (error) throw error;
+            if (data) return res.json({ success: true, data });
+        }
+        const { count } = await c.from('entry_drafts').select('id', { count: 'exact', head: true }).eq('tenant_id', t).eq('voucher_type', vt);
+        if ((count || 0) >= MAX_DRAFTS) return res.status(400).json({ success: false, error: `There are already ${MAX_DRAFTS} drafts on this screen - finish or discard some first` });
+        const { data, error } = await c.from('entry_drafts').insert({ tenant_id: t, voucher_type: vt, created_by: req.auth.userId, ...row }).select().single();
+        if (error) throw error;
+        res.json({ success: true, data });
+    } catch (e) { fail(res, e); }
+});
+
+router.delete('/entry-drafts/:id', requireAuth, async (req, res) => {
+    try {
+        if (!UUID.test(req.params.id)) return res.status(400).json({ success: false, error: 'Invalid id' });
+        const c = await getTenantClient(req.auth.tenantId);
+        const { error } = await c.from('entry_drafts').delete().eq('tenant_id', req.auth.tenantId).eq('id', req.params.id);
         if (error) throw error;
         res.json({ success: true });
     } catch (e) { fail(res, e); }

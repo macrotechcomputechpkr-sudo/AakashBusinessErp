@@ -14,7 +14,7 @@ import Layout from '../components/Layout';
 import { useEnterKeyNavigation } from '../hooks/useEnterKeyNavigation';
 import { formatDateForDisplay } from '../utils/nepaliDateUtils';
 import NumberingCategorySelector from '../components/NumberingCategorySelector';
-import { resolveDualUomEntryMode, dualBaseQty, productDualMode } from '../utils/dualUomEntryMode';
+import { resolveDualUomEntryMode, dualBaseQty, productDualMode, productRateBasis } from '../utils/dualUomEntryMode';
 import UdfValuesModal from '../components/UdfValuesModal';
 import RecordHistory from '../components/RecordHistory';
 import { priceUrl, lineUnitOf, useSlabRepricing } from '../utils/salesPricing';
@@ -29,6 +29,7 @@ import { defaultLineTerms, productLineTerms, lineForSave } from '../components/e
 import { dualHelpers } from '../components/entry/dualHelpers';
 import DocActions, { asNewCopy } from '../components/entry/DocActions';
 import EntryFillBar from '../components/entry/EntryFillBar';
+import { saveEntryDraft, finishEntryDraft } from '../components/entry/entryDrafts';
 
 const emptyDetailRow = () => ({ product_id: '', qty: '', uom_id: '', alt_qty: '', alt_unit_id: '', rate_basis: 'primary', rate: '', discount_percent: '', tax_percent: '', warehouse_id: '', batch_no: '' });
 
@@ -158,7 +159,7 @@ export default function SalesQuotation() {
     const handleProductSelect = async (idx, productId, unitId) => {
         const product = products.find(p => p.id === productId);
         if (product?.uom_mode === 'fixed_dual') {
-            updateDetailRow(idx, { product_id: productId, line_terms: productLineTerms(termCols, product, form.details[idx]?.line_terms), uom_id: product.dual_uom_primary_unit_id || '', alt_unit_id: product.base_unit_id || '', rate_basis: 'primary' });
+            updateDetailRow(idx, { product_id: productId, line_terms: productLineTerms(termCols, product, form.details[idx]?.line_terms), uom_id: product.dual_uom_primary_unit_id || '', alt_unit_id: product.base_unit_id || '', rate_basis: productRateBasis(product) });
         } else {
             updateDetailRow(idx, { product_id: productId, line_terms: productLineTerms(termCols, product, form.details[idx]?.line_terms), uom_id: unitId || product?.base_unit_id || '' });
         }
@@ -206,6 +207,10 @@ export default function SalesQuotation() {
     };
 
     const handleSubmit = async (e, saveAsDraft = false) => {
+
+        // Save as Draft (new entry): kept apart as a temporary draft - no number, no accounts / stock effect
+
+        if (saveAsDraft && !editingId) { if (e) e.preventDefault(); if (await saveEntryDraft(authFetch, 'sales_quotation', form)) { resetForm(); setShowForm(false); } return; }
         e.preventDefault();
         if (!saveAsDraft) {
             const missing = efc.missingRequired(form);
@@ -225,6 +230,7 @@ export default function SalesQuotation() {
                 showAlert(saveAsDraft ? `Draft ${res.data.doc_no} saved` : `Sales Quotation ${res.data.doc_no} created`, 'success');
             }
             try { await savePartyInfo(authFetch, 'sales_quotation', savedId, partyInfo); } catch (pe) { showAlert(`Saved, but the party details were not: ${pe.message}`, 'warning'); }
+            await finishEntryDraft(authFetch, 'sales_quotation');
             resetForm();
             setShowForm(false);
             load();
@@ -304,7 +310,7 @@ export default function SalesQuotation() {
 
             {showForm && (
                 <form onSubmit={handleSubmit} ref={formRef} className="ent-entry">
-                    <EntryFillBar voucherType="sales_quotation" api="sales-quotations" form={form} editing={!!editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={copyAsNew} onOpenDraft={r => handleEdit({ ...r, status: 'draft' })} />
+                    <EntryFillBar voucherType="sales_quotation" api="sales-quotations" form={form} editing={!!editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={copyAsNew} />
                     <div className="erp-topbar grid-cols-1 md:grid-cols-4">
                         <DocNumberField voucherType="sales_quotation" categoryId={form.numbering_category_id} docNo={editingId ? form.doc_no : ''} value={form.doc_no} onChange={v => setForm({ ...form, doc_no: v })} />
                         <div className={efc.isVisible('doc_date') ? 'erp-field' : 'erp-field hidden'}>
@@ -481,7 +487,7 @@ export default function SalesQuotation() {
             <div className="flex items-center gap-2 mb-2">
                 <label className="flex items-center gap-1.5 text-sm">
                     <input type="checkbox" checked={showDraftsOnly} onChange={e => setShowDraftsOnly(e.target.checked)} />
-                    Show Drafts only
+                    Show unposted (awaiting approval) only
                 </label>
             </div>
             <ReportGrid

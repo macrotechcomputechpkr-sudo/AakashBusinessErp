@@ -51,7 +51,13 @@ async function tenantDualState(tenantClient) {
         const { data: prods } = await tenantClient.from('products').select('id, dual_auto_convert').eq('tenant_id', tenantId).eq('uom_mode', 'fixed_dual');
         (prods || []).forEach(p => { if (p.dual_auto_convert === true || p.dual_auto_convert === false) overrides.set(p.id, p.dual_auto_convert ? 'auto_convert' : 'fixed'); });
     } catch { /* column not there yet: System Control only */ }
-    const state = { mode, overrides, at: Date.now() };
+    // Product Master "Rate per": a Fixed Dual item priced per its primary or secondary unit always
+    const bases = new Map();
+    try {
+        const { data: prods } = await tenantClient.from('products').select('id, dual_rate_basis').eq('tenant_id', tenantId).eq('uom_mode', 'fixed_dual');
+        (prods || []).forEach(p => { if (p.dual_rate_basis === 'primary' || p.dual_rate_basis === 'secondary') bases.set(p.id, p.dual_rate_basis); });
+    } catch { /* column not there yet: per line */ }
+    const state = { mode, overrides, bases, at: Date.now() };
     modeCache.set(tenantId, state);
     return state;
 }
@@ -67,4 +73,10 @@ async function getDualUomResolver(tenantClient) {
 }
 const clearDualUomCache = () => modeCache.clear();
 
-module.exports = { toBaseQtyFromDual, computeDualAmount, decomposeToDualDisplay, getDualUomMode, getDualUomResolver, clearDualUomCache };
+/** the rate basis of a line: the product's fixed one (Product Master "Rate per"), else the line's own choice */
+async function rateBasisFor(tenantClient, productId, lineBasis) {
+    const st = await tenantDualState(tenantClient);
+    return (productId && st.bases && st.bases.get(productId)) || (lineBasis === 'secondary' ? 'secondary' : 'primary');
+}
+
+module.exports = { rateBasisFor, toBaseQtyFromDual, computeDualAmount, decomposeToDualDisplay, getDualUomMode, getDualUomResolver, clearDualUomCache };

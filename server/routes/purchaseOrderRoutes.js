@@ -22,7 +22,7 @@ const { requireAuth, requirePermission } = require('../middleware/auth');
 const { evaluateAllTerms } = require('../utils/formulaEvaluator');
 const { effectiveInput, applyInput, loadProductTermMap } = require('../utils/termInput');
 const { resolveDocumentNumber } = require('../utils/documentNumbering');
-const { computeDualAmount, getDualUomMode } = require('../utils/dualUomCalculation');
+const { computeDualAmount, getDualUomMode, rateBasisFor } = require('../utils/dualUomCalculation');
 
 // FEATURE: "Save as Draft" - a draft only needs a Date; a "final" save
 // still needs the full, real validation.
@@ -115,7 +115,7 @@ async function syncDetails(tenantClient, tenantId, orderId, details) {
         if (product?.uom_mode === 'fixed_dual' && d.alt_qty) {
             const { data: unitRate } = await tenantClient.from('product_unit_rates').select('conversion_factor').eq('product_id', d.product_id).eq('unit_id', product.dual_uom_primary_unit_id).maybeSingle();
             const conversionFactor = Number(unitRate?.conversion_factor) || 1;
-            baseAmount = computeDualAmount(d.qty, d.alt_qty, d.rate, d.rate_basis || 'primary', conversionFactor, await getDualUomMode(tenantClient, d.product_id));
+            baseAmount = computeDualAmount(d.qty, d.alt_qty, d.rate, await rateBasisFor(tenantClient, d.product_id, d.rate_basis), conversionFactor, await getDualUomMode(tenantClient, d.product_id));
         } else {
             baseAmount = qty * rate;
         }

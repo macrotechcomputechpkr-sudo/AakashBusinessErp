@@ -11,13 +11,16 @@ import SearchablePopupSelect from '../components/SearchablePopupSelect';
 import ReportGrid from '../components/ReportGrid';
 import Layout from '../components/Layout';
 import NumberingCategorySelector from '../components/NumberingCategorySelector';
-import { resolveDualUomEntryMode, onPrimaryQtyChange, onSecondaryQtyChange, validateFixedSecondary, dualBaseQty, productDualMode } from '../utils/dualUomEntryMode';
+import { resolveDualUomEntryMode, onPrimaryQtyChange, onSecondaryQtyChange, validateFixedSecondary, dualBaseQty, productDualMode, fixedRateBasis, productRateBasis } from '../utils/dualUomEntryMode';
 import { useEnterKeyNavigation } from '../hooks/useEnterKeyNavigation';
 import { formatDateForDisplay } from '../utils/nepaliDateUtils';
 import UdfValuesModal from '../components/UdfValuesModal';
 import RecordHistory from '../components/RecordHistory';
 import DocActions, { asNewCopy, finalizeEntry } from '../components/entry/DocActions';
 import EntryFillBar from '../components/entry/EntryFillBar';
+import { saveEntryDraft, finishEntryDraft } from '../components/entry/entryDrafts';
+import { PurchaseProductTermPopup } from '../components/entry/PurchaseTermPopups';
+import { withTermValue } from '../components/entry/lineCalc';
 
 const emptyRawMaterialRow = () => ({ product_id: '', batch_no: '', warehouse_id: '', qty: '', uom_id: '', alt_qty: '', alt_unit_id: '', rate_basis: 'primary', process_name: '', cost_rate: '', billing_term_ids: [] });
 const emptyByproductRow = () => ({ product_id: '', batch_no: '', warehouse_id: '', qty: '', uom_id: '', alt_qty: '', alt_unit_id: '', rate_basis: 'primary', allocation_basis: 'fixed_recovery', recovery_rate: '', relative_value: '' });
@@ -112,7 +115,7 @@ export default function ProductionOrder() {
     const handleRawMaterialProductSelect = (idx, productId) => {
         const product = products.find(p => p.id === productId);
         if (product?.uom_mode === 'fixed_dual') {
-            updateRawMaterialRow(idx, { product_id: productId, uom_id: product.dual_uom_primary_unit_id || '', alt_unit_id: product.base_unit_id || '', rate_basis: 'primary' });
+            updateRawMaterialRow(idx, { product_id: productId, uom_id: product.dual_uom_primary_unit_id || '', alt_unit_id: product.base_unit_id || '', rate_basis: productRateBasis(product) });
         } else {
             updateRawMaterialRow(idx, { product_id: productId, uom_id: product?.base_unit_id || '' });
         }
@@ -120,7 +123,7 @@ export default function ProductionOrder() {
     const handleByproductProductSelect = (idx, productId) => {
         const product = products.find(p => p.id === productId);
         if (product?.uom_mode === 'fixed_dual') {
-            updateByproductRow(idx, { product_id: productId, uom_id: product.dual_uom_primary_unit_id || '', alt_unit_id: product.base_unit_id || '', rate_basis: 'primary' });
+            updateByproductRow(idx, { product_id: productId, uom_id: product.dual_uom_primary_unit_id || '', alt_unit_id: product.base_unit_id || '', rate_basis: productRateBasis(product) });
         } else {
             updateByproductRow(idx, { product_id: productId, uom_id: product?.base_unit_id || '' });
         }
@@ -128,7 +131,7 @@ export default function ProductionOrder() {
     const handleOutputProductSelect = (productId) => {
         const product = products.find(p => p.id === productId);
         if (product?.uom_mode === 'fixed_dual') {
-            setForm(f => ({ ...f, output_product_id: productId, output_uom_id: product.dual_uom_primary_unit_id || '', output_alt_unit_id: product.base_unit_id || '', output_rate_basis: 'primary' }));
+            setForm(f => ({ ...f, output_product_id: productId, output_uom_id: product.dual_uom_primary_unit_id || '', output_alt_unit_id: product.base_unit_id || '', output_rate_basis: productRateBasis(product) }));
         } else {
             setForm(f => ({ ...f, output_product_id: productId, output_uom_id: product?.base_unit_id || '' }));
         }
@@ -170,7 +173,7 @@ export default function ProductionOrder() {
                 try {
                     const res = await authFetch('/api/billing-terms/preview', {
                         method: 'POST',
-                        body: JSON.stringify({ term_ids: r.billing_term_ids, basic_amount: rawMaterialBaseAmount(r), quantity: Number(r.qty) || 0 })
+                        body: JSON.stringify({ term_ids: r.billing_term_ids, basic_amount: rawMaterialBaseAmount(r), quantity: Number(r.qty) || 0, term_values: r.term_values || {} })
                     });
                     previews[i] = res.data;
                 } catch { /* leave this line's preview absent on failure */ }
@@ -179,7 +182,7 @@ export default function ProductionOrder() {
         })();
         return () => { cancelled = true; };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [JSON.stringify(form.raw_materials.map(r => ({ q: r.qty, r: r.cost_rate, t: r.billing_term_ids })))]);
+    }, [JSON.stringify(form.raw_materials.map(r => ({ q: r.qty, r: r.cost_rate, t: r.billing_term_ids, v: r.term_values })))]);
 
     const toggleTermForRmLines = (lineIndexes, termId) => {
         const allHaveIt = lineIndexes.every(idx => (form.raw_materials[idx]?.billing_term_ids || []).includes(termId));
@@ -244,6 +247,10 @@ export default function ProductionOrder() {
     const totalBpValue = fixedRecoveryValue + jointLines.reduce((s, l) => s + allocateShare(weightOf(l.qty, l.relative_value)), 0);
 
     const handleSubmit = async (e, saveAsDraft = false) => {
+
+        // Save as Draft (new entry): kept apart as a temporary draft - no number, no accounts / stock effect
+
+        if (saveAsDraft && !editingId) { if (e) e.preventDefault(); if (await saveEntryDraft(authFetch, 'production', form)) { resetForm(); setShowForm(false); } return; }
         e.preventDefault();
         if (!saveAsDraft) {
             const missing = efc.missingRequired(form);
@@ -268,6 +275,7 @@ export default function ProductionOrder() {
                 if (!saveAsDraft) await finalizeEntry(authFetch, 'production-orders', res.data?.id, 'posted');
                 showAlert(saveAsDraft ? `Draft ${res.data.doc_no} saved` : `Production Order ${res.data.doc_no} created`, 'success');
             }
+            await finishEntryDraft(authFetch, 'production');
             resetForm();
             setShowForm(false);
             load();
@@ -348,7 +356,7 @@ export default function ProductionOrder() {
 
             {showForm && (
                 <form onSubmit={handleSubmit} ref={formRef}>
-                    <EntryFillBar voucherType="production" api="production-orders" form={form} editing={!!editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={copyAsNew} onOpenDraft={r => handleEdit({ ...r, status: 'draft' })} />
+                    <EntryFillBar voucherType="production" api="production-orders" form={form} editing={!!editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={copyAsNew} />
                     <div className="erp-topbar grid-cols-1 md:grid-cols-4">
                         <div className={efc.isVisible('doc_date') ? 'erp-field' : 'erp-field hidden'}>
                             <label className="erp-label">Date <span className="req">*</span> {form.doc_date && <span className="hint">({formatDateForDisplay(form.doc_date, 'nepali')} BS)</span>} {efc.isRequired('doc_date') && <span className="req">*</span>}</label>
@@ -609,7 +617,7 @@ export default function ProductionOrder() {
                                             <td className={efc.isVisible('cost_rate', 'detail') ? '' : 'hidden'}>
                                                 <input disabled={efc.isReadonly('cost_rate', 'detail')} type="number" step="0.01" className="erp-input" value={r.cost_rate} onChange={e => updateRawMaterialRow(idx, { cost_rate: e.target.value })} />
                                                 {productIsFixedDualUom(r.product_id) && (
-                                                    <select className="erp-select mt-1" style={{ fontSize: '10px', height: '22px' }} value={r.rate_basis} onChange={e => updateRawMaterialRow(idx, { rate_basis: e.target.value })}>
+                                                    <select disabled={!!fixedRateBasis(products.find(x => x.id === r.product_id))} className="erp-select mt-1" style={{ fontSize: '10px', height: '22px' }} value={r.rate_basis} onChange={e => updateRawMaterialRow(idx, { rate_basis: e.target.value })}>
                                                         <option value="primary">per {units.find(u => u.id === r.uom_id)?.unit_name || 'Primary'}</option>
                                                         <option value="secondary">per {units.find(u => u.id === r.alt_unit_id)?.unit_name || 'Secondary'}</option>
                                                     </select>
@@ -735,7 +743,7 @@ export default function ProductionOrder() {
                                                     <>
                                                         <input type="number" step="0.01" className="erp-input" value={bp.recovery_rate} onChange={e => updateByproductRow(idx, { recovery_rate: e.target.value })} placeholder="Recovery Rate" />
                                                         {productIsFixedDualUom(bp.product_id) && (
-                                                            <select className="erp-select mt-1" style={{ fontSize: '10px', height: '22px' }} value={bp.rate_basis} onChange={e => updateByproductRow(idx, { rate_basis: e.target.value })}>
+                                                            <select disabled={!!fixedRateBasis(products.find(x => x.id === bp.product_id))} className="erp-select mt-1" style={{ fontSize: '10px', height: '22px' }} value={bp.rate_basis} onChange={e => updateByproductRow(idx, { rate_basis: e.target.value })}>
                                                                 <option value="primary">per {units.find(u => u.id === bp.uom_id)?.unit_name || 'Primary'}</option>
                                                                 <option value="secondary">per {units.find(u => u.id === bp.alt_unit_id)?.unit_name || 'Secondary'}</option>
                                                             </select>
@@ -783,7 +791,7 @@ export default function ProductionOrder() {
             <div className="flex items-center gap-2 mb-2">
                 <label className="flex items-center gap-1.5 text-sm">
                     <input type="checkbox" checked={showDraftsOnly} onChange={e => setShowDraftsOnly(e.target.checked)} />
-                    Show Drafts only
+                    Show unposted (awaiting approval) only
                 </label>
             </div>
             <ReportGrid
@@ -804,79 +812,15 @@ export default function ProductionOrder() {
             />
         </div>
 
-        {productTermModalIndexes !== null && productTermModalIndexes.length > 0 && (() => {
-            const targetLines = productTermModalIndexes.map(idx => ({ idx, line: form.raw_materials[idx] })).filter(t => t.line);
-            const totalBasic = targetLines.reduce((s, t) => s + rawMaterialBaseAmount(t.line), 0);
-            const totalNetTermAmount = targetLines.reduce((s, t) => {
-                const preview = lineTermPreviews[t.idx];
-                return s + (preview?.total !== undefined ? preview.total - rawMaterialBaseAmount(t.line) : 0);
-            }, 0);
-            return (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-xl w-full max-w-2xl max-h-[85vh] overflow-y-auto">
-                        <div className="erp-header">
-                            <span className="erp-header-title">Product Term — {targetLines.length} Raw Material Line{targetLines.length > 1 ? 's' : ''} Selected</span>
-                        </div>
-                        <div className="p-5">
-                            <p className="text-xs text-gray-400 mb-3">These terms only adjust Production Costing (and what shows on the Production Report) - they never post to the ledger.</p>
-                            <div className="max-h-32 overflow-y-auto border rounded-lg mb-4">
-                                <table className="w-full text-xs">
-                                    <thead><tr className="text-gray-500 uppercase"><th className="text-left px-2 py-1">Line</th><th className="text-left px-2 py-1">Product</th><th className="text-right px-2 py-1">Qty</th><th className="text-right px-2 py-1">Basic Value</th></tr></thead>
-                                    <tbody>
-                                        {targetLines.map(({ idx, line }) => (
-                                            <tr key={idx} className="border-t">
-                                                <td className="px-2 py-1">{idx + 1}</td>
-                                                <td className="px-2 py-1">{line.product_name_snapshot || '—'}</td>
-                                                <td className="px-2 py-1 text-right">{line.qty || 0}</td>
-                                                <td className="px-2 py-1 text-right">{rawMaterialBaseAmount(line).toFixed(2)}</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                            <div className="erp-field mb-4">
-                                <label className="erp-label">Combined Basic Value</label>
-                                <input className="erp-input" disabled value={totalBasic.toFixed(2)} />
-                            </div>
-                            <p className="text-xs font-semibold text-slate-500 uppercase mb-2">
-                                Applicable Terms <span className="text-gray-400 normal-case">(checking a term applies it to every line above at once)</span>
-                            </p>
-                            <div className="space-y-1.5">
-                                {billingTerms.map(t => {
-                                    const checkedCount = targetLines.filter(({ line }) => (line.billing_term_ids || []).includes(t.id)).length;
-                                    const allChecked = checkedCount === targetLines.length;
-                                    const someChecked = checkedCount > 0 && !allChecked;
-                                    return (
-                                        <label key={t.id} className="flex items-center justify-between gap-2 text-sm border rounded-lg px-3 py-2">
-                                            <span className="flex items-center gap-2">
-                                                <input
-                                                    type="checkbox" data-enter-skip="true" checked={allChecked}
-                                                    ref={el => { if (el) el.indeterminate = someChecked; }}
-                                                    onChange={() => toggleTermForRmLines(productTermModalIndexes, t.id)}
-                                                />
-                                                {t.term_name} <span className="text-xs text-gray-400">({t.term_code})</span>
-                                            </span>
-                                            {someChecked && <span className="text-xs text-amber-600">{checkedCount}/{targetLines.length}</span>}
-                                        </label>
-                                    );
-                                })}
-                                {billingTerms.length === 0 && <p className="text-sm text-gray-400">No Billing Terms are set up for Production yet — mark one as "Production Entry" in Billing Term Management.</p>}
-                            </div>
-                            <div className="flex justify-between font-semibold text-sm border-t pt-2 mt-3">
-                                <span>Net Costing Adjustment (combined, all selected lines)</span>
-                                <span>{totalNetTermAmount.toFixed(2)}</span>
-                            </div>
-                        </div>
-                        <div className="erp-bottombar">
-                            <div />
-                            <div className="erp-bottombar-actions">
-                                <button type="button" onClick={() => setProductTermModalIndexes(null)} className="erp-btn primary">Ok</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            );
-        })()}
+        {productTermModalIndexes !== null && productTermModalIndexes.length > 0 && (
+            <PurchaseProductTermPopup
+                title="Production · Raw Material Charges (costing only - never posted to the ledger)" terms={billingTerms} previews={lineTermPreviews}
+                lines={productTermModalIndexes.map(idx => ({ idx, line: { ...form.raw_materials[idx], rate: form.raw_materials[idx]?.cost_rate } })).filter(t => t.line.product_id !== undefined)}
+                productName={productTermModalIndexes.length === 1 ? (products.find(p => p.id === form.raw_materials[productTermModalIndexes[0]]?.product_id)?.product_name || '') : `${productTermModalIndexes.length} lines`}
+                onToggle={id => toggleTermForRmLines(productTermModalIndexes, id)}
+                onInput={(id, kind, v) => setForm(f => ({ ...f, raw_materials: f.raw_materials.map((r, i) => (productTermModalIndexes.includes(i) ? { ...r, billing_term_ids: (r.billing_term_ids || []).includes(id) ? r.billing_term_ids : [...(r.billing_term_ids || []), id], term_values: withTermValue(r.term_values, id, kind, v) } : r)) }))}
+                onClose={() => setProductTermModalIndexes(null)} />
+        )}
 
         {showTemplateModal && (
             <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">

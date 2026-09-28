@@ -24,6 +24,7 @@ import UdfValuesModal from '../components/UdfValuesModal';
 import RecordHistory from '../components/RecordHistory';
 import DocActions, { asNewCopy, finalizeEntry } from '../components/entry/DocActions';
 import EntryFillBar from '../components/entry/EntryFillBar';
+import { saveEntryDraft, finishEntryDraft } from '../components/entry/entryDrafts';
 import DocNumberField from '../components/entry/DocNumberField';
 
 const PAYMENT_MODES = [
@@ -126,6 +127,10 @@ export default function CashBankEntry() {
     const bulkTotal = bulkForm.lines.reduce((s, l) => s + (Number(l.amount) || 0), 0);
 
     const handleSubmit = async (e, saveAsDraft = false) => {
+
+        // Save as Draft (new entry): kept apart as a temporary draft - no number, no accounts / stock effect
+
+        if (saveAsDraft && !editingId) { if (e) e.preventDefault(); if (await saveEntryDraft(authFetch, 'cash_bank_entry', form)) { resetForm(); setShowForm(false); } return; }
         e.preventDefault();
         if (!saveAsDraft) {
             const missing = efc.missingRequired(form);
@@ -151,6 +156,7 @@ export default function CashBankEntry() {
                 if (!saveAsDraft) await finalizeEntry(authFetch, 'cash-bank-entries', res.data?.id, 'posted');
                 showAlert(`${net > 0 ? 'Receipt' : 'Payment'} ${res.data.doc_no} created`, 'success');
             }
+            await finishEntryDraft(authFetch, 'cash_bank_entry');
             resetForm();
             setShowForm(false);
             load();
@@ -262,7 +268,7 @@ export default function CashBankEntry() {
 
             {mode === 'single' && showForm && (
                 <form onSubmit={handleSubmit} ref={formRef}>
-                    <EntryFillBar voucherType="cash_bank_entry" api="cash-bank-entries" form={form} editing={!!editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={copyAsNew} onOpenDraft={r => handleEdit({ ...r, status: 'draft' })} />
+                    <EntryFillBar voucherType="cash_bank_entry" api="cash-bank-entries" form={form} editing={!!editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={copyAsNew} />
                     {/* ==================== MASTER ==================== */}
                     <div className="erp-topbar grid-cols-1 md:grid-cols-4">
                         <DocNumberField voucherType="cash_bank_entry" categoryId={form.numbering_category_id} docNo={editingId ? form.doc_no : ''} value={form.doc_no} onChange={v => setForm({ ...form, doc_no: v })} label="Voucher No" />

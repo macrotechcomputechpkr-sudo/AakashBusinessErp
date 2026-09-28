@@ -47,6 +47,11 @@ router.put('/system-control', requireAuth, loadUserPermissions, requirePermissio
             if (bad.length > 0) return res.status(400).json({ success: false, error: `Invalid applicability value(s): ${bad.join(', ')}` });
         }
 
+        if ('approval_modules' in req.body) {
+            const { APPROVAL_TYPES } = require('../utils/approval');
+            const list = Array.isArray(req.body.approval_modules) ? req.body.approval_modules : [];
+            req.body.approval_modules = [...new Set(list.filter(t => APPROVAL_TYPES.includes(t)))];
+        }
         if ('product_term_transactions' in req.body) {
             const list = Array.isArray(req.body.product_term_transactions) ? req.body.product_term_transactions : [];
             req.body.product_term_transactions = [...new Set(list.filter(t => PRODUCT_TERM_TRANSACTIONS.includes(t)))];

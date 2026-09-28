@@ -15,7 +15,7 @@ import SearchablePopupSelect from '../components/SearchablePopupSelect';
 import ReportGrid from '../components/ReportGrid';
 import Layout from '../components/Layout';
 import NumberingCategorySelector from '../components/NumberingCategorySelector';
-import { resolveDualUomEntryMode, onPrimaryQtyChange, onSecondaryQtyChange, validateFixedSecondary, dualBaseQty, productDualMode } from '../utils/dualUomEntryMode';
+import { resolveDualUomEntryMode, onPrimaryQtyChange, onSecondaryQtyChange, validateFixedSecondary, dualBaseQty, productDualMode, fixedRateBasis, productRateBasis } from '../utils/dualUomEntryMode';
 import { useEnterKeyNavigation } from '../hooks/useEnterKeyNavigation';
 import BillWiseSettlementPanel from '../components/BillWiseSettlementPanel';
 import UdfValuesModal from '../components/UdfValuesModal';
@@ -28,6 +28,7 @@ import { PartyDetailsPanel, emptyPartyInfo, savePartyInfo, partyInfoFromDoc } fr
 import { CodeCell } from '../components/entry/SalesLineGrid';
 import DocActions, { finalizeEntry } from '../components/entry/DocActions';
 import EntryFillBar from '../components/entry/EntryFillBar';
+import { saveEntryDraft, finishEntryDraft } from '../components/entry/entryDrafts';
 import { EntryFooter, useEntryHotkeys, latestOf } from '../components/entry/EntryParts';
 import { PurchaseProductTermPopup, PurchaseOverallTermPopup } from '../components/entry/PurchaseTermPopups';
 import { productTermIds, withTermValue } from '../components/entry/lineCalc';
@@ -196,7 +197,7 @@ export default function PurchaseReturn() {
     const handleProductSelect = (idx, productId, unitId) => {
         const product = products.find(p => p.id === productId);
         if (product?.uom_mode === 'fixed_dual') {
-            updateDetailRow(idx, { product_id: productId, billing_term_ids: productTermIds(product, form.details[idx]?.billing_term_ids), term_values: {}, uom_id: product.dual_uom_primary_unit_id || '', alt_unit_id: product.base_unit_id || '', rate_basis: 'primary' });
+            updateDetailRow(idx, { product_id: productId, billing_term_ids: productTermIds(product, form.details[idx]?.billing_term_ids), term_values: {}, uom_id: product.dual_uom_primary_unit_id || '', alt_unit_id: product.base_unit_id || '', rate_basis: productRateBasis(product) });
         } else {
             updateDetailRow(idx, { product_id: productId, billing_term_ids: productTermIds(product, form.details[idx]?.billing_term_ids), term_values: {}, uom_id: unitId || product?.base_unit_id || '' });
         }
@@ -349,6 +350,10 @@ export default function PurchaseReturn() {
     };
 
     const handleSubmit = async (e, saveAsDraft = false) => {
+
+        // Save as Draft (new entry): kept apart as a temporary draft - no number, no accounts / stock effect
+
+        if (saveAsDraft && !editingId) { if (e) e.preventDefault(); if (await saveEntryDraft(authFetch, 'purchase_return', form)) { resetForm(); setShowForm(false); } return; }
         e.preventDefault();
         if (!saveAsDraft) {
             const missing = efc.missingRequired(form);
@@ -381,6 +386,7 @@ export default function PurchaseReturn() {
             try { await savePartyInfo(authFetch, 'purchase_return', savedId, partyInfo); } catch (pe) { showAlert(`Saved, but the vendor details were not: ${pe.message}`, 'warning'); }
             // Save (not Save as Draft): post it now, after its party details are stored
             if (!saveAsDraft) await finalizeEntry(authFetch, 'purchase-returns', postId, 'posted');
+            await finishEntryDraft(authFetch, 'purchase_return');
             resetForm();
             setShowForm(false);
             load();
@@ -483,7 +489,7 @@ export default function PurchaseReturn() {
 
             {showForm && (
                 <form onSubmit={handleSubmit} ref={formRef} className="ent-entry">
-                    <EntryFillBar voucherType="purchase_return" api="purchase-returns" form={form} editing={!!editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={r => handleCopyFrom(r.id)} onOpenDraft={r => handleEdit({ ...r, status: 'draft' })} />
+                    <EntryFillBar voucherType="purchase_return" api="purchase-returns" form={form} editing={!!editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={r => handleCopyFrom(r.id)} />
                     {!editingId && (
                         <details className="mx-3 mt-2 text-xs"><summary className="cursor-pointer text-[#1a4a8a]">Pull from any earlier document (any party)</summary>
                         <div className="erp-topbar grid-cols-1 md:grid-cols-3" style={{ background: '#eff6ff' }}>
@@ -761,7 +767,7 @@ export default function PurchaseReturn() {
                                             <td className={efc.isVisible('rate', 'detail') ? '' : 'hidden'}>
                                                 <input disabled={efc.isReadonly('rate', 'detail')} type="number" step="0.0001" className="erp-input" value={d.rate} onChange={e => updateDetailRow(idx, { rate: e.target.value })} />
                                                 {productIsFixedDualUom(d.product_id) && (
-                                                    <select className="erp-select mt-1" style={{ fontSize: '10px', height: '22px' }} value={d.rate_basis} onChange={e => updateDetailRow(idx, { rate_basis: e.target.value })}>
+                                                    <select disabled={!!fixedRateBasis(products.find(x => x.id === d.product_id))} className="erp-select mt-1" style={{ fontSize: '10px', height: '22px' }} value={d.rate_basis} onChange={e => updateDetailRow(idx, { rate_basis: e.target.value })}>
                                                         <option value="primary">per {units.find(u => u.id === d.uom_id)?.unit_name || 'Primary'}</option>
                                                         <option value="secondary">per {units.find(u => u.id === d.alt_unit_id)?.unit_name || 'Secondary'}</option>
                                                     </select>
@@ -823,7 +829,7 @@ export default function PurchaseReturn() {
             <div className="flex items-center gap-2 mb-2">
                 <label className="flex items-center gap-1.5 text-sm">
                     <input type="checkbox" checked={showDraftsOnly} onChange={e => setShowDraftsOnly(e.target.checked)} />
-                    Show Drafts only
+                    Show unposted (awaiting approval) only
                 </label>
             </div>
             <ReportGrid

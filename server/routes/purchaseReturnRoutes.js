@@ -23,7 +23,7 @@ const { effectiveInput, applyInput, loadProductTermMap } = require('../utils/ter
 const { resolveDocumentNumber } = require('../utils/documentNumbering');
 const { isBillWiseTrackingEnabled, getOutstandingReferences, computeFifoAllocation, createReferenceAndSettle, reverseReferenceAndSettlements, checkCanCancelIfSettled } = require('../utils/billWiseSettlement');
 const { toBaseUnitQty } = require('../utils/unitConversion');
-const { toBaseQtyFromDual, computeDualAmount, getDualUomMode } = require('../utils/dualUomCalculation');
+const { toBaseQtyFromDual, computeDualAmount, getDualUomMode, rateBasisFor } = require('../utils/dualUomCalculation');
 const { postPurchaseReturnEntry, reverseBatch } = require('../utils/grnAccounting');
 
 // FEATURE: "Save as Draft" - a draft only needs a Date; a "final" save
@@ -166,7 +166,7 @@ async function syncDetails(tenantClient, tenantId, returnId, details) {
             const { data: product } = await tenantClient.from('products').select('uom_mode, dual_uom_primary_unit_id').eq('id', d.product_id).maybeSingle();
             if (product?.uom_mode === 'fixed_dual') {
                 const { data: unitRate } = await tenantClient.from('product_unit_rates').select('conversion_factor').eq('product_id', d.product_id).eq('unit_id', product.dual_uom_primary_unit_id).maybeSingle();
-                baseAmount = computeDualAmount(d.qty, d.alt_qty, d.rate, d.rate_basis || 'primary', Number(unitRate?.conversion_factor) || 1, await getDualUomMode(tenantClient, d.product_id));
+                baseAmount = computeDualAmount(d.qty, d.alt_qty, d.rate, await rateBasisFor(tenantClient, d.product_id, d.rate_basis), Number(unitRate?.conversion_factor) || 1, await getDualUomMode(tenantClient, d.product_id));
             } else {
                 baseAmount = qty * rate;
             }

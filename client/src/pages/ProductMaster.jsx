@@ -27,7 +27,7 @@ const emptyBomRow = () => ({ component_product_id: '', quantity_required: '', un
 const emptyForm = {
     product_name: '', short_name: '', item_type: 'trading_item', product_group_id: '', product_company_id: '',
     hs_code: '', is_blocked: false, product_category_ids: [], tags: [],
-    base_unit_id: '', unit_rates: [], uom_mode: 'single', dual_uom_primary_unit_id: '', dual_auto_convert: null, dual_reverse_conversion: null, qty_from_amount_sales: false, qty_from_amount_purchase: false,
+    base_unit_id: '', unit_rates: [], uom_mode: 'single', dual_uom_primary_unit_id: '', dual_auto_convert: null, dual_reverse_conversion: null, dual_rate_basis: 'any', qty_from_amount_sales: false, qty_from_amount_purchase: false,
     sales_account_ledger_id: '', purchase_account_ledger_id: '', sales_return_account_ledger_id: '', sales_nonsaleable_return_account_ledger_id: '', purchase_return_account_ledger_id: '', purchase_nonsaleable_return_account_ledger_id: '', sales_sub_ledger_id: '', purchase_sub_ledger_id: '', inventory_account_ledger_id: '', cogs_account_ledger_id: '', discount_account_ledger_id: '',
     default_vendor_id: '', vendor_item_code: '', lead_time_days: 0, default_discount_percent: 0,
     opening_qty: 0, opening_rate: 0, minimum_stock: 0, maximum_stock: 0, reorder_qty: 0, allow_negative_stock: null,
@@ -430,6 +430,14 @@ export default function ProductMaster() {
                                             <option value="">As System Control</option>
                                             <option value="true">Yes - typing the first unit fills the second (flexible)</option>
                                             <option value="false">No - both units typed (fixed)</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="erp-label">Rate per <span className="hint">(in entries)</span></label>
+                                        <select className="erp-select" value={form.dual_rate_basis || 'any'} onChange={e => setForm({ ...form, dual_rate_basis: e.target.value })}>
+                                            <option value="any">Any - chosen on each line</option>
+                                            <option value="primary">Primary unit always</option>
+                                            <option value="secondary">Secondary unit always</option>
                                         </select>
                                     </div>
                                     <div>

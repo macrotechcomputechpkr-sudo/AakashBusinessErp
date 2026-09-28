@@ -6,8 +6,8 @@
 //                       or only for me)
 //   From Previous     - a posted entry of this screen copied into a new one
 //                       (new number and today's date)
-//   From Draft        - a saved draft opens for finishing; saving it posts
-//                       that same document, so the draft does not stay behind
+//   From Draft        - a temporary draft (Save as Draft, /api/entry-drafts)
+//                       fills the entry; saving the entry deletes the draft
 // Templates: /api/entry-templates (documentActionRoutes.js). Previous entries
 // and drafts come from the screen's own list (GET /api/<api>).
 // =============================================
@@ -15,6 +15,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { EntryPopup } from './EntryParts';
 import { asNewCopy } from './DocActions';
+import { setCurrentDraft } from './entryDrafts';
 
 const amountOf = r => r.grand_total ?? r.net_amount ?? r.total_amount ?? r.total ?? r.amount ?? r.total_debit ?? '';
 const partyOf = r => r.customer_name_snapshot || r.vendor_name_snapshot || r.party_name_snapshot || r.ledger_name_snapshot || r.customer_name || r.vendor_name || r.party_name || r.customer?.account_name || r.vendor?.account_name || r.ledger?.account_name || r.narration || '';
@@ -24,12 +25,13 @@ const dateOf = r => String(r.doc_date || r.voucher_date || r.created_at || '').s
 /**
  * voucherType: template key (e.g. 'sales_bill'); api: list endpoint ('sales-bills');
  * form: what is typed now; onFill(payload): fill the new entry; onCopy(row): the screen's own copy of a
- * previous entry; onOpenDraft(row): the screen's own edit of a draft; editing: an entry is open for edit
+ * previous entry; editing: an entry is open for edit
  */
-export default function EntryFillBar({ voucherType, api, form, onFill, onCopy, onOpenDraft, editing }) {
+export default function EntryFillBar({ voucherType, api, form, onFill, onCopy, editing }) {
     const { authFetch } = useAuth();
     const [open, setOpen] = useState(null); // 'template' | 'previous' | 'draft'
     const [templates, setTemplates] = useState([]);
+    const [drafts, setDrafts] = useState([]);
     const [rows, setRows] = useState([]);
     const [q, setQ] = useState('');
     const [msg, setMsg] = useState('');
@@ -40,10 +42,14 @@ export default function EntryFillBar({ voucherType, api, form, onFill, onCopy, o
     const loadRows = useCallback(async () => {
         try { const r = await authFetch(`/api/${api}`); setRows(Array.isArray(r.data) ? r.data : (r.data?.rows || [])); } catch { setRows([]); }
     }, [authFetch, api]);
-    useEffect(() => { loadRows(); loadTemplates(); }, [loadRows, loadTemplates]);
+    const loadDrafts = useCallback(async () => {
+        try { const r = await authFetch(`/api/entry-drafts?voucher_type=${voucherType}`); setDrafts(r.data || []); } catch { setDrafts([]); }
+    }, [authFetch, voucherType]);
+    useEffect(() => { loadRows(); loadTemplates(); loadDrafts(); }, [loadRows, loadTemplates, loadDrafts]);
+    // a new form starts with no draft behind it
+    useEffect(() => { setCurrentDraft(voucherType, null); }, [voucherType]);
 
     const flash = m => { setMsg(m); setTimeout(() => setMsg(''), 3000); };
-    const drafts = rows.filter(r => r.status === 'draft');
     const previous = rows.filter(r => r.status && !['draft', 'cancelled', 'rejected'].includes(r.status))
         .sort((a, b) => String(dateOf(b)).localeCompare(dateOf(a)) || String(b.doc_no || '').localeCompare(String(a.doc_no || '')));
     const match = r => !q || `${r.doc_no || ''} ${partyOf(r)} ${dateOf(r)}`.toLowerCase().includes(q.toLowerCase());
@@ -64,8 +70,12 @@ export default function EntryFillBar({ voucherType, api, form, onFill, onCopy, o
     };
     const pickTemplate = t => { onFill(asNewCopy(t.payload || {})); setOpen(null); flash(`Filled from template "${t.template_name}"`); };
     const pickPrevious = r => { setOpen(null); onCopy(r); };
-    const pickDraft = r => { setOpen(null); onOpenDraft(r); };
-    const show = what => { setQ(''); setOpen(what); if (what === 'template') loadTemplates(); else loadRows(); };
+    const pickDraft = d => { setOpen(null); setCurrentDraft(voucherType, d.id); onFill(d.payload || {}); flash('Draft opened - Save to make it the entry (the draft is then removed)'); };
+    const discardDraft = async d => {
+        if (!window.confirm('Discard this draft?')) return;
+        try { await authFetch(`/api/entry-drafts/${d.id}`, { method: 'DELETE' }); loadDrafts(); } catch (e) { window.alert(e.message); }
+    };
+    const show = what => { setQ(''); setOpen(what); if (what === 'template') loadTemplates(); else if (what === 'draft') loadDrafts(); else loadRows(); };
 
     const list = (items, onPick, empty) => (
         <>
@@ -121,9 +131,23 @@ export default function EntryFillBar({ voucherType, api, form, onFill, onCopy, o
                 </EntryPopup>
             )}
             {open === 'draft' && (
-                <EntryPopup title="Finish a Draft" onClose={() => setOpen(null)} width={760}>
-                    {list(drafts, pickDraft, 'No drafts saved.')}
-                    <p className="ent-note mt-2">The draft opens as it is; when it is saved it becomes the entry and is no longer a draft.</p>
+                <EntryPopup title="Open a Draft" onClose={() => setOpen(null)} width={720}>
+                    <table className="erp-grid-table">
+                        <thead><tr><th>Draft</th><th>Saved</th><th /></tr></thead>
+                        <tbody>
+                            {drafts.map(d => (
+                                <tr key={d.id} className="cursor-pointer" onDoubleClick={() => pickDraft(d)}>
+                                    <td>{d.label || 'Draft'}</td><td>{String(d.updated_at || d.created_at || '').replace('T', ' ').slice(0, 16)}</td>
+                                    <td className="text-right whitespace-nowrap">
+                                        <button type="button" className="nav-btn small primary" onClick={() => pickDraft(d)}>Open</button>{' '}
+                                        <button type="button" className="nav-btn small" onClick={() => discardDraft(d)} title="Discard draft">✕</button>
+                                    </td>
+                                </tr>
+                            ))}
+                            {drafts.length === 0 && <tr><td colSpan={3} className="text-center">No drafts saved.</td></tr>}
+                        </tbody>
+                    </table>
+                    <p className="ent-note mt-2">A draft is kept apart - no number, no accounts or stock effect. Saving the entry removes the draft.</p>
                 </EntryPopup>
             )}
         </div>

@@ -16,13 +16,14 @@ import SearchablePopupSelect from '../components/SearchablePopupSelect';
 import ReportGrid from '../components/ReportGrid';
 import Layout from '../components/Layout';
 import NumberingCategorySelector from '../components/NumberingCategorySelector';
-import { resolveDualUomEntryMode, onPrimaryQtyChange, onSecondaryQtyChange, validateFixedSecondary, dualBaseQty, productDualMode } from '../utils/dualUomEntryMode';
+import { resolveDualUomEntryMode, onPrimaryQtyChange, onSecondaryQtyChange, validateFixedSecondary, dualBaseQty, productDualMode, fixedRateBasis, productRateBasis } from '../utils/dualUomEntryMode';
 import { useEnterKeyNavigation } from '../hooks/useEnterKeyNavigation';
 import UdfValuesModal from '../components/UdfValuesModal';
 import useLedgerPurposes from '../components/useLedgerPurposes';
 import RecordHistory from '../components/RecordHistory';
 import DocActions, { asNewCopy } from '../components/entry/DocActions';
 import EntryFillBar from '../components/entry/EntryFillBar';
+import { saveEntryDraft, finishEntryDraft } from '../components/entry/entryDrafts';
 import { EntryFooter, useEntryHotkeys, latestOf } from '../components/entry/EntryParts';
 import useEntrySettings, { showsProductTerms } from '../components/entry/useEntrySettings';
 import { PurchaseProductTermPopup, PurchaseOverallTermPopup } from '../components/entry/PurchaseTermPopups';
@@ -198,7 +199,7 @@ export default function PurchaseRequisition() {
     const handleProductSelect = (idx, productId) => {
         const product = products.find(p => p.id === productId);
         if (product?.uom_mode === 'fixed_dual') {
-            updateDetailRow(idx, { product_id: productId, billing_term_ids: productTermIds(product, form.details[idx]?.billing_term_ids), term_values: {}, uom_id: product.dual_uom_primary_unit_id || '', alt_unit_id: product.base_unit_id || '', rate_basis: 'primary' });
+            updateDetailRow(idx, { product_id: productId, billing_term_ids: productTermIds(product, form.details[idx]?.billing_term_ids), term_values: {}, uom_id: product.dual_uom_primary_unit_id || '', alt_unit_id: product.base_unit_id || '', rate_basis: productRateBasis(product) });
         } else {
             updateDetailRow(idx, { product_id: productId, billing_term_ids: productTermIds(product, form.details[idx]?.billing_term_ids), term_values: {}, uom_id: product?.base_unit_id || '' });
         }
@@ -357,7 +358,9 @@ export default function PurchaseRequisition() {
     const footVendor = vendors.find(v => v.id === form.vendor_ledger_id);
     useEntryHotkeys(showForm, { F7: () => { const last = latestOf(rows); if (last) copyAsNew(last); } });
 
-    const handleSubmit = async (e) => {
+    const handleSubmit = async (e, saveAsDraft = false) => {
+        // Save as Draft (new entry): kept apart as a temporary draft - no number, no effect
+        if (saveAsDraft && !editingId) { if (e) e.preventDefault(); if (await saveEntryDraft(authFetch, 'purchase_requisition', form)) { resetForm(); setShowForm(false); } return; }
         e.preventDefault();
         const missing = efc.missingRequired(form);
         if (missing.length) { showAlert(`Required: ${missing.join(', ')}`, 'danger'); return; }
@@ -373,6 +376,7 @@ export default function PurchaseRequisition() {
                 const res = await authFetch('/api/purchase-requisitions', { method: 'POST', body: JSON.stringify(payload) });
                 showAlert(`Requisition ${res.data.doc_no} created`, 'success');
             }
+            await finishEntryDraft(authFetch, 'purchase_requisition');
             resetForm();
             setShowForm(false);
             load();
@@ -522,7 +526,7 @@ export default function PurchaseRequisition() {
 
             {showForm && (
                 <form onSubmit={handleSubmit} ref={formRef} className="ent-entry">
-                    <EntryFillBar voucherType="purchase_requisition" api="purchase-requisitions" form={form} editing={!!editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={copyAsNew} onOpenDraft={r => handleEdit({ ...r, status: 'draft' })} />
+                    <EntryFillBar voucherType="purchase_requisition" api="purchase-requisitions" form={form} editing={!!editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={copyAsNew} />
                     {/* ==================== TOP BAR (identity fields, Cash/Credit up front) ==================== */}
                     <div className="erp-topbar grid-cols-1 md:grid-cols-6">
                         <div className="erp-field">
@@ -862,7 +866,7 @@ export default function PurchaseRequisition() {
                                             <td className={`px-1 py-1 ${isVisible('rate', 'detail') ? '' : 'hidden'}`}>
                                                 <input disabled={efc.isReadonly('rate', 'detail')} type="number" step="0.0001" className="w-full border rounded px-1.5 py-1" value={d.rate} onChange={e => updateDetailRow(idx, { rate: e.target.value })} />
                                                 {productIsFixedDualUom(d.product_id) && (
-                                                    <select className="w-full border rounded px-1 py-0.5 mt-1" style={{ fontSize: '10px' }} value={d.rate_basis} onChange={e => updateDetailRow(idx, { rate_basis: e.target.value })}>
+                                                    <select disabled={!!fixedRateBasis(products.find(x => x.id === d.product_id))} className="w-full border rounded px-1 py-0.5 mt-1" style={{ fontSize: '10px' }} value={d.rate_basis} onChange={e => updateDetailRow(idx, { rate_basis: e.target.value })}>
                                                         <option value="primary">per {units.find(u => u.id === d.uom_id)?.unit_name || 'Primary'}</option>
                                                         <option value="secondary">per {units.find(u => u.id === d.alt_unit_id)?.unit_name || 'Secondary'}</option>
                                                     </select>
@@ -921,6 +925,7 @@ export default function PurchaseRequisition() {
                         onProductTerm={itemCharges ? () => setProductTermModalIndexes(selectedRowIndexes.length > 0 ? selectedRowIndexes : form.details.map((_, i) => i).filter(i => form.details[i].product_id)) : null}
                         onBillTerm={() => setOverallOpen(true)}
                         actions={<>
+                            {!editingId && <button type="button" onClick={e => handleSubmit(e, true)} className="erp-btn">💾 Save as Draft</button>}
                             <button type="submit" className="erp-btn primary">💾 {editingId ? 'Update' : 'Save'}</button>
                             <button type="button" onClick={() => { resetForm(); setShowForm(false); }} className="erp-btn">Cancel</button>
                         </>}

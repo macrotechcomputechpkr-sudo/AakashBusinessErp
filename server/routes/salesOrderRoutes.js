@@ -17,7 +17,7 @@ const { getTenantClient, loadUserPermissions, logAudit } = require('../utils/dbH
 const { requireAuth, requirePermission } = require('../middleware/auth');
 const { resolveDocumentNumber } = require('../utils/documentNumbering');
 const { checkCustomerCredit } = require('../utils/creditControl');
-const { toBaseQtyFromDual, computeDualAmount, getDualUomMode } = require('../utils/dualUomCalculation');
+const { toBaseQtyFromDual, computeDualAmount, getDualUomMode, rateBasisFor } = require('../utils/dualUomCalculation');
 
 async function getDualUomConfig(tenantClient, productId) {
     const { data: product } = await tenantClient.from('products').select('uom_mode, dual_uom_primary_unit_id').eq('id', productId).maybeSingle();
@@ -77,7 +77,7 @@ async function lineAmount(tenantClient, d) {
     let gross;
     if (d.alt_qty) {
         const dualConfig = await getDualUomConfig(tenantClient, d.product_id);
-        gross = dualConfig ? computeDualAmount(d.qty, d.alt_qty, d.rate, d.rate_basis || 'primary', dualConfig.conversionFactor, await getDualUomMode(tenantClient, d.product_id)) : Number(d.qty) * Number(d.rate);
+        gross = dualConfig ? computeDualAmount(d.qty, d.alt_qty, d.rate, await rateBasisFor(tenantClient, d.product_id, d.rate_basis), dualConfig.conversionFactor, await getDualUomMode(tenantClient, d.product_id)) : Number(d.qty) * Number(d.rate);
     } else {
         gross = Number(d.qty) * Number(d.rate);
     }

@@ -23,6 +23,7 @@ import BatchSerialPicker from '../BatchSerialPicker';
 import { calcLine, allowedKinds, kindOf, termFromInput } from './lineCalc';
 import { TermPopup, OverallTermPopup } from './EntryParts';
 import AmountCell, { patchFromGross, grossForNet } from './AmountCell';
+import { fixedRateBasis } from '../../utils/dualUomEntryMode';
 
 const num = v => (v === '' || v === null || v === undefined ? '' : v);
 const fmt = n => (Number(n) || 0).toFixed(2);
@@ -384,7 +385,7 @@ export default function SalesLineGrid({
                                         <td className={`r ${visible('rate') ? '' : 'hidden'}`}>
                                             <input disabled={readonly('rate')} type="number" step="0.01" className="erp-input text-right" style={{ width: 80 }} value={num(d.rate)} onChange={e => onRow(idx, { rate: e.target.value })} />
                                             {isDual(d.product_id) && (
-                                                <select className="erp-select mt-1" style={{ fontSize: 11, height: 22, width: 90 }} value={d.rate_basis || 'primary'} onChange={e => onRow(idx, { rate_basis: e.target.value })} title="Rate is per">
+                                                <select className="erp-select mt-1" style={{ fontSize: 11, height: 22, width: 90 }} value={fixedRateBasis(p) || d.rate_basis || 'primary'} disabled={!!fixedRateBasis(p)} onChange={e => onRow(idx, { rate_basis: e.target.value })} title={fixedRateBasis(p) ? 'Rate per this unit (Product Master)' : 'Rate is per'}>
                                                     <option value="primary">per {unitName(d.uom_id) || 'primary'}</option>
                                                     <option value="secondary">per {unitName(d.alt_unit_id) || 'secondary'}</option>
                                                 </select>
@@ -403,7 +404,7 @@ export default function SalesLineGrid({
                                             <td key={c.key} className="r">
                                                 <input type="number" step="0.01" className="erp-input text-right" style={{ width: 70 }} value={num(v)} disabled={c.manual === false}
                                                     placeholder={KIND_HINT[kind]} title={`${c.label}: ${KIND_HINT[kind]}`} onChange={e => setTermInput(idx, c.key, kind, e.target.value)} />
-                                                <div className="text-[10px] text-gray-600 text-right">{fmt(calc.line_terms?.[c.key]?.amount)}</div>
+                                                <div className="text-[10px] text-gray-600 text-right">{fmt(calc.line_terms?.[c.key]?.amount)}{kind !== 'pct' && calc.line_terms?.[c.key]?.base ? ` · ${(Math.abs(calc.line_terms[c.key].amount) / calc.line_terms[c.key].base * 100).toFixed(2)}%` : ''}</div>
                                             </td>
                                         );
                                     })}

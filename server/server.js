@@ -118,6 +118,8 @@ const salesAdditionalEntryRoutes = require('./routes/salesAdditionalEntryRoutes'
 const documentNumberingRoutes = require('./routes/documentNumberingRoutes');
 
 app.use('/api/auth', authRoutes);
+// Approval system: posting a module that needs approval takes the approval right (utils/approval.js)
+app.put('/api/:api/:id/status', require('./middleware/auth').requireAuth, require('./utils/approval').guard);
 app.use('/api', companyRoutes);
 app.use('/api', fiscalYearRoutes);
 app.use('/api', departmentRoutes);

@@ -82,12 +82,15 @@ export function PurchaseProductTermPopup({ title, lines, terms, previews, produc
                                     <td><Adds sign={term.sign} /></td>
                                     {KIND_COLS.map(([k]) => {
                                         const can = onInput && term.manual_override !== false && allowedKinds(term.entry_input_mode).includes(k);
+                                        // with a rate / amount (or the term's own way) the % it works out to on the value
+                                        const typedPct = typedOf(lines, term.id, 'pct');
+                                        const derived = k === 'pct' && on && !typedPct && basic ? `${(Math.abs(amountOf(term.id)) / basic * 100).toFixed(2)}%` : '';
                                         return (
                                             <td key={k} className="text-right" onClick={e => e.stopPropagation()}>
                                                 {can ? <input type="number" step="0.01" className="erp-input text-right" style={{ height: 24 }} value={typedOf(lines, term.id, k)}
-                                                    placeholder={k === 'pct' && term.rate_percentage ? fmt(term.rate_percentage) : ''}
+                                                    placeholder={derived ? `= ${derived}` : (k === 'pct' && term.rate_percentage ? fmt(term.rate_percentage) : '')}
                                                     onFocus={e => { setFocus(i); e.target.select(); }} onChange={e => onInput(term.id, k, e.target.value)} />
-                                                    : <span className="text-gray-400">{k === 'pct' && term.rate_percentage ? fmt(term.rate_percentage) : ''}</span>}
+                                                    : <span className="text-gray-500">{derived ? `= ${derived}` : (k === 'pct' && term.rate_percentage ? fmt(term.rate_percentage) : '')}</span>}
                                             </td>
                                         );
                                     })}

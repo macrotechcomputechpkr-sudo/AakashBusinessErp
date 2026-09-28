@@ -18,13 +18,14 @@ import SearchablePopupSelect from '../components/SearchablePopupSelect';
 import ReportGrid from '../components/ReportGrid';
 import Layout from '../components/Layout';
 import NumberingCategorySelector from '../components/NumberingCategorySelector';
-import { resolveDualUomEntryMode, onPrimaryQtyChange, onSecondaryQtyChange, validateFixedSecondary, dualBaseQty, productDualMode } from '../utils/dualUomEntryMode';
+import { resolveDualUomEntryMode, onPrimaryQtyChange, onSecondaryQtyChange, validateFixedSecondary, dualBaseQty, productDualMode, fixedRateBasis, productRateBasis } from '../utils/dualUomEntryMode';
 import { useEnterKeyNavigation } from '../hooks/useEnterKeyNavigation';
 import { formatDateForDisplay } from '../utils/nepaliDateUtils';
 import UdfValuesModal from '../components/UdfValuesModal';
 import RecordHistory from '../components/RecordHistory';
 import DocActions from '../components/entry/DocActions';
 import EntryFillBar from '../components/entry/EntryFillBar';
+import { saveEntryDraft, finishEntryDraft } from '../components/entry/entryDrafts';
 
 const emptyDetailRow = () => ({
     product_id: '', batch_no: '', mfg_date: '', exp_date: '',
@@ -185,7 +186,7 @@ export default function StockTransfer() {
         const product = products.find(p => p.id === productId);
         const uomId = product?.uom_mode === 'fixed_dual' ? product.dual_uom_primary_unit_id || '' : product?.base_unit_id || '';
         if (product?.uom_mode === 'fixed_dual') {
-            updateDetailRow(idx, { product_id: productId, uom_id: uomId, alt_unit_id: product.base_unit_id || '', rate_basis: 'primary', cost_rate: '', _cost_manual: false });
+            updateDetailRow(idx, { product_id: productId, uom_id: uomId, alt_unit_id: product.base_unit_id || '', rate_basis: productRateBasis(product), cost_rate: '', _cost_manual: false });
         } else {
             updateDetailRow(idx, { product_id: productId, uom_id: uomId, cost_rate: '', _cost_manual: false });
         }
@@ -203,6 +204,10 @@ export default function StockTransfer() {
     const grandTotal = form.details.reduce((sum, d) => sum + lineAmount(d), 0);
 
     const handleSubmit = async (e, saveAsDraft = false) => {
+
+        // Save as Draft (new entry): kept apart as a temporary draft - no number, no accounts / stock effect
+
+        if (saveAsDraft && !editingId) { if (e) e.preventDefault(); if (await saveEntryDraft(authFetch, 'stock_transfer', form)) { resetForm(); setShowForm(false); } return; }
         e.preventDefault();
         if (!saveAsDraft) {
             const missing = efc.missingRequired(form);
@@ -228,6 +233,7 @@ export default function StockTransfer() {
                 const res = await authFetch('/api/stock-transfers', { method: 'POST', body: JSON.stringify(payload) });
                 showAlert(saveAsDraft ? `Draft ${res.data.doc_no} saved` : `Stock Transfer ${res.data.doc_no} created`, 'success');
             }
+            await finishEntryDraft(authFetch, 'stock_transfer');
             resetForm();
             setShowForm(false);
             load();
@@ -358,7 +364,7 @@ export default function StockTransfer() {
 
             {showForm && (
                 <form onSubmit={handleSubmit} ref={formRef}>
-                    <EntryFillBar voucherType="stock_transfer" api="stock-transfers" form={form} editing={!!editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={r => handleCopyFrom(r.id)} onOpenDraft={r => handleEdit({ ...r, status: 'draft' })} />
+                    <EntryFillBar voucherType="stock_transfer" api="stock-transfers" form={form} editing={!!editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={r => handleCopyFrom(r.id)} />
                     <div className="erp-topbar grid-cols-1 md:grid-cols-4">
                         <div className="erp-field">
                             <label className="erp-label">Transfer Type</label>
@@ -589,7 +595,7 @@ export default function StockTransfer() {
                                             <td className={efc.isVisible('cost_rate', 'detail') ? '' : 'hidden'}>
                                                 <input disabled={efc.isReadonly('cost_rate', 'detail')} type="number" step="0.01" className="erp-input" value={d.cost_rate} onChange={e => updateDetailRow(idx, { cost_rate: e.target.value, _cost_manual: e.target.value !== '' })} />
                                                 {productIsFixedDualUom(d.product_id) && (
-                                                    <select className="erp-select mt-1" style={{ fontSize: '10px', height: '22px' }} value={d.rate_basis} onChange={e => updateDetailRow(idx, { rate_basis: e.target.value })}>
+                                                    <select disabled={!!fixedRateBasis(products.find(x => x.id === d.product_id))} className="erp-select mt-1" style={{ fontSize: '10px', height: '22px' }} value={d.rate_basis} onChange={e => updateDetailRow(idx, { rate_basis: e.target.value })}>
                                                         <option value="primary">per {units.find(u => u.id === d.uom_id)?.unit_name || 'Primary'}</option>
                                                         <option value="secondary">per {units.find(u => u.id === d.alt_unit_id)?.unit_name || 'Secondary'}</option>
                                                     </select>

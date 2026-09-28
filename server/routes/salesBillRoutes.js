@@ -23,7 +23,7 @@ const { requireAuth, requirePermission } = require('../middleware/auth');
 const { resolveDocumentNumber } = require('../utils/documentNumbering');
 const { checkCustomerCredit } = require('../utils/creditControl');
 const { toBaseUnitQty } = require('../utils/unitConversion');
-const { toBaseQtyFromDual, computeDualAmount, getDualUomMode } = require('../utils/dualUomCalculation');
+const { toBaseQtyFromDual, computeDualAmount, getDualUomMode, rateBasisFor } = require('../utils/dualUomCalculation');
 const { isBillWiseTrackingEnabled, createReferenceAndSettle, reverseReferenceAndSettlements } = require('../utils/billWiseSettlement');
 
 function validateBody(b, isDraft) {
@@ -84,7 +84,7 @@ async function lineAmount(tenantClient, d) {
     if (product?.uom_mode === 'fixed_dual' && d.alt_qty) {
         const { data: unitRate } = await tenantClient.from('product_unit_rates').select('conversion_factor').eq('product_id', d.product_id).eq('unit_id', product.dual_uom_primary_unit_id).maybeSingle();
         const conversionFactor = Number(unitRate?.conversion_factor) || 1;
-        const gross = computeDualAmount(d.qty, d.alt_qty, d.rate, d.rate_basis || 'primary', conversionFactor, await getDualUomMode(tenantClient, d.product_id));
+        const gross = computeDualAmount(d.qty, d.alt_qty, d.rate, await rateBasisFor(tenantClient, d.product_id, d.rate_basis), conversionFactor, await getDualUomMode(tenantClient, d.product_id));
         const discountAmount = d.discount_amount ? Number(d.discount_amount) : gross * (Number(d.discount_percent) || 0) / 100;
         const afterDiscount = gross - discountAmount;
         const taxAmount = d.tax_amount ? Number(d.tax_amount) : afterDiscount * (Number(d.tax_percent) || 0) / 100;

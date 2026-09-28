@@ -117,3 +117,10 @@ export function validateFixedSecondary(value, conversionFactor) {
         error: `Max is ${conversionFactor - 1} - a full set of ${conversionFactor} should be entered as one more of the primary unit instead.`
     };
 }
+
+/** Product Master "Rate per": 'primary' / 'secondary' always, or null when chosen on each line */
+export function fixedRateBasis(product) {
+    return product && (product.dual_rate_basis === 'primary' || product.dual_rate_basis === 'secondary') ? product.dual_rate_basis : null;
+}
+/** the rate basis a new line of this product starts with */
+export const productRateBasis = product => fixedRateBasis(product) || 'primary';

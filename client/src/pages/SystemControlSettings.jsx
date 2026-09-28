@@ -7,6 +7,7 @@
 // =============================================
 
 import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { APPROVAL_DOCS } from '../components/entry/approvalDocs';
 import { useAuth } from '../contexts/AuthContext';
 import { useEnterKeyNavigation } from '../hooks/useEnterKeyNavigation';
 import SearchablePopupSelect from '../components/SearchablePopupSelect';
@@ -553,6 +554,21 @@ export default function SystemControlSettings() {
                                         {t.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase())}
                                     </label>
                                 ))}
+                            </div>
+                        </div>
+
+                        <div>
+                            <label className="erp-label">Approval Needed For <span className="text-xs text-gray-400">(ticked: Save waits for an approver - accounts / stock move only when approved; unticked: Save posts at once. Who approves: Security Rights Group › Approvals)</span></label>
+                            <div className="flex flex-wrap gap-x-4 gap-y-1 border rounded-lg px-3 py-2">
+                                {APPROVAL_DOCS.map(([t, label]) => {
+                                    const list = Array.isArray(settings.approval_modules) ? settings.approval_modules : [];
+                                    return (
+                                        <label key={t} className="flex items-center gap-1.5 text-sm">
+                                            <input type="checkbox" data-enter-skip="true" checked={list.includes(t)} onChange={() => set('approval_modules', list.includes(t) ? list.filter(x => x !== t) : [...list, t])} />
+                                            {label}
+                                        </label>
+                                    );
+                                })}
                             </div>
                         </div>
 
