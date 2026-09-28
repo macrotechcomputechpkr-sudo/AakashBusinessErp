@@ -380,7 +380,7 @@ router.post('/purchase-nonsaleable-returns', requireAuth, loadUserPermissions, r
         try {
             docNo = await resolveDocumentNumber(tenantClient, {
                 tenantId, voucherType: 'purchase_nonsalable_return', userId: req.auth.userId,
-                categoryId: b.numbering_category_id, manualNumber: b.doc_no, tableName: 'purchase_nonsaleable_returns',
+                categoryId: b.numbering_category_id, manualNumber: b.doc_no, docDate: b.doc_date || b.voucher_date || b.entry_date, tableName: 'purchase_nonsaleable_returns',
                 currentFiscalYearId: currentFy?.id, currentFiscalYearName: currentFy?.fiscal_year_name,
                 userDefaultBranchId: currentUser?.default_branch_id
             });

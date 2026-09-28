@@ -690,7 +690,7 @@ export default function PurchaseGrn() {
 
                     {/* ==================== TOP BAR (identity fields, Cash/Credit up front) ==================== */}
                     <div className="erp-topbar grid-cols-1 md:grid-cols-6">
-                        <DocNumberField voucherType="purchase_grn" categoryId={form.numbering_category_id} docNo={editingId ? form.doc_no : ''} value={form.doc_no} onChange={v => setForm({ ...form, doc_no: v })} label="Doc No" />
+                        <DocNumberField docDate={form.doc_date || form.voucher_date} voucherType="purchase_grn" categoryId={form.numbering_category_id} docNo={editingId ? form.doc_no : ''} value={form.doc_no} onChange={v => setForm({ ...form, doc_no: v })} label="Doc No" />
                         <div className="erp-field">
                             <label className="erp-label">Date {isRequired('doc_date') && <span className="req">*</span>}</label>
                             <input type="date" className="erp-input" value={form.doc_date} onChange={e => setForm({ ...form, doc_date: e.target.value })}

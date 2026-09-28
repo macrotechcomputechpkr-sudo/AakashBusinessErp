@@ -455,7 +455,7 @@ export default function PurchaseNonsaleableReturn() {
                     )}
 
                     <div className="erp-topbar grid-cols-1 md:grid-cols-4">
-                        <DocNumberField voucherType="purchase_nonsalable_return" categoryId={form.numbering_category_id} docNo={editingId ? form.doc_no : ''} value={form.doc_no} onChange={v => setForm({ ...form, doc_no: v })} label="Doc No" />
+                        <DocNumberField docDate={form.doc_date || form.voucher_date} voucherType="purchase_nonsalable_return" categoryId={form.numbering_category_id} docNo={editingId ? form.doc_no : ''} value={form.doc_no} onChange={v => setForm({ ...form, doc_no: v })} label="Doc No" />
                         <div className={efc.isVisible('doc_date') ? 'erp-field' : 'erp-field hidden'}>
                             <label className="erp-label">Date <span className="req">*</span> {efc.isRequired('doc_date') && <span className="req">*</span>}</label>
                             <input disabled={efc.isReadonly('doc_date')} type="date" className="erp-input" value={form.doc_date} onChange={e => setForm({ ...form, doc_date: e.target.value })} required />

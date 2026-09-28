@@ -335,7 +335,7 @@ router.post('/stock-transfers', requireAuth, loadUserPermissions, requirePermiss
         try {
             docNo = await resolveDocumentNumber(tenantClient, {
                 tenantId, voucherType: 'stock_transfer', userId: req.auth.userId,
-                categoryId: b.numbering_category_id, manualNumber: b.doc_no, tableName: 'stock_transfers',
+                categoryId: b.numbering_category_id, manualNumber: b.doc_no, docDate: b.doc_date || b.voucher_date || b.entry_date, tableName: 'stock_transfers',
                 currentFiscalYearId: currentFy?.id, currentFiscalYearName: currentFy?.fiscal_year_name,
                 userDefaultBranchId: currentUser?.default_branch_id
             });

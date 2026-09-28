@@ -419,7 +419,7 @@ router.post('/purchase-returns', requireAuth, loadUserPermissions, requirePermis
         try {
             docNo = await resolveDocumentNumber(tenantClient, {
                 tenantId, voucherType: 'purchase_return', userId: req.auth.userId,
-                categoryId: b.numbering_category_id, manualNumber: b.doc_no, tableName: 'purchase_returns',
+                categoryId: b.numbering_category_id, manualNumber: b.doc_no, docDate: b.doc_date || b.voucher_date || b.entry_date, tableName: 'purchase_returns',
                 currentFiscalYearId: currentFy?.id, currentFiscalYearName: currentFy?.fiscal_year_name,
                 userDefaultBranchId: currentUser?.default_branch_id
             });

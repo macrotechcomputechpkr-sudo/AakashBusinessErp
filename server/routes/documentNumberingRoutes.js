@@ -17,10 +17,24 @@ const VOUCHER_TYPES = [
     'debit_note', 'credit_note', 'cash_bank_entry', 'sales_quotation', 'sales_nonsalable_return'
 ];
 
+// automatic numeric | manual numeric | manual alpha (old 'manual') | automatic datewise | automatic monthwise
+const MODES = ['auto', 'manual', 'manual_numeric', 'manual_alpha', 'auto_datewise', 'auto_monthwise'];
+const DATE_FORMATS = ['YYMMDD', 'YYYYMMDD', 'DDMMYY', 'DDMMYYYY', 'MMDDYY', 'YYMM', 'YYYYMM', 'MMYY'];
+const fmtFields = b => ({
+    valid_from: b.valid_from || null, valid_to: b.valid_to || null,
+    date_format: DATE_FORMATS.includes(b.date_format) ? b.date_format : 'YYMMDD', date_type: b.date_type === 'english' ? 'english' : 'nepali',
+    fill_char: (String(b.fill_char ?? '0') || '0').slice(0, 1) || '0', max_length: Number(b.max_length) || 15, flexible_length: !!b.flexible_length
+});
+
 function validateBody(b) {
     if (!VOUCHER_TYPES.includes(b.voucher_type)) return 'Invalid voucher_type';
     if (!b.category_name || !b.category_name.trim()) return 'Category Name is required';
-    if (!['manual', 'auto'].includes(b.numbering_mode)) return 'Invalid numbering_mode';
+    if (!MODES.includes(b.numbering_mode)) return 'Invalid numbering_mode';
+    if (b.date_format && !DATE_FORMATS.includes(b.date_format)) return 'Invalid date format';
+    if (b.date_type && !['nepali', 'english'].includes(b.date_type)) return 'Invalid date type';
+    if (b.valid_from && b.valid_to && String(b.valid_to) < String(b.valid_from)) return 'Applicable "to" date must be on or after the "from" date';
+    if (b.fill_char !== undefined && String(b.fill_char).length > 1) return 'Fill character must be one character';
+    if (b.max_length !== undefined && b.max_length !== '' && (Number(b.max_length) < 1 || Number(b.max_length) > 40)) return 'Max length must be 1 to 40';
     if (!['global', 'branch_wise', 'user_wise'].includes(b.scope)) return 'Invalid scope';
     if (b.digit_count && (b.digit_count < 1 || b.digit_count > 12)) return 'Digit Count must be between 1 and 12';
     if (b.end_number && b.start_number && Number(b.end_number) < Number(b.start_number)) return 'End Number must be greater than or equal to Start Number';
@@ -140,6 +154,7 @@ router.post('/document-numbering-categories', requireAuth, loadUserPermissions, 
                 include_fiscal_year: b.include_fiscal_year !== undefined ? !!b.include_fiscal_year : true,
                 fy_digit_format: b.fy_digit_format || 'short',
                 is_default: !!b.is_default,
+                ...fmtFields(b),
                 created_by: req.auth.userId, updated_by: req.auth.userId
             })
             .select().single();
@@ -170,7 +185,9 @@ router.put('/document-numbering-categories/:id', requireAuth, loadUserPermission
             await tenantClient.from('document_numbering_categories').update({ is_default: false }).eq('tenant_id', tenantId).eq('voucher_type', existing.voucher_type).eq('is_default', true).neq('id', req.params.id);
         }
 
-        const update = { ...req.body, updated_by: req.auth.userId, updated_at: new Date().toISOString() };
+        const update = { ...req.body, ...fmtFields(merged), updated_by: req.auth.userId, updated_at: new Date().toISOString() };
+        ['id', 'tenant_id', 'created_at', 'created_by'].forEach(k => delete update[k]);
+        if (update.end_number === '') update.end_number = null;
         const { data, error } = await tenantClient.from('document_numbering_categories').update(update).eq('id', req.params.id).eq('tenant_id', tenantId).select().single();
         if (error) {
             if (error.code === '23505') return res.status(409).json({ success: false, error: 'A category with this name already exists for this voucher type' });

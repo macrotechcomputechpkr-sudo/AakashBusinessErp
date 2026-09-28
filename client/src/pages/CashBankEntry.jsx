@@ -271,7 +271,7 @@ export default function CashBankEntry() {
                     <EntryFillBar voucherType="cash_bank_entry" api="cash-bank-entries" form={form} editing={!!editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={copyAsNew} />
                     {/* ==================== MASTER ==================== */}
                     <div className="erp-topbar grid-cols-1 md:grid-cols-4">
-                        <DocNumberField voucherType="cash_bank_entry" categoryId={form.numbering_category_id} docNo={editingId ? form.doc_no : ''} value={form.doc_no} onChange={v => setForm({ ...form, doc_no: v })} label="Voucher No" />
+                        <DocNumberField docDate={form.doc_date || form.voucher_date} voucherType="cash_bank_entry" categoryId={form.numbering_category_id} docNo={editingId ? form.doc_no : ''} value={form.doc_no} onChange={v => setForm({ ...form, doc_no: v })} label="Voucher No" />
                         <div className={efc.isVisible('doc_date') ? 'erp-field' : 'erp-field hidden'}>
                             <label className="erp-label">Date <span className="req">*</span> {form.doc_date && <span className="hint">({formatDateForDisplay(form.doc_date, 'nepali')} BS)</span>}</label>
                             <input disabled={efc.isReadonly('doc_date')} type="date" className="erp-input" value={form.doc_date} onChange={e => setForm({ ...form, doc_date: e.target.value })} required />

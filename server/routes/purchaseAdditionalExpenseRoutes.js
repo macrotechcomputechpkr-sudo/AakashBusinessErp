@@ -246,7 +246,7 @@ router.post('/purchase-additional-expenses', requireAuth, loadUserPermissions, r
         try {
             docNo = await resolveDocumentNumber(tenantClient, {
                 tenantId, voucherType: 'purchase_additional', userId: req.auth.userId,
-                categoryId: b.numbering_category_id, manualNumber: b.doc_no, tableName: 'purchase_additional_expenses',
+                categoryId: b.numbering_category_id, manualNumber: b.doc_no, docDate: b.doc_date || b.voucher_date || b.entry_date, tableName: 'purchase_additional_expenses',
                 currentFiscalYearId: currentFy?.id, currentFiscalYearName: currentFy?.fiscal_year_name,
                 userDefaultBranchId: currentUser?.default_branch_id
             });

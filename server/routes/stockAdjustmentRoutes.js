@@ -184,7 +184,7 @@ async function createAdjustment(c, t, userId, b) {
     const { data: fy } = await c.from('fiscal_years').select('id, fiscal_year_name').eq('tenant_id', t).eq('is_current', true).maybeSingle();
     let docNo;
     try {
-        docNo = await resolveDocumentNumber(c, { tenantId: t, voucherType: 'stock_adjustment', userId, categoryId: b.numbering_category_id, manualNumber: b.doc_no,
+        docNo = await resolveDocumentNumber(c, { tenantId: t, voucherType: 'stock_adjustment', userId, categoryId: b.numbering_category_id, manualNumber: b.doc_no, docDate: b.doc_date || b.voucher_date || b.entry_date,
             tableName: 'stock_adjustments', currentFiscalYearId: fy?.id, currentFiscalYearName: fy?.fiscal_year_name, userDefaultBranchId: user?.default_branch_id });
     } catch (numErr) { throw Object.assign(new Error(numErr.message), { status: 400 }); }
     if (!docNo) {
