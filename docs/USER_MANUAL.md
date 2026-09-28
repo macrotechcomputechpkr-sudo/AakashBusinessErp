@@ -260,7 +260,7 @@ The effect of each transaction is shown in a box like this:
 
 ### 3.2 Sales Transaction
 
-The normal flow is Quotation → Order → Delivery (Challan) → Bill → Return. Each later document can pull from the earlier ones (**Pending** button in the master part), as allowed by Entry Field Control:
+The normal flow is Quotation → Order → Delivery (Challan) → Bill → Return. Each later document can pull from the earlier ones (**Pending** button in the master part), as allowed by Entry Field Control. The **Quotation No. / Order No. / Challan No.** boxes are right after the Customer / Vendor. Pulling also brings the source's master part - sub-ledger, product company, agent, area, route, cost center, remarks, narration, rate type, currency - and its billing terms (document and product-wise) into the new entry:
 
 | Document | Can pull from |
 |---|---|

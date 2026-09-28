@@ -123,14 +123,20 @@ async function detail(c, t, { target, type, id }) {
     return { ...head, type, type_label: D.label, lines: (all || []).map(l => ({ ...l, pending_qty: pendingById[l.id]?.pending_qty || 0, pending_alt_qty: pendingById[l.id]?.pending_alt_qty || 0 })) };
 }
 
-const COPY = ['product_id', 'uom_id', 'alt_unit_id', 'rate', 'rate_basis', 'discount_percent', 'tax_percent', 'warehouse_id', 'batch_no', 'serial_no', 'mfg_date', 'exp_date', 'free_uom_id', 'barcode', 'narration'];
+// master-part fields copied from the source document into the entry
+const MASTER = ['warehouse_id', 'agent_id', 'cost_center_id', 'business_unit_id', 'area_id', 'route_id', 'product_company_id',
+    'customer_sub_ledger_id', 'vendor_sub_ledger_id', 'remarks_id', 'remarks_text', 'narration', 'rate_type', 'currency', 'exchange_rate',
+    'invoice_type', 'sales_account_ledger_id', 'sales_sub_ledger_id', 'goods_account_ledger_id', 'goods_sub_ledger_id', 'terms_conditions_id',
+    'due_days', 'priority', 'party_billing_address', 'party_shipping_address', 'party_email', 'party_phone', 'party_pan',
+    'delivery_address', 'customer_po_no', 'customer_po_date', 'vehicle_no', 'driver_name', 'transport_master_id', 'cash_vendor_name', 'cash_billing_details'];
+const COPY = ['product_id', 'uom_id', 'alt_unit_id', 'rate', 'rate_basis', 'discount_percent', 'tax_percent', 'warehouse_id', 'batch_no', 'serial_no', 'mfg_date', 'exp_date', 'free_uom_id', 'barcode', 'narration', 'line_terms'];
 
 /** pending lines of the chosen documents, shaped as lines of the entry (with their source link) */
 async function pull(c, t, { target, docs }) {
     const sources = sourcesOf(target);
     const picked = (Array.isArray(docs) ? docs : []).filter(d => d && UUID.test(d.id || '') && DOCS[d.type]);
     if (!picked.length) throw bad('Tick at least one document');
-    const lines = [], header = {}, used = [];
+    const lines = [], header = {}, used = [], termIds = [];
     let party = null;
     for (const [type, counter, lineLink, headLink] of sources) {
         const ids = picked.filter(d => d.type === type).map(d => d.id);
@@ -143,21 +149,35 @@ async function pull(c, t, { target, docs }) {
             party = h[D.party];
             if (!header[headLink]) header[headLink] = h.id;
             used.push({ type, id: h.id, doc_no: h.doc_no });
-            ['warehouse_id', 'agent_id', 'cost_center_id', 'business_unit_id', 'area_id', 'route_id', 'product_company_id'].forEach(k => { if (h[k] && header[k] === undefined) header[k] = h[k]; });
+            // the source's master part comes along (first document wins when several are pulled)
+            MASTER.forEach(k => { if (h[k] !== null && h[k] !== undefined && h[k] !== '' && header[k] === undefined) header[k] = h[k]; });
         }
+        // document billing terms (purchase side) of the pulled documents
+        const { data: docTerms } = await c.from('document_billing_terms').select('billing_term_id, display_order').eq('tenant_id', t).eq('document_type', type).in('document_id', ids);
+        (docTerms || []).sort((a, b) => (a.display_order || 0) - (b.display_order || 0)).forEach(x => { if (!termIds.includes(x.billing_term_id)) termIds.push(x.billing_term_id); });
         const pending = await pendingLines(c, t, type, counter, ids);
+        // product-wise (line) terms kept per line in document_line_billing_terms (purchase side)
+        const { data: lineTerms } = pending.length
+            ? await c.from('document_line_billing_terms').select('detail_id, billing_term_id, input_kind, input_value').eq('tenant_id', t).eq('document_type', type).in('document_id', ids)
+            : { data: [] };
         pending.forEach(p => {
             const row = {};
             COPY.forEach(k => { if (p[k] !== undefined && p[k] !== null) row[k] = p[k]; });
             row.qty = p.pending_qty;
             if (p.alt_qty) row.alt_qty = p.pending_alt_qty || '';
             if (p.free_qty) row.free_qty = p.free_qty;
+            const lt = (lineTerms || []).filter(x => x.detail_id === p.id);
+            if (lt.length) {
+                row.billing_term_ids = lt.map(x => x.billing_term_id);
+                row.term_values = Object.fromEntries(lt.filter(x => x.input_kind).map(x => [x.billing_term_id, { kind: x.input_kind, value: Number(x.input_value) }]));
+            }
             row[lineLink] = p.id;
             lines.push(row);
         });
     }
     // the party comes with the documents (an entry filled from a document number alone)
     if (party) header[DOCS[picked[0].type].party] = party;
+    if (termIds.length) header.billing_term_ids = termIds;
     return { party_id: party, header, lines, documents: used };
 }
 

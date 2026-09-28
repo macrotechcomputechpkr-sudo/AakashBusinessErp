@@ -323,6 +323,8 @@ export default function SalesNonsaleableReturn() {
                                 value={form.customer_ledger_id} onChange={id => setForm({ ...form, customer_ledger_id: id })} placeholder="Select Customer"
                             />
                         </div>
+                        {/* Quotation / Order / Challan No. - the source's master part, remarks and terms come along */}
+                        <PendingDocsPanel target="sales_nonsalable_return" partyId={form.customer_ledger_id} efc={efc} disabled={!!editingId} pulled={pulledDocs} onPull={data => { setForm(f => mergePulled(f, data, emptyDetailRow)); setPulledDocs(p => [...p, ...data.documents.map(x => x.id)]); showAlert(`Pulled ${data.lines.length} line(s) from ${data.documents.map(x => x.doc_no).join(', ')}`, 'success'); }} />
                         <ProductCompanyField side="sales" form={form} setForm={setForm} products={products} emptyRow={emptyDetailRow} />
                         {settings?.multiWarehouse && (
                         <div className={efc.isVisible('warehouse_id') ? 'erp-field' : 'erp-field hidden'}>
@@ -347,8 +349,6 @@ export default function SalesNonsaleableReturn() {
                             <NumberingCategorySelector voucherType="sales_nonsalable_return" value={form.numbering_category_id} onChange={id => setForm({ ...form, numbering_category_id: id })} />
                         )}
                     </div>
-
-                    <PendingDocsPanel target="sales_nonsalable_return" partyId={form.customer_ledger_id} efc={efc} disabled={!!editingId} pulled={pulledDocs} onPull={data => { setForm(f => mergePulled(f, data, emptyDetailRow)); setPulledDocs(p => [...p, ...data.documents.map(x => x.id)]); showAlert(`Pulled ${data.lines.length} line(s) from ${data.documents.map(x => x.doc_no).join(', ')}`, 'success'); }} />
 
                     <div className="erp-tab-content">
                         {form.source_bill_id && (

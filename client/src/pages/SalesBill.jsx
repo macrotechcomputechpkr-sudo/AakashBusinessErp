@@ -363,6 +363,8 @@ export default function SalesBill() {
                             <label className="erp-label">Customer <span className="req">*</span></label>
                             {picker('customer_picker', customers, 'id', 'account_code', 'account_name', form.customer_ledger_id, id => setForm({ ...form, customer_ledger_id: id, customer_sub_ledger_id: '' }), 'Select Customer')}
                         </div>
+                        {/* Quotation / Order / Challan No. - the source's master part, remarks and terms come along */}
+                        <PendingDocsPanel target="sales_bill" partyId={form.customer_ledger_id} efc={efc} disabled={!!editingId} onPull={handlePull} pulled={pulledDocs} />
                         <RateTypeField rt={rateType} onChanged={onRateTypeChanged} />
                         <div className="erp-field">
                             <label className="erp-label">Customer Sub-Ledger</label>
@@ -403,8 +405,6 @@ export default function SalesBill() {
                             <NumberingCategorySelector voucherType="sales_bill" value={form.numbering_category_id} onChange={id => setForm(f => ({ ...f, numbering_category_id: id }))} />
                         )}
                     </div>
-
-                    <PendingDocsPanel target="sales_bill" partyId={form.customer_ledger_id} efc={efc} disabled={!!editingId} onPull={handlePull} pulled={pulledDocs} />
 
                     <div className="erp-tab-content ent-lines">
                         <SalesLineGrid fx={fx} itemCharges={itemCharges}

@@ -239,6 +239,8 @@ A later document can be filled from earlier ones (`utils/pendingDocs.js`, `Pendi
 
 Each pulled line keeps its `source_*_detail_id`, so the child knows where it came from, and stock is never moved twice (a bill line from a delivery/GRN skips the stock movement).
 
+The Quotation No. / Order No. / Challan (GRN) No. boxes sit in the master grid right after Customer / Vendor. `pull()` also returns the source's master part (`MASTER` list: party sub-ledger, product company, agent, warehouse, area, route, cost center, unit, remarks, narration, rate type, currency / rate, account ledgers, party address ...), the document billing terms (`document_billing_terms` → `header.billing_term_ids`), and the line terms (sales `line_terms`; purchase `document_line_billing_terms` → line `billing_term_ids` + `term_values`). `mergePulled()` writes these over the entry's values (only keys the form has); term id lists are merged.
+
 ### 5.2 Progress counters
 
 `utils/progressCounters.js`:

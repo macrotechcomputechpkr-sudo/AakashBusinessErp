@@ -151,7 +151,12 @@ export function mergePulled(form, pulledData, emptyRow, isEmpty = d => !d.produc
     const kept = (form.details || []).filter(d => !isEmpty(d));
     const lines = pulledData.lines.map(l => ({ ...emptyRow(), ...l }));
     const header = {};
-    // only fields this entry has (the rest would not be saved)
-    Object.entries(pulledData.header || {}).forEach(([k, v]) => { if (k in form && !form[k]) header[k] = v; });
+    // the source's master part (company, agent, sub-ledger, remarks, narration, billing terms ...) comes
+    // into the entry as it is; only fields this entry has (the rest would not be saved)
+    Object.entries(pulledData.header || {}).forEach(([k, v]) => {
+        if (!(k in form) || v === null || v === undefined || v === '') return;
+        if (Array.isArray(v)) header[k] = [...new Set([...(Array.isArray(form[k]) ? form[k] : []), ...v])];
+        else header[k] = v;
+    });
     return { ...form, ...header, details: [...kept, ...lines].length ? [...kept, ...lines] : [emptyRow()] };
 }

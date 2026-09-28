@@ -541,6 +541,8 @@ export default function PurchaseReturn() {
                                 />
                             )}
                         </div>
+                        {/* Quotation / Order / Challan No. - the source's master part, remarks and terms come along */}
+                        <PendingDocsPanel target="purchase_return" partyId={form.vendor_ledger_id} efc={efc} disabled={!!editingId} pulled={pulledDocs} onPull={data => { setForm(f => mergePulled(f, data, emptyDetailRow)); setPulledDocs(p => [...p, ...data.documents.map(x => x.id)]); showAlert(`Pulled ${data.lines.length} line(s) from ${data.documents.map(x => x.doc_no).join(', ')}`, 'success'); }} />
                         {/* the vendor's sub-ledger, next to the vendor */}
                         <div className="erp-field">
                             <label className="erp-label">Vendor Sub-Ledger</label>
@@ -558,7 +560,6 @@ export default function PurchaseReturn() {
                             <NumberingCategorySelector voucherType="purchase_return" value={form.numbering_category_id} onChange={id => setForm({ ...form, numbering_category_id: id })} />
                         )}
                     </div>
-                    <PendingDocsPanel target="purchase_return" partyId={form.vendor_ledger_id} efc={efc} disabled={!!editingId} pulled={pulledDocs} onPull={data => { setForm(f => mergePulled(f, data, emptyDetailRow)); setPulledDocs(p => [...p, ...data.documents.map(x => x.id)]); showAlert(`Pulled ${data.lines.length} line(s) from ${data.documents.map(x => x.doc_no).join(', ')}`, 'success'); }} />
 
                     <div className="erp-tab-content">
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">

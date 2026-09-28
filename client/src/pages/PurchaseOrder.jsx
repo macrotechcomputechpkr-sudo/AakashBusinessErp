@@ -712,6 +712,8 @@ export default function PurchaseOrder() {
                                 </div>
                             )}
                         </div>
+                        {/* Quotation / Order / Challan No. - the source's master part, remarks and terms come along */}
+                        <PendingDocsPanel target="purchase_order" partyId={form.vendor_ledger_id} efc={efc} disabled={!!editingId} pulled={pulledDocs} onPull={data => { setForm(f => mergePulled(f, data, emptyDetailRow)); setPulledDocs(p => [...p, ...data.documents.map(x => x.id)]); showAlert(`Pulled ${data.lines.length} line(s) from ${data.documents.map(x => x.doc_no).join(', ')}`, 'success'); }} />
                         <div className="erp-field">
                             <label className="erp-label">Vendor Sub-Ledger</label>
                             <SearchablePopupSelect
@@ -733,7 +735,6 @@ export default function PurchaseOrder() {
                             </select>
                         </div>
                     </div>
-                    <PendingDocsPanel target="purchase_order" partyId={form.vendor_ledger_id} efc={efc} disabled={!!editingId} pulled={pulledDocs} onPull={data => { setForm(f => mergePulled(f, data, emptyDetailRow)); setPulledDocs(p => [...p, ...data.documents.map(x => x.id)]); showAlert(`Pulled ${data.lines.length} line(s) from ${data.documents.map(x => x.doc_no).join(', ')}`, 'success'); }} />
 
 
                     <div className="px-4">
