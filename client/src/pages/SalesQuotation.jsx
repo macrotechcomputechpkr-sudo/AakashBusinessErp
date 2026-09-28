@@ -24,6 +24,7 @@ import DocNumberField from '../components/entry/DocNumberField';
 import PendingDocsPanel, { mergePulled } from '../components/entry/PendingDocsPanel';
 import { PartyDetailsPanel, emptyPartyInfo, savePartyInfo, partyInfoFromDoc } from '../components/entry/PartyFooterTabs';
 import SalesLineGrid, { useLineGridControl, lineTotals } from '../components/entry/SalesLineGrid';
+import CurrencyField, { useCurrencies, fxOf } from '../components/entry/CurrencyField';
 import { EntryFooter, useEntryHotkeys, latestOf } from '../components/entry/EntryParts';
 import { defaultLineTerms, productLineTerms, lineForSave } from '../components/entry/lineCalc';
 import { dualHelpers } from '../components/entry/dualHelpers';
@@ -35,7 +36,7 @@ const emptyDetailRow = () => ({ product_id: '', qty: '', uom_id: '', alt_qty: ''
 
 const emptyForm = {
     product_company_id: '', doc_date: new Date().toISOString().slice(0, 10), valid_until: '', numbering_category_id: '',
-    customer_ledger_id: '', customer_sub_ledger_id: '', agent_id: '', currency: 'NPR', warehouse_id: '',
+    customer_ledger_id: '', customer_sub_ledger_id: '', agent_id: '', currency: 'NPR', exchange_rate: 1, warehouse_id: '',
     remarks_text: '', narration: '', rate_type: 'exclusive', cost_center_id: '', business_unit_id: '',
     area_id: '', route_id: '', priority: 'normal',
     details: [emptyDetailRow()]
@@ -51,6 +52,8 @@ export default function SalesQuotation() {
     const { authFetch } = useAuth();
     const efc = useEntryFieldControls('sales_quotation', EFC_RENDERED_KEYS);
     const settings = useEntrySettings();
+    // currency of the entry: local amounts in the term pop-ups and the footer
+    const currencies = useCurrencies();
     // System Control: does this entry show item charges? (else only the Charges Summary)
     const itemCharges = showsProductTerms(settings, 'sales_quotation');
     const termCols = termColumns(settings, 'sales');
@@ -61,6 +64,7 @@ export default function SalesQuotation() {
     const [rows, setRows] = useState([]);
     const [showForm, setShowForm] = useState(false);
     const [form, setForm] = useState(emptyForm);
+    const fx = fxOf(form, currencies);
     const [editingId, setEditingId] = useState(null);
     const [alert, setAlert] = useState(null);
     const [showDraftsOnly, setShowDraftsOnly] = useState(false);
@@ -437,12 +441,13 @@ export default function SalesQuotation() {
                                     <option value="inclusive">Inclusive of Tax</option>
                                 </select>
                             </div>
+                            <CurrencyField value={form.currency} rate={form.exchange_rate} onChange={v => setForm(f => ({ ...f, ...v }))} />
                             <div className={efc.isVisible('narration') ? 'erp-field' : 'erp-field hidden'}>
                                 <label className="erp-label">Narration {efc.isRequired('narration') && <span className="req">*</span>}</label>
                                 <input disabled={efc.isReadonly('narration')} className="erp-input" value={form.narration} onChange={e => setForm({ ...form, narration: e.target.value })} />
                             </div>
                         </div>
-                        <SalesLineGrid itemCharges={itemCharges}
+                        <SalesLineGrid fx={fx} itemCharges={itemCharges}
                             listKey="sq" title="Sales Quotation" ctl={lineCtl} details={form.details} onRow={updateDetailRow} onRemove={removeDetailRow} onAdd={addDetailRow}
                             products={filterProductsByCompany(products, form.product_company_id)} allProducts={products} units={units} warehouses={warehouses}
                             settings={settings} termCols={termCols} popupTerms={popupTerms} efc={efc} onProductSelect={handleProductSelect}
@@ -451,7 +456,7 @@ export default function SalesQuotation() {
                         />
                     </div>
 
-                    <EntryFooter
+                    <EntryFooter fx={fx}
 
                         title="Sales Quotation"
 

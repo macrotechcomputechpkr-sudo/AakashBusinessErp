@@ -255,7 +255,7 @@ router.post('/sales-deliveries', requireAuth, loadUserPermissions, requirePermis
             .insert({
                 product_company_id: b.product_company_id || null,
                 tenant_id: tenantId, branch_id: currentUser?.default_branch_id || null, branch_name_snapshot: branchNameSnapshot,
-                doc_no: docNo, doc_date: b.doc_date, fiscal_year_id: currentFy?.id || null, source_order_id: b.source_order_id || null, source_quotation_id: b.source_quotation_id || null,
+                doc_no: docNo, doc_date: b.doc_date, fiscal_year_id: currentFy?.id || null, currency: b.currency || 'NPR', exchange_rate: Number(b.exchange_rate) > 0 ? Number(b.exchange_rate) : 1, source_order_id: b.source_order_id || null, source_quotation_id: b.source_quotation_id || null,
                 customer_ledger_id: b.customer_ledger_id || null, customer_sub_ledger_id: b.customer_sub_ledger_id || null, agent_id: b.agent_id || null,
                 warehouse_id: b.warehouse_id || null,
                 vehicle_no: b.vehicle_no || null, driver_name: b.driver_name || null, transport_master_id: b.transport_master_id || null, delivery_address: b.delivery_address || null,

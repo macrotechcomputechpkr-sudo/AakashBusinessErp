@@ -9,6 +9,7 @@
 import ProductCompanyField from '../components/ProductCompanyField';
 import { useEntryFieldControls } from '../hooks/useEntryFieldControls';
 import React, { useEffect, useState, useCallback, useRef } from 'react';
+import CurrencyField, { useCurrencies, fxOf } from '../components/entry/CurrencyField';
 import { useAuth } from '../contexts/AuthContext';
 import SearchablePopupSelect from '../components/SearchablePopupSelect';
 import ReportGrid from '../components/ReportGrid';
@@ -31,7 +32,7 @@ const r2 = n => Math.round((Number(n) || 0) * 100) / 100;
 const emptyForm = {
     vendor_sub_ledger_id: '', product_company_id: '', doc_date: new Date().toISOString().slice(0, 10),
     source_order_id: '', source_grn_id: '', source_bill_id: '', account_posting: true,
-    vendor_ledger_id: '', cash_vendor_name: '', agent_id: '', invoice_type: 'credit', currency: 'NPR',
+    vendor_ledger_id: '', cash_vendor_name: '', agent_id: '', invoice_type: 'credit', currency: 'NPR', exchange_rate: 1,
     party_bill_no: '', party_bill_date: '',
     remarks_text: '', cost_center_id: '', business_unit_id: '', priority: 'normal', narration: '',
     expense_lines: [emptyExpenseLine()]
@@ -47,6 +48,9 @@ export default function PurchaseAdditionalExpense() {
     const [rows, setRows] = useState([]);
     const [showForm, setShowForm] = useState(false);
     const [form, setForm] = useState(emptyForm);
+    // currency of the entry: local amounts in the charge pop-ups and the footer
+    const currencies = useCurrencies();
+    const fx = fxOf(form, currencies);
     const [editingId, setEditingId] = useState(null);
     const [alert, setAlert] = useState(null);
     const [showDraftsOnly, setShowDraftsOnly] = useState(false);
@@ -369,7 +373,7 @@ export default function PurchaseAdditionalExpense() {
                             </div>
                             <div className={efc.isVisible('currency') ? 'erp-field' : 'erp-field hidden'}>
                                 <label className="erp-label">Currency {efc.isRequired('currency') && <span className="req">*</span>}</label>
-                                <input disabled={efc.isReadonly('currency')} className="erp-input" value={form.currency} onChange={e => setForm({ ...form, currency: e.target.value })} />
+                                <CurrencyField bare disabled={efc.isReadonly('currency')} value={form.currency} rate={form.exchange_rate} onChange={v => setForm(f => ({ ...f, ...v }))} />
                             </div>
                             <div className={efc.isVisible('priority') ? 'erp-field' : 'erp-field hidden'}>
                                 <label className="erp-label">Priority {efc.isRequired('priority') && <span className="req">*</span>}</label>
@@ -515,7 +519,7 @@ export default function PurchaseAdditionalExpense() {
                         <p className="text-xs text-gray-400 mb-2">Each line can be a separate bill: its own supplier (or the cash / labour ledger for wages, loading / unloading with no bill), bill no and VAT. Taxable and non-taxable bills appear in the VAT purchase register and VAT return; "No bill" lines do not. "Not in costing" keeps a line out of landed cost; VAT is left out of cost unless it is marked not claimable. A "−" line with Rate % (e.g. 1.5% TDS) is shown in the TDS report.</p>
                         <div className="flex justify-between items-start mb-1">
                             <button type="button" onClick={addExpenseLine} className="text-xs text-blue-600">➕ Add Line</button>
-                            <span className="text-sm font-semibold">{vatTotal ? <span className="font-normal text-gray-600 mr-3">VAT {vatTotal.toFixed(2)}</span> : null}Net Payable: {netPayable.toFixed(2)}</span>
+                            <span className="text-sm font-semibold">{vatTotal ? <span className="font-normal text-gray-600 mr-3">VAT {vatTotal.toFixed(2)}</span> : null}Net Payable: {netPayable.toFixed(2)}{fx.foreign ? ` ${fx.code} = ${(netPayable * fx.rate).toFixed(2)} ${fx.base}` : ''}</span>
                         </div>
                         {netPayable !== 0 && (
                             <p className="text-xs text-gray-500 text-right mb-4 italic">{amountToWords(netPayable, form.currency === 'NPR' ? 'Nrs' : form.currency)}</p>

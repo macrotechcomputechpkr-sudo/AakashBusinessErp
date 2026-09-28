@@ -11,6 +11,7 @@ import TermLedgerInfo from '../components/TermLedgerInfo';
 import ProductCompanyField, { filterProductsByCompany } from '../components/ProductCompanyField';
 import { useEntryFieldControls } from '../hooks/useEntryFieldControls';
 import React, { useEffect, useState, useCallback, useRef, useMemo } from 'react';
+import CurrencyField, { useCurrencies, fxOf } from '../components/entry/CurrencyField';
 import { useAuth } from '../contexts/AuthContext';
 import SearchablePopupSelect from '../components/SearchablePopupSelect';
 import ReportGrid from '../components/ReportGrid';
@@ -44,7 +45,7 @@ const emptyDetailRow = () => ({
 
 const emptyForm = {
     doc_date: new Date().toISOString().slice(0, 10), vendor_ledger_id: '', cash_vendor_name: '', agent_id: '', numbering_category_id: '',
-    invoice_type: 'credit', currency: 'NPR', due_date: '', due_days: '', warehouse_id: '',
+    invoice_type: 'credit', currency: 'NPR', exchange_rate: 1, due_date: '', due_days: '', warehouse_id: '',
     goods_account_ledger_id: '', goods_sub_ledger_id: '', remarks_text: '',
     rate_type: 'exclusive', cost_center_id: '', business_unit_id: '', area_id: '', route_id: '',
     priority: 'normal', terms_conditions_id: '', narration: '',
@@ -79,6 +80,9 @@ export default function PurchaseBill() {
     const [showCopyModal, setShowCopyModal] = useState(false);
     const [showForm, setShowForm] = useState(false);
     const [form, setForm] = useState(emptyForm);
+    // currency of the entry: local amounts in the charge pop-ups and the footer
+    const currencies = useCurrencies();
+    const fx = fxOf(form, currencies);
     const [editingId, setEditingId] = useState(null);
     const [billWiseSettlements, setBillWiseSettlements] = useState(null);
     // FEATURE: "Purchase Bill Save Garda if Tyo Vendor Ko Lc pending Xa
@@ -1032,7 +1036,7 @@ export default function PurchaseBill() {
                         onSettlementsChange={setBillWiseSettlements}
                     />
 
-                    <EntryFooter
+                    <EntryFooter fx={fx}
                         title="Purchase Bill"
                         totals={{ gross: form.details.reduce((a, d) => a + (d.product_id ? lineGross(d) : 0), 0), billTerm: billTermAmount, net: grandTotal + billTermAmount, taxable: taxSplit.taxable, tax: taxSplit.tax, nonTaxable: taxSplit.nonTaxable }}
                         party={{ label: 'Supplier', name: footVendor?.account_name || form.cash_vendor_name, creditLimit: footVendor?.credit_limit }}
@@ -1068,7 +1072,7 @@ export default function PurchaseBill() {
                                     </div>
                                     <div className={isVisible('currency') ? 'erp-field' : 'erp-field hidden'}>
                                         <label className="erp-label">Currency</label>
-                                        <input className="erp-input" value={form.currency} onChange={e => setForm({ ...form, currency: e.target.value })} />
+                                        <CurrencyField bare value={form.currency} rate={form.exchange_rate} onChange={v => setForm(f => ({ ...f, ...v }))} />
                                     </div>
                                     <div className={isVisible('due_date') ? 'erp-field' : 'erp-field hidden'}>
                                         <label className="erp-label">Due Date</label>
@@ -1416,7 +1420,7 @@ export default function PurchaseBill() {
 
             {/* ==================== CHARGE POP-UPS (item charges / charges summary) ==================== */}
             {productTermModalIndexes !== null && productTermModalIndexes.length > 0 && (
-                <PurchaseProductTermPopup
+                <PurchaseProductTermPopup fx={fx}
                     title="Purchase Bill · Item Charges" terms={billingTerms} previews={lineTermPreviews}
                     lines={productTermModalIndexes.map(idx => ({ idx, line: form.details[idx] })).filter(t => t.line)}
                     productName={productTermModalIndexes.length === 1 ? (products.find(p => p.id === form.details[productTermModalIndexes[0]]?.product_id)?.product_name || '') : `${productTermModalIndexes.length} lines`}
@@ -1425,7 +1429,7 @@ export default function PurchaseBill() {
                     onClose={() => setProductTermModalIndexes(null)} />
             )}
             {overallOpen && (
-                <PurchaseOverallTermPopup
+                <PurchaseOverallTermPopup fx={fx}
                     title="Purchase Bill · Charges Summary" summaryRows={summaryRows} overrides={summaryOverrides} onOverride={(id, v) => setSummaryOverrides(o => ({ ...o, [id]: v }))}
                     terms={billingTerms} billTermIds={form.billing_term_ids} onToggleBillTerm={toggleBillingTerm} preview={billingPreview} subLedgerCell={t => <TermLedgerInfo term={t} isReturn={false} subLedgers={subLedgers} value={(form.term_sub_ledgers || {})[t.id]} onChange={v => setForm(f => ({ ...f, term_sub_ledgers: { ...(f.term_sub_ledgers || {}), [t.id]: v } }))} />}
                     onClose={() => setOverallOpen(false)} />

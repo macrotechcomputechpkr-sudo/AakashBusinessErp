@@ -103,7 +103,7 @@ const KIND_COLS = [['pct', '%'], ['rate', 'Rate / qty'], ['amt', 'Amount']];
  *          formula, taxation, subLedger (optional), editable (false: cannot be changed in entries) }]
  * onInput(key, kind, value)
  */
-export function TermPopup({ title, productName, basic, qty, unitName, rows, onInput, onClose }) {
+export function TermPopup({ title, productName, basic, qty, unitName, rows, onInput, onClose, fx }) {
     const [focus, setFocus] = useState(0);
     const f = rows[focus] || rows[0] || {};
     const net = rows.reduce((s, r) => s + (r.sign === '-' ? -1 : 1) * (Number(r.amount) || 0), 0);
@@ -116,11 +116,12 @@ export function TermPopup({ title, productName, basic, qty, unitName, rows, onIn
                 <div><small>Quantity</small><b>{Number(qty || 0).toFixed(3)} {unitName}</b></div>
                 <div><small>Value</small><b>{fmt(basic)}</b></div>
                 <div><small>Charges</small><b className={net < 0 ? 'ent-less' : ''}>{fmt(net)}</b></div>
-                <div><small>After charges</small><b>{fmt(Number(basic || 0) + net)}</b></div>
+                <div><small>After charges{fx?.foreign ? ` (${fx.code})` : ''}</small><b>{fmt(Number(basic || 0) + net)}</b></div>
+                {fx?.foreign && <div><small>In {fx.base} @ {Number(fx.rate).toFixed(4)}</small><b>{fmt((Number(basic || 0) + net) * fx.rate)}</b></div>}
             </div>
             <div className="ent-charge-wrap">
                 <table className="erp-grid-table ent-charge-table">
-                    <thead><tr><th style={{ width: 34 }}>#</th><th>Charge</th>{withSub && <th>Sub-ledger</th>}<th style={{ width: 56 }}>+/-</th>{KIND_COLS.map(([k, l]) => <th key={k} className="text-right" style={{ width: 84 }}>{l}</th>)}<th className="text-right">Base Amount</th><th className="text-right">Amount</th></tr></thead>
+                    <thead><tr><th style={{ width: 34 }}>#</th><th>Charge</th>{withSub && <th>Sub-ledger</th>}<th style={{ width: 56 }}>+/-</th>{KIND_COLS.map(([k, l]) => <th key={k} className="text-right" style={{ width: 84 }}>{l}</th>)}<th className="text-right">Base Amount</th><th className="text-right">Amount</th>{fx?.foreign && <th className="text-right">Local ({fx.base})</th>}</tr></thead>
                     <tbody>
                         {rows.map((r, i) => (
                             <tr key={r.key} className={focus === i ? 'ent-focus' : ''} onFocus={() => setFocus(i)} onClick={() => setFocus(i)}>
@@ -142,9 +143,10 @@ export function TermPopup({ title, productName, basic, qty, unitName, rows, onIn
                                 })}
                                 <td className="text-right">{fmt(r.calculatedOn)}</td>
                                 <td className="text-right font-semibold">{fmt(r.amount)}</td>
+                                {fx?.foreign && <td className="text-right">{fmt(Number(r.amount || 0) * fx.rate)}</td>}
                             </tr>
                         ))}
-                        {rows.length === 0 && <tr><td colSpan={withSub ? 9 : 8} className="text-center">No charges are set for this entry (System Control › Term Mapping / Billing Terms).</td></tr>}
+                        {rows.length === 0 && <tr><td colSpan={(withSub ? 9 : 8) + (fx?.foreign ? 1 : 0)} className="text-center">No charges are set for this entry (System Control › Term Mapping / Billing Terms).</td></tr>}
                     </tbody>
                 </table>
                 <aside className="ent-charge-info">
@@ -167,13 +169,13 @@ export function TermPopup({ title, productName, basic, qty, unitName, rows, onIn
  * Charges Summary of the bill.
  * rows: [{ key, term, basis ('V' | 'Q' - how an amount typed here is split), sign, percent, amount, editable }]
  */
-export function OverallTermPopup({ title, rows, onPercent, onAmount, onClose, note, extra }) {
+export function OverallTermPopup({ title, rows, onPercent, onAmount, onClose, note, extra, fx }) {
     const total = rows.reduce((s, r) => s + (r.sign === '-' ? -1 : 1) * (Number(r.amount) || 0), 0);
     return (
         <EntryPopup title={title} onClose={onClose} footer={note ? <span className="ent-note">{note}</span> : null}>
             {extra}
             <table className="erp-grid-table">
-                <thead><tr><th style={{ width: 34 }}>#</th><th>Charge</th><th style={{ width: 110 }}>Split by</th><th style={{ width: 56 }}>+/-</th><th className="text-right" style={{ width: 110 }}>Rate %</th><th className="text-right" style={{ width: 150 }}>Amount</th></tr></thead>
+                <thead><tr><th style={{ width: 34 }}>#</th><th>Charge</th><th style={{ width: 110 }}>Split by</th><th style={{ width: 56 }}>+/-</th><th className="text-right" style={{ width: 110 }}>Rate %</th><th className="text-right" style={{ width: 150 }}>Amount{fx?.foreign ? ` (${fx.code})` : ''}</th>{fx?.foreign && <th className="text-right" style={{ width: 130 }}>Local ({fx.base})</th>}</tr></thead>
                 <tbody>
                     {rows.map((r, i) => (
                         <tr key={r.key}>
@@ -187,11 +189,12 @@ export function OverallTermPopup({ title, rows, onPercent, onAmount, onClose, no
                             <td className="text-right">{onAmount && r.editable !== false && r.amtOk !== false
                                 ? <input type="number" step="0.01" className="erp-input text-right" style={{ height: 24 }} value={r.amountInput ?? fmt(r.amount)} onFocus={e => e.target.select()} onChange={e => onAmount(r.key, e.target.value)} />
                                 : fmt(r.amount)}</td>
+                            {fx?.foreign && <td className="text-right">{fmt(Number(r.amount || 0) * fx.rate)}</td>}
                         </tr>
                     ))}
-                    {rows.length === 0 && <tr><td colSpan={6} className="text-center">No charges on this bill.</td></tr>}
+                    {rows.length === 0 && <tr><td colSpan={fx?.foreign ? 7 : 6} className="text-center">No charges on this bill.</td></tr>}
                 </tbody>
-                <tfoot><tr><td colSpan={5} className="text-right">Net charges</td><td className="text-right">{fmt(total)}</td></tr></tfoot>
+                <tfoot><tr><td colSpan={5} className="text-right">Net charges</td><td className="text-right">{fmt(total)}</td>{fx?.foreign && <td className="text-right">{fmt(total * fx.rate)}</td>}</tr></tfoot>
             </table>
         </EntryPopup>
     );
@@ -204,7 +207,7 @@ export function OverallTermPopup({ title, rows, onPercent, onAmount, onClose, no
  * still fill in from the ledger while closed. A panel may have several buttons ({ label, onClick }),
  * e.g. one pop-up of tabs opened on different tabs. children: more rows under Amount in Words.
  */
-export function EntryFooter({ warehouseName, totals, party, remarks, onProductTerm, onBillTerm, panels = [], actions, hints = ['F7 copy the last entry', 'Esc closes a pop-up'], title = 'Entry', extraButtons, children }) {
+export function EntryFooter({ warehouseName, totals, party, remarks, onProductTerm, onBillTerm, panels = [], actions, hints = ['F7 copy the last entry', 'Esc closes a pop-up'], title = 'Entry', extraButtons, children, fx }) {
     const [open, setOpen] = useState(null);
     const listId = useRef(`rmk-${Math.random().toString(36).slice(2, 8)}`).current;
     const charges = Number(totals.net || 0) - Number(totals.gross ?? totals.net ?? 0);
@@ -234,7 +237,8 @@ export function EntryFooter({ warehouseName, totals, party, remarks, onProductTe
                     <div className="ent-srow"><span>Gross</span><b>{fmt(totals.gross ?? totals.net)}</b></div>
                     <div className="ent-srow"><span>Charges {charges < 0 ? '(less)' : '(add)'}</span><b className={charges < 0 ? 'ent-less' : ''}>{fmt(charges)}</b></div>
                     {Number(totals.billTerm) !== 0 && Math.abs(Number(totals.billTerm) - charges) > 0.005 && <div className="ent-srow sub"><span>of which bill charges</span><b>{fmt(totals.billTerm)}</b></div>}
-                    <div className="ent-srow total"><span>Bill Amount</span><b>{fmt(totals.net)}</b></div>
+                    <div className="ent-srow total"><span>Bill Amount{fx?.foreign ? ` (${fx.code})` : ''}</span><b>{fmt(totals.net)}</b></div>
+                    {fx?.foreign && <div className="ent-srow"><span>In {fx.base} @ {Number(fx.rate).toFixed(4)}</span><b>{fmt(Number(totals.net || 0) * fx.rate)}</b></div>}
                     <div className="ent-srow sub"><span>Taxable</span><b>{fmt(totals.taxable)}</b></div>
                     <div className="ent-srow sub"><span>Tax</span><b>{fmt(totals.tax)}</b></div>
                     <div className="ent-srow sub"><span>Tax-free</span><b>{fmt(totals.nonTaxable)}</b></div>

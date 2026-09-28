@@ -134,7 +134,7 @@ const formulaOf = t => (!t ? 'BV' : t.calculation_mode === 'formula' ? t.formula
 export default function SalesLineGrid({
     details, onRow, onRemove, onAdd, products, allProducts, units, warehouses, settings, termCols = [], popupTerms = false,
     efc, onProductSelect, docWarehouseId, selected, onSelected, features = {}, dual, lineGross, onProductKeyDown, listKey = 'sl',
-    ctl: ctlIn, title = 'Entry', minRows = 10, itemCharges = true, amountSide = 'sales'
+    ctl: ctlIn, title = 'Entry', minRows = 10, itemCharges = true, amountSide = 'sales', fx
 }) {
     const f0 = { free: true, batch: true, expiry: false, terms: true, rate: true, tax: true, ...features };
     const visible = (k) => !efc || efc.isVisible(k, 'detail');
@@ -457,12 +457,12 @@ export default function SalesLineGrid({
                 return (
                     <TermPopup title={`${title} · Item Charges`} productName={p ? `${p.product_code || ''} ${p.product_name}` : `Line ${ctl.termsFor + 1}`}
                         basic={grossOf(d)} qty={d.qty} unitName={unitName(d.uom_id)} rows={termRows(d)}
-                        onInput={(key, kind, v) => setTermInput(ctl.termsFor, key, kind, v)}
+                        onInput={(key, kind, v) => setTermInput(ctl.termsFor, key, kind, v)} fx={fx}
                         onClose={() => ctl.setTermsFor(null)} />
                 );
             })()}
             {ctl.overall && (
-                <OverallTermPopup title={`${title} · Charges Summary`} rows={overallRows()} onPercent={overallPercent} onAmount={overallAmount} onClose={() => ctl.setOverall(false)}
+                <OverallTermPopup fx={fx} title={`${title} · Charges Summary`} rows={overallRows()} onPercent={overallPercent} onAmount={overallAmount} onClose={() => ctl.setOverall(false)}
                     note={selected && selected.length ? `Goes to the ${scope.length} ticked line(s)` : `Goes to all ${scope.length} line(s) - tick lines (#) to change only those`} />
             )}
         </>

@@ -444,7 +444,7 @@ router.post('/purchase-returns', requireAuth, loadUserPermissions, requirePermis
                 source_bill_id: b.source_bill_id || null,
                 vendor_ledger_id: b.vendor_ledger_id || null, agent_id: b.agent_id || null,
                 ...snapshots,
-                invoice_type: b.invoice_type || 'credit', currency: b.currency || 'NPR',
+                invoice_type: b.invoice_type || 'credit', currency: b.currency || 'NPR', exchange_rate: Number(b.exchange_rate) > 0 ? Number(b.exchange_rate) : 1,
                 warehouse_id: b.warehouse_id || null,
                 goods_account_ledger_id: b.goods_account_ledger_id || null, goods_sub_ledger_id: b.goods_sub_ledger_id || null, vendor_sub_ledger_id: b.vendor_sub_ledger_id || null,
                 remarks_id: b.remarks_id || null, remarks_text: b.remarks_text || null,
@@ -543,7 +543,7 @@ router.put('/purchase-returns/:id', requireAuth, loadUserPermissions, requirePer
 
         await logAudit(tenantId, req.auth.userId, 'update_purchase_return', 'purchase_return', req.params.id, { old_data: existing, new_data: data });
         const changes = diffFields(existing, b, [
-            'doc_date', 'vendor_ledger_id', 'agent_id', 'invoice_type', 'currency', 'due_date', 'due_days',
+            'doc_date', 'vendor_ledger_id', 'agent_id', 'invoice_type', 'currency', 'exchange_rate', 'due_date', 'due_days',
             'warehouse_id', 'goods_account_ledger_id', 'goods_sub_ledger_id', 'remarks_text', 'rate_type',
             'cost_center_id', 'business_unit_id', 'area_id', 'route_id', 'priority', 'narration'
         ]);

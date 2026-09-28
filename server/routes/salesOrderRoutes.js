@@ -229,7 +229,7 @@ async function createSalesOrder(req, res) {
                 doc_no: docNo, doc_date: b.doc_date, fiscal_year_id: currentFy?.id || null,
                 source_quotation_id: b.source_quotation_id || null,
                 customer_ledger_id: b.customer_ledger_id || null, customer_sub_ledger_id: b.customer_sub_ledger_id || null, agent_id: b.agent_id || null,
-                invoice_type: b.invoice_type || 'credit', currency: b.currency || 'NPR', due_date: b.due_date || null, due_days: b.due_days || null,
+                invoice_type: b.invoice_type || 'credit', currency: b.currency || 'NPR', exchange_rate: Number(b.exchange_rate) > 0 ? Number(b.exchange_rate) : 1, due_date: b.due_date || null, due_days: b.due_days || null,
                 warehouse_id: b.warehouse_id || null, sales_account_ledger_id: b.sales_account_ledger_id || null,
                 customer_po_no: b.customer_po_no || null, customer_po_date: b.customer_po_date || null,
                 remarks_id: b.remarks_id || null, remarks_text: b.remarks_text || null, narration: b.narration || null,

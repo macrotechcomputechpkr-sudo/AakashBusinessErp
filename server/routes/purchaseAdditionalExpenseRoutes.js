@@ -284,7 +284,7 @@ router.post('/purchase-additional-expenses', requireAuth, loadUserPermissions, r
                 doc_no: docNo, doc_date: b.doc_date, fiscal_year_id: currentFy?.id || null,
                 source_order_id: b.source_order_id || null, source_grn_id: b.source_grn_id || null, source_bill_id: b.source_bill_id || null,
                 vendor_ledger_id: b.vendor_ledger_id || null, cash_vendor_name: b.invoice_type === 'cash' ? (b.cash_vendor_name || null) : null,
-                agent_id: b.agent_id || null, invoice_type: b.invoice_type || 'credit', currency: b.currency || 'NPR',
+                agent_id: b.agent_id || null, invoice_type: b.invoice_type || 'credit', currency: b.currency || 'NPR', exchange_rate: Number(b.exchange_rate) > 0 ? Number(b.exchange_rate) : 1,
                 party_bill_no: b.party_bill_no || null, party_bill_date: b.party_bill_date || null,
                 remarks_id: b.remarks_id || null, remarks_text: b.remarks_text || null,
                 cost_center_id: b.cost_center_id || null, business_unit_id: b.business_unit_id || null,

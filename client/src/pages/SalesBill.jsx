@@ -39,6 +39,7 @@ import DocNumberField from '../components/entry/DocNumberField';
 import PendingDocsPanel, { mergePulled } from '../components/entry/PendingDocsPanel';
 import { PartyDetailsPanel, emptyPartyInfo, savePartyInfo, partyInfoFromDoc } from '../components/entry/PartyFooterTabs';
 import SalesLineGrid, { useLineGridControl, lineTotals } from '../components/entry/SalesLineGrid';
+import CurrencyField, { useCurrencies, fxOf } from '../components/entry/CurrencyField';
 import { EntryFooter, useEntryHotkeys, latestOf } from '../components/entry/EntryParts';
 import { calcLine, defaultLineTerms, productLineTerms, lineForSave } from '../components/entry/lineCalc';
 import { dualHelpers } from '../components/entry/dualHelpers';
@@ -50,7 +51,7 @@ const emptyDetailRow = () => ({ product_id: '', qty: '', uom_id: '', alt_qty: ''
 
 const emptyForm = {
     product_company_id: '', doc_no: '', doc_date: new Date().toISOString().slice(0, 10), source_delivery_id: '', source_order_id: '', source_quotation_id: '',
-    customer_ledger_id: '', customer_sub_ledger_id: '', sales_account_ledger_id: '', sales_sub_ledger_id: '', agent_id: '', invoice_type: 'credit', currency: 'NPR',
+    customer_ledger_id: '', customer_sub_ledger_id: '', sales_account_ledger_id: '', sales_sub_ledger_id: '', agent_id: '', invoice_type: 'credit', currency: 'NPR', exchange_rate: 1,
     due_date: '', warehouse_id: '', numbering_category_id: '', remarks_text: '', narration: '', rate_type: 'exclusive',
     cost_center_id: '', business_unit_id: '', area_id: '', route_id: '',
     details: [emptyDetailRow()]
@@ -64,6 +65,8 @@ export default function SalesBill() {
     const lp = useLedgerPurposes();
     const efc = useEntryFieldControls('sales_bill', EFC_RENDERED_KEYS);
     const settings = useEntrySettings();
+    // currency of the entry: local amounts in the term pop-ups and the footer
+    const currencies = useCurrencies();
     // System Control: does this entry show item charges? (else only the Charges Summary)
     const itemCharges = showsProductTerms(settings, 'sales_bill');
     const termCols = termColumns(settings, 'sales');
@@ -71,6 +74,7 @@ export default function SalesBill() {
     const [rows, setRows] = useState([]);
     const [showForm, setShowForm] = useState(false);
     const [form, setForm] = useState(emptyForm);
+    const fx = fxOf(form, currencies);
     const [partyInfo, setPartyInfo] = useState(emptyPartyInfo());
     const [pulledDocs, setPulledDocs] = useState([]);
     const [editingId, setEditingId] = useState(null);
@@ -399,7 +403,7 @@ export default function SalesBill() {
                     <PendingDocsPanel target="sales_bill" partyId={form.customer_ledger_id} efc={efc} disabled={!!editingId} onPull={handlePull} pulled={pulledDocs} />
 
                     <div className="erp-tab-content ent-lines">
-                        <SalesLineGrid itemCharges={itemCharges}
+                        <SalesLineGrid fx={fx} itemCharges={itemCharges}
                             listKey="sb" title="Sales Bill" ctl={lineCtl} details={form.details} onRow={updateDetailRow} onRemove={removeDetailRow} onAdd={addDetailRow}
                             products={filterProductsByCompany(products, form.product_company_id)} allProducts={products} units={units} warehouses={warehouses}
                             settings={settings} termCols={termCols} popupTerms={popupTerms} efc={efc} onProductSelect={handleProductSelect}
@@ -408,7 +412,7 @@ export default function SalesBill() {
                         />
                     </div>
 
-                    <EntryFooter
+                    <EntryFooter fx={fx}
                         title="Sales Bill"
                         warehouseName={settings?.multiWarehouse ? (warehouses.find(w => w.id === form.warehouse_id)?.warehouse_name || '') : undefined}
                         totals={{ gross: totals.gross, billTerm: totals.term, net: grandTotal, taxable: totals.taxable, tax: totals.tax, nonTaxable: totals.nonTaxable }}
@@ -433,6 +437,7 @@ export default function SalesBill() {
                                             <option value="inclusive">Inclusive of Tax</option>
                                         </select>
                                     </div>
+                                    <CurrencyField value={form.currency} rate={form.exchange_rate} onChange={v => setForm(f => ({ ...f, ...v }))} />
                                     <div className={efc.isVisible('narration') ? 'erp-field' : 'erp-field hidden'}>
                                         <label className="erp-label">Narration</label>
                                         <input disabled={efc.isReadonly('narration')} className="erp-input" value={form.narration} onChange={e => setForm({ ...form, narration: e.target.value })} />
