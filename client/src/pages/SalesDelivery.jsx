@@ -35,7 +35,7 @@ import { saveEntryDraft, finishEntryDraft } from '../components/entry/entryDraft
 const emptyDetailRow = () => ({ product_id: '', qty: '', uom_id: '', alt_qty: '', alt_unit_id: '', rate_basis: 'primary', rate: '', warehouse_id: '', batch_no: '', serial_no: '', mfg_date: '', exp_date: '', source_order_detail_id: '' });
 
 const emptyForm = {
-    product_company_id: '', doc_date: new Date().toISOString().slice(0, 10), source_order_id: '', numbering_category_id: '',
+    product_company_id: '', doc_date: new Date().toISOString().slice(0, 10), source_order_id: '', source_quotation_id: '', numbering_category_id: '',
     customer_ledger_id: '', customer_sub_ledger_id: '', agent_id: '', warehouse_id: '',
     vehicle_no: '', driver_name: '', transport_master_id: '', delivery_address: '',
     remarks_text: '', narration: '', cost_center_id: '', business_unit_id: '', area_id: '', route_id: '',

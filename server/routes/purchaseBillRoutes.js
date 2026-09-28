@@ -11,7 +11,7 @@
 
 const express = require('express');
 const { checkAccountPurposes } = require('../utils/ledgerPurpose');
-const { bumpAltCounter, rollHeaderStatus } = require('../utils/progressCounters');
+const { bumpAltCounter, rollHeaderStatus, moveSourceProgress } = require('../utils/progressCounters');
 const { checkCompulsoryFields, lockProtectedFields } = require('../utils/entryFieldRules');
 const { checkProductCompany } = require('../utils/productCompanyRules');
 const { applyTermSubLedgers } = require('../utils/termSubLedgers');
@@ -604,6 +604,8 @@ async function adjustGrnQtyBilled(tenantClient, sourceGrnDetailId, delta, altDel
 
 // A Bill made straight from a Purchase Order (no GRN) receives the goods itself,
 // so it moves the order's received counter - otherwise the order stays pending.
+// lines pulled straight from a Purchase Quotation use up the quotation (qty_ordered, as a PO would)
+const PQ_PROGRESS = { sourceIdField: 'source_quotation_detail_id', table: 'purchase_quotation_details', counter: 'qty_ordered', altCounter: 'alt_qty_ordered' };
 async function adjustOrderQtyReceived(tenantClient, sourceOrderDetailId, delta, altDelta = 0) {
     const { data: srcLine } = await tenantClient.from('purchase_order_details').select('qty_received, order_id').eq('id', sourceOrderDetailId).maybeSingle();
     if (!srcLine) return;
@@ -653,6 +655,7 @@ router.put('/purchase-bills/:id/status', requireAuth, loadUserPermissions, requi
             for (const d of (billDetails || [])) {
                 if (d.source_grn_detail_id) await adjustGrnQtyBilled(tenantClient, d.source_grn_detail_id, Number(d.qty), Number(d.alt_qty || 0));
                 else if (d.source_order_detail_id) await adjustOrderQtyReceived(tenantClient, d.source_order_detail_id, Number(d.qty), Number(d.alt_qty || 0));
+                else if (d.source_quotation_detail_id) await moveSourceProgress(tenantClient, [d], PQ_PROGRESS, 1);
             }
             await postBillStockMovements(tenantClient, tenantId, data, billDetails || []);
 
@@ -688,6 +691,7 @@ router.put('/purchase-bills/:id/status', requireAuth, loadUserPermissions, requi
             for (const d of (billDetails || [])) {
                 if (d.source_grn_detail_id) await adjustGrnQtyBilled(tenantClient, d.source_grn_detail_id, -Number(d.qty), -Number(d.alt_qty || 0));
                 else if (d.source_order_detail_id) await adjustOrderQtyReceived(tenantClient, d.source_order_detail_id, -Number(d.qty), -Number(d.alt_qty || 0));
+                else if (d.source_quotation_detail_id) await moveSourceProgress(tenantClient, [d], PQ_PROGRESS, -1);
             }
             await reverseReferenceAndSettlements(tenantClient, 'purchase_bill', req.params.id);
             await reverseGlBatch(tenantClient, 'purchase_bill', req.params.id);

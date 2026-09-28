@@ -369,7 +369,10 @@ router.get('/purchase-grns/pull-forward', requireAuth, loadUserPermissions, requ
 // moved back on edit, delete or cancel.)
 const GRN_COUNTING = ['received', 'partially_billed', 'billed'];
 const PO_PROGRESS = { sourceIdField: 'source_order_detail_id', table: 'purchase_order_details', counter: 'qty_received', altCounter: 'alt_qty_received' };
+// lines pulled straight from a Purchase Quotation use up the quotation (qty_ordered, as a PO would)
+const PQ_PROGRESS = { sourceIdField: 'source_quotation_detail_id', table: 'purchase_quotation_details', counter: 'qty_ordered', altCounter: 'alt_qty_ordered' };
 async function moveOrderProgress(tenantClient, lines, dir) {
+    await moveSourceProgress(tenantClient, (lines || []).filter(l => l.source_quotation_detail_id && !l.source_order_detail_id), PQ_PROGRESS, dir);
     await moveSourceProgress(tenantClient, lines, PO_PROGRESS, dir);
     const ids = [...new Set((lines || []).map(l => l.source_order_detail_id).filter(Boolean))];
     if (!ids.length) return;
@@ -569,7 +572,7 @@ router.put('/purchase-grns/:id', requireAuth, loadUserPermissions, requirePermis
         if (b.details) {
             // Edit of a received GRN: take the old lines' qty back out of its Order first.
             const countsNow = GRN_COUNTING.includes(existing.status);
-            if (countsNow) { const { data: oldLines } = await tenantClient.from('purchase_grn_details').select('source_order_detail_id, qty, alt_qty').eq('grn_id', req.params.id); await moveOrderProgress(tenantClient, oldLines, -1); }
+            if (countsNow) { const { data: oldLines } = await tenantClient.from('purchase_grn_details').select('source_order_detail_id, source_quotation_detail_id, qty, alt_qty').eq('grn_id', req.params.id); await moveOrderProgress(tenantClient, oldLines, -1); }
             const { total, detailIdByIndex } = await syncDetails(tenantClient, tenantId, req.params.id, b.details);
             if (countsNow) await moveOrderProgress(tenantClient, b.details, 1);
             const totalQty = b.details.reduce((sum, d) => sum + (Number(d.qty) || 0), 0);
@@ -621,7 +624,7 @@ router.put('/purchase-grns/:id/status', requireAuth, loadUserPermissions, requir
         // Clearing; cancelling a previously-received GRN reverses it.
         // Guarded by existing.status so re-saving an already-received
         // GRN never double-posts.
-        const { data: progressLines } = await tenantClient.from('purchase_grn_details').select('source_order_detail_id, qty, alt_qty').eq('grn_id', req.params.id);
+        const { data: progressLines } = await tenantClient.from('purchase_grn_details').select('source_order_detail_id, source_quotation_detail_id, qty, alt_qty').eq('grn_id', req.params.id);
         if (GRN_COUNTING.includes(status) && !GRN_COUNTING.includes(existing.status)) await moveOrderProgress(tenantClient, progressLines, 1);
         if (status === 'cancelled' && GRN_COUNTING.includes(existing.status)) await moveOrderProgress(tenantClient, progressLines, -1);
         if (status === 'received' && existing.status !== 'received') {
