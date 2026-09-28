@@ -55,6 +55,8 @@ const emptyForm = {
     jv_type: 'normal', party_ledger_id: '', party_pan: '', party_bill_no: '', party_bill_date: '',
     taxable_amount: '', non_taxable_amount: '', vat_percent: 13, vat_amount: '',
     tds_percent: '', tds_base_amount: '', tds_amount: '', tds_ledger_id: '', tds_sub_ledger_id: '',
+    // TDS type: on purchase (supplier's bills) or on sales (customer's bills), and the bills chosen
+    tds_side: 'purchase', tds_bills: [],
     details: [emptyDetailRow(), emptyDetailRow()]
 };
 const r2 = n => Math.round((Number(n) || 0) * 100) / 100;
@@ -117,6 +119,17 @@ export default function JournalVoucher() {
     const addDetailRow = () => setForm(f => ({ ...f, details: [...f.details, emptyDetailRow()] }));
     const removeDetailRow = (idx) => setForm(f => ({ ...f, details: f.details.length > 2 ? f.details.filter((_, i) => i !== idx) : f.details }));
     const updateDetailRow = (idx, patch) => { setAutoLines(false); setForm(f => ({ ...f, details: f.details.map((d, i) => i === idx ? { ...d, ...patch } : d) })); };
+    // choosing the ledger of a line with no amount yet fills the amount that balances the
+    // voucher on the other side (100 Dr on line 1 -> 100 Cr on the next line), still editable
+    const pickLineLedger = (idx, id) => { setAutoLines(false); setForm(f => ({ ...f, details: f.details.map((d, i) => {
+        if (i !== idx) return d;
+        const next = { ...d, ledger_id: id, sub_ledger_id: '' };
+        if (id && !Number(d.debit_amount) && !Number(d.credit_amount)) {
+            const diff = r2(f.details.reduce((s, x, k) => (k === idx ? s : s + (Number(x.debit_amount) || 0) - (Number(x.credit_amount) || 0)), 0));
+            if (diff > 0) next.credit_amount = diff; else if (diff < 0) next.debit_amount = -diff;
+        }
+        return next;
+    }) })); };
 
     // ---- taxable / non-taxable purchase or sales entry: voucher lines are
     // filled from the party, amounts and accounts, and stay editable (once a
@@ -129,12 +142,18 @@ export default function JournalVoucher() {
     const jt = typeOf(form.jv_type);
     const isTax = jt.side === 'purchase' || jt.side === 'sales';
     const isTds = jt.side === 'tds';
+    const tdsSales = isTds && form.tds_side === 'sales';
+    // the party side: customers (+ both) for sales and TDS on sales, suppliers (+ both) otherwise
+    const partySales = jt.side === 'sales' || tdsSales;
+    const partyCats = partySales ? ['sales', 'both'] : ['purchase', 'both'];
+    const partyLedgers = ledgers.filter(l => partyCats.includes(l.category_type) || l.id === form.party_ledger_id);
+    const billMode = isTds && (form.tds_bills || []).length > 0;
     const goodsAmount = r2(Number(form.taxable_amount || 0) + Number(form.non_taxable_amount || 0));
     const taxTotal = r2(goodsAmount + Number(form.vat_amount || 0));
     // TDS: % of the base (tax types: the VAT-exclusive value) unless the amount is typed
     const tdsBase = isTds ? r2(form.tds_base_amount) : Number(form.tds_base_amount) > 0 ? r2(form.tds_base_amount) : goodsAmount;
     const tdsAmount = r2(form.tds_amount);
-    const defaultTdsLedger = jt.side === 'sales' ? sysCtl.sales_tds_ledger_id : sysCtl.tds_ledger_id;
+    const defaultTdsLedger = partySales ? sysCtl.sales_tds_ledger_id : sysCtl.tds_ledger_id;
     const setTax = patch => setForm(f => {
         const n = { ...f, ...patch };
         if (('taxable_amount' in patch || 'vat_percent' in patch) && !('vat_amount' in patch)) n.vat_amount = n.vat_percent === '' ? n.vat_amount : r2(Number(n.taxable_amount || 0) * Number(n.vat_percent || 0) / 100);
@@ -143,14 +162,42 @@ export default function JournalVoucher() {
         const base = n.jv_type === 'tds' || Number(n.tds_base_amount) > 0 ? Number(n.tds_base_amount || 0) : Number(n.taxable_amount || 0) + Number(n.non_taxable_amount || 0);
         if ('tds_amount' in patch) n.tds_percent = base > 0 && Number(patch.tds_amount) > 0 ? r2(Number(patch.tds_amount) * 100 / base) : '';
         else if (Number(n.tds_percent) > 0) n.tds_amount = r2(base * Number(n.tds_percent) / 100);
-        if (Number(n.tds_amount) > 0 && !n.tds_ledger_id) n.tds_ledger_id = (typeOf(n.jv_type).side === 'sales' ? sysCtl.sales_tds_ledger_id : sysCtl.tds_ledger_id) || '';
+        if ((n.tds_bills || []).length && ('tds_percent' in patch)) n.tds_bills = n.tds_bills.map(b => ({ ...b, tds_percent: n.tds_percent }));
+        if ((n.tds_bills || []).length) Object.assign(n, billTotals(n.tds_bills));
+        if (Number(n.tds_amount) > 0 && !n.tds_ledger_id) n.tds_ledger_id = (typeOf(n.jv_type).side === 'sales' || (n.jv_type === 'tds' && n.tds_side === 'sales') ? sysCtl.sales_tds_ledger_id : sysCtl.tds_ledger_id) || '';
         return n;
     });
+    // TDS journal against bills: the party's open bills (newest first), several can be chosen
+    const [openBills, setOpenBills] = useState([]);
+    useEffect(() => {
+        if (!isTds || !form.party_ledger_id) { setOpenBills([]); return; }
+        const q = new URLSearchParams({ side: form.tds_side || 'purchase', party_id: form.party_ledger_id, ...(editingId ? { jv_id: editingId } : {}) });
+        authFetch(`/api/journal-vouchers/tds-bills?${q}`).then(r => setOpenBills(r.data || [])).catch(() => setOpenBills([]));
+    }, [authFetch, isTds, form.party_ledger_id, form.tds_side, editingId]);
+    const billKey = b => `${b.source_type}|${b.source_id}`;
+    const billTds = b => r2(Number(b.base_amount || 0) * Number(b.tds_percent || 0) / 100);
+    const billTotals = bills => {
+        const base = r2(bills.reduce((s, b) => s + Number(b.base_amount || 0), 0)), tds = r2(bills.reduce((s, b) => s + billTds(b), 0));
+        return { tds_base_amount: base || '', tds_amount: tds || '', tds_percent: bills.length && bills.every(b => Number(b.tds_percent) === Number(bills[0].tds_percent)) ? bills[0].tds_percent : '' };
+    };
+    const setBills = fn => { setAutoLines(true); setForm(f => { const bills = fn(f.tds_bills || []); const n = { ...f, tds_bills: bills, ...billTotals(bills) };
+        if (!bills.length) Object.assign(n, { tds_base_amount: '', tds_amount: '' });
+        if (Number(n.tds_amount) > 0 && !n.tds_ledger_id) n.tds_ledger_id = (f.tds_side === 'sales' ? sysCtl.sales_tds_ledger_id : sysCtl.tds_ledger_id) || '';
+        return n; }); };
+    const toggleBill = b => setBills(list => (list.some(x => billKey(x) === billKey(b)) ? list.filter(x => billKey(x) !== billKey(b))
+        : [...list, { ...b, tds_percent: form.tds_percent || sysCtl.default_tds_percent || 1.5 }]));
+    const setBillPct = (b, pct) => setBills(list => list.map(x => (billKey(x) === billKey(b) ? { ...x, tds_percent: pct } : x)));
+    const shownBills = [...(form.tds_bills || []).filter(x => !openBills.some(o => billKey(o) === billKey(x))), ...openBills];
+    // voucher lines: the party of this side, the accounts of the type, VAT and TDS ledgers
+    const lineLedgers = jt.key === 'normal' ? ledgers : ledgers.filter(l => partyCats.includes(l.category_type)
+        || (jt.purposes || []).some(p => lp.can(l.id, p)) || lp.can(l.id, partySales ? 'income' : 'expense')
+        || [taxAcct.vat, form.tds_ledger_id, defaultTdsLedger, sysCtl.vat_ledger_id].includes(l.id) || form.details.some(d => d.ledger_id === l.id));
     const changeType = key => {
         setAutoLines(true);
         // a new type starts its TDS afresh (the TDS type's base is not a purchase's)
-        setForm(f => ({ ...f, jv_type: key, tds_ledger_id: '', tds_sub_ledger_id: '', tds_percent: '', tds_base_amount: '', tds_amount: '', ...(key === 'normal' ? { details: [emptyDetailRow(), emptyDetailRow()] } : {}) }));
+        setForm(f => ({ ...f, jv_type: key, tds_ledger_id: '', tds_sub_ledger_id: '', tds_percent: '', tds_base_amount: '', tds_amount: '', tds_bills: [], party_ledger_id: '', party_pan: '', ...(key === 'normal' ? { details: [emptyDetailRow(), emptyDetailRow()] } : {}) }));
     };
+    const changeTdsSide = side => { setAutoLines(true); setForm(f => ({ ...f, tds_side: side, party_ledger_id: '', party_pan: '', tds_bills: [], tds_ledger_id: '', tds_sub_ledger_id: '', tds_base_amount: '', tds_amount: '' })); };
     const buildTaxLines = (f, acct) => {
         const t = typeOf(f.jv_type);
         const goodsAmt = r2(Number(f.taxable_amount || 0) + Number(f.non_taxable_amount || 0)), vat = r2(f.vat_amount), total = r2(goodsAmt + vat), tds = r2(f.tds_amount);
@@ -158,7 +205,12 @@ export default function JournalVoucher() {
         const row = (ledger_id, dr, cr, sub = '') => ({ ...emptyDetailRow(), ledger_id: ledger_id || '', sub_ledger_id: sub || '', debit_amount: dr ? dr : '', credit_amount: cr ? cr : '', narration: text });
         const tdsRow = (dr, cr) => row(f.tds_ledger_id, dr, cr, f.tds_sub_ledger_id);
         let lines;
-        if (t.side === 'tds') {
+        if (t.side === 'tds' && ((f.tds_bills || []).length || f.tds_side === 'sales')) {
+            // bills already booked: only the TDS moves
+            const billText = (f.tds_bills || []).map(b => b.doc_no).filter(Boolean).join(', ');
+            const withText = l => ({ ...l, narration: billText ? `TDS on ${billText}` : l.narration });
+            lines = (f.tds_side === 'sales' ? [tdsRow(tds, 0), row(f.party_ledger_id, 0, tds)] : [row(f.party_ledger_id, tds, 0), tdsRow(0, tds)]).map(withText);
+        } else if (t.side === 'tds') {
             const base = r2(f.tds_base_amount);
             lines = [row(acct.goods, base, 0), tdsRow(0, tds), row(f.party_ledger_id, 0, r2(base - tds))];
         } else if (t.side === 'purchase') {
@@ -181,7 +233,7 @@ export default function JournalVoucher() {
     useEffect(() => {
         if (jt.key === 'normal' || !autoLines) return;
         setForm(f => ({ ...f, details: buildTaxLines(f, taxAcct).length ? buildTaxLines(f, taxAcct) : f.details }));
-    }, [form.jv_type, form.party_ledger_id, form.taxable_amount, form.non_taxable_amount, form.vat_amount, form.party_bill_no, form.tds_amount, form.tds_base_amount, form.tds_ledger_id, form.tds_sub_ledger_id, taxAcct, autoLines]); // eslint-disable-line react-hooks/exhaustive-deps
+    }, [form.jv_type, form.tds_side, form.tds_bills, form.party_ledger_id, form.taxable_amount, form.non_taxable_amount, form.vat_amount, form.party_bill_no, form.tds_amount, form.tds_base_amount, form.tds_ledger_id, form.tds_sub_ledger_id, taxAcct, autoLines]); // eslint-disable-line react-hooks/exhaustive-deps
 
     const totalDebit = form.details.reduce((s, d) => s + (Number(d.debit_amount) || 0), 0);
     const totalCredit = form.details.reduce((s, d) => s + (Number(d.credit_amount) || 0), 0);
@@ -250,7 +302,7 @@ export default function JournalVoucher() {
             setAutoLines(false);
             setForm({
                 ...emptyForm, ...Object.fromEntries(Object.entries(src).filter(([, v]) => v !== null)),
-                doc_no: '', doc_date: new Date().toISOString().slice(0, 10), status: 'draft',
+                doc_no: '', doc_date: new Date().toISOString().slice(0, 10), status: 'draft', tds_bills: [],   // a bill takes TDS once
                 details: (src.details || []).length > 0 ? src.details.map(d => ({ ...emptyDetailRow(), ...d })) : [emptyDetailRow(), emptyDetailRow()]
             });
             setShowForm(true);
@@ -388,14 +440,21 @@ export default function JournalVoucher() {
                         <div className="border rounded p-3 mb-4 bg-blue-50/40">
                             <p className="text-sm font-semibold mb-2">{jt.label}</p>
                             <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
-                                <div className="erp-field md:col-span-2"><label className="erp-label">{jt.side === 'purchase' ? 'Supplier' : jt.side === 'sales' ? 'Customer' : 'Party (paid to)'} <span className="req">*</span></label>
+                                {isTds && (
+                                    <div className="erp-field md:col-span-6 flex-row gap-4 text-sm">
+                                        {[['purchase', 'TDS on Purchase (supplier\'s bills - TDS payable)'], ['sales', 'TDS on Sales (customer\'s bills - TDS receivable)']].map(([k, t]) => (
+                                            <label key={k} className="flex items-center gap-1 mr-4"><input type="radio" name="jv_tds_side" checked={(form.tds_side || 'purchase') === k} onChange={() => changeTdsSide(k)} /> {t}</label>
+                                        ))}
+                                    </div>
+                                )}
+                                <div className="erp-field md:col-span-2"><label className="erp-label">{partySales ? 'Customer' : 'Supplier'} <span className="hint">({partySales ? 'customer / both' : 'supplier / both'})</span> <span className="req">*</span></label>
                                     <SearchablePopupSelect
                                         listKey="jv_tax_party_picker"
                                         columns={[{ key: 'account_code', label: 'Code' }, { key: 'account_name', label: 'Name' }, { key: 'pan_number', label: 'PAN' }]}
                                         defaultVisibleKeys={['account_name']}
-                                        items={lp.filter(ledgers, jt.side === 'sales' ? 'customer' : 'supplier', form.party_ledger_id)} getId={l => l.id} getLabel={l => l.account_name}
+                                        items={partyLedgers} getId={l => l.id} getLabel={l => l.account_name}
                                         searchKeys={['account_name', 'account_code', 'pan_number']}
-                                        value={form.party_ledger_id} onChange={id => setTax({ party_ledger_id: id })} placeholder="Choose party"
+                                        value={form.party_ledger_id} onChange={id => setTax({ party_ledger_id: id, tds_bills: [], tds_base_amount: '', tds_amount: '' })} placeholder="Choose party"
                                     /></div>
                                 <div className="erp-field"><label className="erp-label">PAN / VAT No</label><input className="erp-input" value={form.party_pan || ''} onChange={e => setTax({ party_pan: e.target.value })} /></div>
                                 <div className="erp-field"><label className="erp-label">{jt.side === 'purchase' ? "Supplier's Bill No *" : jt.side === 'sales' ? 'Invoice No' : 'Bill / Ref No'}</label><input className="erp-input" value={form.party_bill_no || ''} onChange={e => setTax({ party_bill_no: e.target.value })} /></div>
@@ -406,19 +465,49 @@ export default function JournalVoucher() {
                                     <div className="erp-field"><label className="erp-label">VAT %</label><input type="number" step="0.01" className="erp-input" value={form.vat_percent ?? ''} onChange={e => setTax({ vat_percent: e.target.value })} /></div>
                                     <div className="erp-field"><label className="erp-label">VAT Amount</label><input type="number" step="0.01" className="erp-input" value={form.vat_amount} onChange={e => setTax({ vat_amount: e.target.value })} /></div>
                                 </>)}
-                                <div className="erp-field"><label className="erp-label">{jt.acct}</label>
+                                {!(isTds && (billMode || tdsSales)) && <div className="erp-field"><label className="erp-label">{jt.acct}</label>
                                     <SearchablePopupSelect listKey="jv_tax_goods_picker" columns={[{ key: 'account_code', label: 'Code' }, { key: 'account_name', label: 'Name' }]} defaultVisibleKeys={['account_name']}
                                         items={filterAny(ledgers, jt.purposes || [], taxAcct.goods)} getId={l => l.id} getLabel={l => l.account_name} searchKeys={['account_name', 'account_code']}
-                                        value={taxAcct.goods} onChange={id => { setAutoLines(true); setTaxAcct(a => ({ ...a, goods: id })); }} placeholder="Choose account" /></div>
+                                        value={taxAcct.goods} onChange={id => { setAutoLines(true); setTaxAcct(a => ({ ...a, goods: id })); }} placeholder="Choose account" /></div>}
                                 {isTax && <div className="erp-field"><label className="erp-label">VAT A/c</label>
                                     <SearchablePopupSelect listKey="jv_tax_vat_picker" columns={[{ key: 'account_code', label: 'Code' }, { key: 'account_name', label: 'Name' }]} defaultVisibleKeys={['account_name']}
                                         items={lp.filter(ledgers, 'vat', taxAcct.vat)} getId={l => l.id} getLabel={l => l.account_name} searchKeys={['account_name', 'account_code']}
                                         value={taxAcct.vat} onChange={id => { setAutoLines(true); setTaxAcct(a => ({ ...a, vat: id })); }} placeholder="VAT ledger" /></div>}
                             </div>
+                            {isTds && form.party_ledger_id && (
+                                <fieldset className="border rounded p-2 mt-3">
+                                    <legend className="px-1 text-xs font-semibold text-gray-600 uppercase">{tdsSales ? 'Sales bills' : 'Purchase bills / additional expenses'} of this party without TDS (newest first)</legend>
+                                    <div className="overflow-x-auto" style={{ maxHeight: 260 }}>
+                                        <table className="erp-grid-table">
+                                            <thead><tr>
+                                                <th style={{ width: 30 }}><input type="checkbox" checked={shownBills.length > 0 && shownBills.every(b => (form.tds_bills || []).some(x => billKey(x) === billKey(b)))}
+                                                    onChange={e => setBills(() => (e.target.checked ? shownBills.map(b => ({ ...b, tds_percent: (form.tds_bills || []).find(x => billKey(x) === billKey(b))?.tds_percent || form.tds_percent || sysCtl.default_tds_percent || 1.5 })) : []))} title="All" /></th>
+                                                <th>Date</th><th>Doc No.</th><th>Type</th><th>Party Bill No.</th><th className="text-right">Bill Amount</th><th className="text-right">Base (excl. VAT)</th><th className="text-right" style={{ width: 90 }}>TDS %</th><th className="text-right">TDS</th>
+                                            </tr></thead>
+                                            <tbody>
+                                                {shownBills.map(b => {
+                                                    const sel = (form.tds_bills || []).find(x => billKey(x) === billKey(b));
+                                                    return (
+                                                        <tr key={billKey(b)} className={sel ? 'bg-blue-50' : ''}>
+                                                            <td><input type="checkbox" checked={!!sel} onChange={() => toggleBill(b)} /></td>
+                                                            <td>{formatDateForDisplay(b.doc_date, 'dual')}</td><td className="font-mono">{b.doc_no}</td><td>{b.label}</td><td>{b.party_bill_no || '—'}</td>
+                                                            <td className="text-right">{Number(b.bill_amount || 0).toFixed(2)}</td><td className="text-right">{Number(b.base_amount || 0).toFixed(2)}</td>
+                                                            <td>{sel ? <input type="number" step="0.001" className="erp-input text-right" value={sel.tds_percent} onChange={e => setBillPct(b, e.target.value)} /> : ''}</td>
+                                                            <td className="text-right">{sel ? billTds(sel).toFixed(2) : ''}</td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                                {shownBills.length === 0 && <tr><td colSpan={9} className="text-center text-gray-400">No bill of this party is waiting for TDS{tdsSales ? '' : ' - enter the amount below for TDS on an expense without a bill'}.</td></tr>}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    {billMode && <p className="text-xs text-gray-600 mt-1">{form.tds_bills.length} bill(s): base {r2(form.tds_base_amount).toFixed(2)}, TDS {tdsAmount.toFixed(2)} - {tdsSales ? 'Dr TDS receivable, Cr customer.' : 'Dr supplier, Cr TDS payable.'} These bills will not be offered for TDS again.</p>}
+                                </fieldset>
+                            )}
                             <fieldset className="border rounded p-2 mt-3">
-                                <legend className="px-1 text-xs font-semibold text-gray-600 uppercase">TDS {jt.side === 'sales' ? '(deducted by the customer - receivable)' : jt.side === 'tds' ? '' : '(withheld from the supplier - payable)'}{jt.side !== 'tds' && <span className="font-normal normal-case"> - optional</span>}</legend>
+                                <legend className="px-1 text-xs font-semibold text-gray-600 uppercase">TDS {partySales ? '(deducted by the customer - receivable)' : '(withheld from the supplier - payable)'}{jt.side !== 'tds' && <span className="font-normal normal-case"> - optional</span>}</legend>
                                 <div className="grid grid-cols-2 md:grid-cols-6 gap-3">
-                                    <div className="erp-field"><label className="erp-label">{isTds ? 'Amount (TDS base) *' : 'TDS Base'}</label><input type="number" step="0.01" className="erp-input" value={form.tds_base_amount} onChange={e => setTax({ tds_base_amount: e.target.value })} placeholder={isTds ? '' : goodsAmount.toFixed(2)} /></div>
+                                    <div className="erp-field"><label className="erp-label">{isTds ? (billMode ? 'Base of the bills' : 'Amount (TDS base) *') : 'TDS Base'}</label><input type="number" step="0.01" className="erp-input" readOnly={billMode} value={form.tds_base_amount} onChange={e => setTax({ tds_base_amount: e.target.value })} placeholder={isTds ? '' : goodsAmount.toFixed(2)} /></div>
                                     <div className="erp-field"><label className="erp-label">TDS %</label><input type="number" step="0.001" className="erp-input" value={form.tds_percent} onChange={e => setTax({ tds_percent: e.target.value })} placeholder={sysCtl.default_tds_percent ? String(sysCtl.default_tds_percent) : '1.5'} /></div>
                                     <div className="erp-field"><label className="erp-label">TDS Amount</label><input type="number" step="0.01" className="erp-input" value={form.tds_amount} onChange={e => setTax({ tds_amount: e.target.value })} /></div>
                                     <div className="erp-field"><label className="erp-label">TDS Ledger</label>
@@ -430,11 +519,11 @@ export default function JournalVoucher() {
                                             items={subLedgers.filter(x => x.main_ledger_id === (form.tds_ledger_id || defaultTdsLedger))} getId={x => x.id} getLabel={x => x.sub_ledger_name} searchKeys={['sub_ledger_name', 'sub_ledger_code']}
                                             value={form.tds_sub_ledger_id} onChange={id => { setAutoLines(true); setForm(f => ({ ...f, tds_sub_ledger_id: id, tds_ledger_id: f.tds_ledger_id || defaultTdsLedger || '' })); }} placeholder={(form.tds_ledger_id || defaultTdsLedger) ? 'None' : 'Choose the TDS ledger first'} /></div>
                                 </div>
-                                {tdsAmount > 0 && <p className="text-xs text-gray-500 mt-1">TDS {tdsBase.toFixed(2)} x {Number(form.tds_percent || 0)}% = {tdsAmount.toFixed(2)} · {jt.side === 'sales' ? 'Dr TDS receivable, customer debited with the rest.' : 'Cr TDS payable, party credited with the rest.'}</p>}
+                                {tdsAmount > 0 && !billMode && <p className="text-xs text-gray-500 mt-1">TDS {tdsBase.toFixed(2)} x {Number(form.tds_percent || 0)}% = {tdsAmount.toFixed(2)} · {partySales ? 'Dr TDS receivable.' : 'Cr TDS payable.'}</p>}
                             </fieldset>
                             <div className="flex items-center gap-3 text-sm mt-2 flex-wrap">
                                 {isTax && <span>Bill total <b>{taxTotal.toFixed(2)}</b>{tdsAmount > 0 && <> · {jt.side === 'sales' ? 'Customer' : 'Supplier'} <b>{r2(taxTotal - tdsAmount).toFixed(2)}</b></>}</span>}
-                                {isTds && <span>Party gets <b>{r2(tdsBase - tdsAmount).toFixed(2)}</b></span>}
+                                {isTds && !billMode && !tdsSales && <span>Party gets <b>{r2(tdsBase - tdsAmount).toFixed(2)}</b></span>}
                                 {!autoLines && <button type="button" className="erp-btn" onClick={() => setAutoLines(true)}>↻ Refill voucher lines from these</button>}
                                 <span className="text-xs text-gray-500">{autoLines ? 'Voucher lines below are filled automatically - edit any line to change it.' : 'Voucher lines were edited by hand.'}{isTax ? ` Shown in the VAT ${jt.side} register and VAT return.` : ''}{tdsAmount > 0 ? ' Shown in the TDS report.' : ''}</span>
                             </div>
@@ -464,9 +553,9 @@ export default function JournalVoucher() {
                                                     listKey="jv_ledger_picker"
                                                     columns={[{ key: 'account_code', label: 'Code' }, { key: 'account_name', label: 'Name' }]}
                                                     defaultVisibleKeys={['account_name']}
-                                                    items={ledgers} getId={l => l.id} getLabel={l => l.account_name}
+                                                    items={lineLedgers} getId={l => l.id} getLabel={l => l.account_name}
                                                     searchKeys={['account_name', 'account_code']}
-                                                    value={d.ledger_id} onChange={id => updateDetailRow(idx, { ledger_id: id, sub_ledger_id: '' })} placeholder="Ledger"
+                                                    value={d.ledger_id} onChange={id => pickLineLedger(idx, id)} placeholder="Ledger"
                                                 />
                                             </td>
                                             <td className={efc.isVisible('sub_ledger_id', 'detail') ? '' : 'hidden'}>

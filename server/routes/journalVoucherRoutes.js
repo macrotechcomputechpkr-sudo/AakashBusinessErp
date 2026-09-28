@@ -15,6 +15,7 @@ const { requireAuth, requirePermission } = require('../middleware/auth');
 const { resolveDocumentNumber } = require('../utils/documentNumbering');
 const { classifyLedgers, allowed } = require('../utils/ledgerPurpose');
 const { allVatLedgerIds } = require('../utils/vatLedger');
+const jvTdsBills = require('../utils/jvTdsBills');
 
 // ---------- JV types: taxable / non-taxable goods, assets, services; TDS ----------
 // jv_type decides the options of the voucher (JournalVoucher.jsx shows only
@@ -23,7 +24,11 @@ const { allVatLedgerIds } = require('../utils/vatLedger');
 //                  Cr party (total - TDS), Cr TDS payable (TDS)
 //   sales side     Dr party (total - TDS), Dr TDS receivable (TDS),
 //                  Cr sales / asset / income, Cr VAT
-//   tds            Dr expense (base), Cr TDS payable (TDS), Cr party (base - TDS)
+//   tds            tds_side 'purchase' (TDS on purchase) or 'sales' (TDS on sales)
+//                  against bills (jv_tds_bills): purchase Dr supplier / Cr TDS
+//                  payable, sales Dr TDS receivable / Cr customer - TDS of
+//                  the chosen bills; without bills (purchase): Dr expense
+//                  (base), Cr TDS payable (TDS), Cr party (base - TDS)
 // tax_entry_type stays 'purchase' / 'sales' for the six tax types, so the VAT
 // register and VAT return see them; asset purchase is a capital purchase.
 const r2 = n => Math.round((Number(n) || 0) * 100) / 100;
@@ -41,7 +46,7 @@ const jvTypeOf = b => (JV_TYPES[b.jv_type] ? b.jv_type
     : b.tax_entry_type === 'purchase' ? (b.is_capital ? 'asset_purchase' : 'purchase') : b.tax_entry_type === 'sales' ? 'sales' : 'normal');
 function taxFields(b) {
     const jvType = jvTypeOf(b), T = JV_TYPES[jvType];
-    const blankTds = { tds_ledger_id: null, tds_sub_ledger_id: null, tds_percent: 0, tds_base_amount: 0, tds_amount: 0 };
+    const blankTds = { tds_ledger_id: null, tds_sub_ledger_id: null, tds_percent: 0, tds_base_amount: 0, tds_amount: 0, tds_side: null };
     if (jvType === 'normal') return { jv_type: 'normal', tax_entry_type: 'none', party_ledger_id: null, party_name_snapshot: null, party_pan: null, party_bill_no: null, party_bill_date: null,
         taxable_amount: 0, non_taxable_amount: 0, vat_percent: null, vat_amount: 0, is_capital: false, ...blankTds };
     const tax = !!T.side;
@@ -53,21 +58,23 @@ function taxFields(b) {
         party_bill_no: b.party_bill_no ? String(b.party_bill_no).trim() : null, party_bill_date: b.party_bill_date || null,
         taxable_amount: taxable, non_taxable_amount: nonTaxable, vat_percent: tax ? (b.vat_percent === '' || b.vat_percent == null ? null : Number(b.vat_percent)) : null,
         vat_amount: tax ? r2(b.vat_amount) : 0, is_capital: !!T.capital,
-        ...(tdsAmount > 0 ? { tds_ledger_id: b.tds_ledger_id || null, tds_sub_ledger_id: b.tds_sub_ledger_id || null, tds_percent: percent, tds_base_amount: base, tds_amount: tdsAmount } : blankTds) };
+        ...(tdsAmount > 0 ? { tds_ledger_id: b.tds_ledger_id || null, tds_sub_ledger_id: b.tds_sub_ledger_id || null, tds_percent: percent, tds_base_amount: base, tds_amount: tdsAmount } : blankTds),
+        tds_side: T.tds ? (b.tds_side === 'sales' ? 'sales' : 'purchase') : null };
 }
 // TDS ledger of a voucher: the one chosen, else System Control (payable / receivable)
 async function withTdsLedger(c, t, f) {
     if (!(f.tds_amount > 0) || f.tds_ledger_id) return f;
     const { data: sc } = await c.from('system_control_settings').select('tds_ledger_id, sales_tds_ledger_id').eq('tenant_id', t).maybeSingle();
-    return { ...f, tds_ledger_id: (JV_TYPES[f.jv_type].side === 'sales' ? sc?.sales_tds_ledger_id : sc?.tds_ledger_id) || null };
+    const receivable = JV_TYPES[f.jv_type].side === 'sales' || f.tds_side === 'sales';
+    return { ...f, tds_ledger_id: (receivable ? sc?.sales_tds_ledger_id : sc?.tds_ledger_id) || null };
 }
 // The figures must tie to the voucher's own lines (see the table above).
 async function checkJvTax(c, t, b, isDraft) {
     const f = await withTdsLedger(c, t, taxFields(b));
     if (f.jv_type === 'normal' || isDraft) return null;
     const T = JV_TYPES[f.jv_type];
-    const purchase = T.side !== 'sales';          // purchase side and TDS credit the party
-    const who = T.side === 'sales' ? 'customer' : T.side === 'purchase' ? 'supplier' : 'party';
+    const purchase = T.side !== 'sales' && !(T.tds && f.tds_side === 'sales');   // purchase side and TDS on purchase: TDS payable credited
+    const who = T.side === 'sales' || f.tds_side === 'sales' ? 'customer' : T.side === 'purchase' || f.tds_side === 'purchase' ? 'supplier' : 'party';
     if (!f.party_ledger_id) return `Choose the ${who}`;
     if (f.tds_amount > 0 && !f.tds_ledger_id) return 'Choose the TDS ledger (or set it in System Control)';
     if (f.tds_percent < 0 || f.tds_amount < 0) return 'TDS cannot be negative';
@@ -77,14 +84,25 @@ async function checkJvTax(c, t, b, isDraft) {
     const tdsAmt = r2(details.filter(d => d.ledger_id === f.tds_ledger_id && f.tds_ledger_id).reduce((a, d) => a + sideOf(d), 0) * (purchase ? -1 : 1));
     if (f.tds_amount > 0 && Math.abs(tdsAmt - f.tds_amount) > 0.01) return `TDS ledger line (${tdsAmt.toFixed(2)}) must be ${purchase ? 'credited' : 'debited'} with the TDS ${f.tds_amount.toFixed(2)}`;
     const cls = await classifyLedgers(c, t, [...new Set(details.map(d => d.ledger_id))]);
-    if (!allowed(cls[f.party_ledger_id], T.side === 'sales' ? 'customer' : 'supplier')) return `The ${who} must be a Balance Sheet (party) ledger`;
+    if (!allowed(cls[f.party_ledger_id], who === 'customer' ? 'customer' : 'supplier')) return `The ${who} must be a Balance Sheet (party) ledger`;
     if (T.tds) {
-        if (!(f.tds_base_amount > 0)) return 'Enter the amount TDS is worked on';
+        const sales = f.tds_side === 'sales';
+        const cat = await partyCategory(c, f.party_ledger_id);
+        if (cat && !(sales ? ['sales', 'both'] : ['purchase', 'both']).includes(cat)) return `TDS on ${sales ? 'sales' : 'purchase'}: choose a ${sales ? 'customer' : 'supplier'} (or a ledger that is both)`;
         if (!(f.tds_amount > 0)) return 'Enter the TDS % or TDS amount';
-        if (f.tds_amount > f.tds_base_amount) return 'TDS cannot be more than its base amount';
-        const partyAmt = r2(details.filter(d => d.ledger_id === f.party_ledger_id).reduce((a, d) => a + sideOf(d), 0) * -1);
+        if (f.tds_amount > f.tds_base_amount && f.tds_base_amount > 0) return 'TDS cannot be more than its base amount';
+        const partySide = r2(details.filter(d => d.ledger_id === f.party_ledger_id).reduce((a, d) => a + sideOf(d), 0));   // + debit
+        const billMode = Array.isArray(b.tds_bills) && b.tds_bills.length > 0;
+        if (billMode || sales) {
+            // bills already booked: only the TDS moves - purchase Dr supplier, sales Cr customer
+            if (!billMode && !(f.tds_base_amount > 0)) return 'Enter the amount TDS is worked on, or choose the bills';
+            const want = sales ? -f.tds_amount : f.tds_amount;
+            if (Math.abs(partySide - want) > 0.01) return `${sales ? 'Customer' : 'Supplier'} line must be ${sales ? 'credited' : 'debited'} with the TDS ${f.tds_amount.toFixed(2)} - now ${Math.abs(partySide).toFixed(2)}`;
+            return null;
+        }
+        if (!(f.tds_base_amount > 0)) return 'Enter the amount TDS is worked on, or choose the bills';
         const net = r2(f.tds_base_amount - f.tds_amount);
-        if (Math.abs(partyAmt - net) > 0.01) return `Party line must be credited with ${net.toFixed(2)} (base less TDS) - now ${partyAmt.toFixed(2)}`;
+        if (Math.abs(-partySide - net) > 0.01) return `Party line must be credited with ${net.toFixed(2)} (base less TDS) - now ${(-partySide).toFixed(2)}`;
         return null;
     }
     if (!(f.taxable_amount + f.non_taxable_amount > 0)) return 'Enter the taxable and / or non-taxable amount';
@@ -104,6 +122,19 @@ async function checkJvTax(c, t, b, isDraft) {
         if (!T.purposes.some(p => allowed(x, p))) return `"${x?.name || 'Ledger'}" cannot be the ${T.label} account of this voucher - it is a ${x?.statement === 'pl' ? 'Profit & Loss' : 'Balance Sheet'} ledger under ${x?.group_name || 'its group'}`;
     }
     return null;
+}
+async function partyCategory(c, id) {
+    const { data } = await c.from('ledger_accounts').select('category_type').eq('id', id).maybeSingle();
+    return data && ['sales', 'purchase', 'both'].includes(data.category_type) ? data.category_type : null;
+}
+// TDS journal against bills: the chosen bills re-read and priced; their base / TDS
+// become the voucher's (so the lines are checked against real figures)
+async function resolveTdsBills(c, t, b, jvId = null) {
+    if (jvTypeOf(b) !== 'tds' || !Array.isArray(b.tds_bills) || !b.tds_bills.length) return { bills: [] };
+    const side = b.tds_side === 'sales' ? 'sales' : 'purchase';
+    const r = await jvTdsBills.checkBills(c, t, side, b.party_ledger_id, b.tds_bills, b.tds_percent, jvId);
+    if (r.error) return r;
+    return { bills: r.bills, fields: { tds_base_amount: r.base, tds_amount: r.tds, tds_bills: r.bills } };
 }
 async function partySnapshot(c, f) {
     if (!f.party_ledger_id) return {};
@@ -214,6 +245,17 @@ router.get('/journal-vouchers', requireAuth, loadUserPermissions, requirePermiss
     }
 });
 
+// TDS journal: the party's bills still open for TDS (newest first)
+router.get('/journal-vouchers/tds-bills', requireAuth, loadUserPermissions, requirePermission('ledger', 'view'), async (req, res) => {
+    try {
+        const tenantClient = await getTenantClient(req.auth.tenantId);
+        const data = await jvTdsBills.listBills(tenantClient, req.auth.tenantId, req.query.side === 'sales' ? 'sales' : 'purchase', req.query.party_id, req.query.jv_id || null);
+        res.json({ success: true, data });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 router.get('/journal-vouchers/:id', requireAuth, loadUserPermissions, requirePermission('ledger', 'view'), async (req, res) => {
     try {
         const tenantClient = await getTenantClient(req.auth.tenantId);
@@ -221,6 +263,9 @@ router.get('/journal-vouchers/:id', requireAuth, loadUserPermissions, requirePer
         if (error) return res.status(404).json({ success: false, error: 'Journal Voucher not found' });
         const { data: details } = await tenantClient.from('journal_voucher_details').select('*').eq('jv_id', req.params.id).order('display_order');
         data.details = details || [];
+        const { data: tdsBillRows } = await tenantClient.from('jv_tds_bills').select('*').eq('jv_id', req.params.id);
+        data.tds_bills = (tdsBillRows || []).map(x => ({ source_type: x.source_type, source_id: x.source_id, doc_no: x.source_doc_no, doc_date: x.source_date, label: jvTdsBills.LABEL[x.source_type],
+            bill_amount: Number(x.bill_amount), base_amount: Number(x.base_amount), tds_percent: Number(x.tds_percent), tds_amount: Number(x.tds_amount) }));
         res.json({ success: true, data });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
@@ -230,6 +275,9 @@ router.get('/journal-vouchers/:id', requireAuth, loadUserPermissions, requirePer
 router.post('/journal-vouchers', requireAuth, loadUserPermissions, requirePermission('ledger', 'create'), async (req, res) => {
     try {
         const isDraft = req.body.status === 'draft' && req.body.save_as_draft === true;
+        const tdsBills = await resolveTdsBills(await getTenantClient(req.auth.tenantId), req.auth.tenantId, req.body);
+        if (tdsBills.error) return res.status(400).json({ success: false, error: tdsBills.error });
+        Object.assign(req.body, tdsBills.fields || {});
         const validationError = validateBody(req.body, isDraft);
         if (validationError) return res.status(400).json({ success: false, error: validationError });
         const fieldError = await checkCompulsoryFields(await getTenantClient(req.auth.tenantId), req.auth.tenantId, req.auth.userId, 'journal', req.body, isDraft);
@@ -288,8 +336,10 @@ router.post('/journal-vouchers', requireAuth, loadUserPermissions, requirePermis
             const detailsToSave = Array.isArray(b.details) ? b.details : [];
             const { totalDebit, totalCredit } = await syncDetails(tenantClient, tenantId, doc.id, detailsToSave);
             await tenantClient.from('journal_vouchers').update({ total_debit: totalDebit, total_credit: totalCredit }).eq('id', doc.id);
+            await jvTdsBills.syncBills(tenantClient, tenantId, doc.id, doc.party_ledger_id, tdsBills.bills);
         } catch (syncErr) {
             await tenantClient.from('journal_voucher_details').delete().eq('jv_id', doc.id);
+            await tenantClient.from('jv_tds_bills').delete().eq('jv_id', doc.id);
             await tenantClient.from('journal_vouchers').delete().eq('id', doc.id);
             return res.status(400).json({ success: false, error: syncErr.message || 'Could not save voucher lines' });
         }
@@ -315,6 +365,9 @@ router.put('/journal-vouchers/:id', requireAuth, loadUserPermissions, requirePer
         }
 
         const isDraft = b.status === 'draft' && b.save_as_draft === true;
+        const tdsBills = await resolveTdsBills(tenantClient, tenantId, b, req.params.id);
+        if (tdsBills.error) return res.status(400).json({ success: false, error: tdsBills.error });
+        Object.assign(b, tdsBills.fields || {});
         const validationError = validateBody(b, isDraft);
         if (validationError) return res.status(400).json({ success: false, error: validationError });
         const fieldError = await checkCompulsoryFields(await getTenantClient(req.auth.tenantId), req.auth.tenantId, req.auth.userId, 'journal', b, isDraft);
@@ -328,6 +381,7 @@ router.put('/journal-vouchers/:id', requireAuth, loadUserPermissions, requirePer
         delete update.branch_id;
         delete update.details;
         delete update.save_as_draft;
+        delete update.tds_bills;
 
         const { data, error } = await tenantClient.from('journal_vouchers').update(update).eq('id', req.params.id).eq('tenant_id', tenantId).select().single();
         if (error) throw error;
@@ -336,6 +390,7 @@ router.put('/journal-vouchers/:id', requireAuth, loadUserPermissions, requirePer
             const { totalDebit, totalCredit } = await syncDetails(tenantClient, tenantId, req.params.id, b.details);
             await tenantClient.from('journal_vouchers').update({ total_debit: totalDebit, total_credit: totalCredit }).eq('id', req.params.id);
         }
+        if (b.tds_bills !== undefined || b.jv_type !== undefined) await jvTdsBills.syncBills(tenantClient, tenantId, req.params.id, data.party_ledger_id, data.jv_type === 'tds' ? tdsBills.bills : []);
 
         await logAudit(tenantId, req.auth.userId, 'update_journal_voucher', 'journal_voucher', req.params.id, { old_data: existing, new_data: data });
         await logDocumentAudit(tenantClient, tenantId, 'journal_voucher', req.params.id, 'update', req.auth.userId);
@@ -362,7 +417,13 @@ router.put('/journal-vouchers/:id/status', requireAuth, loadUserPermissions, req
             const { data: existingDetails } = await tenantClient.from('journal_voucher_details').select('*').eq('jv_id', req.params.id);
             const bodyErr = validateBody({ ...existing, details: existingDetails || [] }, false);
             if (bodyErr) return res.status(400).json({ success: false, error: bodyErr });
-            const taxErr = await checkJvTax(tenantClient, tenantId, { ...existing, details: existingDetails || [] }, false);
+            const { data: billRows } = await tenantClient.from('jv_tds_bills').select('*').eq('jv_id', req.params.id);
+            const chosen = (billRows || []).map(x => ({ source_type: x.source_type, source_id: x.source_id, doc_no: x.source_doc_no, tds_percent: x.tds_percent }));
+            if (chosen.length) {
+                const chk = await jvTdsBills.checkBills(tenantClient, tenantId, existing.tds_side || 'purchase', existing.party_ledger_id, chosen, existing.tds_percent, req.params.id);
+                if (chk.error) return res.status(400).json({ success: false, error: chk.error });
+            }
+            const taxErr = await checkJvTax(tenantClient, tenantId, { ...existing, details: existingDetails || [], tds_bills: chosen }, false);
             if (taxErr) return res.status(400).json({ success: false, error: taxErr });
         }
 

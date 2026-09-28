@@ -187,9 +187,14 @@ The effect of each transaction is shown in a box like this:
 | Taxable / Non-taxable Sales | customer, invoice no, amounts, VAT, sales A/c, TDS | Dr customer (less TDS), Dr TDS receivable, Cr sales, Cr VAT |
 | Asset Purchase / Asset Sales | as above, with a Fixed Asset A/c (sales may use a disposal income A/c) | same pattern; an asset purchase is a capital purchase in the VAT return |
 | Service Purchase / Service Sales | as above, with a service expense / service income A/c | same pattern |
-| TDS | party (paid to), expense A/c, amount, TDS %, TDS amount, TDS ledger + sub-ledger | Dr expense (amount), Cr TDS payable (TDS), Cr party (amount less TDS) |
+| TDS - on Purchase | supplier (supplier / both ledgers), the supplier's Purchase Bills and Purchase Additional Expenses without TDS (newest first, tick one or many), TDS % (per bill or for all), TDS ledger + sub-ledger | Dr supplier (TDS), Cr TDS payable (TDS). With no bill: Dr expense (amount), Cr TDS payable, Cr supplier (amount less TDS) |
+| TDS - on Sales | customer (customer / both ledgers), the customer's Sales Bills without TDS, TDS %, TDS receivable ledger + sub-ledger | Dr TDS receivable (TDS), Cr customer (TDS) |
 
 - TDS is only on the types that have it (not on a normal journal). The TDS ledger defaults from System Control and has its own **TDS Sub-Ledger**.
+- TDS on bills: the base is each bill's value without VAT. A bill that has taken TDS (on a TDS journal, or on the bill itself) is not shown again; the journal keeps the list of its bills. Cancelling the journal frees them.
+- The party list follows the side: suppliers + "both" ledgers for purchase, customers + "both" for sales. The voucher-line ledger list shows only that party side, the type's accounts (expense / income / asset), VAT and TDS ledgers.
+- Example: taxable 1000, VAT 13% (130 worked out), non-taxable 1000 -> Purchase A/c 2000 Dr, VAT 130 Dr, supplier 2130 Cr.
+- **Auto balance** (every JV): type 100 Debit on line 1, choose the ledger on the next line and press Enter - 100 Credit is filled in (and the other way round). You can change it.
 - The lines are filled automatically and can still be edited; **Refill** puts them back.
 - **Narration** is one field in the footer (saved remarks are offered as you type).
 
