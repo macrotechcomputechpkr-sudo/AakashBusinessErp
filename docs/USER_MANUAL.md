@@ -479,6 +479,12 @@ The flow is Quotation → Order → GRN → Bill → Return, with the same pull 
 
 - Sales/purchase VAT register, VAT monthly summary, Annex 13 (above threshold), VAT return, VAT ledger, TDS report.
 - IRD materialized view, IRD sales book, CBMS sync status (resend failed bills), IRD bill audit log.
+- **Reconciliation (VAT / Sales / Purchase / TDS)** - checks that the registers and the books agree for the chosen dates, document by document, including taxable Journal Vouchers (JV purchase / sales / TDS):
+  - **Overview**: the four checks side by side, each marked *Tallied* or *Not tallied*.
+  - **VAT**: VAT register vs all VAT ledgers. **Sales Account**: sales register vs sales accounts. **Purchase Account**: purchase register (with expense bills and JV purchases) vs purchase / goods accounts; a bill made from a GRN is checked together with that GRN. **TDS**: TDS on bills, JVs and expense bills vs TDS ledgers.
+  - Each document shows Register, Books and Difference with a status: *Matched*, *Difference*, *Only in register* (not posted to these accounts) or *Only in books* (for example a normal JV posted to the VAT ledger, or a GRN not billed yet). Click a summary box to see only those.
+  - The accounts compared are found automatically (System Control, products, documents, VAT terms); add or remove an account with the chips, *Automatic* goes back.
+  - Signs: VAT, sales and TDS are Cr - Dr (input VAT and TDS receivable show as minus); purchase is Dr - Cr.
 
 ### 4.4 Control & Registers
 

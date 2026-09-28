@@ -579,10 +579,10 @@ export default function ChartOfAccounts() {
                 }`}>{alert.message}</div>
             )}
 
-            <div className="flex gap-2 mb-4 border-b">
-                <button onClick={() => setTab('accounts')} className={`px-4 py-2 text-sm font-medium border-b-2 ${tab === 'accounts' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500'}`}>Ledger Accounts</button>
-                <button onClick={() => setTab('groups')} className={`px-4 py-2 text-sm font-medium border-b-2 ${tab === 'groups' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500'}`}>Account Groups</button>
-                <button onClick={() => setTab('ledgerCategories')} className={`px-4 py-2 text-sm font-medium border-b-2 ${tab === 'ledgerCategories' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500'}`}>Ledger Categories</button>
+            <div className="erp-tabs">
+                <button onClick={() => setTab('accounts')} className={`erp-tab ${tab === 'accounts' ? 'active' : ''}`}>Ledger Accounts</button>
+                <button onClick={() => setTab('groups')} className={`erp-tab ${tab === 'groups' ? 'active' : ''}`}>Account Groups</button>
+                <button onClick={() => setTab('ledgerCategories')} className={`erp-tab ${tab === 'ledgerCategories' ? 'active' : ''}`}>Ledger Categories</button>
             </div>
 
             {tab === 'accounts' && (

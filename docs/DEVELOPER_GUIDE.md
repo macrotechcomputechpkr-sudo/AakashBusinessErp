@@ -118,6 +118,15 @@ Document-level terms that are not VAT (freight, bill discount) go to the documen
 
 Other billing terms post to the ledger set on the term (Billing Terms master), with the sub-ledger chosen in the entry popup (`utils/termSubLedgers.js`: Return Sub-Ledger on returns, Billing Sub-Ledger elsewhere). Excise terms (`tax_type = 'excise'`) post to their ledger and are reported by `exciseOf`.
 
+### 3.3b Reconciliation of registers and books (`utils/taxReconciliation.js`)
+
+`GET /api/vat-reports/reconciliation?section=vat|sales|purchase|tds|all&date_from&date_to&ledger_ids=` (page `TaxReconciliation.jsx`, `/tax-reconciliation`).
+
+- Register side: `loadTaxDocs` (the same loader as the VAT reports) plus non-saleable returns; TDS from bills, JVs (`tds_amount`, `tds_side`), JV lines with `tds_percent` and expense-bill deduct lines.
+- Books side: `ledger_transaction_lines` of the section's ledgers joined to their batch, grouped by `(document_type, document_id)`. A purchase bill with `source_grn_id` is grouped with its GRN (goods are booked at GRN time).
+- Row status: matched / difference / register_only / books_only. The books column adds up to the whole movement of those ledgers, so the summary ties to the ledger report.
+- Ledger sets (`sectionLedgers`): VAT = `allVatLedgerIds`; sales = System Control + product sales / return / non-saleable accounts + document accounts + JV sales lines; purchase = the purchase equivalents + expense-bill ledgers + JV purchase lines; TDS = System Control TDS ledgers + ledgers used on bills / JVs / expense deduct lines.
+
 ### 3.3a TDS and money received on the bill (`utils/billExtras.js`, migration 142)
 
 - **TDS** on Sales Bill and Purchase Bill: `tds_percent`, `tds_base_amount` (default: VAT-exclusive bill value), `tds_amount` (default: base x %), `tds_ledger_id` (default: System Control `sales_tds_ledger_id` for sales, `tds_ledger_id` for purchase).

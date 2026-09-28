@@ -41,6 +41,7 @@ export const REPORT_GROUPS: ReportGroup[] = [
     { title: 'VAT, TDS & IRD', items: [
         ['/vat-reports?tab=register', 'Sales / Purchase VAT Register'], ['/vat-reports?tab=monthly', 'VAT Monthly Summary'], ['/vat-reports?tab=threshold', 'Annex 13 / Above Threshold'],
         ['/vat-reports?tab=vat_return', 'VAT Return'], ['/vat-reports?tab=vat_ledger', 'VAT Ledger'], ['/vat-reports?tab=tds', 'TDS Report'],
+        ['/tax-reconciliation', 'Reconciliation (VAT / Sales / Purchase / TDS)'], ['/tax-reconciliation?tab=vat', 'VAT Reconciliation'], ['/tax-reconciliation?tab=sales', 'Sales Account Reconciliation'], ['/tax-reconciliation?tab=purchase', 'Purchase Account Reconciliation'], ['/tax-reconciliation?tab=tds', 'TDS Reconciliation'],
         ['/ird?tab=mat', 'IRD Materialized View'], ['/ird?tab=book', 'IRD Sales Book'], ['/ird?tab=sync', 'CBMS Sync Status'], ['/ird?tab=audit', 'IRD Bill Audit Log']
     ] },
     { title: 'Sales, Salesman & Routes', items: [

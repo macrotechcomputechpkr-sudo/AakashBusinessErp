@@ -148,9 +148,9 @@ export default function BranchWarehouseManagement() {
                 </div>
             )}
 
-            <div className="flex gap-2 mb-4 border-b">
-                <button onClick={() => setTab('branches')} className={`px-4 py-2 text-sm font-medium border-b-2 ${tab === 'branches' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500'}`}>Branches</button>
-                <button onClick={() => setTab('warehouses')} className={`px-4 py-2 text-sm font-medium border-b-2 ${tab === 'warehouses' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500'}`}>Warehouses</button>
+            <div className="erp-tabs">
+                <button onClick={() => setTab('branches')} className={`erp-tab ${tab === 'branches' ? 'active' : ''}`}>Branches</button>
+                <button onClick={() => setTab('warehouses')} className={`erp-tab ${tab === 'warehouses' ? 'active' : ''}`}>Warehouses</button>
             </div>
 
             {tab === 'branches' && (
@@ -162,16 +162,28 @@ export default function BranchWarehouseManagement() {
                     </div>
                     {showBranchForm && (
                         <form ref={branchFormRef} onSubmit={createBranch} className="bg-white border rounded-xl p-4 mb-4 grid grid-cols-1 md:grid-cols-3 gap-3">
-                            <input className="erp-input" placeholder="Branch Name *" value={branchForm.branch_name} onChange={e => setBranchForm({ ...branchForm, branch_name: e.target.value })} required />
-                            <select className="erp-input" value={branchForm.branch_type} onChange={e => setBranchForm({ ...branchForm, branch_type: e.target.value })}>
-                                <option value="retail">Retail</option>
-                                <option value="wholesale">Wholesale</option>
-                                <option value="office">Office</option>
-                            </select>
-                            <input className="erp-input" placeholder="Province *" value={branchForm.province} onChange={e => setBranchForm({ ...branchForm, province: e.target.value })} required />
-                            <input className="erp-input" placeholder="District *" value={branchForm.district} onChange={e => setBranchForm({ ...branchForm, district: e.target.value })} required />
-                            <input className="border rounded-lg px-3 py-2 md:col-span-2" placeholder="Address" value={branchForm.address_line1} onChange={e => setBranchForm({ ...branchForm, address_line1: e.target.value })} />
-                            <input className="erp-input" placeholder="Phone" value={branchForm.phone} onChange={e => setBranchForm({ ...branchForm, phone: e.target.value })} />
+                            <div className="erp-field"><label className="erp-label">Branch Name <span className="req">*</span></label>
+                                <input className="erp-input" placeholder="Branch Name *" value={branchForm.branch_name} onChange={e => setBranchForm({ ...branchForm, branch_name: e.target.value })} required />
+                            </div>
+                            <div className="erp-field"><label className="erp-label">Branch Type</label>
+                                <select className="erp-input" value={branchForm.branch_type} onChange={e => setBranchForm({ ...branchForm, branch_type: e.target.value })}>
+                                    <option value="retail">Retail</option>
+                                    <option value="wholesale">Wholesale</option>
+                                    <option value="office">Office</option>
+                                </select>
+                            </div>
+                            <div className="erp-field"><label className="erp-label">Province <span className="req">*</span></label>
+                                <input className="erp-input" placeholder="Province *" value={branchForm.province} onChange={e => setBranchForm({ ...branchForm, province: e.target.value })} required />
+                            </div>
+                            <div className="erp-field"><label className="erp-label">District <span className="req">*</span></label>
+                                <input className="erp-input" placeholder="District *" value={branchForm.district} onChange={e => setBranchForm({ ...branchForm, district: e.target.value })} required />
+                            </div>
+                            <div className="erp-field md:col-span-2"><label className="erp-label">Address</label>
+                                <input className="erp-input" placeholder="Address" value={branchForm.address_line1} onChange={e => setBranchForm({ ...branchForm, address_line1: e.target.value })} />
+                            </div>
+                            <div className="erp-field"><label className="erp-label">Phone</label>
+                                <input className="erp-input" placeholder="Phone" value={branchForm.phone} onChange={e => setBranchForm({ ...branchForm, phone: e.target.value })} />
+                            </div>
                             <label className="flex items-center gap-2 text-sm">
                                 <input type="checkbox" checked={branchForm.is_head_office} onChange={e => setBranchForm({ ...branchForm, is_head_office: e.target.checked })} /> Head Office
                             </label>
@@ -198,16 +210,28 @@ export default function BranchWarehouseManagement() {
                     </div>
                     {showWarehouseForm && (
                         <form ref={warehouseFormRef} onSubmit={createWarehouse} className="bg-white border rounded-xl p-4 mb-4 grid grid-cols-1 md:grid-cols-3 gap-3">
-                            <input className="erp-input" placeholder="Warehouse Name *" value={warehouseForm.warehouse_name} onChange={e => setWarehouseForm({ ...warehouseForm, warehouse_name: e.target.value })} required />
-                            <select className="erp-input" value={warehouseForm.warehouse_type} onChange={e => setWarehouseForm({ ...warehouseForm, warehouse_type: e.target.value })}>
-                                <option value="main">Main</option>
-                                <option value="satellite">Satellite</option>
-                                <option value="cold_storage">Cold Storage</option>
-                            </select>
-                            <input className="erp-input" placeholder="Province *" value={warehouseForm.province} onChange={e => setWarehouseForm({ ...warehouseForm, province: e.target.value })} required />
-                            <input className="erp-input" placeholder="District *" value={warehouseForm.district} onChange={e => setWarehouseForm({ ...warehouseForm, district: e.target.value })} required />
-                            <input className="border rounded-lg px-3 py-2 md:col-span-2" placeholder="Address" value={warehouseForm.address_line1} onChange={e => setWarehouseForm({ ...warehouseForm, address_line1: e.target.value })} />
-                            <input className="erp-input" placeholder="Phone" value={warehouseForm.phone} onChange={e => setWarehouseForm({ ...warehouseForm, phone: e.target.value })} />
+                            <div className="erp-field"><label className="erp-label">Warehouse Name <span className="req">*</span></label>
+                                <input className="erp-input" placeholder="Warehouse Name *" value={warehouseForm.warehouse_name} onChange={e => setWarehouseForm({ ...warehouseForm, warehouse_name: e.target.value })} required />
+                            </div>
+                            <div className="erp-field"><label className="erp-label">Warehouse Type</label>
+                                <select className="erp-input" value={warehouseForm.warehouse_type} onChange={e => setWarehouseForm({ ...warehouseForm, warehouse_type: e.target.value })}>
+                                    <option value="main">Main</option>
+                                    <option value="satellite">Satellite</option>
+                                    <option value="cold_storage">Cold Storage</option>
+                                </select>
+                            </div>
+                            <div className="erp-field"><label className="erp-label">Province <span className="req">*</span></label>
+                                <input className="erp-input" placeholder="Province *" value={warehouseForm.province} onChange={e => setWarehouseForm({ ...warehouseForm, province: e.target.value })} required />
+                            </div>
+                            <div className="erp-field"><label className="erp-label">District <span className="req">*</span></label>
+                                <input className="erp-input" placeholder="District *" value={warehouseForm.district} onChange={e => setWarehouseForm({ ...warehouseForm, district: e.target.value })} required />
+                            </div>
+                            <div className="erp-field md:col-span-2"><label className="erp-label">Address</label>
+                                <input className="erp-input" placeholder="Address" value={warehouseForm.address_line1} onChange={e => setWarehouseForm({ ...warehouseForm, address_line1: e.target.value })} />
+                            </div>
+                            <div className="erp-field"><label className="erp-label">Phone</label>
+                                <input className="erp-input" placeholder="Phone" value={warehouseForm.phone} onChange={e => setWarehouseForm({ ...warehouseForm, phone: e.target.value })} />
+                            </div>
                             <div className="md:col-span-3 flex justify-end">
                                 <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg">Save Warehouse</button>
                             </div>

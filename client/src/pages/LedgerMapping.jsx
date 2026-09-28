@@ -96,9 +96,9 @@ export default function LedgerMapping() {
                 }`}>{alert.message}</div>
             )}
 
-            <div className="flex gap-2 mb-4 border-b">
+            <div className="erp-tabs">
                 {TABS.map(t => (
-                    <button key={t.key} onClick={() => setTab(t.key)} className={`px-4 py-2 text-sm font-medium border-b-2 ${tab === t.key ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500'}`}>
+                    <button key={t.key} onClick={() => setTab(t.key)} className={`erp-tab ${tab === t.key ? 'active' : ''}`}>
                         {t.label}
                     </button>
                 ))}

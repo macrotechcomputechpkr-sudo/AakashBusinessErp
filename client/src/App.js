@@ -29,6 +29,7 @@ import UniversalRegister from './pages/UniversalRegister';
 import CategoryManagement from './pages/CategoryManagement';
 import OutstandingReport from './pages/OutstandingReport';
 import VatReports from './pages/VatReports';
+import TaxReconciliation from './pages/TaxReconciliation';
 import PartySummaryReport from './pages/PartySummaryReport';
 import FinancialReports from './pages/FinancialReports';
 import StockMovementReport from './pages/StockMovementReport';
@@ -187,6 +188,7 @@ function AppRoutes() {
             <Route path="/categories" element={<PrivateRoute><CategoryManagement /></PrivateRoute>} />
             <Route path="/outstanding-report" element={<PrivateRoute><OutstandingReport /></PrivateRoute>} />
             <Route path="/vat-reports" element={<PrivateRoute><VatReports /></PrivateRoute>} />
+            <Route path="/tax-reconciliation" element={<PrivateRoute><TaxReconciliation /></PrivateRoute>} />
             <Route path="/party-summary" element={<PrivateRoute><PartySummaryReport /></PrivateRoute>} />
             <Route path="/financial-reports" element={<PrivateRoute><FinancialReports /></PrivateRoute>} />
             <Route path="/stock-movement" element={<PrivateRoute><StockMovementReport /></PrivateRoute>} />

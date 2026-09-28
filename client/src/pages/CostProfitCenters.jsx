@@ -138,9 +138,9 @@ export default function CostProfitCenters() {
                 }`}>{alert.message}</div>
             )}
 
-            <div className="flex gap-2 mb-4 border-b">
-                <button onClick={() => setTab('cost')} className={`px-4 py-2 text-sm font-medium border-b-2 ${tab === 'cost' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500'}`}>Cost Centers</button>
-                <button onClick={() => setTab('profit')} className={`px-4 py-2 text-sm font-medium border-b-2 ${tab === 'profit' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500'}`}>Profit Centers</button>
+            <div className="erp-tabs">
+                <button onClick={() => setTab('cost')} className={`erp-tab ${tab === 'cost' ? 'active' : ''}`}>Cost Centers</button>
+                <button onClick={() => setTab('profit')} className={`erp-tab ${tab === 'profit' ? 'active' : ''}`}>Profit Centers</button>
             </div>
 
             {tab === 'cost' && (

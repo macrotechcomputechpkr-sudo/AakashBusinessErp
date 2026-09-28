@@ -101,12 +101,18 @@ export default function ProductUnitManagement() {
 
             {showForm && (
                 <form ref={formRef} onSubmit={handleSubmit} className="bg-white border rounded-xl p-6 mb-6 grid grid-cols-3 gap-4">
-                    <input className="erp-input" placeholder="Unit Name *" value={form.unit_name} onChange={e => setForm({ ...form, unit_name: e.target.value })} required />
-                    <input className="erp-input" placeholder="Symbol (e.g. Kg)" value={form.unit_symbol} onChange={e => setForm({ ...form, unit_symbol: e.target.value })} />
-                    <select className="erp-input" value={form.unit_type} onChange={e => setForm({ ...form, unit_type: e.target.value })}>
-                        <option value="simple">Simple</option>
-                        <option value="compound">Compound</option>
-                    </select>
+                    <div className="erp-field"><label className="erp-label">Unit Name <span className="req">*</span></label>
+                        <input className="erp-input" placeholder="Unit Name *" value={form.unit_name} onChange={e => setForm({ ...form, unit_name: e.target.value })} required />
+                    </div>
+                    <div className="erp-field"><label className="erp-label">Symbol</label>
+                        <input className="erp-input" placeholder="Symbol (e.g. Kg)" value={form.unit_symbol} onChange={e => setForm({ ...form, unit_symbol: e.target.value })} />
+                    </div>
+                    <div className="erp-field"><label className="erp-label">Unit Type</label>
+                        <select className="erp-input" value={form.unit_type} onChange={e => setForm({ ...form, unit_type: e.target.value })}>
+                            <option value="simple">Simple</option>
+                            <option value="compound">Compound</option>
+                        </select>
+                    </div>
                     <div className="col-span-3 flex justify-end gap-2">
                         <button type="button" onClick={() => { resetForm(); setShowForm(false); }} className="px-4 py-2 border rounded-lg">Cancel</button>
                         <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg font-medium">{editingId ? 'Update' : 'Create'}</button>

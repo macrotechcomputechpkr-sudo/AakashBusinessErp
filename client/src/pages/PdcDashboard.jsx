@@ -56,7 +56,7 @@ export default function PdcDashboard() {
             const p = new URLSearchParams({ as_on: cfg.as_on, due_within: cfg.due_within || '7', date_basis: cfg.date_basis });
             ['voucher_type', 'date_from', 'date_to', 'bank_name', 'cheque_no', 'amount_min', 'amount_max', 'group_by'].forEach(k => { if (cfg[k] !== '') p.set(k, cfg[k]); });
             ['statuses', 'maturity', 'party_ids', 'bank_ledger_ids'].forEach(k => { if (cfg[k].length) p.set(k, cfg[k].join(',')); });
-            setData((await authFetch(`/api/reports/pdc?${p}`)).data); setSelected(new Set());
+            { const d = (await authFetch(`/api/reports/pdc?${p}`)).data; setData(d && d.totals ? d : null); } setSelected(new Set());
         } catch (e) { setError(e.message); }
     }, [authFetch, config]);
     useEffect(() => { run(); }, []); // eslint-disable-line react-hooks/exhaustive-deps

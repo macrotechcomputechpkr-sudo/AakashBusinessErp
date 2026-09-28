@@ -60,6 +60,9 @@ export default function VatReports() {
     const loadMeta = useCallback(async () => {
         try {
             const [m, l] = await Promise.all([authFetch('/api/vat-reports/meta'), authFetch('/api/ledger-accounts?pageSize=500')]);
+            // a reply without the expected shape must not blank the page
+            const md = m.data && !Array.isArray(m.data) ? m.data : {};
+            m.data = { doc_types: md.doc_types || [], periods: md.periods || [], fiscal_years: md.fiscal_years || [], bs_months: md.bs_months || [], ...md };
             setMeta(m.data);
             setParties(l.data || []);
             const current = (m.data.fiscal_years || []).find(y => y.is_current) || (m.data.fiscal_years || [])[0];
@@ -183,8 +186,8 @@ export default function VatReports() {
             <div className="erp-header"><span className="erp-header-title">🧾 VAT & Tax Reports</span></div>
             {alert && <div className={`mx-4 mt-3 px-4 py-3 rounded-lg text-sm border-l-4 ${alert.type === 'success' ? 'bg-green-50 border-green-500' : alert.type === 'danger' ? 'bg-red-50 border-red-500' : 'bg-yellow-50 border-yellow-500'}`}>{alert.message}</div>}
 
-            <div className="flex flex-wrap gap-1 px-4 pt-3 border-b">
-                {TABS.map(([k, l]) => <button key={k} onClick={() => { setTab(k); setData(null); }} className={`px-3 py-2 text-sm border-b-2 ${tab === k ? 'border-blue-600 text-blue-600 font-semibold' : 'border-transparent text-gray-500'}`}>{l}</button>)}
+            <div className="erp-tabs">
+                {TABS.map(([k, l]) => <button key={k} onClick={() => { setTab(k); setData(null); }} className={`erp-tab ${tab === k ? 'active' : ''}`}>{l}</button>)}
             </div>
 
             <div className="erp-tab-content">

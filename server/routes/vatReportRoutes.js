@@ -26,6 +26,7 @@ const { getTenantClient, loadUserPermissions } = require('../utils/dbHelpers');
 const { requireAuth, requirePermission } = require('../middleware/auth');
 const { getVatTerms, defaultVatLedger, allVatLedgerIds } = require('../utils/vatLedger');
 const bsCalendar = require('../utils/bsCalendar');
+const taxReco = require('../utils/taxReconciliation');
 
 const round2 = n => Math.round((Number(n) || 0) * 100) / 100;
 
@@ -592,6 +593,28 @@ router.get('/vat-reports/tds', requireAuth, loadUserPermissions, requirePermissi
         res.json({ success: true, data: { rows, totals } });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// ---------- Reconciliation: registers vs books (VAT, sales account, purchase account, TDS) ----------
+// ?section=vat|sales|purchase|tds (rows)  or  ?section=all (the four summaries, no rows)
+router.get('/vat-reports/reconciliation', requireAuth, loadUserPermissions, requirePermission('reports', 'view'), async (req, res) => {
+    try {
+        const q = req.query, tenantId = req.auth.tenantId;
+        const tenantClient = await getTenantClient(tenantId);
+        const opts = { from: q.date_from || null, to: q.date_to || null, loadTaxDocs };
+        if (!q.section || q.section === 'all') {
+            const out = {};
+            for (const s of Object.keys(taxReco.SECTIONS)) {
+                const r = await taxReco.reconcile(tenantClient, tenantId, s, opts);
+                out[s] = { label: r.label, convention: r.convention, ledgers: r.ledgers, summary: r.summary };
+            }
+            return res.json({ success: true, data: out });
+        }
+        const ledgerIds = String(q.ledger_ids || '').split(',').filter(Boolean);
+        res.json({ success: true, data: await taxReco.reconcile(tenantClient, tenantId, q.section, { ...opts, ledgerIds }) });
+    } catch (error) {
+        res.status(error.status || 500).json({ success: false, error: error.message });
     }
 });
 
