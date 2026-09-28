@@ -7,6 +7,7 @@
 // =============================================
 
 const express = require('express');
+const { cleanLineTerms, exciseOf } = require('../utils/lineTerms');
 const { checkAccountPurposes } = require('../utils/ledgerPurpose');
 const { bumpAltCounter } = require('../utils/progressCounters');
 const { checkCompulsoryFields, lockProtectedFields } = require('../utils/entryFieldRules');
@@ -21,7 +22,7 @@ const { requireAuth, requirePermission } = require('../middleware/auth');
 const { resolveDocumentNumber } = require('../utils/documentNumbering');
 const { toBaseUnitQty } = require('../utils/unitConversion');
 const { isBillWiseTrackingEnabled, getOutstandingReferences, computeFifoAllocation, createReferenceAndSettle, reverseReferenceAndSettlements, checkCanCancelIfSettled } = require('../utils/billWiseSettlement');
-const { toBaseQtyFromDual, computeDualAmount, getDualUomMode } = require('../utils/dualUomCalculation');
+const { toBaseQtyFromDual, computeDualAmount, getDualUomMode, rateBasisFor } = require('../utils/dualUomCalculation');
 
 async function getDualUomConfig(tenantClient, productId) {
     const { data: product } = await tenantClient.from('products').select('uom_mode, dual_uom_primary_unit_id').eq('id', productId).maybeSingle();
@@ -33,7 +34,7 @@ async function getDualUomConfig(tenantClient, productId) {
 async function resolveBaseQtyAndCost(tenantClient, d) {
     const dualConfig = d.alt_qty ? await getDualUomConfig(tenantClient, d.product_id) : null;
     if (dualConfig) {
-        const baseQty = toBaseQtyFromDual(d.qty, d.alt_qty, dualConfig.conversionFactor, await getDualUomMode(tenantClient));
+        const baseQty = toBaseQtyFromDual(d.qty, d.alt_qty, dualConfig.conversionFactor, await getDualUomMode(tenantClient, d.product_id));
         const unitCost = d.rate_basis === 'primary' ? Number(d.rate || 0) / dualConfig.conversionFactor : Number(d.rate || 0);
         return { baseQty, unitCost };
     }
@@ -93,14 +94,14 @@ async function lineAmount(tenantClient, d) {
     let gross;
     if (d.alt_qty) {
         const dualConfig = await getDualUomConfig(tenantClient, d.product_id);
-        gross = dualConfig ? computeDualAmount(d.qty, d.alt_qty, d.rate, d.rate_basis || 'primary', dualConfig.conversionFactor, await getDualUomMode(tenantClient)) : Number(d.qty) * Number(d.rate);
+        gross = dualConfig ? computeDualAmount(d.qty, d.alt_qty, d.rate, await rateBasisFor(tenantClient, d.product_id, d.rate_basis), dualConfig.conversionFactor, await getDualUomMode(tenantClient, d.product_id)) : Number(d.qty) * Number(d.rate);
     } else {
         gross = Number(d.qty) * Number(d.rate);
     }
     const discountAmount = d.discount_amount ? Number(d.discount_amount) : gross * (Number(d.discount_percent) || 0) / 100;
     const afterDiscount = gross - discountAmount;
     const taxAmount = d.tax_amount ? Number(d.tax_amount) : afterDiscount * (Number(d.tax_percent) || 0) / 100;
-    return { discountAmount, taxAmount, amount: afterDiscount + taxAmount };
+    return { discountAmount, taxAmount, amount: afterDiscount + exciseOf(d) + taxAmount };
 }
 
 async function syncDetails(tenantClient, tenantId, returnId, details) {
@@ -115,7 +116,7 @@ async function syncDetails(tenantClient, tenantId, returnId, details) {
             product_id: d.product_id, qty: Number(d.qty), uom_id: d.uom_id || null,
             alt_qty: d.alt_qty || null, alt_unit_id: d.alt_unit_id || null, rate_basis: d.rate_basis || 'primary',
             rate: Number(d.rate) || 0, amount, discount_percent: d.discount_percent || 0, discount_amount: discountAmount,
-            tax_percent: d.tax_percent || 0, tax_amount: taxAmount,
+            tax_percent: d.tax_percent || 0, tax_amount: taxAmount, excise_amount: exciseOf(d), line_terms: cleanLineTerms(d.line_terms),
             warehouse_id: d.warehouse_id || null, batch_no: d.batch_no || null, serial_no: d.serial_no || null,
             ...snapshots
         };
@@ -374,6 +375,9 @@ router.put('/sales-returns/:id/status', requireAuth, loadUserPermissions, requir
         const tenantClient = await getTenantClient(tenantId);
         const { data: existing } = await tenantClient.from('sales_returns').select('*').eq('id', req.params.id).eq('tenant_id', tenantId).single();
         if (!existing) return res.status(404).json({ success: false, error: 'Sales Return not found' });
+        if (status === 'draft' && existing.status !== 'draft' && await require('./documentActionRoutes').isIrdLocked(tenantClient, tenantId, 'sales_return')) {
+            return res.status(400).json({ success: false, error: 'IRD Billing is on - a posted Sales Return can only be cancelled' });
+        }
 
         if (status === 'cancelled' && existing.status === 'posted') {
             const blockMsg = await checkCanCancelIfSettled(tenantClient, tenantId, 'sales_return', req.params.id);

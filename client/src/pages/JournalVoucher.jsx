@@ -17,6 +17,9 @@ import { amountToWords } from '../utils/numberToWords';
 import UdfValuesModal from '../components/UdfValuesModal';
 import useLedgerPurposes from '../components/useLedgerPurposes';
 import RecordHistory from '../components/RecordHistory';
+import DocActions, { finalizeEntry } from '../components/entry/DocActions';
+import EntryFillBar from '../components/entry/EntryFillBar';
+import { saveEntryDraft, finishEntryDraft } from '../components/entry/entryDrafts';
 
 const emptyDetailRow = () => ({ ledger_id: '', sub_ledger_id: '', product_company_id: '', agent_id: '', debit_amount: '', credit_amount: '', tds_percent: '', narration: '' });
 
@@ -147,6 +150,10 @@ export default function JournalVoucher() {
     const isBalanced = Math.abs(difference) < 0.01 && totalDebit > 0;
 
     const handleSubmit = async (e, saveAsDraft = false) => {
+
+        // Save as Draft (new entry): kept apart as a temporary draft - no number, no accounts / stock effect
+
+        if (saveAsDraft && !editingId) { if (e) e.preventDefault(); if (await saveEntryDraft(authFetch, 'journal', form)) { resetForm(); setShowForm(false); } return; }
         e.preventDefault();
         if (!saveAsDraft) {
             const missing = efc.missingRequired(form);
@@ -162,11 +169,14 @@ export default function JournalVoucher() {
             const payload = { ...form, details: validDetails, ...(saveAsDraft ? { status: 'draft', save_as_draft: true } : {}) };
             if (editingId) {
                 await authFetch(`/api/journal-vouchers/${editingId}`, { method: 'PUT', body: JSON.stringify(payload) });
+                if (!saveAsDraft) await finalizeEntry(authFetch, 'journal-vouchers', editingId, 'posted');
                 showAlert(saveAsDraft ? 'Draft saved' : 'Journal Voucher updated', 'success');
             } else {
                 const res = await authFetch('/api/journal-vouchers', { method: 'POST', body: JSON.stringify(payload) });
+                if (!saveAsDraft) await finalizeEntry(authFetch, 'journal-vouchers', res.data?.id, 'posted');
                 showAlert(saveAsDraft ? `Draft ${res.data.doc_no} saved` : `Journal Voucher ${res.data.doc_no} created`, 'success');
             }
+            await finishEntryDraft(authFetch, 'journal');
             resetForm();
             setShowForm(false);
             load();
@@ -240,16 +250,6 @@ export default function JournalVoucher() {
         }
     };
 
-    const handleDeleteDraft = async (row) => {
-        if (!window.confirm(`Delete draft "${row.doc_no}"? This cannot be undone.`)) return;
-        try {
-            await authFetch(`/api/journal-vouchers/${row.id}`, { method: 'DELETE' });
-            showAlert('Draft deleted', 'warning');
-            load();
-        } catch (err) {
-            showAlert(err.message, 'danger');
-        }
-    };
 
     const [udfDoc, setUdfDoc] = useState(null);
 
@@ -289,6 +289,7 @@ export default function JournalVoucher() {
 
             {showForm && (
                 <form onSubmit={handleSubmit} ref={formRef}>
+                    <EntryFillBar voucherType="journal" api="journal-vouchers" form={form} editing={!!editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={r => handleCopyFrom(r.id)} />
                     <div className="erp-topbar grid-cols-1 md:grid-cols-4">
                         <div className={efc.isVisible('doc_date') ? 'erp-field' : 'erp-field hidden'}>
                             <label className="erp-label">Date <span className="req">*</span> {form.doc_date && <span className="hint">({formatDateForDisplay(form.doc_date, 'nepali')} BS)</span>} {efc.isRequired('doc_date') && <span className="req">*</span>}</label>
@@ -502,7 +503,7 @@ export default function JournalVoucher() {
             <div className="flex items-center gap-2 mb-2">
                 <label className="flex items-center gap-1.5 text-sm">
                     <input type="checkbox" checked={showDraftsOnly} onChange={e => setShowDraftsOnly(e.target.checked)} />
-                    Show Drafts only
+                    Show unposted (awaiting approval) only
                 </label>
             </div>
             <ReportGrid
@@ -513,12 +514,11 @@ export default function JournalVoucher() {
                 rowActions={(row) => (
                     <div className="flex gap-2 justify-center">
                         <button onClick={() => handleEdit(row)} className="px-2 py-1 bg-blue-600 text-white rounded text-xs">Open</button>
+                        <DocActions type="journal" api="journal-vouchers" row={row} onOpen={handleEdit} onCopy={r => handleCopyFrom(r.id)} onReverse={r => handleStatusChange(r, 'cancelled')} onDone={load} />
                         {row.status === 'posted' && <a href={`/print/journal_voucher/${row.id}`} target="_blank" rel="noopener noreferrer" className="px-2 py-1 bg-purple-600 text-white rounded text-xs">🖨️ Print</a>}
                         <button onClick={() => openAuditTrail(row)} className="px-2 py-1 bg-gray-500 text-white rounded text-xs">History</button>
                         <button onClick={() => setUdfDoc(row.id)} className="px-2 py-1 bg-indigo-500 text-white rounded text-xs" title="Custom fields (UDF)">UDF</button>{udfDoc === row.id && <UdfValuesModal docType="journal_voucher" docId={row.id} onClose={() => setUdfDoc(null)} />}
                         {row.status === 'draft' && !row.is_memo && <button onClick={() => handleStatusChange(row, 'posted')} className="px-2 py-1 bg-green-600 text-white rounded text-xs">Post</button>}
-                        {!row.audit_locked && row.status !== 'cancelled' && <button onClick={() => handleStatusChange(row, 'cancelled')} className="px-2 py-1 bg-red-600 text-white rounded text-xs">Cancel</button>}
-                        {row.status === 'draft' && !row.audit_locked && <button onClick={() => handleDeleteDraft(row)} className="px-2 py-1 bg-red-800 text-white rounded text-xs">Delete</button>}
                         <button onClick={() => handleToggleAuditLock(row)} className="px-2 py-1 bg-gray-700 text-white rounded text-xs">{row.audit_locked ? '🔓 Unlock' : '🔒 Lock'}</button>
                     </div>
                 )}

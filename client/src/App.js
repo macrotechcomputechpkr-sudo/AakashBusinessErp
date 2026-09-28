@@ -79,6 +79,17 @@ import PoultrySetup from './pages/poultry/PoultrySetup';
 import PoultryBatches from './pages/poultry/PoultryBatches';
 import PoultryReports from './pages/poultry/PoultryReports';
 import Hatchery from './pages/poultry/Hatchery';
+import ConstructionDashboard from './pages/construction/ConstructionDashboard';
+import ConstructionSites from './pages/construction/ConstructionSites';
+import ConstructionSetup from './pages/construction/ConstructionSetup';
+import ConstructionReports from './pages/construction/ConstructionReports';
+import AutoDashboard from './pages/auto/AutoDashboard';
+import AutoEnquiries from './pages/auto/AutoEnquiries';
+import AutoVehicles from './pages/auto/AutoVehicles';
+import AutoJobCards from './pages/auto/AutoJobCards';
+import AutoReminders from './pages/auto/AutoReminders';
+import AutoSetup from './pages/auto/AutoSetup';
+import AutoReports from './pages/auto/AutoReports';
 import NotificationSettings from './pages/NotificationSettings';
 import ChangePassword from './pages/ChangePassword';
 import LedgerMapping from './pages/LedgerMapping';
@@ -227,6 +238,17 @@ function AppRoutes() {
             <Route path="/poultry/batches" element={<PrivateRoute><PoultryBatches /></PrivateRoute>} />
             <Route path="/poultry/reports" element={<PrivateRoute><PoultryReports /></PrivateRoute>} />
             <Route path="/poultry/hatchery" element={<PrivateRoute><Hatchery /></PrivateRoute>} />
+            <Route path="/construction" element={<PrivateRoute><ConstructionDashboard /></PrivateRoute>} />
+            <Route path="/construction/sites" element={<PrivateRoute><ConstructionSites /></PrivateRoute>} />
+            <Route path="/construction/setup" element={<PrivateRoute><ConstructionSetup /></PrivateRoute>} />
+            <Route path="/construction/reports" element={<PrivateRoute><ConstructionReports /></PrivateRoute>} />
+            <Route path="/auto" element={<PrivateRoute><AutoDashboard /></PrivateRoute>} />
+            <Route path="/auto/enquiries" element={<PrivateRoute><AutoEnquiries /></PrivateRoute>} />
+            <Route path="/auto/vehicles" element={<PrivateRoute><AutoVehicles /></PrivateRoute>} />
+            <Route path="/auto/job-cards" element={<PrivateRoute><AutoJobCards /></PrivateRoute>} />
+            <Route path="/auto/reminders" element={<PrivateRoute><AutoReminders /></PrivateRoute>} />
+            <Route path="/auto/setup" element={<PrivateRoute><AutoSetup /></PrivateRoute>} />
+            <Route path="/auto/reports" element={<PrivateRoute><AutoReports /></PrivateRoute>} />
             <Route path="/notification-settings" element={<PrivateRoute><NotificationSettings /></PrivateRoute>} />
             <Route path="/change-password" element={<PrivateRoute><ChangePassword /></PrivateRoute>} />
             <Route path="/ledger-mapping" element={<PrivateRoute><LedgerMapping /></PrivateRoute>} />

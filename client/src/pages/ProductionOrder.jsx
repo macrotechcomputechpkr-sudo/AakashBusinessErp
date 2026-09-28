@@ -11,11 +11,16 @@ import SearchablePopupSelect from '../components/SearchablePopupSelect';
 import ReportGrid from '../components/ReportGrid';
 import Layout from '../components/Layout';
 import NumberingCategorySelector from '../components/NumberingCategorySelector';
-import { resolveDualUomEntryMode, onPrimaryQtyChange, onSecondaryQtyChange, validateFixedSecondary, dualBaseQty } from '../utils/dualUomEntryMode';
+import { resolveDualUomEntryMode, onPrimaryQtyChange, onSecondaryQtyChange, validateFixedSecondary, dualBaseQty, productDualMode, fixedRateBasis, productRateBasis } from '../utils/dualUomEntryMode';
 import { useEnterKeyNavigation } from '../hooks/useEnterKeyNavigation';
 import { formatDateForDisplay } from '../utils/nepaliDateUtils';
 import UdfValuesModal from '../components/UdfValuesModal';
 import RecordHistory from '../components/RecordHistory';
+import DocActions, { asNewCopy, finalizeEntry } from '../components/entry/DocActions';
+import EntryFillBar from '../components/entry/EntryFillBar';
+import { saveEntryDraft, finishEntryDraft } from '../components/entry/entryDrafts';
+import { PurchaseProductTermPopup } from '../components/entry/PurchaseTermPopups';
+import { withTermValue } from '../components/entry/lineCalc';
 
 const emptyRawMaterialRow = () => ({ product_id: '', batch_no: '', warehouse_id: '', qty: '', uom_id: '', alt_qty: '', alt_unit_id: '', rate_basis: 'primary', process_name: '', cost_rate: '', billing_term_ids: [] });
 const emptyByproductRow = () => ({ product_id: '', batch_no: '', warehouse_id: '', qty: '', uom_id: '', alt_qty: '', alt_unit_id: '', rate_basis: 'primary', allocation_basis: 'fixed_recovery', recovery_rate: '', relative_value: '' });
@@ -34,6 +39,9 @@ const emptyForm = {
 const EFC_RENDERED_KEYS = ['doc_date', 'narration', 'output_batch_no', 'output_product_id', 'output_qty', 'output_warehouse_id', 'source_warehouse_id'];
 
 export default function ProductionOrder() {
+    const [dualUomEntryMode, setDualUomEntryMode] = useState({ mode: 'fixed', reverseEnabled: false });
+    // a product's own dual-UOM entry mode (Product Master) over System Control's
+    const dualModeOf = pid => productDualMode(products.find(p => p.id === pid), dualUomEntryMode);
     const { authFetch } = useAuth();
     const efc = useEntryFieldControls('production', EFC_RENDERED_KEYS);
     const [rows, setRows] = useState([]);
@@ -61,7 +69,6 @@ export default function ProductionOrder() {
     const [costCenters, setCostCenters] = useState([]);
     const [businessUnits, setBusinessUnits] = useState([]);
     const [remarks, setRemarks] = useState([]);
-    const [dualUomEntryMode, setDualUomEntryMode] = useState({ mode: 'fixed', reverseEnabled: false });
 
     const formRef = useRef(null);
     useEnterKeyNavigation(formRef, { onLastField: () => { addRawMaterialRow(); return true; } });
@@ -108,7 +115,7 @@ export default function ProductionOrder() {
     const handleRawMaterialProductSelect = (idx, productId) => {
         const product = products.find(p => p.id === productId);
         if (product?.uom_mode === 'fixed_dual') {
-            updateRawMaterialRow(idx, { product_id: productId, uom_id: product.dual_uom_primary_unit_id || '', alt_unit_id: product.base_unit_id || '', rate_basis: 'primary' });
+            updateRawMaterialRow(idx, { product_id: productId, uom_id: product.dual_uom_primary_unit_id || '', alt_unit_id: product.base_unit_id || '', rate_basis: productRateBasis(product) });
         } else {
             updateRawMaterialRow(idx, { product_id: productId, uom_id: product?.base_unit_id || '' });
         }
@@ -116,7 +123,7 @@ export default function ProductionOrder() {
     const handleByproductProductSelect = (idx, productId) => {
         const product = products.find(p => p.id === productId);
         if (product?.uom_mode === 'fixed_dual') {
-            updateByproductRow(idx, { product_id: productId, uom_id: product.dual_uom_primary_unit_id || '', alt_unit_id: product.base_unit_id || '', rate_basis: 'primary' });
+            updateByproductRow(idx, { product_id: productId, uom_id: product.dual_uom_primary_unit_id || '', alt_unit_id: product.base_unit_id || '', rate_basis: productRateBasis(product) });
         } else {
             updateByproductRow(idx, { product_id: productId, uom_id: product?.base_unit_id || '' });
         }
@@ -124,7 +131,7 @@ export default function ProductionOrder() {
     const handleOutputProductSelect = (productId) => {
         const product = products.find(p => p.id === productId);
         if (product?.uom_mode === 'fixed_dual') {
-            setForm(f => ({ ...f, output_product_id: productId, output_uom_id: product.dual_uom_primary_unit_id || '', output_alt_unit_id: product.base_unit_id || '', output_rate_basis: 'primary' }));
+            setForm(f => ({ ...f, output_product_id: productId, output_uom_id: product.dual_uom_primary_unit_id || '', output_alt_unit_id: product.base_unit_id || '', output_rate_basis: productRateBasis(product) }));
         } else {
             setForm(f => ({ ...f, output_product_id: productId, output_uom_id: product?.base_unit_id || '' }));
         }
@@ -133,7 +140,7 @@ export default function ProductionOrder() {
     const rawMaterialBaseAmount = (r) => {
         if (productIsFixedDualUom(r.product_id) && r.alt_qty) {
             const factor = dualConversionFactor(r.product_id);
-            const totalBaseQty = dualBaseQty(r.qty, r.alt_qty, factor, dualUomEntryMode.mode);
+            const totalBaseQty = dualBaseQty(r.qty, r.alt_qty, factor, dualModeOf(r.product_id).mode);
             return r.rate_basis === 'primary' ? (totalBaseQty / factor) * (Number(r.cost_rate) || 0) : totalBaseQty * (Number(r.cost_rate) || 0);
         }
         return (Number(r.qty) || 0) * (Number(r.cost_rate) || 0);
@@ -166,7 +173,7 @@ export default function ProductionOrder() {
                 try {
                     const res = await authFetch('/api/billing-terms/preview', {
                         method: 'POST',
-                        body: JSON.stringify({ term_ids: r.billing_term_ids, basic_amount: rawMaterialBaseAmount(r), quantity: Number(r.qty) || 0 })
+                        body: JSON.stringify({ term_ids: r.billing_term_ids, basic_amount: rawMaterialBaseAmount(r), quantity: Number(r.qty) || 0, term_values: r.term_values || {} })
                     });
                     previews[i] = res.data;
                 } catch { /* leave this line's preview absent on failure */ }
@@ -175,7 +182,7 @@ export default function ProductionOrder() {
         })();
         return () => { cancelled = true; };
         // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [JSON.stringify(form.raw_materials.map(r => ({ q: r.qty, r: r.cost_rate, t: r.billing_term_ids })))]);
+    }, [JSON.stringify(form.raw_materials.map(r => ({ q: r.qty, r: r.cost_rate, t: r.billing_term_ids, v: r.term_values })))]);
 
     const toggleTermForRmLines = (lineIndexes, termId) => {
         const allHaveIt = lineIndexes.every(idx => (form.raw_materials[idx]?.billing_term_ids || []).includes(termId));
@@ -240,6 +247,10 @@ export default function ProductionOrder() {
     const totalBpValue = fixedRecoveryValue + jointLines.reduce((s, l) => s + allocateShare(weightOf(l.qty, l.relative_value)), 0);
 
     const handleSubmit = async (e, saveAsDraft = false) => {
+
+        // Save as Draft (new entry): kept apart as a temporary draft - no number, no accounts / stock effect
+
+        if (saveAsDraft && !editingId) { if (e) e.preventDefault(); if (await saveEntryDraft(authFetch, 'production', form)) { resetForm(); setShowForm(false); } return; }
         e.preventDefault();
         if (!saveAsDraft) {
             const missing = efc.missingRequired(form);
@@ -257,11 +268,14 @@ export default function ProductionOrder() {
             const payload = { ...form, raw_materials: validRawMaterials, byproducts: validByproducts, ...(saveAsDraft ? { status: 'draft', save_as_draft: true } : {}) };
             if (editingId) {
                 await authFetch(`/api/production-orders/${editingId}`, { method: 'PUT', body: JSON.stringify(payload) });
+                if (!saveAsDraft) await finalizeEntry(authFetch, 'production-orders', editingId, 'posted');
                 showAlert(saveAsDraft ? 'Draft saved' : 'Production Order updated', 'success');
             } else {
                 const res = await authFetch('/api/production-orders', { method: 'POST', body: JSON.stringify(payload) });
+                if (!saveAsDraft) await finalizeEntry(authFetch, 'production-orders', res.data?.id, 'posted');
                 showAlert(saveAsDraft ? `Draft ${res.data.doc_no} saved` : `Production Order ${res.data.doc_no} created`, 'success');
             }
+            await finishEntryDraft(authFetch, 'production');
             resetForm();
             setShowForm(false);
             load();
@@ -270,6 +284,7 @@ export default function ProductionOrder() {
         }
     };
 
+    const copyAsNew = async (row) => { await handleEdit(row); setEditingId(null); setForm(f => asNewCopy(f, row.id)); setShowForm(true); };
     const handleEdit = async (row) => {
         try {
             const res = await authFetch(`/api/production-orders/${row.id}`);
@@ -304,16 +319,6 @@ export default function ProductionOrder() {
         }
     };
 
-    const handleDeleteDraft = async (row) => {
-        if (!window.confirm(`Delete draft "${row.doc_no}"? This cannot be undone.`)) return;
-        try {
-            await authFetch(`/api/production-orders/${row.id}`, { method: 'DELETE' });
-            showAlert('Draft deleted', 'warning');
-            load();
-        } catch (err) {
-            showAlert(err.message, 'danger');
-        }
-    };
 
     const [udfDoc, setUdfDoc] = useState(null);
 
@@ -351,6 +356,7 @@ export default function ProductionOrder() {
 
             {showForm && (
                 <form onSubmit={handleSubmit} ref={formRef}>
+                    <EntryFillBar voucherType="production" api="production-orders" form={form} editing={!!editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={copyAsNew} />
                     <div className="erp-topbar grid-cols-1 md:grid-cols-4">
                         <div className={efc.isVisible('doc_date') ? 'erp-field' : 'erp-field hidden'}>
                             <label className="erp-label">Date <span className="req">*</span> {form.doc_date && <span className="hint">({formatDateForDisplay(form.doc_date, 'nepali')} BS)</span>} {efc.isRequired('doc_date') && <span className="req">*</span>}</label>
@@ -375,7 +381,7 @@ export default function ProductionOrder() {
                                         <input disabled={efc.isReadonly('output_qty')}
                                             type="number" step="0.0001" className="erp-input" value={form.output_qty} required
                                             onChange={e => {
-                                                if (dualUomEntryMode.mode === 'auto_convert') {
+                                                if (dualModeOf(form.output_product_id).mode === 'auto_convert') {
                                                     const { qty, alt_qty } = onPrimaryQtyChange(e.target.value, dualConversionFactor(form.output_product_id));
                                                     setForm({ ...form, output_qty: qty, output_alt_qty: alt_qty });
                                                 } else {
@@ -389,8 +395,8 @@ export default function ProductionOrder() {
                                         <input
                                             type="number" step="0.0001" className="erp-input" value={form.output_alt_qty} placeholder="0"
                                             onChange={e => {
-                                                if (dualUomEntryMode.mode === 'auto_convert') {
-                                                    const { qty, alt_qty } = onSecondaryQtyChange(e.target.value, dualConversionFactor(form.output_product_id), dualUomEntryMode.reverseEnabled);
+                                                if (dualModeOf(form.output_product_id).mode === 'auto_convert') {
+                                                    const { qty, alt_qty } = onSecondaryQtyChange(e.target.value, dualConversionFactor(form.output_product_id), dualModeOf(form.output_product_id).reverseEnabled);
                                                     setForm({ ...form, output_qty: qty !== undefined ? qty : form.output_qty, output_alt_qty: alt_qty });
                                                 } else {
                                                     const { value } = validateFixedSecondary(e.target.value, dualConversionFactor(form.output_product_id));
@@ -400,7 +406,7 @@ export default function ProductionOrder() {
                                         />
                                         <span className="text-[10px] text-gray-400">{units.find(u => u.id === form.output_alt_unit_id)?.unit_name || 'Secondary'}</span>
                                     </div>
-                                    {dualUomEntryMode.mode !== 'auto_convert' && validateFixedSecondary(form.output_alt_qty, dualConversionFactor(form.output_product_id)).error && (
+                                    {dualModeOf(form.output_product_id).mode !== 'auto_convert' && validateFixedSecondary(form.output_alt_qty, dualConversionFactor(form.output_product_id)).error && (
                                         <span className="text-[9px] text-red-500 leading-tight">{validateFixedSecondary(form.output_alt_qty, dualConversionFactor(form.output_product_id)).error}</span>
                                     )}
                                 </div>
@@ -560,7 +566,7 @@ export default function ProductionOrder() {
                                                         <div className="flex items-center gap-1">
                                                             <input disabled={efc.isReadonly('qty', 'detail')}
                                                                 type="number" step="0.0001" className="erp-input" style={{ width: '60px' }} value={r.qty}
-                                                                onChange={e => updateRawMaterialRow(idx, dualUomEntryMode.mode === 'auto_convert' ? onPrimaryQtyChange(e.target.value, dualConversionFactor(r.product_id)) : { qty: e.target.value })}
+                                                                onChange={e => updateRawMaterialRow(idx, dualModeOf(r.product_id).mode === 'auto_convert' ? onPrimaryQtyChange(e.target.value, dualConversionFactor(r.product_id)) : { qty: e.target.value })}
                                                             />
                                                             <span className="text-[10px] text-gray-400">{units.find(u => u.id === r.uom_id)?.unit_name || 'Primary'}</span>
                                                         </div>
@@ -568,8 +574,8 @@ export default function ProductionOrder() {
                                                             <input
                                                                 type="number" step="0.0001" className="erp-input" style={{ width: '60px' }} value={r.alt_qty} placeholder="0"
                                                                 onChange={e => {
-                                                                    if (dualUomEntryMode.mode === 'auto_convert') {
-                                                                        updateRawMaterialRow(idx, onSecondaryQtyChange(e.target.value, dualConversionFactor(r.product_id), dualUomEntryMode.reverseEnabled));
+                                                                    if (dualModeOf(r.product_id).mode === 'auto_convert') {
+                                                                        updateRawMaterialRow(idx, onSecondaryQtyChange(e.target.value, dualConversionFactor(r.product_id), dualModeOf(r.product_id).reverseEnabled));
                                                                     } else {
                                                                         const { value } = validateFixedSecondary(e.target.value, dualConversionFactor(r.product_id));
                                                                         updateRawMaterialRow(idx, { alt_qty: value });
@@ -578,7 +584,7 @@ export default function ProductionOrder() {
                                                             />
                                                             <span className="text-[10px] text-gray-400">{units.find(u => u.id === r.alt_unit_id)?.unit_name || 'Secondary'}</span>
                                                         </div>
-                                                        {dualUomEntryMode.mode !== 'auto_convert' && validateFixedSecondary(r.alt_qty, dualConversionFactor(r.product_id)).error && (
+                                                        {dualModeOf(r.product_id).mode !== 'auto_convert' && validateFixedSecondary(r.alt_qty, dualConversionFactor(r.product_id)).error && (
                                                             <span className="text-[9px] text-red-500 leading-tight">{validateFixedSecondary(r.alt_qty, dualConversionFactor(r.product_id)).error}</span>
                                                         )}
                                                     </div>
@@ -611,7 +617,7 @@ export default function ProductionOrder() {
                                             <td className={efc.isVisible('cost_rate', 'detail') ? '' : 'hidden'}>
                                                 <input disabled={efc.isReadonly('cost_rate', 'detail')} type="number" step="0.01" className="erp-input" value={r.cost_rate} onChange={e => updateRawMaterialRow(idx, { cost_rate: e.target.value })} />
                                                 {productIsFixedDualUom(r.product_id) && (
-                                                    <select className="erp-select mt-1" style={{ fontSize: '10px', height: '22px' }} value={r.rate_basis} onChange={e => updateRawMaterialRow(idx, { rate_basis: e.target.value })}>
+                                                    <select disabled={!!fixedRateBasis(products.find(x => x.id === r.product_id))} className="erp-select mt-1" style={{ fontSize: '10px', height: '22px' }} value={r.rate_basis} onChange={e => updateRawMaterialRow(idx, { rate_basis: e.target.value })}>
                                                         <option value="primary">per {units.find(u => u.id === r.uom_id)?.unit_name || 'Primary'}</option>
                                                         <option value="secondary">per {units.find(u => u.id === r.alt_unit_id)?.unit_name || 'Secondary'}</option>
                                                     </select>
@@ -654,7 +660,7 @@ export default function ProductionOrder() {
                                         let lineValue;
                                         if (isFixed && productIsFixedDualUom(bp.product_id) && bp.alt_qty) {
                                             const factor = dualConversionFactor(bp.product_id);
-                                            const totalBaseQty = dualBaseQty(bp.qty, bp.alt_qty, factor, dualUomEntryMode.mode);
+                                            const totalBaseQty = dualBaseQty(bp.qty, bp.alt_qty, factor, dualModeOf(bp.product_id).mode);
                                             lineValue = bp.rate_basis === 'primary' ? (totalBaseQty / factor) * (Number(bp.recovery_rate) || 0) : totalBaseQty * (Number(bp.recovery_rate) || 0);
                                         } else {
                                             lineValue = isFixed
@@ -679,7 +685,7 @@ export default function ProductionOrder() {
                                                         <div className="flex items-center gap-1">
                                                             <input
                                                                 type="number" step="0.0001" className="erp-input" style={{ width: '60px' }} value={bp.qty}
-                                                                onChange={e => updateByproductRow(idx, dualUomEntryMode.mode === 'auto_convert' ? onPrimaryQtyChange(e.target.value, dualConversionFactor(bp.product_id)) : { qty: e.target.value })}
+                                                                onChange={e => updateByproductRow(idx, dualModeOf(bp.product_id).mode === 'auto_convert' ? onPrimaryQtyChange(e.target.value, dualConversionFactor(bp.product_id)) : { qty: e.target.value })}
                                                             />
                                                             <span className="text-[10px] text-gray-400">{units.find(u => u.id === bp.uom_id)?.unit_name || 'Primary'}</span>
                                                         </div>
@@ -687,8 +693,8 @@ export default function ProductionOrder() {
                                                             <input
                                                                 type="number" step="0.0001" className="erp-input" style={{ width: '60px' }} value={bp.alt_qty} placeholder="0"
                                                                 onChange={e => {
-                                                                    if (dualUomEntryMode.mode === 'auto_convert') {
-                                                                        updateByproductRow(idx, onSecondaryQtyChange(e.target.value, dualConversionFactor(bp.product_id), dualUomEntryMode.reverseEnabled));
+                                                                    if (dualModeOf(bp.product_id).mode === 'auto_convert') {
+                                                                        updateByproductRow(idx, onSecondaryQtyChange(e.target.value, dualConversionFactor(bp.product_id), dualModeOf(bp.product_id).reverseEnabled));
                                                                     } else {
                                                                         const { value } = validateFixedSecondary(e.target.value, dualConversionFactor(bp.product_id));
                                                                         updateByproductRow(idx, { alt_qty: value });
@@ -697,7 +703,7 @@ export default function ProductionOrder() {
                                                             />
                                                             <span className="text-[10px] text-gray-400">{units.find(u => u.id === bp.alt_unit_id)?.unit_name || 'Secondary'}</span>
                                                         </div>
-                                                        {dualUomEntryMode.mode !== 'auto_convert' && validateFixedSecondary(bp.alt_qty, dualConversionFactor(bp.product_id)).error && (
+                                                        {dualModeOf(bp.product_id).mode !== 'auto_convert' && validateFixedSecondary(bp.alt_qty, dualConversionFactor(bp.product_id)).error && (
                                                             <span className="text-[9px] text-red-500 leading-tight">{validateFixedSecondary(bp.alt_qty, dualConversionFactor(bp.product_id)).error}</span>
                                                         )}
                                                     </div>
@@ -737,7 +743,7 @@ export default function ProductionOrder() {
                                                     <>
                                                         <input type="number" step="0.01" className="erp-input" value={bp.recovery_rate} onChange={e => updateByproductRow(idx, { recovery_rate: e.target.value })} placeholder="Recovery Rate" />
                                                         {productIsFixedDualUom(bp.product_id) && (
-                                                            <select className="erp-select mt-1" style={{ fontSize: '10px', height: '22px' }} value={bp.rate_basis} onChange={e => updateByproductRow(idx, { rate_basis: e.target.value })}>
+                                                            <select disabled={!!fixedRateBasis(products.find(x => x.id === bp.product_id))} className="erp-select mt-1" style={{ fontSize: '10px', height: '22px' }} value={bp.rate_basis} onChange={e => updateByproductRow(idx, { rate_basis: e.target.value })}>
                                                                 <option value="primary">per {units.find(u => u.id === bp.uom_id)?.unit_name || 'Primary'}</option>
                                                                 <option value="secondary">per {units.find(u => u.id === bp.alt_unit_id)?.unit_name || 'Secondary'}</option>
                                                             </select>
@@ -785,7 +791,7 @@ export default function ProductionOrder() {
             <div className="flex items-center gap-2 mb-2">
                 <label className="flex items-center gap-1.5 text-sm">
                     <input type="checkbox" checked={showDraftsOnly} onChange={e => setShowDraftsOnly(e.target.checked)} />
-                    Show Drafts only
+                    Show unposted (awaiting approval) only
                 </label>
             </div>
             <ReportGrid
@@ -796,90 +802,25 @@ export default function ProductionOrder() {
                 rowActions={(row) => (
                     <div className="flex gap-2 justify-center">
                         <button onClick={() => handleEdit(row)} className="px-2 py-1 bg-blue-600 text-white rounded text-xs">Open</button>
+                        <DocActions type="production" api="production-orders" row={row} onOpen={handleEdit} onCopy={copyAsNew} onReverse={r => handleStatusChange(r, 'cancelled')} onDone={load} />
                         {row.status === 'posted' && <a href={`/print/production_order/${row.id}`} target="_blank" rel="noopener noreferrer" className="px-2 py-1 bg-purple-600 text-white rounded text-xs">🖨️ Print</a>}
                         <button onClick={() => openAuditTrail(row)} className="px-2 py-1 bg-gray-500 text-white rounded text-xs">History</button>
                         <button onClick={() => setUdfDoc(row.id)} className="px-2 py-1 bg-indigo-500 text-white rounded text-xs" title="Custom fields (UDF)">UDF</button>{udfDoc === row.id && <UdfValuesModal docType="production_order" docId={row.id} onClose={() => setUdfDoc(null)} />}
                         {row.status === 'draft' && <button onClick={() => handleStatusChange(row, 'posted')} className="px-2 py-1 bg-green-600 text-white rounded text-xs">Post</button>}
-                        {row.status !== 'cancelled' && <button onClick={() => handleStatusChange(row, 'cancelled')} className="px-2 py-1 bg-red-600 text-white rounded text-xs">Cancel</button>}
-                        {row.status === 'draft' && <button onClick={() => handleDeleteDraft(row)} className="px-2 py-1 bg-red-800 text-white rounded text-xs">Delete</button>}
                     </div>
                 )}
             />
         </div>
 
-        {productTermModalIndexes !== null && productTermModalIndexes.length > 0 && (() => {
-            const targetLines = productTermModalIndexes.map(idx => ({ idx, line: form.raw_materials[idx] })).filter(t => t.line);
-            const totalBasic = targetLines.reduce((s, t) => s + rawMaterialBaseAmount(t.line), 0);
-            const totalNetTermAmount = targetLines.reduce((s, t) => {
-                const preview = lineTermPreviews[t.idx];
-                return s + (preview?.total !== undefined ? preview.total - rawMaterialBaseAmount(t.line) : 0);
-            }, 0);
-            return (
-                <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-                    <div className="bg-white rounded-xl w-full max-w-2xl max-h-[85vh] overflow-y-auto">
-                        <div className="erp-header">
-                            <span className="erp-header-title">Product Term — {targetLines.length} Raw Material Line{targetLines.length > 1 ? 's' : ''} Selected</span>
-                        </div>
-                        <div className="p-5">
-                            <p className="text-xs text-gray-400 mb-3">These terms only adjust Production Costing (and what shows on the Production Report) - they never post to the ledger.</p>
-                            <div className="max-h-32 overflow-y-auto border rounded-lg mb-4">
-                                <table className="w-full text-xs">
-                                    <thead><tr className="text-gray-500 uppercase"><th className="text-left px-2 py-1">Line</th><th className="text-left px-2 py-1">Product</th><th className="text-right px-2 py-1">Qty</th><th className="text-right px-2 py-1">Basic Value</th></tr></thead>
-                                    <tbody>
-                                        {targetLines.map(({ idx, line }) => (
-                                            <tr key={idx} className="border-t">
-                                                <td className="px-2 py-1">{idx + 1}</td>
-                                                <td className="px-2 py-1">{line.product_name_snapshot || '—'}</td>
-                                                <td className="px-2 py-1 text-right">{line.qty || 0}</td>
-                                                <td className="px-2 py-1 text-right">{rawMaterialBaseAmount(line).toFixed(2)}</td>
-                                            </tr>
-                                        ))}
-                                    </tbody>
-                                </table>
-                            </div>
-                            <div className="erp-field mb-4">
-                                <label className="erp-label">Combined Basic Value</label>
-                                <input className="erp-input" disabled value={totalBasic.toFixed(2)} />
-                            </div>
-                            <p className="text-xs font-semibold text-slate-500 uppercase mb-2">
-                                Applicable Terms <span className="text-gray-400 normal-case">(checking a term applies it to every line above at once)</span>
-                            </p>
-                            <div className="space-y-1.5">
-                                {billingTerms.map(t => {
-                                    const checkedCount = targetLines.filter(({ line }) => (line.billing_term_ids || []).includes(t.id)).length;
-                                    const allChecked = checkedCount === targetLines.length;
-                                    const someChecked = checkedCount > 0 && !allChecked;
-                                    return (
-                                        <label key={t.id} className="flex items-center justify-between gap-2 text-sm border rounded-lg px-3 py-2">
-                                            <span className="flex items-center gap-2">
-                                                <input
-                                                    type="checkbox" data-enter-skip="true" checked={allChecked}
-                                                    ref={el => { if (el) el.indeterminate = someChecked; }}
-                                                    onChange={() => toggleTermForRmLines(productTermModalIndexes, t.id)}
-                                                />
-                                                {t.term_name} <span className="text-xs text-gray-400">({t.term_code})</span>
-                                            </span>
-                                            {someChecked && <span className="text-xs text-amber-600">{checkedCount}/{targetLines.length}</span>}
-                                        </label>
-                                    );
-                                })}
-                                {billingTerms.length === 0 && <p className="text-sm text-gray-400">No Billing Terms are set up for Production yet — mark one as "Production Entry" in Billing Term Management.</p>}
-                            </div>
-                            <div className="flex justify-between font-semibold text-sm border-t pt-2 mt-3">
-                                <span>Net Costing Adjustment (combined, all selected lines)</span>
-                                <span>{totalNetTermAmount.toFixed(2)}</span>
-                            </div>
-                        </div>
-                        <div className="erp-bottombar">
-                            <div />
-                            <div className="erp-bottombar-actions">
-                                <button type="button" onClick={() => setProductTermModalIndexes(null)} className="erp-btn primary">Ok</button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
-            );
-        })()}
+        {productTermModalIndexes !== null && productTermModalIndexes.length > 0 && (
+            <PurchaseProductTermPopup
+                title="Production · Raw Material Charges (costing only - never posted to the ledger)" terms={billingTerms} previews={lineTermPreviews}
+                lines={productTermModalIndexes.map(idx => ({ idx, line: { ...form.raw_materials[idx], rate: form.raw_materials[idx]?.cost_rate } })).filter(t => t.line.product_id !== undefined)}
+                productName={productTermModalIndexes.length === 1 ? (products.find(p => p.id === form.raw_materials[productTermModalIndexes[0]]?.product_id)?.product_name || '') : `${productTermModalIndexes.length} lines`}
+                onToggle={id => toggleTermForRmLines(productTermModalIndexes, id)}
+                onInput={(id, kind, v) => setForm(f => ({ ...f, raw_materials: f.raw_materials.map((r, i) => (productTermModalIndexes.includes(i) ? { ...r, billing_term_ids: (r.billing_term_ids || []).includes(id) ? r.billing_term_ids : [...(r.billing_term_ids || []), id], term_values: withTermValue(r.term_values, id, kind, v) } : r)) }))}
+                onClose={() => setProductTermModalIndexes(null)} />
+        )}
 
         {showTemplateModal && (
             <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">

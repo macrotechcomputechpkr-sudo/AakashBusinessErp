@@ -55,7 +55,10 @@ const DOCS = {
     credit_note: ['credit_notes', 'credit_note', 'Credit Note'], debit_note: ['debit_notes', 'debit_note', 'Debit Note'], production: ['production_orders', 'production', 'Production'],
     stock_transfer: ['stock_transfers', 'stock_transfer', 'Stock Transfer'], interest_posting: ['interest_runs', null, 'Interest Posting'],
     depreciation: ['depreciation_runs', null, 'Depreciation'], asset_disposal: ['depreciation_runs', null, 'Asset Disposal'],
-    agent_commission: ['agent_commission_postings', null, 'Agent Commission']
+    agent_commission: ['agent_commission_postings', null, 'Agent Commission'],
+    construction_ra_bill: ['construction_ra_bills', null, 'Running Bill (Construction)'], construction_sub_bill: ['construction_subcontract_bills', null, 'Sub-contract Bill'],
+    construction_wage: ['construction_wage_sheets', null, 'Wage Sheet'],
+    auto_job_invoice: ['auto_job_cards', null, 'Job Card Invoice'], auto_outside_work: ['auto_outside_works', null, 'Outside Work (Job Card)']
 };
 // document tables for the doc-class register (all documents, posted or not)
 const CLASS_TABLES = {

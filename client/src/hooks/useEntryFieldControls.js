@@ -19,6 +19,9 @@ const empty = v => v === undefined || v === null || String(v).trim() === '';
 // has its main pick (a product, or a ledger for voucher/ledger lines).
 const LINE_ARRAYS = ['details', 'lines', 'expense_lines', 'raw_materials'];
 const lineArrayOf = form => { for (const k of LINE_ARRAYS) if (Array.isArray(form[k])) return form[k]; return []; };
+// voucher types whose shown fields were already reported this session
+const registered = new Set();
+
 const isRealLine = d => !!(d && (d.product_id || d.ledger_id || d.income_ledger_id || d.expense_ledger_id));
 
 // renderedKeys (optional): master fields this screen really shows. A field the
@@ -31,9 +34,20 @@ export function useEntryFieldControls(voucherType, renderedKeys = null) {
         let alive = true;
         if (!voucherType) return undefined;
         authFetch(`/api/entry-field-controls/resolve?voucher_type=${voucherType}`)
-            .then(res => { if (alive) setFields(res.data || []); })
+            .then(res => {
+                if (alive) setFields(res.data || []);
+                // report the master fields this screen shows, so Entry Field Control lists them
+                const have = new Set((res.data || []).filter(f => f.section === 'master').map(f => f.field_key));
+                const missing = (renderedKeys || []).filter(k => !have.has(k));
+                if (missing.length && !registered.has(voucherType)) {
+                    registered.add(voucherType);
+                    authFetch('/api/voucher-field-catalog/register', { method: 'POST', body: JSON.stringify({ voucher_type: voucherType, fields: missing.map(key => ({ key, section: 'master' })) }) }).catch(() => {});
+                }
+            })
             .catch(() => { if (alive) setFields([]); });
         return () => { alive = false; };
+    // renderedKeys is a module constant on every screen
+    // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [authFetch, voucherType]);
 
     const modeOf = useCallback((key, section = 'master') => {

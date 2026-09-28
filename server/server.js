@@ -99,6 +99,9 @@ const workRoutes = require('./routes/workRoutes');
 const poultryRoutes = require('./routes/poultryRoutes');
 const masterCodeRoutes = require('./routes/masterCodeRoutes');
 const entryHelperRoutes = require('./routes/entryHelperRoutes');
+const documentActionRoutes = require('./routes/documentActionRoutes');
+const constructionRoutes = require('./routes/constructionRoutes');
+const automobileRoutes = require('./routes/automobileRoutes');
 const ledgerReportRoutes = require('./routes/ledgerReportRoutes');
 const lcRoutes = require('./routes/lcRoutes');
 const savedReportViewRoutes = require('./routes/savedReportViewRoutes');
@@ -115,6 +118,8 @@ const salesAdditionalEntryRoutes = require('./routes/salesAdditionalEntryRoutes'
 const documentNumberingRoutes = require('./routes/documentNumberingRoutes');
 
 app.use('/api/auth', authRoutes);
+// Approval system: posting a module that needs approval takes the approval right (utils/approval.js)
+app.put('/api/:api/:id/status', require('./middleware/auth').requireAuth, require('./utils/approval').guard);
 app.use('/api', companyRoutes);
 app.use('/api', fiscalYearRoutes);
 app.use('/api', departmentRoutes);
@@ -188,6 +193,9 @@ app.use('/api', workRoutes);
 app.use('/api', poultryRoutes);
 app.use('/api', masterCodeRoutes);
 app.use('/api', entryHelperRoutes);
+app.use('/api', documentActionRoutes);
+app.use('/api', constructionRoutes);
+app.use('/api', automobileRoutes);
 app.use('/api', ledgerReportRoutes);
 app.use('/api', lcRoutes);
 app.use('/api', savedReportViewRoutes);

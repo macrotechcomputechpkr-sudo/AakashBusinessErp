@@ -17,6 +17,9 @@ import { formatDateForDisplay } from '../utils/nepaliDateUtils';
 import BillWiseSettlementPanel from '../components/BillWiseSettlementPanel';
 import UdfValuesModal from '../components/UdfValuesModal';
 import RecordHistory from '../components/RecordHistory';
+import EntryFillBar from '../components/entry/EntryFillBar';
+import { saveEntryDraft, finishEntryDraft } from '../components/entry/entryDrafts';
+import { asNewCopy } from '../components/entry/DocActions';
 
 const emptyForm = {
     product_company_id: '', doc_date: new Date().toISOString().slice(0, 10),
@@ -79,7 +82,9 @@ export default function PdcVoucher() {
 
     const resetForm = () => { setForm(emptyForm); setEditingId(null); setBillWiseSettlements(null); };
 
-    const handleSubmit = async (e) => {
+    const handleSubmit = async (e, saveAsDraft = false) => {
+        // Save as Draft (new entry): kept apart as a temporary draft - no number, no effect
+        if (saveAsDraft && !editingId) { if (e) e.preventDefault(); if (await saveEntryDraft(authFetch, 'pdc', form)) { resetForm(); setShowForm(false); } return; }
         e.preventDefault();
         const missing = efc.missingRequired(form);
         if (missing.length) { showAlert(`Required: ${missing.join(', ')}`, 'danger'); return; }
@@ -92,6 +97,7 @@ export default function PdcVoucher() {
                 const res = await authFetch('/api/pdc-vouchers', { method: 'POST', body: JSON.stringify(payload) });
                 showAlert(`PDC ${res.data.doc_no} created`, 'success');
             }
+            await finishEntryDraft(authFetch, 'pdc');
             resetForm();
             setShowForm(false);
             load();
@@ -198,6 +204,8 @@ export default function PdcVoucher() {
 
             {showForm && (
                 <form onSubmit={handleSubmit} ref={formRef}>
+                    <EntryFillBar voucherType="pdc" api="pdc-vouchers" form={form} editing={!!editingId} onFill={p => setForm(f => ({ ...f, ...p }))}
+                        onCopy={async r => { await handleEdit(r); setEditingId(null); setForm(f => asNewCopy(f, r.id)); }} />
                     <div className="erp-topbar grid-cols-1 md:grid-cols-4">
                         <div className={efc.isVisible('doc_date') ? 'erp-field' : 'erp-field hidden'}>
                             <label className="erp-label">Date <span className="req">*</span> {form.doc_date && <span className="hint">({formatDateForDisplay(form.doc_date, 'nepali')} BS)</span>} {efc.isRequired('doc_date') && <span className="req">*</span>}</label>
@@ -352,6 +360,7 @@ export default function PdcVoucher() {
                         <div />
                         <div className="erp-bottombar-actions">
                             <button type="button" onClick={() => { resetForm(); setShowForm(false); }} className="erp-btn">Cancel</button>
+                            {!editingId && <button type="button" onClick={e => handleSubmit(e, true)} className="erp-btn">💾 Save as Draft</button>}
                             <button type="submit" className="erp-btn primary">{editingId ? 'Update' : 'Create'}</button>
                         </div>
                     </div>

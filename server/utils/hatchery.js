@@ -95,7 +95,21 @@ async function detail(c, t, id) {
     const { data: adjs } = ids.length ? await c.from('stock_adjustments').select('id, doc_no, status').in('id', ids) : { data: [] };
     const A = Object.fromEntries((adjs || []).map(a => [a.id, a]));
     const { data: shed } = await c.from('poultry_sheds').select('shed_name').eq('tenant_id', t).eq('id', h.hatchery_id).maybeSingle();
-    return { ...h, hatchery_name: shed?.shed_name || '', ...kpis(h), cost: await hatchCost(c, t, h, S), set_adjustment_no: A[h.set_adjustment_id]?.doc_no || null, output_adjustment_no: A[h.output_adjustment_id]?.doc_no || null,
+    let lots = [];
+    if (h.status === 'hatched') {
+        const { data: bs } = await c.from('poultry_batches').select('*').eq('tenant_id', t).eq('source_hatch_id', h.id).order('placement_date');
+        const { data: sh } = await c.from('poultry_sheds').select('id, shed_name').eq('tenant_id', t);
+        const SN = Object.fromEntries((sh || []).map(x => [x.id, x.shed_name]));
+        for (const b of bs || []) {
+            const sm = await P.batchSummary(c, t, b);
+            lots.push({ id: b.id, batch_no: b.batch_no, shed_name: SN[b.shed_id] || '', placement_date: b.placement_date, status: b.status, placed: sm.birds.placed,
+                dead: sm.birds.dead + sm.birds.culls, mortality_pct: sm.kpi.mortality_pct, lifted: sm.birds.lifted, alive: sm.birds.alive, age_days: sm.kpi.age_days,
+                lift_due_date: sm.cycle.lift_due_date, sales: sm.revenue.total, cost: sm.costs.total, profit: sm.profit });
+        }
+    }
+    const placedInLots = lots.reduce((x, l) => x + l.placed, 0);
+    return { ...h, broiler_lots: lots, placed_in_lots: placedInLots, chicks_available: h.status === 'hatched' ? Math.max(0, h.chicks_a - placedInLots) : 0,
+        hatchery_name: shed?.shed_name || '', ...kpis(h), cost: await hatchCost(c, t, h, S), set_adjustment_no: A[h.set_adjustment_id]?.doc_no || null, output_adjustment_no: A[h.output_adjustment_id]?.doc_no || null,
         expected_candling: addDays(h.set_date, S.candling_day), expected_transfer: addDays(h.set_date, S.transfer_day), expected_hatch: addDays(h.set_date, S.incubation_days) };
 }
 
@@ -146,6 +160,8 @@ async function hatch(c, t, userId, id, b, { reverse = false } = {}) {
     const h0 = await loadHatch(c, t, id);
     if (reverse) {
         if (h0.status !== 'hatched') throw httpError('Not hatched yet');
+        const { data: lots } = await c.from('poultry_batches').select('batch_no').eq('tenant_id', t).eq('source_hatch_id', id);
+        if ((lots || []).length) throw httpError(`Chicks of this hatch are placed in broiler lot(s) ${lots.map(l => l.batch_no).join(', ')} - delete those lots first`);
         await P.cancelAdjustment(c, t, userId, h0.output_adjustment_id, `Hatch ${h0.hatch_no} reopened`);
         await c.from('poultry_hatches').update({ status: 'candled', output_adjustment_id: null, updated_by: userId }).eq('id', id);
         return detail(c, t, id);
@@ -196,4 +212,15 @@ async function summary(c, t) {
         due_soon: rows.filter(h => h.status !== 'hatched').map(h => ({ id: h.id, hatch_no: h.hatch_no, set_date: h.set_date, eggs_set: h.eggs_set, status: h.status })) };
 }
 
-module.exports = { list, detail, create, candle, hatch, cancel, summary, kpis };
+/**
+ * Place a hatch's A-grade chicks in the company's own broiler sheds: one lot
+ * per shed, each taking the chicks out of stock at the hatch's cost per chick.
+ * rows: [{ shed_id, chicks_placed, free_chicks, breed, target_weight_kg }]
+ */
+async function placeInSheds(c, t, userId, id, b) {
+    const h = await P.hatchAvailability(c, t, id);
+    const r = await P.placeLots(c, t, userId, { ...b, source: 'hatch', source_id: id, placement_date: b.placement_date || String(h.hatch_date || today()).slice(0, 10) });
+    return { ...r, hatch: await detail(c, t, id) };
+}
+
+module.exports = { list, detail, create, candle, hatch, cancel, summary, kpis, placeInSheds };

@@ -7,6 +7,7 @@
 // =============================================
 
 import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { APPROVAL_DOCS } from '../components/entry/approvalDocs';
 import { useAuth } from '../contexts/AuthContext';
 import { useEnterKeyNavigation } from '../hooks/useEnterKeyNavigation';
 import SearchablePopupSelect from '../components/SearchablePopupSelect';
@@ -14,6 +15,8 @@ import Layout from '../components/Layout';
 import { refreshAppFeatures } from '../hooks/useAppFeatures';
 import MasterCodesEditor from '../components/MasterCodesEditor';
 import { RateTypesEditor } from '../components/pricing/PricingEditors';
+import { clearEntrySettings } from '../components/entry/useEntrySettings';
+import { clearDocPolicy } from '../components/entry/DocActions';
 
 const TABS = [
     { key: 'business', label: '🏢 Business Nature' },
@@ -24,6 +27,7 @@ const TABS = [
     { key: 'inventory', label: '📦 Inventory & UOM' },
     { key: 'stockPosting', label: '🔁 Stock Posting' },
     { key: 'billing', label: '🧾 Billing Behavior' },
+    { key: 'termMapping', label: '🧮 Term Mapping' },
     { key: 'warnings', label: '⚠️ Warnings & Confirmations' },
     { key: 'misc', label: '🌍 Multi-Currency & Misc' },
     { key: 'captions', label: '🏷️ Captions' }
@@ -79,10 +83,24 @@ const NATURES = [
     { value: 'retail', label: 'Retail', note: 'Counter sales - same screens as trading.' },
     { value: 'manufacturing', label: 'Manufacturing', note: 'Trading + BOM and production orders.' },
     { value: 'service', label: 'Service', note: 'Service billing - inventory screens stay available.' },
+    { value: 'automobile', label: 'Automobile Dealer / Workshop', note: 'Adds showroom (customer enquiry, vehicle stock, PDI, vehicle delivery) and after-sales (job cards, parts issue, outside work, ready / delivered, service reminders).' },
+    { value: 'construction', label: 'Construction / Contractor', note: 'Adds contract sites (thekka) with BOQ, running bills to the client, material, wages, petti thekka (sub-contract) taken or given, and site-wise profit / loss.' },
     { value: 'poultry', label: 'Poultry & Hatchery', note: 'Adds shed-wise broiler batches (lifecycle, consumption, mortality, profitability) and hatchery management, posted to the same accounts and inventory.' }
 ];
 
+// Term Mapping: which billing term does which job, for sales and for purchase
+const TERM_JOBS = [['vat', 'VAT'], ['excise', 'Excise Duty'], ['disc1', 'Product Discount 1'], ['disc2', 'Product Discount 2'], ['disc3', 'Product Discount 3'],
+    ['disc4', 'Product Discount 4'], ['disc5', 'Product Discount 5'], ['bill_disc', 'Bill Discount']];
+
 const YES_NO = [{ value: 'true', label: 'Yes' }, { value: 'false', label: 'No' }];
+
+// entries that can show item charges (product-wise terms) - System Control > product_term_transactions
+const PRODUCT_TERM_TXNS = [
+    ['sales_quotation', 'Sales Quotation'], ['sales_order', 'Sales Order'], ['sales_delivery', 'Sales Challan'], ['sales_bill', 'Sales Bill'],
+    ['sales_return', 'Sales Return'], ['sales_nonsaleable_return', 'Sales Non-saleable Return'],
+    ['purchase_requisition', 'Purchase Requisition'], ['purchase_quotation', 'Purchase Quotation'], ['purchase_order', 'Purchase Order'],
+    ['purchase_grn', 'Goods Receipt (GRN)'], ['purchase_bill', 'Purchase Bill'], ['purchase_return', 'Purchase Return'], ['purchase_nonsaleable_return', 'Purchase Non-saleable Return']
+];
 
 export default function SystemControlSettings() {
     const { authFetch } = useAuth();
@@ -90,6 +108,7 @@ export default function SystemControlSettings() {
     useEnterKeyNavigation(enterAreaRef);
     const [settings, setSettings] = useState(null);
     const [ledgers, setLedgers] = useState([]);
+    const [billingTerms, setBillingTerms] = useState([]);
     const [tab, setTab] = useState(() => new URLSearchParams(window.location.search).get('tab') || 'business');
     const [alert, setAlert] = useState(null);
     const [saving, setSaving] = useState(false);
@@ -121,6 +140,10 @@ export default function SystemControlSettings() {
         }
     }, [authFetch]);
     useEffect(() => { load(); }, [load]);
+    useEffect(() => {
+        if (tab === 'termMapping' && !billingTerms.length) authFetch('/api/billing-terms').then(r => setBillingTerms(r.data || [])).catch(err => showAlert(err.message, 'danger'));
+    }, [tab, billingTerms.length, authFetch]);
+    const setTerm = (side, job, id) => setSettings(s => ({ ...s, term_mapping: { ...(s.term_mapping || {}), [side]: { ...((s.term_mapping || {})[side] || {}), [job]: id || null } } }));
 
     const set = (key, value) => setSettings(s => ({ ...s, [key]: value }));
 
@@ -130,6 +153,8 @@ export default function SystemControlSettings() {
             const res = await authFetch('/api/system-control', { method: 'PUT', body: JSON.stringify(settings) });
             setSettings(res.data);
             refreshAppFeatures();
+            clearEntrySettings();
+            clearDocPolicy();
             if (stockMap) {
                 const dirty = kind => stockMap[kind].filter(r => r._dirty).map(r => ({ id: r.id, stock_ledger_id: r.stock_ledger_id }));
                 if (dirty('branches').length || dirty('warehouses').length) {
@@ -303,6 +328,9 @@ export default function SystemControlSettings() {
                             {settings.dual_uom_enabled && settings.dual_uom_mode === 'auto_convert' && (
                                 <SelectField label="Reverse Conversion" value={String(!!settings.dual_uom_reverse_conversion)} onChange={v => set('dual_uom_reverse_conversion', v === 'true')} options={YES_NO} />
                             )}
+                            <SelectField label="Multi Warehouse" hint="warehouse fields show only when Yes" value={String(!!settings.multi_warehouse)} onChange={v => set('multi_warehouse', v === 'true')} options={YES_NO} />
+                            <SelectField label="Product Search In Entries" value={settings.product_search_by || 'name'} onChange={v => set('product_search_by', v)}
+                                options={[{ value: 'name', label: 'By Product Name' }, { value: 'code', label: 'By Product Code' }]} />
                             <SelectField label="Free Qty System" value={String(!!settings.free_qty_system)} onChange={v => set('free_qty_system', v === 'true')} options={YES_NO} />
                             <SelectField label="Batch System" value={settings.batch_system} onChange={v => set('batch_system', v)}
                                 options={[{ value: 'none', label: 'None' }, { value: 'retail', label: 'Retail' }, { value: 'medicine', label: 'Medicine' }, { value: 'other', label: 'Other' }]} />
@@ -470,6 +498,37 @@ export default function SystemControlSettings() {
                 )}
 
                 {/* ==================== 4. BILLING BEHAVIOR ==================== */}
+                {tab === 'termMapping' && (
+                    <div className="space-y-3">
+                        <p className="text-xs text-gray-500">Choose which billing term is VAT, Excise Duty, Product Discount 1-5 and Bill Discount. Entry screens show these as line columns (inline) or in the terms popup,
+                            and VAT / Excise post to the ledgers of these terms. A term can do only one job on each side.</p>
+                        <div className="overflow-x-auto">
+                            <table className="w-full text-sm border">
+                                <thead><tr className="bg-slate-50 text-xs text-gray-600"><th className="text-left px-3 py-1.5">Job</th><th className="text-left px-3 py-1.5">Sales Term</th><th className="text-left px-3 py-1.5">Purchase Term</th></tr></thead>
+                                <tbody>
+                                    {TERM_JOBS.map(([job, label]) => (
+                                        <tr key={job} className="border-t">
+                                            <td className="px-3 py-1.5 font-medium">{label}</td>
+                                            {['sales', 'purchase'].map(side => {
+                                                const map = (settings.term_mapping || {})[side] || {};
+                                                const takenElsewhere = new Set(Object.entries(map).filter(([k, v]) => k !== job && v).map(([, v]) => v));
+                                                const options = billingTerms.filter(t => t.is_active !== false && (side === 'sales' ? t.applicable_sales_entry !== false : t.applicable_purchase_entry !== false) && !takenElsewhere.has(t.id));
+                                                return (
+                                                    <td key={side} className="px-3 py-1.5">
+                                                        <select className="erp-input w-full" value={map[job] || ''} onChange={e => setTerm(side, job, e.target.value)}>
+                                                            <option value="">- none -</option>
+                                                            {options.map(t => <option key={t.id} value={t.id}>{t.term_name}{t.rate_percentage ? ` (${Number(t.rate_percentage)}%)` : ''}</option>)}
+                                                        </select>
+                                                    </td>
+                                                );
+                                            })}
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                )}
                 {tab === 'billing' && (
                     <div className="space-y-4">
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -479,6 +538,7 @@ export default function SystemControlSettings() {
                                 options={[{ value: 'cash', label: 'Cash' }, { value: 'credit', label: 'Credit' }]} />
                             <SelectField label="Auto Billing Rate Type" value={settings.auto_billing_rate_type} onChange={v => set('auto_billing_rate_type', v)}
                                 options={[...(settings.rate_types || [1, 2, 3, 4, 5].map(sr => ({ sr, caption: `Sr${sr}`, enabled: sr <= 2 }))).filter(r => r.enabled).map(r => ({ value: `sr${r.sr}`, label: r.caption })), { value: 'mrp', label: 'MRP' }]} />
+                            <SelectField label="IRD Billing" hint="Yes: posted Sales Bill / Return can only be cancelled" value={String(!!settings.ird_billing)} onChange={v => set('ird_billing', v === 'true')} options={YES_NO} />
                             <SelectField label="Sub-Ledger Popup" value={settings.sub_ledger_popup_mode} onChange={v => set('sub_ledger_popup_mode', v)}
                                 options={[{ value: 'single', label: 'Single' }, { value: 'multiple', label: 'Multiple' }]} />
                             <SelectField label="Amount Wise Qty Change" value={settings.amount_wise_qty_change} onChange={v => set('amount_wise_qty_change', v)}
@@ -494,6 +554,36 @@ export default function SystemControlSettings() {
                                         {t.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase())}
                                     </label>
                                 ))}
+                            </div>
+                        </div>
+
+                        <div>
+                            <label className="erp-label">Approval Needed For <span className="text-xs text-gray-400">(ticked: Save waits for an approver - accounts / stock move only when approved; unticked: Save posts at once. Who approves: Security Rights Group › Approvals)</span></label>
+                            <div className="flex flex-wrap gap-x-4 gap-y-1 border rounded-lg px-3 py-2">
+                                {APPROVAL_DOCS.map(([t, label]) => {
+                                    const list = Array.isArray(settings.approval_modules) ? settings.approval_modules : [];
+                                    return (
+                                        <label key={t} className="flex items-center gap-1.5 text-sm">
+                                            <input type="checkbox" data-enter-skip="true" checked={list.includes(t)} onChange={() => set('approval_modules', list.includes(t) ? list.filter(x => x !== t) : [...list, t])} />
+                                            {label}
+                                        </label>
+                                    );
+                                })}
+                            </div>
+                        </div>
+
+                        <div>
+                            <label className="erp-label">Item Charges (Product Wise Terms) Shown In <span className="text-xs text-gray-400">(unticked entries show only the Charges Summary; a product's own term values still count)</span></label>
+                            <div className="flex flex-wrap gap-x-4 gap-y-1 border rounded-lg px-3 py-2">
+                                {PRODUCT_TERM_TXNS.map(([t, label]) => {
+                                    const list = Array.isArray(settings.product_term_transactions) ? settings.product_term_transactions : PRODUCT_TERM_TXNS.map(x => x[0]);
+                                    return (
+                                        <label key={t} className="flex items-center gap-1.5 text-sm">
+                                            <input type="checkbox" data-enter-skip="true" checked={list.includes(t)} onChange={() => set('product_term_transactions', list.includes(t) ? list.filter(x => x !== t) : [...list, t])} />
+                                            {label}
+                                        </label>
+                                    );
+                                })}
                             </div>
                         </div>
 

@@ -18,11 +18,14 @@ import SearchablePopupSelect from '../components/SearchablePopupSelect';
 import ReportGrid from '../components/ReportGrid';
 import Layout from '../components/Layout';
 import NumberingCategorySelector from '../components/NumberingCategorySelector';
-import { resolveDualUomEntryMode, onPrimaryQtyChange, onSecondaryQtyChange, validateFixedSecondary, dualBaseQty } from '../utils/dualUomEntryMode';
+import { resolveDualUomEntryMode, onPrimaryQtyChange, onSecondaryQtyChange, validateFixedSecondary, dualBaseQty, productDualMode, fixedRateBasis, productRateBasis } from '../utils/dualUomEntryMode';
 import { useEnterKeyNavigation } from '../hooks/useEnterKeyNavigation';
 import { formatDateForDisplay } from '../utils/nepaliDateUtils';
 import UdfValuesModal from '../components/UdfValuesModal';
 import RecordHistory from '../components/RecordHistory';
+import DocActions from '../components/entry/DocActions';
+import EntryFillBar from '../components/entry/EntryFillBar';
+import { saveEntryDraft, finishEntryDraft } from '../components/entry/entryDrafts';
 
 const emptyDetailRow = () => ({
     product_id: '', batch_no: '', mfg_date: '', exp_date: '',
@@ -52,6 +55,9 @@ const noNulls = obj => Object.fromEntries(Object.entries(obj).map(([k, v]) => [k
 const today = () => new Date().toISOString().slice(0, 10);
 
 export default function StockTransfer() {
+    const [dualUomEntryMode, setDualUomEntryMode] = useState({ mode: 'fixed', reverseEnabled: false });
+    // a product's own dual-UOM entry mode (Product Master) over System Control's
+    const dualModeOf = pid => productDualMode(products.find(p => p.id === pid), dualUomEntryMode);
     const { authFetch } = useAuth();
     const efc = useEntryFieldControls('stock_transfer', EFC_RENDERED_KEYS);
     const [rows, setRows] = useState([]);
@@ -75,7 +81,6 @@ export default function StockTransfer() {
     const [costCenters, setCostCenters] = useState([]);
     const [businessUnits, setBusinessUnits] = useState([]);
     const [remarks, setRemarks] = useState([]);
-    const [dualUomEntryMode, setDualUomEntryMode] = useState({ mode: 'fixed', reverseEnabled: false });
 
     const formRef = useRef(null);
     useEnterKeyNavigation(formRef, { onLastField: () => { addDetailRow(); return true; } });
@@ -181,7 +186,7 @@ export default function StockTransfer() {
         const product = products.find(p => p.id === productId);
         const uomId = product?.uom_mode === 'fixed_dual' ? product.dual_uom_primary_unit_id || '' : product?.base_unit_id || '';
         if (product?.uom_mode === 'fixed_dual') {
-            updateDetailRow(idx, { product_id: productId, uom_id: uomId, alt_unit_id: product.base_unit_id || '', rate_basis: 'primary', cost_rate: '', _cost_manual: false });
+            updateDetailRow(idx, { product_id: productId, uom_id: uomId, alt_unit_id: product.base_unit_id || '', rate_basis: productRateBasis(product), cost_rate: '', _cost_manual: false });
         } else {
             updateDetailRow(idx, { product_id: productId, uom_id: uomId, cost_rate: '', _cost_manual: false });
         }
@@ -191,7 +196,7 @@ export default function StockTransfer() {
     const lineAmount = (d) => {
         if (productIsFixedDualUom(d.product_id) && d.alt_qty) {
             const factor = dualConversionFactor(d.product_id);
-            const totalBaseQty = dualBaseQty(d.qty, d.alt_qty, factor, dualUomEntryMode.mode);
+            const totalBaseQty = dualBaseQty(d.qty, d.alt_qty, factor, dualModeOf(d.product_id).mode);
             return d.rate_basis === 'primary' ? (totalBaseQty / factor) * (Number(d.cost_rate) || 0) : totalBaseQty * (Number(d.cost_rate) || 0);
         }
         return (Number(d.qty) || 0) * (Number(d.cost_rate) || 0);
@@ -199,6 +204,10 @@ export default function StockTransfer() {
     const grandTotal = form.details.reduce((sum, d) => sum + lineAmount(d), 0);
 
     const handleSubmit = async (e, saveAsDraft = false) => {
+
+        // Save as Draft (new entry): kept apart as a temporary draft - no number, no accounts / stock effect
+
+        if (saveAsDraft && !editingId) { if (e) e.preventDefault(); if (await saveEntryDraft(authFetch, 'stock_transfer', form)) { resetForm(); setShowForm(false); } return; }
         e.preventDefault();
         if (!saveAsDraft) {
             const missing = efc.missingRequired(form);
@@ -224,6 +233,7 @@ export default function StockTransfer() {
                 const res = await authFetch('/api/stock-transfers', { method: 'POST', body: JSON.stringify(payload) });
                 showAlert(saveAsDraft ? `Draft ${res.data.doc_no} saved` : `Stock Transfer ${res.data.doc_no} created`, 'success');
             }
+            await finishEntryDraft(authFetch, 'stock_transfer');
             resetForm();
             setShowForm(false);
             load();
@@ -307,16 +317,6 @@ export default function StockTransfer() {
         }
     };
 
-    const handleDeleteDraft = async (row) => {
-        if (!window.confirm(`Delete draft "${row.doc_no}"? This cannot be undone.`)) return;
-        try {
-            await authFetch(`/api/stock-transfers/${row.id}`, { method: 'DELETE' });
-            showAlert('Draft deleted', 'warning');
-            load();
-        } catch (err) {
-            showAlert(err.message, 'danger');
-        }
-    };
 
     const [udfDoc, setUdfDoc] = useState(null);
 
@@ -364,6 +364,7 @@ export default function StockTransfer() {
 
             {showForm && (
                 <form onSubmit={handleSubmit} ref={formRef}>
+                    <EntryFillBar voucherType="stock_transfer" api="stock-transfers" form={form} editing={!!editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={r => handleCopyFrom(r.id)} />
                     <div className="erp-topbar grid-cols-1 md:grid-cols-4">
                         <div className="erp-field">
                             <label className="erp-label">Transfer Type</label>
@@ -544,7 +545,7 @@ export default function StockTransfer() {
                                                         <div className="flex items-center gap-1">
                                                             <input disabled={efc.isReadonly('qty', 'detail')}
                                                                 type="number" step="0.0001" className="erp-input" style={{ width: '60px' }} value={d.qty}
-                                                                onChange={e => updateDetailRow(idx, dualUomEntryMode.mode === 'auto_convert' ? onPrimaryQtyChange(e.target.value, dualConversionFactor(d.product_id)) : { qty: e.target.value })}
+                                                                onChange={e => updateDetailRow(idx, dualModeOf(d.product_id).mode === 'auto_convert' ? onPrimaryQtyChange(e.target.value, dualConversionFactor(d.product_id)) : { qty: e.target.value })}
                                                             />
                                                             <span className="text-[10px] text-gray-400">{units.find(u => u.id === d.uom_id)?.unit_name || 'Primary'}</span>
                                                         </div>
@@ -552,8 +553,8 @@ export default function StockTransfer() {
                                                             <input
                                                                 type="number" step="0.0001" className="erp-input" style={{ width: '60px' }} value={d.alt_qty} placeholder="0"
                                                                 onChange={e => {
-                                                                    if (dualUomEntryMode.mode === 'auto_convert') {
-                                                                        updateDetailRow(idx, onSecondaryQtyChange(e.target.value, dualConversionFactor(d.product_id), dualUomEntryMode.reverseEnabled));
+                                                                    if (dualModeOf(d.product_id).mode === 'auto_convert') {
+                                                                        updateDetailRow(idx, onSecondaryQtyChange(e.target.value, dualConversionFactor(d.product_id), dualModeOf(d.product_id).reverseEnabled));
                                                                     } else {
                                                                         const { value } = validateFixedSecondary(e.target.value, dualConversionFactor(d.product_id));
                                                                         updateDetailRow(idx, { alt_qty: value });
@@ -562,7 +563,7 @@ export default function StockTransfer() {
                                                             />
                                                             <span className="text-[10px] text-gray-400">{units.find(u => u.id === d.alt_unit_id)?.unit_name || 'Secondary'}</span>
                                                         </div>
-                                                        {dualUomEntryMode.mode !== 'auto_convert' && validateFixedSecondary(d.alt_qty, dualConversionFactor(d.product_id)).error && (
+                                                        {dualModeOf(d.product_id).mode !== 'auto_convert' && validateFixedSecondary(d.alt_qty, dualConversionFactor(d.product_id)).error && (
                                                             <span className="text-[9px] text-red-500 leading-tight">{validateFixedSecondary(d.alt_qty, dualConversionFactor(d.product_id)).error}</span>
                                                         )}
                                                     </div>
@@ -594,7 +595,7 @@ export default function StockTransfer() {
                                             <td className={efc.isVisible('cost_rate', 'detail') ? '' : 'hidden'}>
                                                 <input disabled={efc.isReadonly('cost_rate', 'detail')} type="number" step="0.01" className="erp-input" value={d.cost_rate} onChange={e => updateDetailRow(idx, { cost_rate: e.target.value, _cost_manual: e.target.value !== '' })} />
                                                 {productIsFixedDualUom(d.product_id) && (
-                                                    <select className="erp-select mt-1" style={{ fontSize: '10px', height: '22px' }} value={d.rate_basis} onChange={e => updateDetailRow(idx, { rate_basis: e.target.value })}>
+                                                    <select disabled={!!fixedRateBasis(products.find(x => x.id === d.product_id))} className="erp-select mt-1" style={{ fontSize: '10px', height: '22px' }} value={d.rate_basis} onChange={e => updateDetailRow(idx, { rate_basis: e.target.value })}>
                                                         <option value="primary">per {units.find(u => u.id === d.uom_id)?.unit_name || 'Primary'}</option>
                                                         <option value="secondary">per {units.find(u => u.id === d.alt_unit_id)?.unit_name || 'Secondary'}</option>
                                                     </select>
@@ -706,16 +707,14 @@ export default function StockTransfer() {
                 rowActions={(row) => (
                     <div className="flex gap-2 justify-center">
                         <button onClick={() => handleEdit(row)} className="px-2 py-1 bg-blue-600 text-white rounded text-xs">Open</button>
+                        <DocActions type="stock_transfer" api="stock-transfers" row={row} onOpen={handleEdit} onCopy={r => handleCopyFrom(r.id)} onReverse={r => handleStatusChange(r, 'cancelled')} onDone={load} />
                         {row.status === 'posted' && <a href={`/print/stock_transfer/${row.id}`} target="_blank" rel="noopener noreferrer" className="px-2 py-1 bg-purple-600 text-white rounded text-xs">🖨️ Print</a>}
                         <button onClick={() => openAuditTrail(row)} className="px-2 py-1 bg-gray-500 text-white rounded text-xs">History</button>
                         <button onClick={() => setUdfDoc(row.id)} className="px-2 py-1 bg-indigo-500 text-white rounded text-xs" title="Custom fields (UDF)">UDF</button>{udfDoc === row.id && <UdfValuesModal docType="stock_transfer" docId={row.id} onClose={() => setUdfDoc(null)} />}
                         {row.status === 'draft' && <button onClick={() => handleStatusChange(row, 'approved')} className="px-2 py-1 bg-indigo-600 text-white rounded text-xs">Approve</button>}
                         {row.status === 'approved' && <button onClick={() => handleStatusChange(row, 'posted')} className="px-2 py-1 bg-green-600 text-white rounded text-xs">Post</button>}
-                        {!['cancelled', 'posted'].includes(row.status) && <button onClick={() => handleStatusChange(row, 'cancelled')} className="px-2 py-1 bg-red-600 text-white rounded text-xs">Cancel</button>}
                         {isInTransit(row) && row.can_receive && <button onClick={() => setReceiveModal({ row, received_date: today(), receive_remarks: '' })} className="px-2 py-1 bg-orange-600 text-white rounded text-xs">📥 Receive</button>}
                         {isInTransit(row) && !row.can_receive && <span className="px-2 py-1 text-orange-600 text-xs">Awaiting {row.to_branch_name_snapshot || 'receiving branch'}</span>}
-                        {row.status === 'posted' && <button onClick={() => handleStatusChange(row, 'cancelled')} className="px-2 py-1 bg-red-800 text-white rounded text-xs">Cancel (reverse stock)</button>}
-                        {row.status === 'draft' && <button onClick={() => handleDeleteDraft(row)} className="px-2 py-1 bg-red-800 text-white rounded text-xs">Delete</button>}
                     </div>
                 )}
             />

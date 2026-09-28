@@ -7,6 +7,7 @@
 // =============================================
 
 const express = require('express');
+const { cleanLineTerms, exciseOf } = require('../utils/lineTerms');
 const { disposeOnSale, undoSaleDisposals } = require('../utils/fixedAssets');
 const { checkAccountPurposes } = require('../utils/ledgerPurpose');
 const { bumpAltCounter, rollHeaderStatus } = require('../utils/progressCounters');
@@ -22,7 +23,7 @@ const { requireAuth, requirePermission } = require('../middleware/auth');
 const { resolveDocumentNumber } = require('../utils/documentNumbering');
 const { checkCustomerCredit } = require('../utils/creditControl');
 const { toBaseUnitQty } = require('../utils/unitConversion');
-const { toBaseQtyFromDual, computeDualAmount, getDualUomMode } = require('../utils/dualUomCalculation');
+const { toBaseQtyFromDual, computeDualAmount, getDualUomMode, rateBasisFor } = require('../utils/dualUomCalculation');
 const { isBillWiseTrackingEnabled, createReferenceAndSettle, reverseReferenceAndSettlements } = require('../utils/billWiseSettlement');
 
 function validateBody(b, isDraft) {
@@ -83,22 +84,22 @@ async function lineAmount(tenantClient, d) {
     if (product?.uom_mode === 'fixed_dual' && d.alt_qty) {
         const { data: unitRate } = await tenantClient.from('product_unit_rates').select('conversion_factor').eq('product_id', d.product_id).eq('unit_id', product.dual_uom_primary_unit_id).maybeSingle();
         const conversionFactor = Number(unitRate?.conversion_factor) || 1;
-        const gross = computeDualAmount(d.qty, d.alt_qty, d.rate, d.rate_basis || 'primary', conversionFactor, await getDualUomMode(tenantClient));
+        const gross = computeDualAmount(d.qty, d.alt_qty, d.rate, await rateBasisFor(tenantClient, d.product_id, d.rate_basis), conversionFactor, await getDualUomMode(tenantClient, d.product_id));
         const discountAmount = d.discount_amount ? Number(d.discount_amount) : gross * (Number(d.discount_percent) || 0) / 100;
         const afterDiscount = gross - discountAmount;
         const taxAmount = d.tax_amount ? Number(d.tax_amount) : afterDiscount * (Number(d.tax_percent) || 0) / 100;
-        return { discountAmount, taxAmount, amount: afterDiscount + taxAmount, conversionFactor };
+        return { discountAmount, taxAmount, amount: afterDiscount + exciseOf(d) + taxAmount, conversionFactor };
     }
     const gross = Number(d.qty) * Number(d.rate);
     const discountAmount = d.discount_amount ? Number(d.discount_amount) : gross * (Number(d.discount_percent) || 0) / 100;
     const afterDiscount = gross - discountAmount;
     const taxAmount = d.tax_amount ? Number(d.tax_amount) : afterDiscount * (Number(d.tax_percent) || 0) / 100;
-    return { discountAmount, taxAmount, amount: afterDiscount + taxAmount, conversionFactor: null };
+    return { discountAmount, taxAmount, amount: afterDiscount + exciseOf(d) + taxAmount, conversionFactor: null };
 }
 
 async function syncDetails(tenantClient, tenantId, billId, details) {
     await tenantClient.from('sales_bill_details').delete().eq('bill_id', billId);
-    if (!Array.isArray(details) || details.length === 0) return { total: 0, totalTax: 0 };
+    if (!Array.isArray(details) || details.length === 0) return { total: 0, totalTax: 0, totalExcise: 0 };
     const rows = await Promise.all(details.map(async (d, i) => {
         const snapshots = await captureDetailSnapshots(tenantClient, d);
         const { discountAmount, taxAmount, amount } = await lineAmount(tenantClient, d);
@@ -108,14 +109,14 @@ async function syncDetails(tenantClient, tenantId, billId, details) {
             product_id: d.product_id, qty: Number(d.qty), uom_id: d.uom_id || null,
             alt_qty: d.alt_qty || null, alt_unit_id: d.alt_unit_id || null, rate_basis: d.rate_basis || 'primary',
             rate: Number(d.rate) || 0, amount, discount_percent: d.discount_percent || 0, discount_amount: discountAmount,
-            tax_percent: d.tax_percent || 0, tax_amount: taxAmount, free_qty: d.free_qty || 0, free_alt_qty: d.free_alt_qty || 0,
+            tax_percent: d.tax_percent || 0, tax_amount: taxAmount, excise_amount: exciseOf(d), line_terms: cleanLineTerms(d.line_terms), free_qty: d.free_qty || 0, free_alt_qty: d.free_alt_qty || 0,
             warehouse_id: d.warehouse_id || null, batch_no: d.batch_no || null, serial_no: d.serial_no || null,
             ...snapshots
         };
     }));
     const { error } = await tenantClient.from('sales_bill_details').insert(rows);
     if (error) throw error;
-    return { total: rows.reduce((s, r) => s + Number(r.amount), 0), totalTax: rows.reduce((s, r) => s + Number(r.tax_amount), 0) };
+    return { total: rows.reduce((s, r) => s + Number(r.amount), 0), totalTax: rows.reduce((s, r) => s + Number(r.tax_amount), 0), totalExcise: rows.reduce((s, r) => s + Number(r.excise_amount || 0), 0) };
 }
 
 async function logDocumentAudit(tenantClient, tenantId, documentType, documentId, action, userId) {
@@ -171,7 +172,7 @@ async function postBillStockMovements(tenantClient, tenantId, bill, details) {
         if (product?.uom_mode === 'fixed_dual' && d.alt_qty) {
             const { data: unitRate } = await tenantClient.from('product_unit_rates').select('conversion_factor').eq('product_id', d.product_id).eq('unit_id', product.dual_uom_primary_unit_id).maybeSingle();
             const conversionFactor = Number(unitRate?.conversion_factor) || 1;
-            baseQty = toBaseQtyFromDual(d.qty, d.alt_qty, conversionFactor, await getDualUomMode(tenantClient));
+            baseQty = toBaseQtyFromDual(d.qty, d.alt_qty, conversionFactor, await getDualUomMode(tenantClient, d.product_id));
             // unit_cost must always be PER BASE UNIT for the shared
             // stock ledger, regardless of which unit the rate was
             // actually quoted in.
@@ -195,10 +196,26 @@ async function reverseBillStockMovements(tenantClient, billId) {
 // Sales-side accounts per line: Product account -> the document's Sales
 // Account -> System Control default (utils/accountResolver). The entry
 // screen now has a Sales Account picker; blank means System default.
-async function salesSplit(tenantClient, tenantId, doc, postVat) {
-    const { data: lines } = await tenantClient.from('sales_bill_details').select('product_id, amount, tax_amount').eq('bill_id', doc.id);
-    const netTotal = Number(doc.total_amount) - (postVat ? Number(doc.total_tax_amount) : 0);
-    return splitByAccount(tenantClient, tenantId, 'sales', doc, lines || [], netTotal, { isReturn: false });
+async function salesSplit(tenantClient, tenantId, doc, postVat, exciseLedgerId = null) {
+    const { data: lines } = await tenantClient.from('sales_bill_details').select('product_id, amount, tax_amount, excise_amount').eq('bill_id', doc.id);
+    // excise with its own ledger comes out of the sales amount like VAT does
+    const src = exciseLedgerId ? (lines || []).map(l => ({ ...l, tax_amount: Number(l.tax_amount || 0) + Number(l.excise_amount || 0) })) : (lines || []);
+    const netTotal = Number(doc.total_amount) - (postVat ? Number(doc.total_tax_amount) : 0) - (exciseLedgerId ? Number(doc.total_excise_amount || 0) : 0);
+    return splitByAccount(tenantClient, tenantId, 'sales', doc, src, netTotal, { isReturn: false });
+}
+
+// ledger of the billing term mapped as Sales Excise (System Control > Term Mapping)
+async function salesExciseLedger(tenantClient, tenantId) {
+    const { data: sc } = await tenantClient.from('system_control_settings').select('term_mapping').eq('tenant_id', tenantId).maybeSingle();
+    const termId = sc?.term_mapping?.sales?.excise;
+    if (termId) {
+        const { data: term } = await tenantClient.from('billing_terms').select('billing_ledger_id').eq('id', termId).maybeSingle();
+        return term?.billing_ledger_id || null;
+    }
+    // not mapped: the sales term whose Type is Excise (Billing Term setup)
+    const { data: terms } = await tenantClient.from('billing_terms').select('billing_ledger_id, applicable_sales_entry, is_active').eq('tenant_id', tenantId).eq('tax_type', 'excise');
+    const t = (terms || []).find(x => x.is_active !== false && x.applicable_sales_entry !== false);
+    return t?.billing_ledger_id || null;
 }
 
 // Checked BEFORE the status becomes 'posted', so a missing ledger can never
@@ -225,13 +242,14 @@ async function postBillToLedger(tenantClient, tenantId, bill, userId) {
     // Dr (total) != Cr (total - VAT) and the batch-balance check rejects
     // the whole posting.
     const postVat = Number(bill.total_tax_amount) > 0 && !!sysControl?.vat_ledger_id;
-    const netSales = Number(bill.total_amount) - (postVat ? Number(bill.total_tax_amount) : 0);
-    const parts = await salesSplit(tenantClient, tenantId, bill, postVat);
+    const exciseLedgerId = Number(bill.total_excise_amount || 0) > 0 ? await salesExciseLedger(tenantClient, tenantId) : null;
+    const parts = await salesSplit(tenantClient, tenantId, bill, postVat, exciseLedgerId);
     const rows = [{ tenant_id: tenantId, batch_id: batch.id, ledger_account_id: bill.customer_ledger_id, sub_ledger_id: bill.customer_sub_ledger_id || null, debit_amount: bill.total_amount, credit_amount: 0 }];
     parts.forEach(p => rows.push({ tenant_id: tenantId, batch_id: batch.id, ledger_account_id: p.ledgerId, sub_ledger_id: p.subLedgerId, debit_amount: p.amount < 0 ? -p.amount : 0, credit_amount: p.amount > 0 ? p.amount : 0 }));
     if (postVat) {
         rows.push({ tenant_id: tenantId, batch_id: batch.id, ledger_account_id: sysControl.vat_ledger_id, debit_amount: 0, credit_amount: bill.total_tax_amount });
     }
+    if (exciseLedgerId) rows.push({ tenant_id: tenantId, batch_id: batch.id, ledger_account_id: exciseLedgerId, debit_amount: 0, credit_amount: Number(bill.total_excise_amount) });
     // Every line of this document belongs to its Product Company (company-wise
     // party ledger / ageing read it from the GL).
     rows.forEach(r => { if (r.product_company_id === undefined) r.product_company_id = bill.product_company_id || null; });
@@ -351,8 +369,8 @@ async function createSalesBill(req, res) {
 
         try {
             const detailsToSave = Array.isArray(b.details) ? b.details : [];
-            const { total, totalTax } = await syncDetails(tenantClient, tenantId, doc.id, detailsToSave);
-            await tenantClient.from('sales_bills').update({ total_amount: total, total_tax_amount: totalTax }).eq('id', doc.id);
+            const { total, totalTax, totalExcise } = await syncDetails(tenantClient, tenantId, doc.id, detailsToSave);
+            await tenantClient.from('sales_bills').update({ total_amount: total, total_tax_amount: totalTax, total_excise_amount: totalExcise }).eq('id', doc.id);
         } catch (syncErr) {
             await tenantClient.from('sales_bill_details').delete().eq('bill_id', doc.id);
             await tenantClient.from('sales_bills').delete().eq('id', doc.id);
@@ -408,8 +426,8 @@ router.put('/sales-bills/:id', requireAuth, loadUserPermissions, requirePermissi
         if (error) throw error;
 
         if (b.details) {
-            const { total, totalTax } = await syncDetails(tenantClient, tenantId, req.params.id, b.details);
-            await tenantClient.from('sales_bills').update({ total_amount: total, total_tax_amount: totalTax }).eq('id', req.params.id);
+            const { total, totalTax, totalExcise } = await syncDetails(tenantClient, tenantId, req.params.id, b.details);
+            await tenantClient.from('sales_bills').update({ total_amount: total, total_tax_amount: totalTax, total_excise_amount: totalExcise }).eq('id', req.params.id);
         }
 
         await logAudit(tenantId, req.auth.userId, 'update_sales_bill', 'sales_bill', req.params.id, { old_data: existing, new_data: data });
@@ -430,6 +448,9 @@ async function changeSalesBillStatus(req, res) {
         const tenantClient = await getTenantClient(tenantId);
         const { data: existing } = await tenantClient.from('sales_bills').select('*').eq('id', req.params.id).eq('tenant_id', tenantId).single();
         if (!existing) return res.status(404).json({ success: false, error: 'Sales Bill not found' });
+        if (status === 'draft' && existing.status !== 'draft' && await require('./documentActionRoutes').isIrdLocked(tenantClient, tenantId, 'sales_bill')) {
+            return res.status(400).json({ success: false, error: 'IRD Billing is on - a posted Sales Bill can only be cancelled' });
+        }
 
         const update = { status, updated_by: req.auth.userId };
         if (status === 'cancelled') {

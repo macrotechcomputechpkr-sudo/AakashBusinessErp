@@ -27,15 +27,15 @@ const emptyBomRow = () => ({ component_product_id: '', quantity_required: '', un
 const emptyForm = {
     product_name: '', short_name: '', item_type: 'trading_item', product_group_id: '', product_company_id: '',
     hs_code: '', is_blocked: false, product_category_ids: [], tags: [],
-    base_unit_id: '', unit_rates: [], uom_mode: 'single', dual_uom_primary_unit_id: '',
-    sales_account_ledger_id: '', purchase_account_ledger_id: '', sales_sub_ledger_id: '', purchase_sub_ledger_id: '', inventory_account_ledger_id: '', cogs_account_ledger_id: '', discount_account_ledger_id: '',
+    base_unit_id: '', unit_rates: [], uom_mode: 'single', dual_uom_primary_unit_id: '', dual_auto_convert: null, dual_reverse_conversion: null, dual_rate_basis: 'any', qty_from_amount_sales: false, qty_from_amount_purchase: false,
+    sales_account_ledger_id: '', purchase_account_ledger_id: '', sales_return_account_ledger_id: '', sales_nonsaleable_return_account_ledger_id: '', purchase_return_account_ledger_id: '', purchase_nonsaleable_return_account_ledger_id: '', sales_sub_ledger_id: '', purchase_sub_ledger_id: '', inventory_account_ledger_id: '', cogs_account_ledger_id: '', discount_account_ledger_id: '',
     default_vendor_id: '', vendor_item_code: '', lead_time_days: 0, default_discount_percent: 0,
     opening_qty: 0, opening_rate: 0, minimum_stock: 0, maximum_stock: 0, reorder_qty: 0, allow_negative_stock: null,
     costing_method: 'average',
     maintain_batch: false, track_expiry: false, track_mfg_date: false, track_serial_number: false, is_vehicle_linked: false, free_qty_eligible: false,
     replenishment_method: 'purchase', routing_reference: '', scrap_percent: 0, bom_lines: [], rack_locations: [], term_mappings: [],
     costing_approach: 'standard', overhead_absorption_basis: '', overhead_absorption_rate: 0, standard_labour_rate: 0,
-    weight: '', weight_unit: '', dimensions: '', vat_applicable: true, excise_applicable: false
+    weight: '', weight_unit: '', dimensions: ''
 };
 
 const TABS = [
@@ -52,8 +52,12 @@ const TABS = [
 ];
 
 // Account field -> its sub-ledger field (product-level posting, see utils/accountResolver).
-const PRODUCT_ACCOUNT_PURPOSE = { sales_account_ledger_id: 'sales_goods', purchase_account_ledger_id: 'purchase_goods', inventory_account_ledger_id: 'inventory', cogs_account_ledger_id: 'cogs', discount_account_ledger_id: 'discount' };
+const PRODUCT_ACCOUNT_PURPOSE = { sales_account_ledger_id: 'sales_goods', purchase_account_ledger_id: 'purchase_goods', sales_return_account_ledger_id: 'sales_goods', sales_nonsaleable_return_account_ledger_id: 'sales_goods', purchase_return_account_ledger_id: 'purchase_goods', purchase_nonsaleable_return_account_ledger_id: 'purchase_goods', inventory_account_ledger_id: 'inventory', cogs_account_ledger_id: 'cogs', discount_account_ledger_id: 'discount' };
 const ACCOUNT_SUB = { sales_account_ledger_id: 'sales_sub_ledger_id', purchase_account_ledger_id: 'purchase_sub_ledger_id' };
+
+// dual-UOM entry switches of an item: true / false, or null = follow System Control
+const triValue = v => (v === true ? 'true' : v === false ? 'false' : '');
+const triParse = v => (v === 'true' ? true : v === 'false' ? false : null);
 
 export default function ProductMaster() {
     const { authFetch } = useAuth();
@@ -171,7 +175,7 @@ export default function ProductMaster() {
             product_category_ids: row.product_category_ids || [],
             bom_lines: row.bom_lines || [],
             rack_locations: (row.product_rack_locations || []).map(r => ({ branch_id: r.branch_id, warehouse_id: r.warehouse_id, rack_location: r.rack_location })),
-            term_mappings: (row.product_term_mappings || []).map(m => ({ category_type: m.category_type, billing_term_id: m.billing_term_id, is_enabled_by_default: m.is_enabled_by_default, override_percentage: m.override_percentage ?? '' }))
+            term_mappings: (row.product_term_mappings || []).map(m => ({ category_type: m.category_type, billing_term_id: m.billing_term_id, is_enabled_by_default: m.is_enabled_by_default, override_percentage: m.override_percentage ?? '', override_basis: m.override_basis || 'percent' }))
         });
         setShowForm(true);
         setTab('basic');
@@ -228,7 +232,7 @@ export default function ProductMaster() {
         setForm(f => {
             const exists = f.term_mappings.find(m => m.category_type === categoryType && m.billing_term_id === billingTermId);
             if (exists) return { ...f, term_mappings: f.term_mappings.filter(m => !(m.category_type === categoryType && m.billing_term_id === billingTermId)) };
-            return { ...f, term_mappings: [...f.term_mappings, { category_type: categoryType, billing_term_id: billingTermId, is_enabled_by_default: true, override_percentage: '' }] };
+            return { ...f, term_mappings: [...f.term_mappings, { category_type: categoryType, billing_term_id: billingTermId, is_enabled_by_default: true, override_percentage: '', override_basis: 'percent' }] };
         });
     };
     const updateTermMappingOverride = (categoryType, billingTermId, value) => {
@@ -418,6 +422,42 @@ export default function ProductMaster() {
                                     )}
                                 </div>
                             )}
+                            {form.uom_mode === 'fixed_dual' && (
+                                <>
+                                    <div>
+                                        <label className="erp-label">Conversion on entry <span className="hint">(this item only)</span></label>
+                                        <select className="erp-select" value={triValue(form.dual_auto_convert)} onChange={e => setForm({ ...form, dual_auto_convert: triParse(e.target.value) })}>
+                                            <option value="">As System Control</option>
+                                            <option value="true">Yes - typing the first unit fills the second (flexible)</option>
+                                            <option value="false">No - both units typed (fixed)</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="erp-label">Rate per <span className="hint">(in entries)</span></label>
+                                        <select className="erp-select" value={form.dual_rate_basis || 'any'} onChange={e => setForm({ ...form, dual_rate_basis: e.target.value })}>
+                                            <option value="any">Any - chosen on each line</option>
+                                            <option value="primary">Primary unit always</option>
+                                            <option value="secondary">Secondary unit always</option>
+                                        </select>
+                                    </div>
+                                    <div>
+                                        <label className="erp-label">Reverse conversion <span className="hint">(this item only)</span></label>
+                                        <select className="erp-select" value={triValue(form.dual_reverse_conversion)} onChange={e => setForm({ ...form, dual_reverse_conversion: triParse(e.target.value) })}>
+                                            <option value="">As System Control</option>
+                                            <option value="true">Yes - typing the second unit works out the first</option>
+                                            <option value="false">No</option>
+                                        </select>
+                                    </div>
+                                </>
+                            )}
+                            <div className="md:col-span-2">
+                                <label className="erp-label">Amount typed on a line changes <span className="hint">(this item only)</span></label>
+                                <div className="flex flex-wrap gap-4 border rounded-lg px-3 py-2 text-sm">
+                                    <label className="flex items-center gap-1.5"><input type="checkbox" data-enter-skip="true" checked={!!form.qty_from_amount_sales} onChange={e => setForm({ ...form, qty_from_amount_sales: e.target.checked })} /> Sales: quantity (amount ÷ rate)</label>
+                                    <label className="flex items-center gap-1.5"><input type="checkbox" data-enter-skip="true" checked={!!form.qty_from_amount_purchase} onChange={e => setForm({ ...form, qty_from_amount_purchase: e.target.checked })} /> Purchase: quantity (amount ÷ rate)</label>
+                                    <span className="text-xs text-gray-400">Unticked: the rate is worked out (amount ÷ quantity)</span>
+                                </div>
+                            </div>
                         </div>
                         <div className="overflow-x-auto border rounded-lg">
                             <table className="min-w-[900px] w-full text-sm">
@@ -464,40 +504,47 @@ export default function ProductMaster() {
                     </div>
 
                     {/* ==================== ACCOUNT MAPPING ==================== */}
-                    <div className={tab === 'mapping' ? 'grid grid-cols-1 md:grid-cols-2 gap-4' : 'hidden'}>
-                        <p className="md:col-span-2 text-xs text-gray-400">Leave blank to use the System Control defaults.</p>
+                    <div className={tab === 'mapping' ? 'space-y-4' : 'hidden'}>
+                        <p className="text-xs text-gray-400">Leave blank to use the System Control defaults. A return account left blank uses the sales / purchase account.</p>
                         {[
-                            ['sales_account_ledger_id', 'Sales Account'],
-                            ['purchase_account_ledger_id', 'Purchase Account'],
-                            ['inventory_account_ledger_id', 'Inventory/Stock Account'],
-                            ['cogs_account_ledger_id', 'Cost of Goods Sold Account'],
-                            ['discount_account_ledger_id', 'Discount Account']
-                        ].map(([key, label]) => (
-                            <div key={key}>
-                                <label className="erp-label">{label}</label>
-                                <SearchablePopupSelect
-                                    listKey={`product_ledger_${key}`}
-                                    columns={[{ key: 'account_code', label: 'Code' }, { key: 'account_name', label: 'Name' }]}
-                                    defaultVisibleKeys={['account_name']}
-                                    items={lp.filter(ledgers, PRODUCT_ACCOUNT_PURPOSE[key], form[key])} getId={l => l.id} getLabel={l => l.account_name}
-                                    searchKeys={['account_name', 'account_code']}
-                                    value={form[key]} onChange={id => setForm({ ...form, [key]: id, ...(ACCOUNT_SUB[key] ? { [ACCOUNT_SUB[key]]: '' } : {}) })}
-                                    placeholder="System Control default"
-                                />
-                                {ACCOUNT_SUB[key] && (
-                                    <select className="erp-select mt-1" value={form[ACCOUNT_SUB[key]] || ''} disabled={!form[key]}
-                                        onChange={e => setForm({ ...form, [ACCOUNT_SUB[key]]: e.target.value })}>
-                                        <option value="">{form[key] ? 'Sub-Ledger: none' : 'Sub-Ledger (choose the account first)'}</option>
-                                        {subLedgers.filter(sl => sl.main_ledger_id === form[key]).map(sl => <option key={sl.id} value={sl.id}>{sl.sub_ledger_name}</option>)}
-                                    </select>
-                                )}
-                            </div>
+                            ['Sales', 'sales_sub_ledger_id', 'sales_account_ledger_id', [['sales_account_ledger_id', 'Sales Account'], ['sales_return_account_ledger_id', 'Sales Return Account'], ['sales_nonsaleable_return_account_ledger_id', 'Sales Non-saleable Return Account']]],
+                            ['Purchase', 'purchase_sub_ledger_id', 'purchase_account_ledger_id', [['purchase_account_ledger_id', 'Purchase Account'], ['purchase_return_account_ledger_id', 'Purchase Return Account'], ['purchase_nonsaleable_return_account_ledger_id', 'Purchase Non-saleable Return Account']]],
+                            ['Other', null, null, [['inventory_account_ledger_id', 'Inventory/Stock Account'], ['cogs_account_ledger_id', 'Cost of Goods Sold Account'], ['discount_account_ledger_id', 'Discount Account']]]
+                        ].map(([part, subKey, mainKey, accounts]) => (
+                            <fieldset key={part} className="border rounded-lg p-3">
+                                <legend className="px-1 text-xs font-semibold text-gray-600 uppercase">{part}</legend>
+                                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                                    {accounts.map(([key, label]) => (
+                                        <div key={key}>
+                                            <label className="erp-label">{label}</label>
+                                            <SearchablePopupSelect
+                                                listKey={`product_ledger_${key}`}
+                                                columns={[{ key: 'account_code', label: 'Code' }, { key: 'account_name', label: 'Name' }]}
+                                                defaultVisibleKeys={['account_name']}
+                                                items={lp.filter(ledgers, PRODUCT_ACCOUNT_PURPOSE[key], form[key])} getId={l => l.id} getLabel={l => l.account_name}
+                                                searchKeys={['account_name', 'account_code']}
+                                                value={form[key]} onChange={id => setForm({ ...form, [key]: id, ...(ACCOUNT_SUB[key] ? { [ACCOUNT_SUB[key]]: '' } : {}) })}
+                                                placeholder={key === mainKey ? 'System Control default' : 'Same as the main account'}
+                                            />
+                                        </div>
+                                    ))}
+                                    {subKey && (
+                                        <div>
+                                            <label className="erp-label">{part} Sub-Ledger</label>
+                                            <select className="erp-select" value={form[subKey] || ''} disabled={!form[mainKey]} onChange={e => setForm({ ...form, [subKey]: e.target.value })}>
+                                                <option value="">{form[mainKey] ? 'None' : `Choose the ${part.toLowerCase()} account first`}</option>
+                                                {subLedgers.filter(sl => sl.main_ledger_id === form[mainKey]).map(sl => <option key={sl.id} value={sl.id}>{sl.sub_ledger_name}</option>)}
+                                            </select>
+                                        </div>
+                                    )}
+                                </div>
+                            </fieldset>
                         ))}
                     </div>
 
                     {/* ==================== TERM MAPPING ==================== */}
                     <div className={tab === 'term_mapping' ? 'space-y-4' : 'hidden'}>
-                        <p className="text-xs text-gray-400">Which Billing Terms apply to this product by default, for Sales and for Purchase - pre-selected when this product is added to a transaction line. An override % replaces the term's usual rate just for this product.</p>
+                        <p className="text-xs text-gray-400">Which Billing Terms apply to this product by default, for Sales and for Purchase - pre-selected when this product is added to a transaction line. The product value (a %, a rate per quantity or an amount) replaces the term's usual value for this product; it is worked out in entries even where item charges are not shown.</p>
                         {['sales', 'purchase'].map(categoryType => (
                             <div key={categoryType}>
                                 <p className="text-xs font-semibold text-gray-500 uppercase mb-2">{categoryType}</p>
@@ -506,7 +553,7 @@ export default function ProductMaster() {
                                         <tr>
                                             <th className="text-left px-3 py-1.5 w-10"></th>
                                             <th className="text-left px-3 py-1.5">Term</th>
-                                            <th className="text-left px-3 py-1.5 w-32">Override %</th>
+                                            <th className="text-left px-3 py-1.5 w-56">Product Value</th>
                                         </tr>
                                     </thead>
                                     <tbody>
@@ -518,8 +565,14 @@ export default function ProductMaster() {
                                                     <td className="px-3 py-1.5">{t.term_name} <span className="text-xs text-gray-400">({t.term_code})</span></td>
                                                     <td className="px-3 py-1.5">
                                                         {mapping && (
-                                                            <input type="number" step="0.0001" className="w-24 border rounded px-2 py-1" placeholder={`Default ${t.rate_percentage ?? 0}`}
-                                                                value={mapping.override_percentage} onChange={e => updateTermMappingOverride(categoryType, t.id, e.target.value)} />
+                                                            <div className="flex items-center gap-1">
+                                                                <input type="number" step="0.0001" className="w-24 border rounded px-2 py-1" placeholder={`Default ${t.rate_percentage ?? 0}`}
+                                                                    value={mapping.override_percentage} onChange={e => updateTermMappingOverride(categoryType, t.id, e.target.value)} />
+                                                                <select className="border rounded px-1 py-1 text-xs" value={mapping.override_basis || 'percent'} title="The value is a % of the item value, a rate per quantity or an amount"
+                                                                    onChange={e => setForm(f => ({ ...f, term_mappings: f.term_mappings.map(m => (m.category_type === categoryType && m.billing_term_id === t.id ? { ...m, override_basis: e.target.value } : m)) }))}>
+                                                                    <option value="percent">%</option><option value="rate">Rate / qty</option><option value="amount">Amount</option>
+                                                                </select>
+                                                            </div>
                                                         )}
                                                     </td>
                                                 </tr>
@@ -684,8 +737,6 @@ export default function ProductMaster() {
                         <Field label="Weight" type="number" value={form.weight} onChange={v => setForm({ ...form, weight: v })} />
                         <Field label="Weight Unit" value={form.weight_unit} onChange={v => setForm({ ...form, weight_unit: v })} placeholder="e.g. Kg" />
                         <Field label="Dimensions" value={form.dimensions} onChange={v => setForm({ ...form, dimensions: v })} placeholder="L x W x H" />
-                        <CheckField label="VAT Applicable" checked={form.vat_applicable} onChange={v => setForm({ ...form, vat_applicable: v })} />
-                        <CheckField label="Excise Applicable" checked={form.excise_applicable} onChange={v => setForm({ ...form, excise_applicable: v })} />
                     </div>
 
                     <div className="flex justify-end gap-2 border-t pt-4">

@@ -134,9 +134,13 @@ async function resolve(c, t, q) {
     const unitId = UUID.test(q.unit_id || '') || unitRows.some(u => u.unit_id === q.unit_id) ? q.unit_id : product.base_unit_id;
     const lineFactor = factorOf(unitRows, unitId);
 
-    // rate
+    // rate; sr_tier on the query: the entry's chosen rate type (Sr1-Sr5), which beats the customer's rate category
+    const forcedTier = Math.floor(num(q.sr_tier) || 0);
     let srTier = 1, rate = null, rateSource = 'sr';
-    if (customer && customer.rate_category_id) {
+    if (forcedTier >= 1 && forcedTier <= 5) {
+        srTier = forcedTier;
+        rateSource = 'entry_rate_type';
+    } else if (customer && customer.rate_category_id) {
         const { data: cat } = await c.from('rate_categories').select('sr_tier, is_active').eq('id', customer.rate_category_id).maybeSingle();
         if (cat && cat.is_active !== false) {
             srTier = cat.sr_tier || 1;
@@ -160,6 +164,7 @@ async function resolve(c, t, q) {
         else rate = (Number(product[col]) || Number(product.sales_rate_sr1) || 0) * lineFactor;
     }
     rate = r4(rate);
+    if (forcedTier >= 1 && forcedTier <= 5 && rateSource !== 'entry_rate_type') rateSource = 'sr';
 
     // discount
     let discountPercent = 0, discountSource = null, hasSlabs = false, effectOnRate = false, rule = null, termOk = false;
@@ -205,4 +210,19 @@ async function resolve(c, t, q) {
     return out;
 }
 
-module.exports = { DEFAULT_RATE_TYPES, PAYMENT_TERMS, cleanRateTypes, rateTypes, saveRateTypes, rateCategory, saveRateCategoryItems, discountGroup, saveDiscountRules, groupFields, resolve };
+/** the rate type (Sr tier) a customer bills at: its rate category's tier, else the first enabled type */
+async function customerRateType(c, t, customerId) {
+    const types = await rateTypes(c, t);
+    let tier = 1, category = null;
+    if (customerId) {
+        const { data: customer } = await c.from('ledger_accounts').select('rate_category_id').eq('tenant_id', t).eq('id', customerId).maybeSingle();
+        if (customer && customer.rate_category_id) {
+            const { data: cat } = await c.from('rate_categories').select('category_name, sr_tier, is_active').eq('id', customer.rate_category_id).maybeSingle();
+            if (cat && cat.is_active !== false) { tier = cat.sr_tier || 1; category = cat.category_name; }
+        }
+    }
+    if (!types.find(x => x.sr === tier && x.enabled)) tier = (types.find(x => x.enabled) || { sr: 1 }).sr;
+    return { sr_tier: tier, rate_category: category, rate_types: types };
+}
+
+module.exports = { customerRateType, DEFAULT_RATE_TYPES, PAYMENT_TERMS, cleanRateTypes, rateTypes, saveRateTypes, rateCategory, saveRateCategoryItems, discountGroup, saveDiscountRules, groupFields, resolve };

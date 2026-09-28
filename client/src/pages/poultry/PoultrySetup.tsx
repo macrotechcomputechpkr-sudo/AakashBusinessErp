@@ -18,7 +18,7 @@ import { SearchablePopupSelect, GroupBox, Msg, NavWindow, ROLE_LABEL, errText, u
 import type { PItem, Shed } from '../../components/poultry/common';
 
 const TABS: [string, string][] = [['settings', '⚙️ Settings'], ['items', '🐣 Poultry Items'], ['sheds', '🏠 Sheds / Hatchers'], ['standards', '📈 Breed Standards']];
-interface Settings { consumption_ledger_id: string | null; transfer_ledger_id: string | null; default_warehouse_id: string | null; live_bird_product_id: string | null; live_bird_unit: 'kg' | 'bird'; brooding_days: number; grower_days: number; incubation_days: number; candling_day: number; transfer_day: number }
+interface Settings { consumption_ledger_id: string | null; transfer_ledger_id: string | null; default_warehouse_id: string | null; live_bird_product_id: string | null; live_bird_unit: 'kg' | 'bird'; brooding_days: number; grower_days: number; cycle_days: number; incubation_days: number; candling_day: number; transfer_day: number }
 interface Std { age_day: number | string; body_weight_g: number | string | null; cum_feed_g: number | string | null; livability_pct: number | string | null }
 const blankShed = (): Partial<Shed> => ({ shed_code: '', shed_name: '', shed_type: 'broiler', capacity: null, farm_name: '', location: '', supervisor: '', warehouse_id: null, is_active: true });
 // Cobb 500 / Ross 308 as-hatched broiler guide (rounded) - a starting point the user can edit
@@ -110,7 +110,7 @@ export default function PoultrySetup() {
                         </GroupBox>
                         <GroupBox title="Stages & hatchery days">
                             <div className="nav-form-grid">
-                                {([['brooding_days', 'Brooding up to day'], ['grower_days', 'Grower up to day'], ['incubation_days', 'Incubation days'], ['candling_day', 'Candling on day'], ['transfer_day', 'Transfer to hatcher on day']] as [keyof Settings, string][]).map(([k, l]) => (
+                                {([['cycle_days', 'Broiler cycle (days to lifting)'], ['brooding_days', 'Brooding up to day'], ['grower_days', 'Grower up to day'], ['incubation_days', 'Incubation days'], ['candling_day', 'Candling on day'], ['transfer_day', 'Transfer to hatcher on day']] as [keyof Settings, string][]).map(([k, l]) => (
                                     <React.Fragment key={k}>
                                         <label className="nav-label">{l}</label>
                                         <input type="number" className="nav-input" value={String(settings[k] ?? '')} onChange={e => setS(k, Number(e.target.value) as never)} />

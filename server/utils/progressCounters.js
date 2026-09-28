@@ -37,7 +37,7 @@ async function moveSourceProgress(tenantClient, lines, spec, dir) {
 // headers currently in `rollable` are touched (never cancelled/closed).
 async function rollHeaderStatus(tenantClient, { headerTable, detailTable, fk, headerId, counter, altCounter, statuses, rollable }) {
     if (!headerId) return;
-    const { toBaseQtyFromDual, getDualUomMode } = require('./dualUomCalculation');
+    const { toBaseQtyFromDual, getDualUomResolver } = require('./dualUomCalculation');
     const { data: lines } = await tenantClient.from(detailTable).select(`product_id, qty, alt_qty, ${counter}, ${altCounter}`).eq(fk, headerId);
     if (!lines || !lines.length) return;
     const ids = [...new Set(lines.filter(l => l.product_id && Number(l.alt_qty || 0) + Number(l[altCounter] || 0) > 0).map(l => l.product_id))];
@@ -49,11 +49,11 @@ async function rollHeaderStatus(tenantClient, { headerTable, detailTable, fk, he
             factorOf[p.id] = Number(ur?.conversion_factor) || 1;
         }
     }
-    const mode = Object.keys(factorOf).length ? await getDualUomMode(tenantClient) : 'fixed';
+    const modeOf = await getDualUomResolver(tenantClient);
     const measure = l => {
         const f = factorOf[l.product_id];
         return f
-            ? { total: toBaseQtyFromDual(l.qty, l.alt_qty, f, mode), done: toBaseQtyFromDual(l[counter], l[altCounter], f, mode) }
+            ? { total: toBaseQtyFromDual(l.qty, l.alt_qty, f, modeOf(l.product_id)), done: toBaseQtyFromDual(l[counter], l[altCounter], f, modeOf(l.product_id)) }
             : { total: Number(l.qty) || 0, done: Number(l[counter]) || 0 };
     };
     const m = lines.map(measure);

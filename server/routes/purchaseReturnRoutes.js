@@ -19,10 +19,11 @@ const router = express.Router();
 const { getTenantClient, loadUserPermissions, logAudit } = require('../utils/dbHelpers');
 const { requireAuth, requirePermission } = require('../middleware/auth');
 const { evaluateAllTerms } = require('../utils/formulaEvaluator');
+const { effectiveInput, applyInput, loadProductTermMap } = require('../utils/termInput');
 const { resolveDocumentNumber } = require('../utils/documentNumbering');
 const { isBillWiseTrackingEnabled, getOutstandingReferences, computeFifoAllocation, createReferenceAndSettle, reverseReferenceAndSettlements, checkCanCancelIfSettled } = require('../utils/billWiseSettlement');
 const { toBaseUnitQty } = require('../utils/unitConversion');
-const { toBaseQtyFromDual, computeDualAmount, getDualUomMode } = require('../utils/dualUomCalculation');
+const { toBaseQtyFromDual, computeDualAmount, getDualUomMode, rateBasisFor } = require('../utils/dualUomCalculation');
 const { postPurchaseReturnEntry, reverseBatch } = require('../utils/grnAccounting');
 
 // FEATURE: "Save as Draft" - a draft only needs a Date; a "final" save
@@ -60,7 +61,7 @@ async function postReturnStockMovements(tenantClient, tenantId, returnDoc, detai
             if (product?.uom_mode === 'fixed_dual') {
                 const { data: unitRate } = await tenantClient.from('product_unit_rates').select('conversion_factor').eq('product_id', d.product_id).eq('unit_id', product.dual_uom_primary_unit_id).maybeSingle();
                 const conversionFactor = Number(unitRate?.conversion_factor) || 1;
-                baseQty = toBaseQtyFromDual(d.qty, d.alt_qty, conversionFactor, await getDualUomMode(tenantClient));
+                baseQty = toBaseQtyFromDual(d.qty, d.alt_qty, conversionFactor, await getDualUomMode(tenantClient, d.product_id));
                 unitCost = d.rate_basis === 'primary' ? Number(d.rate || 0) / conversionFactor : Number(d.rate || 0);
             } else {
                 baseQty = await toBaseUnitQty(tenantClient, d.product_id, d.qty, d.uom_id);
@@ -165,7 +166,7 @@ async function syncDetails(tenantClient, tenantId, returnId, details) {
             const { data: product } = await tenantClient.from('products').select('uom_mode, dual_uom_primary_unit_id').eq('id', d.product_id).maybeSingle();
             if (product?.uom_mode === 'fixed_dual') {
                 const { data: unitRate } = await tenantClient.from('product_unit_rates').select('conversion_factor').eq('product_id', d.product_id).eq('unit_id', product.dual_uom_primary_unit_id).maybeSingle();
-                baseAmount = computeDualAmount(d.qty, d.alt_qty, d.rate, d.rate_basis || 'primary', Number(unitRate?.conversion_factor) || 1, await getDualUomMode(tenantClient));
+                baseAmount = computeDualAmount(d.qty, d.alt_qty, d.rate, await rateBasisFor(tenantClient, d.product_id, d.rate_basis), Number(unitRate?.conversion_factor) || 1, await getDualUomMode(tenantClient, d.product_id));
             } else {
                 baseAmount = qty * rate;
             }
@@ -219,16 +220,20 @@ async function syncLineBillingTerms(tenantClient, tenantId, documentType, docume
     const { data: terms } = await tenantClient
         .from('billing_terms').select('*').in('id', Array.from(allTermIds)).eq('is_enabled', true).eq('applicable_purchase_entry', true).order('display_order');
     const termsById = Object.fromEntries((terms || []).map(t => [t.id, t]));
+    // what was typed for each charge (%, rate x qty or amount), or the product's own value (Term Mapping)
+    const productTerms = await loadProductTermMap(tenantClient, detailRows.map(d => d.product_id), 'purchase');
 
     const lineComputations = {};
     detailRows.forEach((d, idx) => {
-        const lineTerms = (d.billing_term_ids || []).map(id => termsById[id]).filter(Boolean);
+        const picked = (d.billing_term_ids || []).filter(id => termsById[id])
+            .map(id => ({ id, input: effectiveInput(termsById[id], (d.term_values || {})[id], (productTerms[d.product_id] || {})[id]) }));
+        const lineTerms = picked.map(x => applyInput(termsById[x.id], x.input, d.qty));
         if (lineTerms.length === 0) return;
         const lineAmount = (Number(d.qty) || 0) * (Number(d.rate) || 0);
         const { lines } = evaluateAllTerms(lineTerms, { basic_amount: lineAmount, quantity: Number(d.qty) || 0 });
         lineTerms.forEach((term, i) => {
             if (!lineComputations[term.id]) lineComputations[term.id] = [];
-            lineComputations[term.id].push({ detailIndex: idx, amount: lines[i]?.amount ?? 0 });
+            lineComputations[term.id].push({ detailIndex: idx, amount: lines[i]?.amount ?? 0, input: picked[i].input });
         });
     });
 
@@ -236,19 +241,27 @@ async function syncLineBillingTerms(tenantClient, tenantId, documentType, docume
     const summary = [];
     for (const [termId, entries] of Object.entries(lineComputations)) {
         const originalTotal = entries.reduce((s, e) => s + e.amount, 0);
-        const override = summaryOverrides && summaryOverrides[termId] !== undefined ? Number(summaryOverrides[termId]) : null;
+        const override = summaryOverrides && summaryOverrides[termId] !== undefined && termsById[termId]?.manual_override !== false ? Number(summaryOverrides[termId]) : null;
         const isOverridden = override !== null && override !== originalTotal;
         let finalEntries = entries;
         if (isOverridden) {
-            finalEntries = originalTotal !== 0
-                ? entries.map(e => ({ ...e, amount: override * (e.amount / originalTotal) }))
+            // split the typed total over the lines by the term's basis (Billing Term): quantity, else value
+            const byQty = termsById[termId]?.basis === 'quantity';
+            const weights = entries.map(e => {
+                const d = detailRows[e.detailIndex] || {};
+                return byQty ? Number(d.qty) || 0 : (Number(d.qty) || 0) * (Number(d.rate) || 0);
+            });
+            const wsum = weights.reduce((a, b) => a + b, 0);
+            finalEntries = wsum !== 0
+                ? entries.map((e, k) => ({ ...e, amount: override * (weights[k] / wsum) }))
                 : entries.map(e => ({ ...e, amount: override / entries.length }));
         }
         finalEntries.forEach(e => {
             rows.push({
                 tenant_id: tenantId, document_type: documentType, document_id: documentId,
                 detail_id: detailIdByIndex[e.detailIndex], billing_term_id: termId,
-                computed_amount: e.amount, is_summary_overridden: isOverridden
+                computed_amount: e.amount, is_summary_overridden: isOverridden,
+                input_kind: e.input ? e.input.kind : null, input_value: e.input ? e.input.value : null
             });
         });
         summary.push({ billing_term_id: termId, term_code: termsById[termId]?.term_code, original_total: originalTotal, final_total: finalEntries.reduce((s, e) => s + e.amount, 0), is_overridden: isOverridden });
@@ -361,9 +374,10 @@ router.get('/purchase-returns/:id', requireAuth, loadUserPermissions, requirePer
         data.billing_term_ids = (appliedTerms || []).map(t => t.billing_term_id);
 
         const { data: lineTerms } = await tenantClient
-            .from('document_line_billing_terms').select('detail_id, billing_term_id').eq('document_type', 'purchase_return').eq('document_id', req.params.id);
+            .from('document_line_billing_terms').select('detail_id, billing_term_id, input_kind, input_value').eq('document_type', 'purchase_return').eq('document_id', req.params.id);
         if (data.details) {
-            data.details = data.details.map(d => ({ ...d, billing_term_ids: (lineTerms || []).filter(lt => lt.detail_id === d.id).map(lt => lt.billing_term_id) }));
+            data.details = data.details.map(d => ({ ...d, billing_term_ids: (lineTerms || []).filter(lt => lt.detail_id === d.id).map(lt => lt.billing_term_id),
+                term_values: Object.fromEntries((lineTerms || []).filter(lt => lt.detail_id === d.id && lt.input_kind).map(lt => [lt.billing_term_id, { kind: lt.input_kind, value: Number(lt.input_value) }])) }));
         }
         res.json({ success: true, data });
     } catch (error) {
@@ -405,7 +419,7 @@ router.post('/purchase-returns', requireAuth, loadUserPermissions, requirePermis
         try {
             docNo = await resolveDocumentNumber(tenantClient, {
                 tenantId, voucherType: 'purchase_return', userId: req.auth.userId,
-                categoryId: b.numbering_category_id, manualNumber: b.doc_no, tableName: 'purchase_orders',
+                categoryId: b.numbering_category_id, manualNumber: b.doc_no, tableName: 'purchase_returns',
                 currentFiscalYearId: currentFy?.id, currentFiscalYearName: currentFy?.fiscal_year_name,
                 userDefaultBranchId: currentUser?.default_branch_id
             });

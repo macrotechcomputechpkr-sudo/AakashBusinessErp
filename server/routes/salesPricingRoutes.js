@@ -186,12 +186,21 @@ router.put('/discount-matrix/:discountGroupId', requireAuth, loadUserPermissions
 
 // rate + discount a sales line gets: rate category (product / unit rows, else the Sr tier)
 // and discount category (qty / value slab rules, else the company matrix).
-// Optional: unit_id, qty, payment_term.
+// Optional: unit_id, qty, payment_term, sr_tier (the rate type chosen on the entry).
 router.get('/resolve-sales-price', requireAuth, loadUserPermissions, requirePermission('ledger', 'view'), async (req, res) => {
     try {
         const { customer_ledger_id, product_id } = req.query;
         if (!customer_ledger_id || !product_id) return res.status(400).json({ success: false, error: 'customer_ledger_id and product_id are required' });
         res.json({ success: true, data: await pricing.resolve(await getTenantClient(req.auth.tenantId), req.auth.tenantId, req.query) });
+    } catch (error) {
+        fail(res, error);
+    }
+});
+
+// the rate type (Sr1-Sr5) a customer bills at, shown in the entry's master part
+router.get('/customer-rate-type', requireAuth, async (req, res) => {
+    try {
+        res.json({ success: true, data: await pricing.customerRateType(await getTenantClient(req.auth.tenantId), req.auth.tenantId, req.query.customer_ledger_id) });
     } catch (error) {
         fail(res, error);
     }

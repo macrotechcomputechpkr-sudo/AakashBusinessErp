@@ -18,7 +18,7 @@
 const express = require('express');
 const router = express.Router();
 const { getTenantClient, loadUserPermissions } = require('../utils/dbHelpers');
-const { toBaseQtyFromDual, decomposeToDualDisplay, getDualUomMode } = require('../utils/dualUomCalculation');
+const { toBaseQtyFromDual, decomposeToDualDisplay, getDualUomResolver } = require('../utils/dualUomCalculation');
 const { requireAuth, requirePermission } = require('../middleware/auth');
 
 const QTY_STAGES = {
@@ -108,7 +108,7 @@ router.get('/outstanding-report', requireAuth, loadUserPermissions, requirePermi
                     factorOf[pr.id] = Number(ur?.conversion_factor) || 1;
                 }
             }
-            const dualMode = Object.keys(factorOf).length ? await getDualUomMode(tenantClient) : 'fixed';
+            const dualModeOf = await getDualUomResolver(tenantClient);
             const altCol = 'alt_' + cfg.convertedColumn;
 
             const rows = (details || []).map(d => {
@@ -125,8 +125,8 @@ router.get('/outstanding-report', requireAuth, loadUserPermissions, requirePermi
                 };
                 const factor = factorOf[d.product_id];
                 if (factor) {
-                    const totalBase = toBaseQtyFromDual(qty, d.alt_qty, factor, dualMode);
-                    const doneBase = toBaseQtyFromDual(converted, d[altCol], factor, dualMode);
+                    const totalBase = toBaseQtyFromDual(qty, d.alt_qty, factor, dualModeOf(d.product_id));
+                    const doneBase = toBaseQtyFromDual(converted, d[altCol], factor, dualModeOf(d.product_id));
                     const pendingBase = Math.max(0, totalBase - doneBase);
                     const split = decomposeToDualDisplay(pendingBase, factor);
                     return {

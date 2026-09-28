@@ -114,6 +114,135 @@
   .nav-msg.err { background: #fdeeee; border-color: #d99; color: #8a1a1a; }
   .nav-msg.warn { background: #fff8e0; border-color: #e0c060; color: #6a4a00; }
 
+  /* ---------- top menu drop-down (cascade, Layout.jsx) ---------- */
+  .nav-cascade { position: fixed; z-index: 1000; min-width: 250px; background: #ece9d8; border: 1px solid #aca899; box-shadow: 3px 3px 10px rgba(0,0,0,.35); padding: 3px 0; max-height: calc(100vh - 80px); overflow-y: auto; text-shadow: none; }
+  .nav-cascade.sub { z-index: 1001; }
+  .nav-cascade .nav-dropdown-item { padding: 5px 28px 5px 22px; color: #1a1a1a; white-space: normal; line-height: 1.25; }
+  .nav-cascade .nav-dropdown-item:hover, .nav-cascade .nav-dropdown-item.hot { background: #2a5a9a; color: #fff; }
+  .nav-cascade .nav-sub-arrow { position: absolute; right: 10px; font-size: 9px; }
+  .nav-cascade-sep { height: 0; border-top: 1px solid #aca899; border-bottom: 1px solid #fff; margin: 3px 6px; }
+
+  /* ---------- the NAV window every screen sits in (Layout.jsx) ---------- */
+  .nav-workspace { background: linear-gradient(145deg, #3a5a7a 0%, #2c4a6a 100%); padding: 10px; }
+  .nav-page { display: flex; flex-direction: column; max-width: 1180px; margin: 0 auto; min-height: calc(100vh - 110px); overflow: visible; }
+  .nav-page.max { max-width: none; }
+  .nav-window-controls { display: flex; gap: 3px; flex-shrink: 0; }
+  .nav-wc-btn:disabled { opacity: .5; cursor: default; }
+  .nav-ribbon { background: #dfdcd0; border-bottom: 1px solid #aca899; padding: 2px 8px 0; display: flex; align-items: flex-end; gap: 0; font-size: 12px; user-select: none; }
+  .nav-ribbon-tab { padding: 4px 14px; color: #3a3a3a; background: transparent; border: 1px solid transparent; border-bottom: none; font-weight: 500; font-size: 12px; cursor: pointer; }
+  .nav-ribbon-tab:hover { background: #cfccc0; }
+  .nav-ribbon-tab.active { background: #ece9d8; border-color: #aca899; margin-bottom: -1px; font-weight: 700; color: #1a4a8a; }
+  .nav-ribbon-path { margin-left: auto; padding: 4px; font-size: 11px; color: #5a5a5a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .nav-page-toolbar { min-height: 30px; }
+  a.nav-tool-btn { text-decoration: none; }
+  .nav-page-body { flex: 1; min-width: 0; background: #f0f0f0; padding: 8px 10px 14px; }
+
+  /* screens keep their own erp-card: inside the window it is a framed panel with a
+     beige tool strip (the window title bar above already names the screen) */
+  .nav-page .erp-shell { background: transparent; padding: 0; min-height: 0; }
+  .nav-page .erp-shell + .erp-shell { margin-top: 10px; }
+  .nav-page .erp-card { max-width: none !important; box-shadow: none; border: 1px solid; border-color: #aca899 #d4d0c8 #d4d0c8 #aca899; margin-bottom: 10px; }
+  .nav-page .erp-header { background: #ece9d8; border-bottom: 1px solid #aca899; min-height: 30px; padding: 2px 8px; }
+  .nav-page .erp-header-title { color: #1a4a8a; text-shadow: none; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; }
+  .nav-page .erp-header-btn { background: transparent; border-color: transparent; padding: 3px 10px; }
+  .nav-page .erp-header-btn:hover { background: #d4d0c8; border-color: #aca899; }
+  .nav-page .erp-header-btn.primary { background: linear-gradient(180deg, #6a9ad5 0%, #4a7ab5 45%, #3a6aa5 55%, #5a8ac5 100%); border-color: #8abae5 #1a3a6a #1a3a6a #8abae5; color: #fff; text-shadow: 1px 1px 1px rgba(0,0,0,.3); }
+  .nav-page .erp-header .nav-toolbar, .nav-page .erp-card > .nav-toolbar { background: #f4f2e8; }
+  /* older screens: their centred max-width page wrapper fills the window instead */
+  .nav-page-body > :is(div, section, form)[class*="max-w-"] { max-width: none; padding: 2px 0 0; }
+  .nav-page-body h1 { font-size: 14px; line-height: 1.3; font-weight: 700; color: #1a4a8a; margin-bottom: 6px; }
+
+  /* NAV card layout on desktop: caption on the left (right-aligned), field on the right,
+     24px inputs - for erp-field screens and plain "label over input" screens alike */
+  @media (min-width: 768px) {
+    .nav-page .erp-field, .nav-page div:has(> label:first-child + :is(input:not([type=checkbox]):not([type=radio]), select, textarea, div.flex, div.relative):last-child) {
+      display: grid; grid-template-columns: clamp(64px, 38%, 128px) minmax(0, 1fr); column-gap: 8px; row-gap: 2px; align-items: center;
+    }
+    .nav-page .erp-field > .erp-label, .nav-page div:has(> label:first-child + :is(input:not([type=checkbox]):not([type=radio]), select, textarea, div.flex, div.relative):last-child) > label:first-child {
+      grid-column: 1; margin: 0; text-align: right; font-size: 12px; font-weight: 400; color: #1a1a1a; line-height: 1.15; overflow-wrap: anywhere;
+    }
+    .nav-page .erp-field > :not(.erp-label) { grid-column: 2; min-width: 0; }
+    .nav-page .erp-field :is(input, select) { min-width: 0; }
+    .nav-page .erp-field .flex > * { min-width: 0; }
+    .nav-page .erp-field button { flex-shrink: 0; }
+    .nav-page .erp-field:has(> textarea), .nav-page div:has(> label:first-child + textarea:last-child) { align-items: start; }
+    .nav-page .erp-field:has(> textarea) > .erp-label, .nav-page div:has(> label:first-child + textarea:last-child) > label:first-child { padding-top: 4px; }
+    .nav-page :is(input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):not([type=file]), select:not([multiple])) {
+      height: 24px; padding-top: 1px; padding-bottom: 1px; font-size: 12px;
+    }
+    .nav-page :is(button, a):is([class*="py-2"], [class*="py-3"]):not(.nav-tool-btn):not(.nav-ribbon-tab) { padding-top: 3px; padding-bottom: 3px; }
+    .nav-page .erp-topbar { gap: 5px 14px; padding: 12px 12px 8px; }
+  }
+  /* caption-left fields need room: wide field rows drop to 2 (laptop) or 3 columns */
+  @media (min-width: 768px) and (max-width: 1279px) {
+    .nav-page .erp-topbar:is(.md\:grid-cols-4, .md\:grid-cols-5, .md\:grid-cols-6),
+    .nav-page .grid:is(.md\:grid-cols-4, .md\:grid-cols-5, .md\:grid-cols-6, .lg\:grid-cols-4):has(> div > label:first-child) { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  }
+  @media (min-width: 1280px) and (max-width: 1599px) {
+    .nav-page .erp-topbar:is(.md\:grid-cols-5, .md\:grid-cols-6) { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  }
+
+  /* ---------- sales / purchase entry (components/entry/EntryParts.jsx, SalesLineGrid) ---------- */
+  .ent-grid-wrap { overflow-x: auto; border: 1px solid #aca899; background: #fff; }
+  .ent-grid { width: 100%; border-collapse: collapse; font-size: 12px; background: #fff; }
+  .ent-grid thead th { background: linear-gradient(180deg, #f4f3ee 0%, #dfdcd0 100%); color: #1a4a8a; font-weight: 700; font-size: 11px; text-align: left; padding: 4px 6px; border-right: 1px solid #cfccc0; border-bottom: 1px solid #aca899; white-space: nowrap; }
+  .ent-grid tbody td { padding: 1px 4px; border-right: 1px solid #efeee8; border-bottom: 1px solid #e4e2da; height: 30px; vertical-align: middle; }
+  .ent-grid tbody tr.line:nth-child(even) { background: #fafaf7; }
+  .ent-grid tbody tr:hover { background: #eef3fb; }
+  .ent-grid tbody tr.cur, .ent-grid tbody tr:focus-within { background: #dde8f6; box-shadow: inset 3px 0 0 #2a5a9a; }
+  .ent-grid tbody tr.filler td { cursor: text; color: #b0b0a8; }
+  .ent-grid tfoot td { background: #ece9d8; border-top: 1px solid #aca899; font-weight: 700; padding: 4px 6px; color: #1a1a1a; }
+  .ent-grid .sno { width: 38px; text-align: center; color: #5a5a5a; }
+  .ent-grid .r { text-align: right; }
+  .ent-grid .c { text-align: center; }
+  .ent-grid td > input.w-full:not([type=checkbox]), .ent-grid td > div > input.w-full { min-width: 72px; }
+  .ent-grid td > select.w-full { min-width: 84px; }
+  .ent-total-cap { color: #1a4a8a; font-weight: 700; text-transform: uppercase; font-size: 11px; }
+  .ent-term-btn { min-width: 64px; height: 22px; padding: 0 6px; text-align: right; font-family: Consolas, monospace; font-size: 12px; background: #f7f6f0; border: 1px solid #aca899; border-radius: 2px; color: #1a4a8a; cursor: pointer; }
+  .ent-term-btn:hover { background: #fff; border-color: #4a7ab5; }
+  .ent-x { width: 20px; height: 20px; border-radius: 2px; color: #a92a1a; font-size: 11px; }
+  .ent-x:hover { background: #f6d0c8; }
+  .ent-add { color: #2a7a2a; font-weight: 600; }
+  .ent-less { color: #a92a1a; font-weight: 600; }
+
+  .ent-footer { border-top: 1px solid #aca899; background: #f0f0f0; }
+  .ent-footer-main { display: grid; grid-template-columns: minmax(0, 1fr) 300px; gap: 12px; padding: 8px 10px; }
+  .ent-footer-left { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+  .ent-frow { display: flex; align-items: center; gap: 8px; font-size: 12px; }
+  .ent-frow > label { width: 90px; flex-shrink: 0; text-align: right; color: #1a1a1a; }
+  .ent-frow > .erp-input { flex: 1; height: 26px; }
+  .ent-ro { flex: 1; color: #3a3a3a; }
+  .ent-words { flex: 1; font-style: italic; color: #1a4a8a; }
+  .ent-fbtns { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; padding-left: 98px; }
+  .ent-summary { background: #fff; border: 1px solid #aca899; border-top: 3px solid #2a5a9a; padding: 6px 10px; font-size: 12px; align-self: start; }
+  .ent-srow { display: flex; justify-content: space-between; gap: 10px; padding: 2px 0; }
+  .ent-srow b { font-family: Consolas, monospace; }
+  .ent-srow.sub { color: #5a5a5a; font-size: 11px; }
+  .ent-srow.total { border-top: 1px solid #aca899; border-bottom: 1px solid #aca899; margin: 3px 0; padding: 4px 0; font-size: 14px; color: #1a4a8a; }
+  .ent-actionbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; background: #ece9d8; border-top: 1px solid #aca899; padding: 6px 10px; }
+  .ent-hint { font-size: 11px; color: #5a5a5a; }
+  @media (max-width: 767px) { .ent-footer-main { grid-template-columns: minmax(0, 1fr); } .ent-fbtns { padding-left: 0; } .ent-frow > label { width: 70px; } }
+
+  .ent-popup-back { position: fixed; inset: 0; z-index: 60; background: rgba(0,0,0,.4); display: flex; align-items: center; justify-content: center; padding: 12px; }
+  .ent-popup { background: #f0f0f0; border: 2px solid; border-color: #fff #5a5a5a #5a5a5a #fff; box-shadow: 4px 4px 16px rgba(0,0,0,.4); max-height: 92vh; display: flex; flex-direction: column; }
+  .ent-popup-title { display: flex; align-items: center; justify-content: space-between; gap: 10px; padding: 4px 8px 4px 12px; min-height: 30px; background: linear-gradient(180deg, #4a7ab5 0%, #2a5a9a 45%, #1a4a8a 55%, #2a5a9a 100%); color: #fff; font-weight: 600; font-size: 13px; text-shadow: 1px 1px 1px rgba(0,0,0,.5); }
+  .ent-popup-body { padding: 10px; overflow: auto; flex: 1; }
+  .ent-popup-foot { display: flex; align-items: center; gap: 10px; padding: 6px 10px; background: #ece9d8; border-top: 1px solid #aca899; }
+  .ent-note { color: #5a5a5a; font-size: 11px; }
+  .ent-section-title { font-size: 11px; font-weight: 700; color: #1a4a8a; text-transform: uppercase; margin: 2px 0 4px; }
+  .ent-item-strip { display: flex; flex-wrap: wrap; gap: 0; border: 1px solid #aca899; background: #fff; margin-bottom: 8px; }
+  .ent-item-strip > div { flex: 1; min-width: 120px; padding: 4px 10px; border-right: 1px solid #e4e2da; display: flex; flex-direction: column; }
+  .ent-item-strip small { font-size: 10px; color: #7a7a7a; text-transform: uppercase; }
+  .ent-item-strip b { font-size: 13px; color: #1a1a1a; }
+  .ent-charge-wrap { display: grid; grid-template-columns: minmax(0, 1fr) 210px; gap: 8px; }
+  .ent-charge-table tr.ent-focus { background: #dde8f6; }
+  .ent-charge-info { border: 1px solid #aca899; background: #fff; font-size: 12px; align-self: start; }
+  .ent-info-title { background: #ece9d8; border-bottom: 1px solid #aca899; padding: 4px 8px; font-weight: 700; color: #1a4a8a; }
+  .ent-charge-info dl { display: grid; grid-template-columns: 70px minmax(0, 1fr); gap: 3px 6px; padding: 6px 8px; margin: 0; }
+  .ent-charge-info dt { color: #7a7a7a; }
+  .ent-charge-info dd { margin: 0; overflow-wrap: anywhere; }
+  @media (max-width: 767px) { .ent-charge-wrap { grid-template-columns: minmax(0, 1fr); } }
+
   /* ---------- dashboard parts ---------- */
   .kpi-grid { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 8px; margin-bottom: 10px; }
   .kpi-card { background: linear-gradient(180deg, #fff 0%, #f0f0f0 100%); border: 1px solid; border-color: #fff #7a7a7a #7a7a7a #fff; padding: 10px 12px 10px 16px; position: relative; overflow: hidden; }
@@ -203,6 +332,14 @@
     .erp-shell { padding: 0; }
     .erp-card { border: none; box-shadow: none; }
     .nav-statusbar { position: static; }
+    .nav-workspace { padding: 0; }
+    .nav-page { min-height: 0; border: none; box-shadow: none; }
+    .nav-page .nav-ribbon, .nav-page .nav-page-toolbar, .nav-page .nav-window-controls { display: none; }
+  }
+  @media print {
+    .nav-workspace { background: none; padding: 0; }
+    .nav-page { border: none; box-shadow: none; min-height: 0; }
+    .nav-page-body { padding: 0; background: #fff; }
   }
 }
 
@@ -293,3 +430,9 @@ table th, table td {
 label {
   font-size: 0.8125rem;
 }
+
+/* fill bar at the top of a transaction form: template / previous entry / draft */
+.ent-fillbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 4px 8px; margin-bottom: 6px; border: 1px dashed var(--nav-border, #c9cfd8); border-radius: 4px; background: rgba(120, 140, 170, 0.06); font-size: 12px; }
+.ent-fillbar-cap { font-weight: 600; color: #55607a; margin-right: 2px; }
+.ent-fillbar-sep { width: 1px; height: 18px; background: #c9cfd8; margin: 0 4px; }
+.ent-fillbar .nav-btn:disabled { opacity: .45; cursor: not-allowed; }

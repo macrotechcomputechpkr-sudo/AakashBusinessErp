@@ -1,248 +1,268 @@
 // =============================================
 // EntryFieldControl.jsx
-// Per-field control (Enabled/Disabled/Compulsory/ReadOnly) for every
-// voucher type's Master+Detail fields, settable Globally or overridden
-// per User Group / per User. See database/19_entry_field_control_schema.sql
-// for the full field catalog and research notes (Tally/NAV/FACT/Busy).
+// Per-field control of every voucher type's Master + Detail fields:
+// Enable / Read Only / Hide / Compulsory, for everyone (Global), for a User
+// Group, or for one User. Priority when a person enters a voucher: their
+// own User rule, then their User Group's rule, then the Global rule.
+// Pick the voucher type and who it is for, set the modes in the grid and
+// Save - "Inherit" (group / user) removes that level's rule.
+// Server: routes/entryFieldControlRoutes.js (PUT /entry-field-controls/bulk)
 // =============================================
 
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import { useEnterKeyNavigation } from '../hooks/useEnterKeyNavigation';
 import SearchablePopupSelect from '../components/SearchablePopupSelect';
 import Layout from '../components/Layout';
 
-const VOUCHER_TYPES = [
-    { value: 'purchase_requisition', label: 'Purchase Requisition' },
-    { value: 'purchase_quotation', label: 'Purchase Quotation' },
-    { value: 'sales_order', label: 'Sales Order' },
-    { value: 'sales_delivery', label: 'Sales Delivery (GDN)' },
-    { value: 'sales_bill', label: 'Sales Bill' },
-    { value: 'sales_return', label: 'Sales Return' },
-    { value: 'sales_additional', label: 'Sales Additional Expense' },
-    { value: 'purchase_order', label: 'Purchase Order' },
-    { value: 'purchase_grn', label: 'Purchase GRN' },
-    { value: 'purchase_bill', label: 'Purchase Bill' },
-    { value: 'purchase_return', label: 'Purchase Return' },
-    { value: 'purchase_additional', label: 'Purchase Additional Expense' },
-    { value: 'journal', label: 'Journal Voucher' },
-    { value: 'cash', label: 'Cash Voucher' },
-    { value: 'bank', label: 'Bank Voucher' },
-    { value: 'pdc', label: 'PDC (Post-Dated Cheque)' },
-    { value: 'production', label: 'Production Entry' }
-];
+const FALLBACK_TYPES = [
+    ['sales_quotation', 'Sales Quotation'], ['sales_order', 'Sales Order'], ['sales_delivery', 'Sales Delivery / Challan'], ['sales_bill', 'Sales Bill'],
+    ['sales_return', 'Sales Return'], ['sales_nonsalable_return', 'Sales Non-saleable Return'], ['sales_additional', 'Sales Additional Expense'],
+    ['purchase_requisition', 'Purchase Requisition'], ['purchase_quotation', 'Purchase Quotation'], ['purchase_order', 'Purchase Order'], ['purchase_grn', 'Purchase GRN'],
+    ['purchase_bill', 'Purchase Bill'], ['purchase_return', 'Purchase Return'], ['purchase_nonsalable_return', 'Purchase Non-saleable Return'], ['purchase_additional', 'Purchase Additional Expense'],
+    ['cash_bank_entry', 'Cash / Bank Receipt & Payment'], ['journal', 'Journal Voucher'], ['cash', 'Cash Voucher'], ['bank', 'Bank Voucher'], ['pdc', 'PDC (Post-Dated Cheque)'],
+    ['debit_note', 'Debit Note'], ['credit_note', 'Credit Note'], ['stock_transfer', 'Stock Transfer'], ['production', 'Production Entry']
+].map(([value, label]) => ({ value, label }));
+
 const MODES = [
-    { value: 'enabled', label: 'Enabled' },
-    { value: 'disabled', label: 'Disabled' },
-    { value: 'compulsory', label: 'Compulsory' },
-    { value: 'readonly', label: 'Read Only' }
+    { value: 'enabled', label: 'Enable', cls: 'text-green-700' },
+    { value: 'readonly', label: 'Read Only', cls: 'text-amber-700' },
+    { value: 'disabled', label: 'Hide', cls: 'text-gray-600' },
+    { value: 'compulsory', label: 'Compulsory', cls: 'text-red-700' }
 ];
+const modeLabel = m => (MODES.find(x => x.value === m) || { label: 'Enable' }).label;
+const SOURCE = { user: 'User rule', user_group: 'Group rule', global: 'Global rule', default: 'Default' };
 
 export default function EntryFieldControl() {
     const { authFetch } = useAuth();
     const enterAreaRef = useRef(null);
     useEnterKeyNavigation(enterAreaRef);
-    const [voucherType, setVoucherType] = useState('purchase_requisition');
+    const [types, setTypes] = useState(FALLBACK_TYPES);
+    const [voucherType, setVoucherType] = useState('sales_bill');
+    const [scope, setScope] = useState('global');
+    const [target, setTarget] = useState('');
     const [catalog, setCatalog] = useState([]);
     const [controls, setControls] = useState([]);
-    const [securityGroups, setSecurityGroups] = useState([]);
+    const [groups, setGroups] = useState([]);
     const [users, setUsers] = useState([]);
-    const [overridingField, setOverridingField] = useState(null); // field_key currently adding an override for
-    const [overrideScope, setOverrideScope] = useState('user_group');
-    const [overrideTarget, setOverrideTarget] = useState('');
-    const [overrideMode, setOverrideMode] = useState('enabled');
-    const [alert, setAlert] = useState(null);
+    const [userModes, setUserModes] = useState({}); // resolved for the picked user
+    const [draft, setDraft] = useState({}); // field_key -> mode | 'inherit'
+    const [search, setSearch] = useState('');
+    const [errors, setErrors] = useState([]);
+    const [msg, setMsg] = useState(null);
+    const [saving, setSaving] = useState(false);
+    const [loading, setLoading] = useState(false);
 
-    const showAlert = (message, type = 'info') => { setAlert({ message, type }); setTimeout(() => setAlert(null), 5000); };
+    // pickers load once; a failure here must not empty the field list
+    useEffect(() => {
+        authFetch('/api/voucher-types').then(r => r.data?.length && setTypes(r.data)).catch(() => {});
+        authFetch('/api/security-groups').then(r => setGroups(Array.isArray(r.data) ? r.data : [])).catch(() => {});
+        authFetch('/api/users?pageSize=500').then(r => setUsers(Array.isArray(r.data) ? r.data : (r.data?.users || []))).catch(() => {});
+    }, [authFetch]);
 
     const load = useCallback(async () => {
-        try {
-            const [cat, ctl, sg, us] = await Promise.all([
-                authFetch(`/api/voucher-field-catalog?voucher_type=${voucherType}`),
-                authFetch(`/api/entry-field-controls?voucher_type=${voucherType}`),
-                authFetch('/api/security-groups'),
-                authFetch('/api/users?pageSize=200')
-            ]);
-            setCatalog(cat.data || []);
-            setControls(ctl.data || []);
-            setSecurityGroups(sg.data || []);
-            setUsers(us.data || []);
-        } catch (err) {
-            showAlert(err.message, 'danger');
-        }
+        setLoading(true);
+        const errs = [];
+        const [cat, ctl] = await Promise.all([
+            authFetch(`/api/voucher-field-catalog?voucher_type=${voucherType}`).catch(e => { errs.push(`Field list: ${e.message}`); return { data: [] }; }),
+            authFetch(`/api/entry-field-controls?voucher_type=${voucherType}`).catch(e => { errs.push(`Saved rules: ${e.message}`); return { data: [] }; })
+        ]);
+        setCatalog(cat.data || []);
+        setControls(ctl.data || []);
+        setErrors(errs);
+        setDraft({});
+        setLoading(false);
     }, [authFetch, voucherType]);
     useEffect(() => { load(); }, [load]);
 
-    const globalModeFor = (fieldKey) => {
-        const rule = controls.find(c => c.scope === 'global' && c.field_key === fieldKey);
-        return rule ? rule.mode : 'enabled';
-    };
-    const overridesFor = (fieldKey) => controls.filter(c => c.scope !== 'global' && c.field_key === fieldKey);
+    useEffect(() => {
+        setUserModes({});
+        if (scope !== 'user' || !target) return;
+        authFetch(`/api/entry-field-controls/resolve?voucher_type=${voucherType}&user_id=${target}`)
+            .then(r => setUserModes(Object.fromEntries((r.data || []).map(f => [f.field_key, f]))))
+            .catch(() => {});
+    }, [authFetch, voucherType, scope, target, controls]);
 
-    const saveGlobalMode = async (field, mode) => {
-        if (field.is_system_required && mode === 'disabled') {
-            return showAlert(`"${field.field_label}" is a required system field and cannot be disabled`, 'danger');
+    const ruleOf = useCallback((key, sc = scope, tg = target) => controls.find(c => c.field_key === key && c.scope === sc
+        && (sc === 'global' || (sc === 'user_group' ? c.user_group_id === tg : c.user_id === tg))), [controls, scope, target]);
+
+    // what the chosen level currently says, and what applies if it says nothing
+    const current = useCallback((key) => {
+        const own = ruleOf(key);
+        if (scope === 'global') return { own: own ? own.mode : 'enabled', inherited: null };
+        if (scope === 'user_group') {
+            const g = ruleOf(key, 'global');
+            return { own: own ? own.mode : 'inherit', inherited: { mode: g ? g.mode : 'enabled', from: g ? 'global' : 'default' } };
         }
+        const u = users.find(x => x.id === target);
+        const gRule = u?.security_group_id && ruleOf(key, 'user_group', u.security_group_id);
+        const g = ruleOf(key, 'global');
+        const inh = gRule ? { mode: gRule.mode, from: 'user_group' } : { mode: g ? g.mode : 'enabled', from: g ? 'global' : 'default' };
+        return { own: own ? own.mode : 'inherit', inherited: inh, effective: userModes[key] };
+    }, [ruleOf, scope, target, users, userModes]);
+
+    const fields = useMemo(() => {
+        const q = search.trim().toLowerCase();
+        return catalog.filter(f => !q || `${f.field_label} ${f.field_key}`.toLowerCase().includes(q));
+    }, [catalog, search]);
+    // one rule per field key (master and detail share it)
+    const keys = useMemo(() => [...new Set(fields.map(f => f.field_key))], [fields]);
+    const valueOf = key => (draft[key] !== undefined ? draft[key] : current(key).own);
+    const systemRequired = key => catalog.some(f => f.field_key === key && f.is_system_required);
+    const setMode = (key, mode) => setDraft(d => {
+        const n = { ...d, [key]: mode };
+        if (n[key] === current(key).own) delete n[key];
+        return n;
+    });
+    const setAll = (mode) => setDraft(() => {
+        const n = {};
+        keys.forEach(k => { if (mode === 'disabled' && systemRequired(k)) return; if (mode !== current(k).own) n[k] = mode; });
+        return n;
+    });
+    const changed = Object.keys(draft).length;
+    const needsTarget = scope !== 'global' && !target;
+
+    const save = async () => {
+        if (needsTarget) return setMsg({ type: 'danger', text: `Pick the ${scope === 'user' ? 'User' : 'User Group'} first` });
+        setSaving(true);
         try {
-            await authFetch('/api/entry-field-controls', {
-                method: 'POST',
-                body: JSON.stringify({ voucher_type: voucherType, field_key: field.field_key, scope: 'global', mode })
-            });
-            load();
-        } catch (err) {
-            showAlert(err.message, 'danger');
-        }
+            const r = await authFetch('/api/entry-field-controls/bulk', { method: 'PUT', body: JSON.stringify({
+                voucher_type: voucherType, scope, user_group_id: scope === 'user_group' ? target : undefined, user_id: scope === 'user' ? target : undefined, modes: draft }) });
+            setMsg({ type: 'success', text: `Saved - ${r.data.saved} rule(s) set, ${r.data.removed} removed` });
+            await load();
+        } catch (e) {
+            setMsg({ type: 'danger', text: e.message });
+        } finally { setSaving(false); }
     };
 
-    const saveOverride = async (field) => {
-        if (!overrideTarget) return showAlert('Pick a User Group or User first', 'danger');
-        try {
-            await authFetch('/api/entry-field-controls', {
-                method: 'POST',
-                body: JSON.stringify({
-                    voucher_type: voucherType, field_key: field.field_key, scope: overrideScope,
-                    user_group_id: overrideScope === 'user_group' ? overrideTarget : undefined,
-                    user_id: overrideScope === 'user' ? overrideTarget : undefined,
-                    mode: overrideMode
-                })
-            });
-            setOverridingField(null);
-            setOverrideTarget('');
-            load();
-            showAlert('Override saved', 'success');
-        } catch (err) {
-            showAlert(err.message, 'danger');
-        }
+    const overridesSummary = useMemo(() => {
+        const g = {}, u = {};
+        controls.forEach(c => {
+            if (c.scope === 'user_group') g[c.user_group_id] = (g[c.user_group_id] || 0) + 1;
+            if (c.scope === 'user') u[c.user_id] = (u[c.user_id] || 0) + 1;
+        });
+        return { g, u };
+    }, [controls]);
+
+    const renderRows = (section) => {
+        const list = fields.filter(f => f.section === section);
+        if (!list.length) return <tr><td colSpan={9} className="px-3 py-2 text-xs text-gray-400">No {section} fields{search ? ' match' : ''}.</td></tr>;
+        const seen = new Set();
+        return list.map(f => {
+            const shared = seen.has(f.field_key) || (section === 'detail' && catalog.some(x => x.section === 'master' && x.field_key === f.field_key));
+            seen.add(f.field_key);
+            const cur = current(f.field_key);
+            const val = valueOf(f.field_key);
+            const dirty = draft[f.field_key] !== undefined;
+            const opts = scope === 'global' ? MODES : [{ value: 'inherit', label: 'Inherit', cls: 'text-blue-700' }, ...MODES];
+            return (
+                <tr key={`${section}:${f.field_key}`} className={`border-t ${dirty ? 'bg-yellow-50' : ''}`}>
+                    <td className="px-3 py-1.5">
+                        <div className="text-sm font-medium">{f.field_label}{f.is_system_required && <span className="ml-2 text-[10px] bg-gray-100 text-gray-500 px-1 rounded uppercase">System</span>}{f.auto_added && <span className="ml-2 text-[10px] bg-blue-50 text-blue-600 px-1 rounded">screen</span>}</div>
+                        <div className="text-[11px] text-gray-400">{f.field_key}{shared ? ' · same rule as the master field' : ''}</div>
+                    </td>
+                    {opts.map(m => (
+                        <td key={m.value} className="px-2 py-1.5 text-center">
+                            <input type="radio" name={`${section}:${f.field_key}`} aria-label={`${f.field_label} ${m.label}`} checked={val === m.value}
+                                disabled={shared || (m.value === 'disabled' && f.is_system_required)} onChange={() => setMode(f.field_key, m.value)} />
+                        </td>
+                    ))}
+                    <td className="px-3 py-1.5 text-xs text-gray-500 whitespace-nowrap">
+                        {scope === 'global' ? '' : val === 'inherit' ? `${modeLabel(cur.inherited.mode)} (${SOURCE[cur.inherited.from]})` : modeLabel(val)}
+                        {scope === 'user' && cur.effective && draft[f.field_key] === undefined && <div className="text-[11px]">now: {modeLabel(cur.effective.effective_mode)}</div>}
+                    </td>
+                </tr>
+            );
+        });
     };
 
-    const removeOverride = async (id) => {
-        try {
-            await authFetch(`/api/entry-field-controls/${id}`, { method: 'DELETE' });
-            load();
-        } catch (err) {
-            showAlert(err.message, 'danger');
-        }
-    };
-
-    const master = catalog.filter(f => f.section === 'master');
-    const detail = catalog.filter(f => f.section === 'detail');
-
-    const renderFieldRow = (field) => {
-        const globalMode = globalModeFor(field.field_key);
-        const overrides = overridesFor(field.field_key);
-        return (
-            <div key={field.field_key} className="border-b border-gray-100 py-3">
-                <div className="flex flex-wrap items-center gap-3">
-                    <div className="flex-1 min-w-[180px]">
-                        <span className="text-sm font-medium">{field.field_label}</span>
-                        {field.is_system_required && <span className="ml-2 text-[10px] bg-gray-100 text-gray-500 px-1.5 py-0.5 rounded uppercase">System</span>}
-                        <span className="ml-2 text-xs text-gray-400">{field.field_data_type}</span>
-                    </div>
-                    <select
-                        className="border rounded-lg px-2 py-1.5 text-sm"
-                        value={globalMode}
-                        onChange={e => saveGlobalMode(field, e.target.value)}
-                    >
-                        {MODES.map(m => <option key={m.value} value={m.value} disabled={field.is_system_required && m.value === 'disabled'}>{m.label}</option>)}
-                    </select>
-                    <button onClick={() => { setOverridingField(field.field_key); setOverrideTarget(''); setOverrideScope('user_group'); setOverrideMode('enabled'); }} className="text-xs text-blue-600 hover:underline">+ Add Override</button>
-                </div>
-
-                {overrides.length > 0 && (
-                    <div className="mt-2 ml-2 space-y-1">
-                        {overrides.map(o => (
-                            <div key={o.id} className="flex items-center gap-2 text-xs text-gray-500 bg-gray-50 rounded px-2 py-1">
-                                <span className="font-medium">{o.scope === 'user_group' ? `Group: ${o.user_group?.group_name || o.user_group_id}` : `User: ${users.find(u => u.id === o.user_id)?.full_name || o.user_id}`}</span>
-                                <span>→ {MODES.find(m => m.value === o.mode)?.label}</span>
-                                <button onClick={() => removeOverride(o.id)} className="ml-auto text-red-500 hover:text-red-700">✕</button>
-                            </div>
-                        ))}
-                    </div>
-                )}
-
-                {overridingField === field.field_key && (
-                    <div className="mt-2 ml-2 flex flex-wrap items-end gap-2 bg-blue-50 border border-blue-100 rounded-lg p-3">
-                        <div>
-                            <label className="block text-xs text-gray-500 mb-1">Scope</label>
-                            <select className="border rounded px-2 py-1.5 text-sm" value={overrideScope} onChange={e => { setOverrideScope(e.target.value); setOverrideTarget(''); }}>
-                                <option value="user_group">User Group</option>
-                                <option value="user">User</option>
-                            </select>
-                        </div>
-                        <div className="min-w-[180px]">
-                            <label className="block text-xs text-gray-500 mb-1">{overrideScope === 'user_group' ? 'Which Group' : 'Which User'}</label>
-                            {overrideScope === 'user_group' ? (
-                                <SearchablePopupSelect
-                                    listKey="efc_group_picker"
-                                    columns={[{ key: 'group_name', label: 'Name' }]}
-                                    defaultVisibleKeys={['group_name']}
-                                    items={securityGroups} getId={g => g.id} getLabel={g => g.group_name}
-                                    searchKeys={['group_name']}
-                                    value={overrideTarget} onChange={setOverrideTarget}
-                                    placeholder="Select group"
-                                />
-                            ) : (
-                                <SearchablePopupSelect
-                                    listKey="efc_user_picker"
-                                    columns={[{ key: 'full_name', label: 'Name' }]}
-                                    defaultVisibleKeys={['full_name']}
-                                    items={users} getId={u => u.id} getLabel={u => u.full_name}
-                                    searchKeys={['full_name']}
-                                    value={overrideTarget} onChange={setOverrideTarget}
-                                    placeholder="Select user"
-                                />
-                            )}
-                        </div>
-                        <div>
-                            <label className="block text-xs text-gray-500 mb-1">Mode</label>
-                            <select className="border rounded px-2 py-1.5 text-sm" value={overrideMode} onChange={e => setOverrideMode(e.target.value)}>
-                                {MODES.map(m => <option key={m.value} value={m.value} disabled={field.is_system_required && m.value === 'disabled'}>{m.label}</option>)}
-                            </select>
-                        </div>
-                        <button onClick={() => saveOverride(field)} className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-sm">Save</button>
-                        <button onClick={() => setOverridingField(null)} className="px-3 py-1.5 border rounded-lg text-sm">Cancel</button>
-                    </div>
-                )}
-            </div>
-        );
-    };
+    const head = scope === 'global' ? MODES : [{ value: 'inherit', label: 'Inherit' }, ...MODES];
+    const table = (section, title) => (
+        <div className="bg-white border rounded-lg mb-4 overflow-x-auto">
+            <p className="text-xs font-semibold text-gray-600 uppercase px-3 pt-3 pb-1">{title}</p>
+            <table className="w-full text-sm">
+                <thead><tr className="bg-slate-50 text-xs text-gray-600">
+                    <th className="text-left px-3 py-1.5">Field</th>
+                    {head.map(m => <th key={m.value} className="px-2 py-1.5 w-20">{m.label}</th>)}
+                    <th className="text-left px-3 py-1.5">{scope === 'global' ? '' : 'Applies'}</th>
+                </tr></thead>
+                <tbody>{renderRows(section)}</tbody>
+            </table>
+        </div>
+    );
 
     return (
         <Layout>
-        <div ref={enterAreaRef} className="max-w-5xl mx-auto p-4">
-            <h1 className="text-2xl font-bold mb-4">Entry Field Control</h1>
-            <p className="text-xs text-gray-400 mb-4">
-                Choose a voucher type, then set each field's default mode (applies to
-                everyone), or add a User Group / User-specific override. Priority when
-                a person actually enters a voucher: their own User override, then their
-                User Group's override, then this Global default.
-            </p>
+            <div ref={enterAreaRef} className="max-w-6xl mx-auto p-4">
+                <h1 className="text-2xl font-bold mb-1">Entry Field Control</h1>
+                <p className="text-xs text-gray-500 mb-4">
+                    For each field choose Enable, Read Only, Hide or Compulsory - for everyone (Global), a User Group, or one User.
+                    A person gets their own User rule first, then their Group&apos;s, then the Global one. &quot;Inherit&quot; removes that level&apos;s rule.
+                </p>
 
-            {alert && (
-                <div className={`mb-4 px-4 py-3 rounded-lg text-sm font-medium border-l-4 ${
-                    alert.type === 'success' ? 'bg-green-50 border-green-500 text-green-800' :
-                    alert.type === 'danger' ? 'bg-red-50 border-red-500 text-red-800' :
-                    'bg-yellow-50 border-yellow-500 text-yellow-800'
-                }`}>{alert.message}</div>
-            )}
+                {errors.map(e => <div key={e} className="mb-2 px-3 py-2 rounded bg-red-50 border-l-4 border-red-500 text-red-800 text-sm">{e}</div>)}
+                {msg && <div className={`mb-3 px-3 py-2 rounded text-sm border-l-4 ${msg.type === 'success' ? 'bg-green-50 border-green-500 text-green-800' : 'bg-red-50 border-red-500 text-red-800'}`}>{msg.text} <button type="button" className="ml-2" onClick={() => setMsg(null)}>✕</button></div>}
 
-            <div className="mb-4">
-                <label className="block text-sm font-medium mb-1">Voucher Type</label>
-                <select className="border rounded-lg px-3 py-2 min-w-[260px]" value={voucherType} onChange={e => setVoucherType(e.target.value)}>
-                    {VOUCHER_TYPES.map(v => <option key={v.value} value={v.value}>{v.label}</option>)}
-                </select>
+                <div className="bg-white border rounded-lg p-3 mb-4 grid grid-cols-1 md:grid-cols-4 gap-3 items-end">
+                    <div>
+                        <label className="block text-xs font-medium mb-1">Voucher Type</label>
+                        <select className="erp-input w-full" value={voucherType} onChange={e => { if (!changed || window.confirm('Discard unsaved changes?')) setVoucherType(e.target.value); }}>
+                            {types.map(v => <option key={v.value} value={v.value}>{v.label}</option>)}
+                        </select>
+                    </div>
+                    <div>
+                        <label className="block text-xs font-medium mb-1">Apply to</label>
+                        <select className="erp-input w-full" value={scope} onChange={e => { setScope(e.target.value); setTarget(''); setDraft({}); }}>
+                            <option value="global">Everyone (Global)</option>
+                            <option value="user_group">A User Group</option>
+                            <option value="user">A User</option>
+                        </select>
+                    </div>
+                    <div className="min-w-0">
+                        {scope !== 'global' && <>
+                            <label className="block text-xs font-medium mb-1">{scope === 'user' ? 'User' : 'User Group'}</label>
+                            {scope === 'user_group' ? (
+                                <SearchablePopupSelect listKey="efc_group_picker" columns={[{ key: 'group_name', label: 'Group' }, { key: 'group_code', label: 'Code' }]} defaultVisibleKeys={['group_name', 'group_code']}
+                                    items={groups} getId={g => g.id} getLabel={g => g.group_name} searchKeys={['group_name', 'group_code']} value={target} onChange={v => { setTarget(v); setDraft({}); }} placeholder="Select group" />
+                            ) : (
+                                <SearchablePopupSelect listKey="efc_user_picker" columns={[{ key: 'full_name', label: 'Name' }, { key: 'email', label: 'Email' }]} defaultVisibleKeys={['full_name', 'email']}
+                                    items={users} getId={u => u.id} getLabel={u => u.full_name || u.email} searchKeys={['full_name', 'email']} value={target} onChange={v => { setTarget(v); setDraft({}); }} placeholder="Select user" />
+                            )}
+                        </>}
+                    </div>
+                    <div>
+                        <label className="block text-xs font-medium mb-1">Find field</label>
+                        <input className="erp-input w-full" value={search} onChange={e => setSearch(e.target.value)} placeholder="Name or key" />
+                    </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-2 mb-3 text-xs">
+                    <span className="text-gray-600">Set all shown to:</span>
+                    {head.map(m => <button key={m.value} type="button" className="nav-btn small" disabled={needsTarget} onClick={() => setAll(m.value)}>{m.label}</button>)}
+                    <span className="flex-1" />
+                    {(Object.keys(overridesSummary.g).length > 0 || Object.keys(overridesSummary.u).length > 0) && (
+                        <span className="text-gray-500">Rules here: {Object.entries(overridesSummary.g).map(([id, n]) => `${groups.find(g => g.id === id)?.group_name || 'group'} (${n})`)
+                            .concat(Object.entries(overridesSummary.u).map(([id, n]) => `${users.find(u => u.id === id)?.full_name || 'user'} (${n})`)).join(', ')}</span>
+                    )}
+                </div>
+
+                {loading ? <p className="text-sm text-gray-500">Loading…</p> : catalog.length === 0 && !errors.length ? (
+                    <p className="text-sm text-gray-500 bg-white border rounded p-4">No fields are listed for this voucher type yet. Open its entry screen once - the fields it shows are added here automatically.</p>
+                ) : needsTarget ? (
+                    <p className="text-sm text-gray-500 bg-white border rounded p-4">Pick the {scope === 'user' ? 'User' : 'User Group'} to see and change its rules.</p>
+                ) : (
+                    <>
+                        {table('master', 'Master (header) fields')}
+                        {table('detail', 'Detail (line item) fields')}
+                    </>
+                )}
+
+                <div className="sticky bottom-0 bg-white border-t py-2 flex items-center gap-3">
+                    <span className="text-sm text-gray-600">{changed ? `${changed} unsaved change(s)` : 'No changes'}</span>
+                    <button type="button" className="erp-btn primary" disabled={!changed || saving || needsTarget} onClick={save}>{saving ? 'Saving…' : 'Save'}</button>
+                    <button type="button" className="erp-btn" disabled={!changed} onClick={() => setDraft({})}>Undo changes</button>
+                </div>
             </div>
-
-            <div className="bg-white border rounded-xl p-6 mb-4">
-                <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Master Fields</p>
-                {master.length === 0 ? <p className="text-xs text-gray-400">No fields.</p> : master.map(renderFieldRow)}
-            </div>
-
-            <div className="bg-white border rounded-xl p-6">
-                <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Detail (Line Item) Fields</p>
-                {detail.length === 0 ? <p className="text-xs text-gray-400">No fields.</p> : detail.map(renderFieldRow)}
-            </div>
-        </div>
         </Layout>
     );
 }

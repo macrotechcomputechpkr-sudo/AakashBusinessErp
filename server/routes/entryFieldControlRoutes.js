@@ -17,12 +17,52 @@ const router = express.Router();
 const { getTenantClient, loadUserPermissions, logAudit } = require('../utils/dbHelpers');
 const { requireAuth, requirePermission } = require('../middleware/auth');
 
-const VOUCHER_TYPES = [
-    'sales_order', 'sales_delivery', 'sales_bill', 'sales_return', 'sales_additional',
-    'purchase_order', 'purchase_grn', 'purchase_bill', 'purchase_return', 'purchase_additional',
-    'journal', 'cash', 'bank', 'pdc', 'production',
-    'purchase_requisition', 'purchase_quotation'
-];
+// every voucher type the catalog allows (database CHECK on voucher_field_catalog)
+const VOUCHER_TYPE_LABELS = {
+    sales_quotation: 'Sales Quotation', sales_order: 'Sales Order', sales_delivery: 'Sales Delivery / Challan', sales_bill: 'Sales Bill',
+    sales_return: 'Sales Return', sales_nonsalable_return: 'Sales Non-saleable Return', sales_additional: 'Sales Additional Expense',
+    purchase_requisition: 'Purchase Requisition', purchase_quotation: 'Purchase Quotation', purchase_order: 'Purchase Order', purchase_grn: 'Purchase GRN',
+    purchase_bill: 'Purchase Bill', purchase_return: 'Purchase Return', purchase_nonsalable_return: 'Purchase Non-saleable Return', purchase_additional: 'Purchase Additional Expense',
+    cash_bank_entry: 'Cash / Bank Receipt & Payment', journal: 'Journal Voucher', cash: 'Cash Voucher', bank: 'Bank Voucher', pdc: 'PDC (Post-Dated Cheque)',
+    debit_note: 'Debit Note', credit_note: 'Credit Note', stock_transfer: 'Stock Transfer', production: 'Production Entry'
+};
+const VOUCHER_TYPES = Object.keys(VOUCHER_TYPE_LABELS);
+const MODES = ['enabled', 'disabled', 'compulsory', 'readonly'];
+const FIELD_KEY = /^[a-z][a-z0-9_]{0,59}$/;
+const labelOf = k => k.replace(/_id$/, '').split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+
+router.get('/voucher-types', requireAuth, (req, res) => res.json({ success: true, data: VOUCHER_TYPES.map(v => ({ value: v, label: VOUCHER_TYPE_LABELS[v] })) }));
+
+// Entry screens report the fields they show; any not yet in the catalog are
+// added, so Entry Field Control always lists what the screen really has.
+router.post('/voucher-field-catalog/register', requireAuth, async (req, res) => {
+    try {
+        const { voucher_type: vt, fields } = req.body || {};
+        if (!VOUCHER_TYPES.includes(vt)) return res.status(400).json({ success: false, error: 'Invalid voucher_type' });
+        const list = (Array.isArray(fields) ? fields : []).slice(0, 120)
+            .map(f => (typeof f === 'string' ? { key: f } : f || {}))
+            .filter(f => FIELD_KEY.test(f.key || '') && ['master', 'detail', undefined].includes(f.section));
+        if (!list.length) return res.json({ success: true, data: { added: 0 } });
+        const c = await getTenantClient(req.auth.tenantId);
+        const { data: have, error } = await c.from('voucher_field_catalog').select('section, field_key').eq('voucher_type', vt);
+        if (error) throw error;
+        const known = new Set((have || []).map(h => `${h.section}:${h.field_key}`));
+        const rows = [];
+        list.forEach((f, i) => {
+            const section = f.section || 'master';
+            if (known.has(`${section}:${f.key}`)) return;
+            known.add(`${section}:${f.key}`);
+            rows.push({ voucher_type: vt, section, field_key: f.key, field_label: String(f.label || labelOf(f.key)).slice(0, 100), field_data_type: 'text', is_system_required: false, display_order: 500 + i, auto_added: true });
+        });
+        if (rows.length) {
+            const { error: e2 } = await c.from('voucher_field_catalog').insert(rows);
+            if (e2 && e2.code !== '23505') throw e2; // another screen added them at the same moment
+        }
+        res.json({ success: true, data: { added: rows.length } });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
 
 router.get('/voucher-field-catalog', requireAuth, async (req, res) => {
     try {
@@ -127,6 +167,57 @@ router.post('/entry-field-controls', requireAuth, loadUserPermissions, requirePe
     }
 });
 
+// Save a whole screen of modes at once for one scope (Global / a User Group /
+// a User). modes: { field_key: 'enabled'|'disabled'|'compulsory'|'readonly'|null }
+// null (or 'inherit') removes that scope's rule, so the next level applies.
+router.put('/entry-field-controls/bulk', requireAuth, loadUserPermissions, requirePermission('security', 'edit'), async (req, res) => {
+    try {
+        const { voucher_type: vt, scope, user_group_id: groupId, user_id: userId, modes } = req.body || {};
+        if (!VOUCHER_TYPES.includes(vt)) return res.status(400).json({ success: false, error: 'Invalid voucher_type' });
+        if (!['global', 'user_group', 'user'].includes(scope)) return res.status(400).json({ success: false, error: 'Invalid scope' });
+        if (scope === 'user_group' && !groupId) return res.status(400).json({ success: false, error: 'Pick a User Group' });
+        if (scope === 'user' && !userId) return res.status(400).json({ success: false, error: 'Pick a User' });
+        if (!modes || typeof modes !== 'object') return res.status(400).json({ success: false, error: 'modes is required' });
+        const t = req.auth.tenantId, c = await getTenantClient(t);
+        const { data: catalog } = await c.from('voucher_field_catalog').select('field_key, field_label, is_system_required').eq('voucher_type', vt);
+        const byKey = {};
+        (catalog || []).forEach(f => { byKey[f.field_key] = byKey[f.field_key] || f; if (f.is_system_required) byKey[f.field_key] = f; });
+        const entries = Object.entries(modes);
+        for (const [key, raw] of entries) {
+            const mode = raw === 'inherit' ? null : raw;
+            if (!byKey[key]) return res.status(400).json({ success: false, error: `Unknown field "${key}"` });
+            if (mode !== null && !MODES.includes(mode)) return res.status(400).json({ success: false, error: `Invalid mode for "${key}"` });
+            if (mode === 'disabled' && byKey[key].is_system_required) return res.status(400).json({ success: false, error: `"${byKey[key].field_label}" is a required system field and cannot be hidden` });
+        }
+        let q = c.from('entry_field_controls').select('*').eq('tenant_id', t).eq('voucher_type', vt).eq('scope', scope);
+        if (scope === 'user_group') q = q.eq('user_group_id', groupId);
+        if (scope === 'user') q = q.eq('user_id', userId);
+        const { data: existing, error } = await q;
+        if (error) throw error;
+        const have = Object.fromEntries((existing || []).map(r => [r.field_key, r]));
+        let saved = 0, removed = 0;
+        for (const [key, raw] of entries) {
+            const mode = raw === 'inherit' ? null : raw;
+            const cur = have[key];
+            // Global "enabled" is the default - no row needed
+            const wanted = scope === 'global' && mode === 'enabled' ? null : mode;
+            if (wanted === null) {
+                if (cur) { const { error: e } = await c.from('entry_field_controls').delete().eq('id', cur.id); if (e) throw e; removed++; }
+            } else if (!cur || cur.mode !== wanted) {
+                const row = { tenant_id: t, voucher_type: vt, field_key: key, scope, user_group_id: scope === 'user_group' ? groupId : null, user_id: scope === 'user' ? userId : null,
+                    mode: wanted, updated_by: req.auth.userId, updated_at: new Date().toISOString() };
+                const { error: e } = cur ? await c.from('entry_field_controls').update(row).eq('id', cur.id) : await c.from('entry_field_controls').insert(row);
+                if (e) throw e;
+                saved++;
+            }
+        }
+        await logAudit(t, req.auth.userId, 'set_entry_field_controls', 'entry_field_control', null, { voucher_type: vt, scope, user_group_id: groupId || null, user_id: userId || null, saved, removed });
+        res.json({ success: true, data: { saved, removed } });
+    } catch (error) {
+        res.status(500).json({ success: false, error: error.message });
+    }
+});
+
 router.delete('/entry-field-controls/:id', requireAuth, loadUserPermissions, requirePermission('security', 'edit'), async (req, res) => {
     try {
         const tenantId = req.auth.tenantId;
@@ -142,3 +233,4 @@ router.delete('/entry-field-controls/:id', requireAuth, loadUserPermissions, req
 });
 
 module.exports = router;
+module.exports.VOUCHER_TYPES = VOUCHER_TYPES;

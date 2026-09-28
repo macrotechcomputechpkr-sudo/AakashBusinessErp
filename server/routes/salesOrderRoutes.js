@@ -6,6 +6,7 @@
 // =============================================
 
 const express = require('express');
+const { cleanLineTerms, exciseOf } = require('../utils/lineTerms');
 const { checkAccountPurposes } = require('../utils/ledgerPurpose');
 const { bumpAltCounter, moveSourceProgress } = require('../utils/progressCounters');
 const { checkCompulsoryFields, lockProtectedFields } = require('../utils/entryFieldRules');
@@ -16,7 +17,7 @@ const { getTenantClient, loadUserPermissions, logAudit } = require('../utils/dbH
 const { requireAuth, requirePermission } = require('../middleware/auth');
 const { resolveDocumentNumber } = require('../utils/documentNumbering');
 const { checkCustomerCredit } = require('../utils/creditControl');
-const { toBaseQtyFromDual, computeDualAmount, getDualUomMode } = require('../utils/dualUomCalculation');
+const { toBaseQtyFromDual, computeDualAmount, getDualUomMode, rateBasisFor } = require('../utils/dualUomCalculation');
 
 async function getDualUomConfig(tenantClient, productId) {
     const { data: product } = await tenantClient.from('products').select('uom_mode, dual_uom_primary_unit_id').eq('id', productId).maybeSingle();
@@ -76,14 +77,14 @@ async function lineAmount(tenantClient, d) {
     let gross;
     if (d.alt_qty) {
         const dualConfig = await getDualUomConfig(tenantClient, d.product_id);
-        gross = dualConfig ? computeDualAmount(d.qty, d.alt_qty, d.rate, d.rate_basis || 'primary', dualConfig.conversionFactor, await getDualUomMode(tenantClient)) : Number(d.qty) * Number(d.rate);
+        gross = dualConfig ? computeDualAmount(d.qty, d.alt_qty, d.rate, await rateBasisFor(tenantClient, d.product_id, d.rate_basis), dualConfig.conversionFactor, await getDualUomMode(tenantClient, d.product_id)) : Number(d.qty) * Number(d.rate);
     } else {
         gross = Number(d.qty) * Number(d.rate);
     }
     const discountAmount = d.discount_amount ? Number(d.discount_amount) : gross * (Number(d.discount_percent) || 0) / 100;
     const afterDiscount = gross - discountAmount;
     const taxAmount = d.tax_amount ? Number(d.tax_amount) : afterDiscount * (Number(d.tax_percent) || 0) / 100;
-    return { discountAmount, taxAmount, amount: afterDiscount + taxAmount };
+    return { discountAmount, taxAmount, amount: afterDiscount + exciseOf(d) + taxAmount };
 }
 
 async function syncDetails(tenantClient, tenantId, orderId, details) {
@@ -98,7 +99,7 @@ async function syncDetails(tenantClient, tenantId, orderId, details) {
             alt_qty: d.alt_qty || null, alt_unit_id: d.alt_unit_id || null, alt1_qty: d.alt1_qty || null, alt1_unit_id: d.alt1_unit_id || null,
             rate_basis: d.rate_basis || 'primary', free_alt_qty: d.free_alt_qty || 0,
             rate: Number(d.rate) || 0, amount, discount_percent: d.discount_percent || 0, discount_amount: discountAmount,
-            tax_percent: d.tax_percent || 0, tax_amount: taxAmount, free_qty: d.free_qty || 0, free_uom_id: d.free_uom_id || null,
+            tax_percent: d.tax_percent || 0, tax_amount: taxAmount, excise_amount: exciseOf(d), line_terms: cleanLineTerms(d.line_terms), free_qty: d.free_qty || 0, free_uom_id: d.free_uom_id || null,
             warehouse_id: d.warehouse_id || null, batch_no: d.batch_no || null, barcode: d.barcode || null,
             serial_no: d.serial_no || null, mfg_date: d.mfg_date || null, exp_date: d.exp_date || null,
             source_quotation_detail_id: d.source_quotation_detail_id || null,

@@ -12,15 +12,16 @@ const { getTenantClient, loadUserPermissions, logAudit } = require('../utils/dbH
 const { requireAuth, requirePermission } = require('../middleware/auth');
 const { resolveDocumentNumber } = require('../utils/documentNumbering');
 const { evaluateAllTerms } = require('../utils/formulaEvaluator');
+const { effectiveInput, applyInput } = require('../utils/termInput');
 const { toBaseUnitQty } = require('../utils/unitConversion');
-const { toBaseQtyFromDual, computeDualAmount, getDualUomMode } = require('../utils/dualUomCalculation');
+const { toBaseQtyFromDual, computeDualAmount, getDualUomMode, rateBasisFor } = require('../utils/dualUomCalculation');
 
 async function resolveDualAwareBaseQty(tenantClient, productId, qty, uomId, altQty, rateBasis) {
     if (altQty) {
         const { data: product } = await tenantClient.from('products').select('uom_mode, dual_uom_primary_unit_id').eq('id', productId).maybeSingle();
         if (product?.uom_mode === 'fixed_dual') {
             const { data: unitRate } = await tenantClient.from('product_unit_rates').select('conversion_factor').eq('product_id', productId).eq('unit_id', product.dual_uom_primary_unit_id).maybeSingle();
-            return toBaseQtyFromDual(qty, altQty, Number(unitRate?.conversion_factor) || 1, await getDualUomMode(tenantClient));
+            return toBaseQtyFromDual(qty, altQty, Number(unitRate?.conversion_factor) || 1, await getDualUomMode(tenantClient, productId));
         }
     }
     return toBaseUnitQty(tenantClient, productId, qty, uomId);
@@ -95,7 +96,7 @@ async function syncLines(tenantClient, tenantId, productionId, rawMaterials, byp
                 const { data: product } = await tenantClient.from('products').select('uom_mode, dual_uom_primary_unit_id').eq('id', r.product_id).maybeSingle();
                 if (product?.uom_mode === 'fixed_dual') {
                     const { data: unitRate } = await tenantClient.from('product_unit_rates').select('conversion_factor').eq('product_id', r.product_id).eq('unit_id', product.dual_uom_primary_unit_id).maybeSingle();
-                    baseAmount = computeDualAmount(r.qty, r.alt_qty, r.cost_rate, r.rate_basis || 'primary', Number(unitRate?.conversion_factor) || 1, await getDualUomMode(tenantClient));
+                    baseAmount = computeDualAmount(r.qty, r.alt_qty, r.cost_rate, await rateBasisFor(tenantClient, r.product_id, r.rate_basis), Number(unitRate?.conversion_factor) || 1, await getDualUomMode(tenantClient, r.product_id));
                 } else {
                     baseAmount = qty * costRate;
                 }
@@ -108,18 +109,20 @@ async function syncLines(tenantClient, tenantId, productionId, rawMaterials, byp
             // amount (which feeds totalRmCost -> joint allocation ->
             // output_unit_cost) but never touches billing_ledger_id or
             // any other GL field the same terms carry for Purchase.
-            const lineTerms = (r.billing_term_ids || []).map(id => termsById[id]).filter(Boolean);
+            // a % / rate x qty / amount typed for a charge on this line (Billing Term > Typed In Entry As)
+            const picked = (r.billing_term_ids || []).filter(id => termsById[id]).map(id => ({ id, input: effectiveInput(termsById[id], (r.term_values || {})[id], null) }));
+            const lineTerms = picked.map(x => applyInput(termsById[x.id], x.input, qty));
             const amount = lineTerms.length > 0 ? evaluateAllTerms(lineTerms, { basic_amount: baseAmount, quantity: qty }).total : baseAmount;
             return {
                 tenant_id: tenantId, production_id: productionId, display_order: i + 1,
                 product_id: r.product_id, batch_no: r.batch_no || null, warehouse_id: r.warehouse_id || null,
                 qty, uom_id: r.uom_id || null, alt_qty: r.alt_qty || null, alt_unit_id: r.alt_unit_id || null, rate_basis: r.rate_basis || 'primary',
                 process_name: r.process_name || null,
-                cost_rate: costRate, amount, _baseAmount: baseAmount, _lineTerms: lineTerms,
+                cost_rate: costRate, amount, _baseAmount: baseAmount, _lineTerms: lineTerms, _inputs: picked.map(x => x.input),
                 ...snapshots
             };
         }));
-        const rowsForInsert = rows.map(({ _baseAmount, _lineTerms, ...row }) => row);
+        const rowsForInsert = rows.map(({ _baseAmount, _lineTerms, _inputs, ...row }) => row);
         const { data: insertedRows, error } = await tenantClient.from('production_raw_materials').insert(rowsForInsert).select('id, display_order').order('display_order');
         if (error) throw error;
         totalRmCost = rows.reduce((s, r) => s + Number(r.amount), 0);
@@ -132,7 +135,8 @@ async function syncLines(tenantClient, tenantId, productionId, rawMaterials, byp
             if (r._lineTerms.length === 0) return;
             const { lines } = evaluateAllTerms(r._lineTerms, { basic_amount: r._baseAmount, quantity: r.qty });
             r._lineTerms.forEach((term, ti) => {
-                termRows.push({ tenant_id: tenantId, document_type: 'production', document_id: productionId, detail_id: insertedRows[i]?.id, billing_term_id: term.id, computed_amount: lines[ti]?.amount ?? 0 });
+                termRows.push({ tenant_id: tenantId, document_type: 'production', document_id: productionId, detail_id: insertedRows[i]?.id, billing_term_id: term.id, computed_amount: lines[ti]?.amount ?? 0,
+                    input_kind: r._inputs[ti] ? r._inputs[ti].kind : null, input_value: r._inputs[ti] ? r._inputs[ti].value : null });
             });
         });
         if (termRows.length > 0) {
@@ -165,7 +169,7 @@ async function syncLines(tenantClient, tenantId, productionId, rawMaterials, byp
                 const { data: bpProduct } = await tenantClient.from('products').select('uom_mode, dual_uom_primary_unit_id').eq('id', bp.product_id).maybeSingle();
                 if (bpProduct?.uom_mode === 'fixed_dual') {
                     const { data: bpUnitRate } = await tenantClient.from('product_unit_rates').select('conversion_factor').eq('product_id', bp.product_id).eq('unit_id', bpProduct.dual_uom_primary_unit_id).maybeSingle();
-                    amount = computeDualAmount(bp.qty, bp.alt_qty, bp.recovery_rate, bp.rate_basis || 'primary', Number(bpUnitRate?.conversion_factor) || 1, await getDualUomMode(tenantClient));
+                    amount = computeDualAmount(bp.qty, bp.alt_qty, bp.recovery_rate, await rateBasisFor(tenantClient, bp.product_id, bp.rate_basis), Number(bpUnitRate?.conversion_factor) || 1, await getDualUomMode(tenantClient, bp.product_id));
                 } else {
                     amount = bp.qty * bp.recovery_rate;
                 }
@@ -236,7 +240,14 @@ router.get('/production-orders/:id', requireAuth, loadUserPermissions, requirePe
         if (error) return res.status(404).json({ success: false, error: 'Production Order not found' });
         const { data: rawMaterials } = await tenantClient.from('production_raw_materials').select('*').eq('production_id', req.params.id).order('display_order');
         const { data: byproducts } = await tenantClient.from('production_byproducts').select('*').eq('production_id', req.params.id).order('display_order');
-        data.raw_materials = rawMaterials || [];
+        // each raw material line's charges and what was typed for them
+        const { data: lineTerms } = await tenantClient.from('document_line_billing_terms').select('detail_id, billing_term_id, input_kind, input_value')
+            .eq('tenant_id', req.auth.tenantId).eq('document_type', 'production').eq('document_id', req.params.id);
+        data.raw_materials = (rawMaterials || []).map(r => ({
+            ...r,
+            billing_term_ids: (lineTerms || []).filter(lt => lt.detail_id === r.id).map(lt => lt.billing_term_id),
+            term_values: Object.fromEntries((lineTerms || []).filter(lt => lt.detail_id === r.id && lt.input_kind).map(lt => [lt.billing_term_id, { kind: lt.input_kind, value: Number(lt.input_value) }]))
+        }));
         data.byproducts = byproducts || [];
         res.json({ success: true, data });
     } catch (error) {

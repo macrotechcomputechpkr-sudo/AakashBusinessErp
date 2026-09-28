@@ -11,7 +11,7 @@
 // pending value = line amount x pending / total. Counters are current, so
 // "pending" is as of today even when an earlier as-on date is asked.
 // =============================================
-const { toBaseQtyFromDual, getDualUomMode } = require('./dualUomCalculation');
+const { toBaseQtyFromDual, getDualUomResolver } = require('./dualUomCalculation');
 
 const round2 = n => Math.round((Number(n) || 0) * 100) / 100;
 const round4 = n => Math.round((Number(n) || 0) * 10000) / 10000;
@@ -67,13 +67,13 @@ async function pendingDocuments(c, t, stageKey, opts = {}) {
         const rates = await inChunks(duals.map(p => p.id), async ids => { const { data } = await c.from('product_unit_rates').select('product_id, unit_id, conversion_factor').in('product_id', ids); return data || []; });
         duals.forEach(p => { factorOf[p.id] = Number(rates.find(r => r.product_id === p.id && r.unit_id === p.dual_uom_primary_unit_id)?.conversion_factor) || 1; });
     }
-    const dualMode = Object.keys(factorOf).length ? await getDualUomMode(c) : 'fixed';
+    const dualModeOf = await getDualUomResolver(c);
     const byHeader = {};
     details.forEach(d => {
         const qty = Number(d.qty) || 0, done = Number(d[s.done]) || 0, amount = Number(d.amount) || 0;
         let total, pending;
         const f = factorOf[d.product_id];
-        if (f) { total = toBaseQtyFromDual(qty, d.alt_qty, f, dualMode); pending = Math.max(0, total - toBaseQtyFromDual(done, d[`alt_${s.done}`], f, dualMode)); }
+        if (f) { total = toBaseQtyFromDual(qty, d.alt_qty, f, dualModeOf(d.product_id)); pending = Math.max(0, total - toBaseQtyFromDual(done, d[`alt_${s.done}`], f, dualModeOf(d.product_id))); }
         else { total = qty; pending = Math.max(0, qty - done); }
         if (pending <= 0.00005) return;
         const value = total ? amount * pending / total : 0;

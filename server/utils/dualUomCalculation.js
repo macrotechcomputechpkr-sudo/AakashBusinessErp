@@ -6,7 +6,7 @@
 // the entered rate assignable to either unit.
 // =============================================
 
-// mode (System Control "dual_uom_mode"):
+// mode (System Control "dual_uom_mode", or the product's own dual_auto_convert):
 //   'fixed'        - Primary + Secondary are ADDITIVE (5 CRT + 3 PCS), secondary < factor.
 //   'auto_convert' - Flexible: the Secondary field holds the TOTAL in the
 //                    secondary unit (typing 5 CRT mirrors 25 PCS; typing 27 PCS
@@ -35,18 +35,48 @@ function decomposeToDualDisplay(baseQty, conversionFactor) {
     return { primary: Math.floor(qty / factor), secondary: qty % factor };
 }
 
-// Tenant's dual-UOM entry mode, cached briefly (called once per line).
+// Tenant's dual-UOM entry mode (System Control), cached briefly (called once per line).
+// A product can override it (Product Master: dual_auto_convert yes / no; null = System Control).
 const modeCache = new Map();
-async function getDualUomMode(tenantClient) {
+async function tenantDualState(tenantClient) {
     const { tenantIdOfClient } = require('./dbHelpers');
     const tenantId = tenantIdOfClient(tenantClient);
-    if (!tenantId) return 'fixed';
+    if (!tenantId) return { mode: 'fixed', overrides: new Map() };
     const hit = modeCache.get(tenantId);
-    if (hit && Date.now() - hit.at < 30000) return hit.mode;
+    if (hit && Date.now() - hit.at < 30000) return hit;
     const { data } = await tenantClient.from('system_control_settings').select('dual_uom_mode').eq('tenant_id', tenantId).maybeSingle();
     const mode = data?.dual_uom_mode === 'auto_convert' ? 'auto_convert' : 'fixed';
-    modeCache.set(tenantId, { mode, at: Date.now() });
-    return mode;
+    const overrides = new Map();
+    try {
+        const { data: prods } = await tenantClient.from('products').select('id, dual_auto_convert').eq('tenant_id', tenantId).eq('uom_mode', 'fixed_dual');
+        (prods || []).forEach(p => { if (p.dual_auto_convert === true || p.dual_auto_convert === false) overrides.set(p.id, p.dual_auto_convert ? 'auto_convert' : 'fixed'); });
+    } catch { /* column not there yet: System Control only */ }
+    // Product Master "Rate per": a Fixed Dual item priced per its primary or secondary unit always
+    const bases = new Map();
+    try {
+        const { data: prods } = await tenantClient.from('products').select('id, dual_rate_basis').eq('tenant_id', tenantId).eq('uom_mode', 'fixed_dual');
+        (prods || []).forEach(p => { if (p.dual_rate_basis === 'primary' || p.dual_rate_basis === 'secondary') bases.set(p.id, p.dual_rate_basis); });
+    } catch { /* column not there yet: per line */ }
+    const state = { mode, overrides, bases, at: Date.now() };
+    modeCache.set(tenantId, state);
+    return state;
+}
+/** entry mode of one product (its own setting, else System Control's) */
+async function getDualUomMode(tenantClient, productId) {
+    const st = await tenantDualState(tenantClient);
+    return (productId && st.overrides.get(productId)) || st.mode;
+}
+/** productId => mode, for loops over many lines */
+async function getDualUomResolver(tenantClient) {
+    const st = await tenantDualState(tenantClient);
+    return productId => (productId && st.overrides.get(productId)) || st.mode;
+}
+const clearDualUomCache = () => modeCache.clear();
+
+/** the rate basis of a line: the product's fixed one (Product Master "Rate per"), else the line's own choice */
+async function rateBasisFor(tenantClient, productId, lineBasis) {
+    const st = await tenantDualState(tenantClient);
+    return (productId && st.bases && st.bases.get(productId)) || (lineBasis === 'secondary' ? 'secondary' : 'primary');
 }
 
-module.exports = { toBaseQtyFromDual, computeDualAmount, decomposeToDualDisplay, getDualUomMode };
+module.exports = { rateBasisFor, toBaseQtyFromDual, computeDualAmount, decomposeToDualDisplay, getDualUomMode, getDualUomResolver, clearDualUomCache };

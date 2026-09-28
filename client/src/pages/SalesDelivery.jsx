@@ -14,12 +14,23 @@ import ReportGrid from '../components/ReportGrid';
 import Layout from '../components/Layout';
 import { useEnterKeyNavigation } from '../hooks/useEnterKeyNavigation';
 import { formatDateForDisplay } from '../utils/nepaliDateUtils';
-import BatchSerialPicker from '../components/BatchSerialPicker';
 import NumberingCategorySelector from '../components/NumberingCategorySelector';
-import { resolveDualUomEntryMode, onPrimaryQtyChange, onSecondaryQtyChange, validateFixedSecondary, dualBaseQty } from '../utils/dualUomEntryMode';
+import { resolveDualUomEntryMode, dualBaseQty, productDualMode, productRateBasis } from '../utils/dualUomEntryMode';
 import UdfValuesModal from '../components/UdfValuesModal';
 import RecordHistory from '../components/RecordHistory';
 import { priceUrl, lineUnitOf, useSlabRepricing } from '../utils/salesPricing';
+import RateTypeField, { useEntryRateType } from '../components/entry/RateTypeField';
+import useEntrySettings, { showsProductTerms } from '../components/entry/useEntrySettings';
+import DocNumberField from '../components/entry/DocNumberField';
+import PendingDocsPanel, { mergePulled } from '../components/entry/PendingDocsPanel';
+import { PartyDetailsPanel, emptyPartyInfo, savePartyInfo, partyInfoFromDoc } from '../components/entry/PartyFooterTabs';
+import SalesLineGrid, { useLineGridControl, lineTotals } from '../components/entry/SalesLineGrid';
+import { EntryFooter, useEntryHotkeys, latestOf } from '../components/entry/EntryParts';
+
+import { dualHelpers } from '../components/entry/dualHelpers';
+import DocActions, { asNewCopy, finalizeEntry } from '../components/entry/DocActions';
+import EntryFillBar from '../components/entry/EntryFillBar';
+import { saveEntryDraft, finishEntryDraft } from '../components/entry/entryDrafts';
 
 const emptyDetailRow = () => ({ product_id: '', qty: '', uom_id: '', alt_qty: '', alt_unit_id: '', rate_basis: 'primary', rate: '', warehouse_id: '', batch_no: '', serial_no: '', mfg_date: '', exp_date: '', source_order_detail_id: '' });
 
@@ -35,8 +46,19 @@ const emptyForm = {
 const EFC_RENDERED_KEYS = ['customer_ledger_id', 'delivery_address', 'doc_date', 'driver_name', 'narration', 'vehicle_no', 'warehouse_id'];
 
 export default function SalesDelivery() {
+    const [dualUomEntryMode, setDualUomEntryMode] = useState({ mode: 'fixed', reverseEnabled: false });
+    // a product's own dual-UOM entry mode (Product Master) over System Control's
+    const dualModeOf = pid => productDualMode(products.find(p => p.id === pid), dualUomEntryMode);
     const { authFetch } = useAuth();
     const efc = useEntryFieldControls('sales_delivery', EFC_RENDERED_KEYS);
+    const settings = useEntrySettings();
+    // System Control: does this entry show item charges? (else only the Charges Summary)
+    const itemCharges = showsProductTerms(settings, 'sales_delivery');
+    const termCols = [];
+    const popupTerms = !!settings?.popupTerms?.includes('sales');
+    const [partyInfo, setPartyInfo] = useState(emptyPartyInfo());
+    const [pulledDocs, setPulledDocs] = useState([]);
+
     const [rows, setRows] = useState([]);
     const [showForm, setShowForm] = useState(false);
     const [form, setForm] = useState(emptyForm);
@@ -59,7 +81,6 @@ export default function SalesDelivery() {
     const [areas, setAreas] = useState([]);
     const [routes, setRoutes] = useState([]);
     const [remarks, setRemarks] = useState([]);
-    const [dualUomEntryMode, setDualUomEntryMode] = useState({ mode: 'fixed', reverseEnabled: false });
     const [historyModal, setHistoryModal] = useState(null);
     const openProductHistory = async (productId) => {
         if (!form.customer_ledger_id || !productId) return showAlert('Select Customer and Product first', 'danger');
@@ -120,15 +141,28 @@ export default function SalesDelivery() {
     }, [authFetch]);
     useEffect(() => { load(); }, [load]);
 
-    const resetForm = () => { setForm(emptyForm); setEditingId(null); };
+    const resetForm = () => { setForm(emptyForm); setEditingId(null); setPartyInfo(emptyPartyInfo()); setPulledDocs([]); };
     const addDetailRow = () => setForm(f => ({ ...f, details: [...f.details, emptyDetailRow()] }));
     const removeDetailRow = (idx) => setForm(f => ({ ...f, details: f.details.length > 1 ? f.details.filter((_, i) => i !== idx) : f.details }));
     const setDetailRow = (idx, patch) => setForm(f => ({ ...f, details: f.details.map((d, i) => i === idx ? { ...d, ...patch } : d) }));
     // qty / value slab discounts: re-price the line when its qty or unit changes
     const reprice = useSlabRepricing(authFetch, form, setDetailRow, { withDiscount: false });
     const updateDetailRow = (idx, patch) => { setDetailRow(idx, patch); reprice.onChange(idx, patch); };
-    const productMaintainsBatch = (productId) => !!products.find(p => p.id === productId)?.maintain_batch;
-    const productTracksSerial = (productId) => !!products.find(p => p.id === productId)?.track_serial_number;
+    // Rate Type (Sr1-Sr5): the customer's by default; picking another prices every line again at it
+    const rateType = useEntryRateType(authFetch, form.customer_ledger_id);
+    const onRateTypeChanged = async (tier) => {
+        const caption = rateType.captionOf(tier);
+        if (tier !== rateType.customerTier) showAlert(`Rate type is now ${caption} - different from this customer's (${rateType.captionOf(rateType.customerTier)}). Line rates are taken again at ${caption}.`, 'warning');
+        else showAlert(`Rate type back to the customer's (${caption}); line rates taken again.`, 'info');
+        if (!form.customer_ledger_id) return;
+        const lines = form.details.map((d, idx) => ({ d, idx })).filter(x => x.d.product_id);
+        for (const { d, idx } of lines) {
+            try {
+                const res = await authFetch(priceUrl(form.customer_ledger_id, d.product_id, { sr_tier: tier !== rateType.customerTier ? tier : undefined, unit_id: d.uom_id, qty: d.qty }));
+                setDetailRow(idx, { rate: res.data.rate });
+            } catch { /* keep the line's rate */ }
+        }
+    };
     const productIsFixedDualUom = (productId) => products.find(p => p.id === productId)?.uom_mode === 'fixed_dual';
     const dualConversionFactor = (productId) => {
         const product = products.find(p => p.id === productId);
@@ -136,19 +170,19 @@ export default function SalesDelivery() {
         return Number(rate?.conversion_factor) || 1;
     };
 
-    const handleProductSelect = async (idx, productId) => {
+    const handleProductSelect = async (idx, productId, unitId) => {
         const product = products.find(p => p.id === productId);
         if (product?.uom_mode === 'fixed_dual') {
-            updateDetailRow(idx, { product_id: productId, uom_id: product.dual_uom_primary_unit_id || '', alt_unit_id: product.base_unit_id || '', rate_basis: 'primary', rate: product?.sales_rate_sr1 || 0 });
+            updateDetailRow(idx, { product_id: productId, uom_id: product.dual_uom_primary_unit_id || '', alt_unit_id: product.base_unit_id || '', rate_basis: productRateBasis(product), rate: product?.sales_rate_sr1 || 0 });
         } else {
-            updateDetailRow(idx, { product_id: productId, uom_id: product?.base_unit_id || '', rate: product?.sales_rate_sr1 || 0 });
+            updateDetailRow(idx, { product_id: productId, uom_id: unitId || product?.base_unit_id || '', rate: product?.sales_rate_sr1 || 0 });
         }
         // FIX: use the customer's Rate Category (SR1..SR5) like Sales Bill /
         // Order / Quotation do - the challan used to always show SR1.
         // (Delivery lines carry no discount column, so only the rate applies.)
         if (!form.customer_ledger_id || !productId) return;
         try {
-            const res = await authFetch(priceUrl(form.customer_ledger_id, productId, { unit_id: lineUnitOf(product), qty: form.details[idx]?.qty, payment_term: form.payment_term }));
+            const res = await authFetch(priceUrl(form.customer_ledger_id, productId, { sr_tier: rateType.srTier, unit_id: lineUnitOf(product), qty: form.details[idx]?.qty, payment_term: form.payment_term }));
             if (res?.data && res.data.rate !== undefined) { setDetailRow(idx, { rate: res.data.rate }); reprice.mark(idx, res.data); }
         } catch { /* keep SR1 */ }
     };
@@ -156,12 +190,16 @@ export default function SalesDelivery() {
     const lineAmount = (d) => {
         if (productIsFixedDualUom(d.product_id) && d.alt_qty) {
             const factor = dualConversionFactor(d.product_id);
-            const totalBaseQty = dualBaseQty(d.qty, d.alt_qty, factor, dualUomEntryMode.mode);
+            const totalBaseQty = dualBaseQty(d.qty, d.alt_qty, factor, dualModeOf(d.product_id).mode);
             return d.rate_basis === 'primary' ? (totalBaseQty / factor) * (Number(d.rate) || 0) : totalBaseQty * (Number(d.rate) || 0);
         }
         return (Number(d.qty) || 0) * (Number(d.rate) || 0);
     };
-    const grandTotal = form.details.reduce((sum, d) => sum + lineAmount(d), 0);
+    const lineCtl = useLineGridControl();
+    const lineTot = lineTotals(form.details, lineAmount, termCols, false);
+    const selectedCustomer = customers.find(c => c.id === form.customer_ledger_id);
+    // F7: the last challan as a new one
+    useEntryHotkeys(showForm, { F7: () => { const last = latestOf(rows); if (last) copyAsNew(last); } });
 
     const handlePullFromOrder = async (orderId) => {
         try {
@@ -188,6 +226,10 @@ export default function SalesDelivery() {
     };
 
     const handleSubmit = async (e, saveAsDraft = false) => {
+
+        // Save as Draft (new entry): kept apart as a temporary draft - no number, no accounts / stock effect
+
+        if (saveAsDraft && !editingId) { if (e) e.preventDefault(); if (await saveEntryDraft(authFetch, 'sales_delivery', form)) { resetForm(); setShowForm(false); } return; }
         e.preventDefault();
         if (!saveAsDraft) {
             const missing = efc.missingRequired(form);
@@ -200,15 +242,23 @@ export default function SalesDelivery() {
             if (!form.warehouse_id) return showAlert('Warehouse is required', 'danger');
             if (validDetails.length === 0) return showAlert('At least one complete line item is required', 'danger');
         }
+        let savedId = editingId;
         try {
             const payload = { ...form, details: validDetails, ...(saveAsDraft ? { status: 'draft', save_as_draft: true } : {}) };
+            let postId = null;
             if (editingId) {
                 await authFetch(`/api/sales-deliveries/${editingId}`, { method: 'PUT', body: JSON.stringify(payload) });
+                postId = editingId;
                 showAlert(saveAsDraft ? 'Draft saved' : 'Sales Delivery updated', 'success');
             } else {
-                const res = await authFetch('/api/sales-deliveries', { method: 'POST', body: JSON.stringify(payload) });
+                const res = await authFetch('/api/sales-deliveries', { method: 'POST', body: JSON.stringify(payload) }); savedId = res.data?.id;
+                postId = res.data?.id;
                 showAlert(saveAsDraft ? `Draft ${res.data.doc_no} saved` : `Sales Delivery ${res.data.doc_no} created`, 'success');
             }
+            try { await savePartyInfo(authFetch, 'sales_delivery', savedId, partyInfo); } catch (pe) { showAlert(`Saved, but the party details were not: ${pe.message}`, 'warning'); }
+            // Save (not Save as Draft): post it now, after its party details are stored
+            if (!saveAsDraft) await finalizeEntry(authFetch, 'sales-deliveries', postId, 'posted');
+            await finishEntryDraft(authFetch, 'sales_delivery');
             resetForm();
             setShowForm(false);
             load();
@@ -217,10 +267,12 @@ export default function SalesDelivery() {
         }
     };
 
+    const copyAsNew = async (row) => { await handleEdit(row); setEditingId(null); setForm(f => asNewCopy(f, row.id)); setShowForm(true); };
     const handleEdit = async (row) => {
         try {
             const res = await authFetch(`/api/sales-deliveries/${row.id}`);
             setEditingId(row.id);
+            setPartyInfo(res.data.party_billing_address || res.data.party_pan ? partyInfoFromDoc(res.data, res.data.customer_ledger_id) : emptyPartyInfo());
             setForm({ ...emptyForm, ...res.data, doc_date: res.data.doc_date?.slice(0, 10) || emptyForm.doc_date, details: (res.data.details || []).length > 0 ? res.data.details : [emptyDetailRow()] });
             setShowForm(true);
             window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -251,16 +303,6 @@ export default function SalesDelivery() {
         }
     };
 
-    const handleDeleteDraft = async (row) => {
-        if (!window.confirm(`Delete draft "${row.doc_no}"? This cannot be undone.`)) return;
-        try {
-            await authFetch(`/api/sales-deliveries/${row.id}`, { method: 'DELETE' });
-            showAlert('Draft deleted', 'warning');
-            load();
-        } catch (err) {
-            showAlert(err.message, 'danger');
-        }
-    };
 
     const [udfDoc, setUdfDoc] = useState(null);
 
@@ -298,8 +340,10 @@ export default function SalesDelivery() {
             )}
 
             {showForm && (
-                <form onSubmit={handleSubmit} ref={formRef}>
+                <form onSubmit={handleSubmit} ref={formRef} className="ent-entry">
+                    <EntryFillBar voucherType="sales_delivery" api="sales-deliveries" form={form} editing={!!editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={copyAsNew} />
                     <div className="erp-topbar grid-cols-1 md:grid-cols-4">
+                        <DocNumberField voucherType="sales_delivery" categoryId={form.numbering_category_id} docNo={editingId ? form.doc_no : ''} value={form.doc_no} onChange={v => setForm({ ...form, doc_no: v })} />
                         <div className={efc.isVisible('doc_date') ? 'erp-field' : 'erp-field hidden'}>
                             <label className="erp-label">Date <span className="req">*</span> {form.doc_date && <span className="hint">({formatDateForDisplay(form.doc_date, 'nepali')} BS)</span>} {efc.isRequired('doc_date') && <span className="req">*</span>}</label>
                             <input disabled={efc.isReadonly('doc_date')} type="date" className="erp-input" value={form.doc_date} onChange={e => setForm({ ...form, doc_date: e.target.value })} required />
@@ -315,7 +359,9 @@ export default function SalesDelivery() {
                                 value={form.customer_ledger_id} onChange={id => setForm({ ...form, customer_ledger_id: id })} placeholder="Select Customer"
                             />
                         </div>
+                        <RateTypeField rt={rateType} onChanged={onRateTypeChanged} />
                         <ProductCompanyField side="sales" form={form} setForm={setForm} products={products} emptyRow={emptyDetailRow} />
+                        {settings?.multiWarehouse && (
                         <div className={efc.isVisible('warehouse_id') ? 'erp-field' : 'erp-field hidden'}>
                             <label className="erp-label">Warehouse <span className="req">*</span> {efc.isRequired('warehouse_id') && <span className="req">*</span>}</label>
                             <SearchablePopupSelect
@@ -327,6 +373,7 @@ export default function SalesDelivery() {
                                 value={form.warehouse_id} onChange={id => setForm({ ...form, warehouse_id: id })} placeholder="Select Warehouse"
                             />
                         </div>
+                        )}
                         <div className={efc.isVisible('vehicle_no') ? 'erp-field' : 'erp-field hidden'}>
                             <label className="erp-label">Vehicle No {efc.isRequired('vehicle_no') && <span className="req">*</span>}</label>
                             <input disabled={efc.isReadonly('vehicle_no')} className="erp-input" value={form.vehicle_no} onChange={e => setForm({ ...form, vehicle_no: e.target.value })} />
@@ -335,6 +382,8 @@ export default function SalesDelivery() {
                             <NumberingCategorySelector voucherType="sales_delivery" value={form.numbering_category_id} onChange={id => setForm({ ...form, numbering_category_id: id })} />
                         )}
                     </div>
+
+                    <PendingDocsPanel target="sales_delivery" partyId={form.customer_ledger_id} efc={efc} disabled={!!editingId} pulled={pulledDocs} onPull={data => { setForm(f => mergePulled(f, data, emptyDetailRow)); setPulledDocs(p => [...p, ...data.documents.map(x => x.id)]); showAlert(`Pulled ${data.lines.length} line(s) from ${data.documents.map(x => x.doc_no).join(', ')}`, 'success'); }} />
 
                     <div className="erp-tab-content">
                         {form.source_order_id && (
@@ -426,148 +475,48 @@ export default function SalesDelivery() {
                                     value={form.business_unit_id} onChange={id => setForm({ ...form, business_unit_id: id })} placeholder="Select Unit"
                                 />
                             </div>
-                            <div className="erp-field">
-                                <label className="erp-label">Remarks</label>
-                                <input list="sd-remarks-suggestions" className="erp-input" value={form.remarks_text} onChange={e => setForm({ ...form, remarks_text: e.target.value })} placeholder="Type or pick" />
-                                <datalist id="sd-remarks-suggestions">
-                                    {remarks.map(r => <option key={r.id} value={r.remark_text} />)}
-                                </datalist>
-                            </div>
                             <div className={efc.isVisible('narration') ? 'erp-field' : 'erp-field hidden'}>
                                 <label className="erp-label">Narration {efc.isRequired('narration') && <span className="req">*</span>}</label>
                                 <input disabled={efc.isReadonly('narration')} className="erp-input" value={form.narration} onChange={e => setForm({ ...form, narration: e.target.value })} />
                             </div>
                         </div>
-
-                        <h2 className="font-semibold text-sm text-gray-500 uppercase mb-2">Details</h2>
-                        <div className="overflow-x-auto">
-                            <table className="erp-grid-table min-w-[1200px]">
-                                <thead>
-                                    <tr>
-                                        <th className="w-56">Product</th>
-                                        <th className={`w-24 ${efc.isVisible('qty', 'detail') ? '' : 'hidden'}`}>Qty</th>
-                                        <th className="w-28">UOM</th>
-                                        <th className="w-24">Rate</th>
-                                        <th className="w-24">Amount</th>
-                                        <th className="w-40">Warehouse Override</th>
-                                        <th className="w-40">Batch/Serial</th>
-                                        <th></th>
-                                    </tr>
-                                </thead>
-                                <tbody>
-                                    {form.details.map((d, idx) => (
-                                        <tr key={idx}>
-                                            <td onKeyDown={e => handleProductRowKeyDown(e, d.product_id)}>
-                                                <div className="flex items-center gap-1">
-                                                    <div className="flex-1">
-                                                        <SearchablePopupSelect
-                                                            listKey="sd_product_picker"
-                                                            columns={[{ key: 'product_code', label: 'Code' }, { key: 'product_name', label: 'Name' }]}
-                                                            defaultVisibleKeys={['product_name']}
-                                                            items={filterProductsByCompany(products, form.product_company_id)} getId={p => p.id} getLabel={p => p.product_name}
-                                                            searchKeys={['product_name', 'product_code']}
-                                                            value={d.product_id} onChange={id => handleProductSelect(idx, id)} placeholder="Product"
-                                                        />
-                                                    </div>
-                                                    <button type="button" tabIndex={-1} onClick={() => openProductHistory(d.product_id)} title="Sales History (F1)" className="text-gray-400 hover:text-blue-600 text-sm px-1">🕐</button>
-                                                </div>
-                                            </td>
-                                            <td className={efc.isVisible('qty', 'detail') ? '' : 'hidden'}>
-                                                {productIsFixedDualUom(d.product_id) ? (
-                                                    <div className="flex flex-col gap-1">
-                                                        <div className="flex items-center gap-1">
-                                                            <input disabled={efc.isReadonly('qty', 'detail')}
-                                                                type="number" step="0.0001" className="erp-input" style={{ width: '60px' }} value={d.qty}
-                                                                onChange={e => updateDetailRow(idx, dualUomEntryMode.mode === 'auto_convert' ? onPrimaryQtyChange(e.target.value, dualConversionFactor(d.product_id)) : { qty: e.target.value })}
-                                                            />
-                                                            <span className="text-[10px] text-gray-400">{units.find(u => u.id === d.uom_id)?.unit_name || 'Primary'}</span>
-                                                        </div>
-                                                        <div className="flex items-center gap-1">
-                                                            <input
-                                                                type="number" step="0.0001" className="erp-input" style={{ width: '60px' }} value={d.alt_qty} placeholder="0"
-                                                                onChange={e => {
-                                                                    if (dualUomEntryMode.mode === 'auto_convert') {
-                                                                        updateDetailRow(idx, onSecondaryQtyChange(e.target.value, dualConversionFactor(d.product_id), dualUomEntryMode.reverseEnabled));
-                                                                    } else {
-                                                                        const { value } = validateFixedSecondary(e.target.value, dualConversionFactor(d.product_id));
-                                                                        updateDetailRow(idx, { alt_qty: value });
-                                                                    }
-                                                                }}
-                                                            />
-                                                            <span className="text-[10px] text-gray-400">{units.find(u => u.id === d.alt_unit_id)?.unit_name || 'Secondary'}</span>
-                                                        </div>
-                                                        {dualUomEntryMode.mode !== 'auto_convert' && validateFixedSecondary(d.alt_qty, dualConversionFactor(d.product_id)).error && (
-                                                            <span className="text-[9px] text-red-500 leading-tight">{validateFixedSecondary(d.alt_qty, dualConversionFactor(d.product_id)).error}</span>
-                                                        )}
-                                                    </div>
-                                                ) : (
-                                                    <input disabled={efc.isReadonly('qty', 'detail')} type="number" step="0.0001" className="erp-input" value={d.qty} onChange={e => updateDetailRow(idx, { qty: e.target.value })} />
-                                                )}
-                                            </td>
-                                            <td>
-                                                {productIsFixedDualUom(d.product_id) ? (
-                                                    <span className="text-xs text-gray-400">{units.find(u => u.id === d.uom_id)?.unit_name}/{units.find(u => u.id === d.alt_unit_id)?.unit_name}</span>
-                                                ) : (
-                                                    <select className="erp-select" value={d.uom_id} onChange={e => updateDetailRow(idx, { uom_id: e.target.value })}>
-                                                        <option value="">UOM</option>
-                                                        {units.map(u => <option key={u.id} value={u.id}>{u.unit_name}</option>)}
-                                                    </select>
-                                                )}
-                                            </td>
-                                            <td>
-                                                <input type="number" step="0.01" className="erp-input" value={d.rate} onChange={e => updateDetailRow(idx, { rate: e.target.value })} />
-                                                {productIsFixedDualUom(d.product_id) && (
-                                                    <select className="erp-select mt-1" style={{ fontSize: '10px', height: '22px' }} value={d.rate_basis} onChange={e => updateDetailRow(idx, { rate_basis: e.target.value })}>
-                                                        <option value="primary">per {units.find(u => u.id === d.uom_id)?.unit_name || 'Primary'}</option>
-                                                        <option value="secondary">per {units.find(u => u.id === d.alt_unit_id)?.unit_name || 'Secondary'}</option>
-                                                    </select>
-                                                )}
-                                            </td>
-                                            <td className="text-gray-500">{lineAmount(d).toFixed(2)}</td>
-                                            <td>
-                                                <select className="erp-select" value={d.warehouse_id} onChange={e => updateDetailRow(idx, { warehouse_id: e.target.value })}>
-                                                    <option value="">(document default)</option>
-                                                    {warehouses.map(w => <option key={w.id} value={w.id}>{w.warehouse_name}</option>)}
-                                                </select>
-                                            </td>
-                                            <td>
-                                                {productTracksSerial(d.product_id) ? (
-                                                    <div className="flex items-center gap-1">
-                                                        <input className="erp-input" value={d.serial_no} onChange={e => updateDetailRow(idx, { serial_no: e.target.value })} placeholder="Serial No" />
-                                                        <BatchSerialPicker mode="serial" productId={d.product_id} onSelect={sel => updateDetailRow(idx, sel)} />
-                                                    </div>
-                                                ) : productMaintainsBatch(d.product_id) ? (
-                                                    <div>
-                                                        <div className="flex items-center gap-1">
-                                                            <input disabled={efc.isReadonly('batch_no', 'detail')} className="erp-input" value={d.batch_no} onChange={e => updateDetailRow(idx, { batch_no: e.target.value })} placeholder="Batch" />
-                                                            <BatchSerialPicker mode="batch" productId={d.product_id} warehouseId={d.warehouse_id || form.warehouse_id} onSelect={sel => updateDetailRow(idx, sel)} />
-                                                        </div>
-                                                        {(d.mfg_date || d.exp_date) && (
-                                                            <p className="text-[10px] text-gray-400 mt-0.5">Mfg: {d.mfg_date || '—'} · Exp: {d.exp_date || '—'}</p>
-                                                        )}
-                                                    </div>
-                                                ) : <span className="text-gray-300 text-xs">—</span>}
-                                            </td>
-                                            <td><button type="button" tabIndex={-1} onClick={() => removeDetailRow(idx)} className="text-red-500 text-xs">✕</button></td>
-                                        </tr>
-                                    ))}
-                                </tbody>
-                            </table>
-                        </div>
-                        <div className="flex justify-between items-center mt-2">
-                            <button type="button" onClick={addDetailRow} className="text-xs text-blue-600">➕ Add Line</button>
-                            <span className="text-sm font-semibold">Total: {grandTotal.toFixed(2)}</span>
-                        </div>
+                        <SalesLineGrid itemCharges={itemCharges}
+                            listKey="sd" title="Sales Delivery" ctl={lineCtl} details={form.details} onRow={updateDetailRow} onRemove={removeDetailRow} onAdd={addDetailRow}
+                            products={filterProductsByCompany(products, form.product_company_id)} allProducts={products} units={units} warehouses={warehouses}
+                            settings={settings} termCols={termCols} popupTerms={popupTerms} efc={efc} onProductSelect={handleProductSelect}
+                            docWarehouseId={form.warehouse_id}
+                            features={{ free: false, batch: true, expiry: true, terms: false }} dual={dualHelpers(products, dualUomEntryMode).dual} lineGross={dualHelpers(products, dualUomEntryMode).lineGross} onProductKeyDown={handleProductRowKeyDown}
+                        />
                     </div>
 
-                    <div className="erp-bottombar">
-                        <div />
-                        <div className="erp-bottombar-actions">
-                            <button type="button" onClick={() => { resetForm(); setShowForm(false); }} className="erp-btn">Cancel</button>
+                    <EntryFooter
+
+                        title="Sales Delivery"
+
+                        warehouseName={settings?.multiWarehouse ? (warehouses.find(w => w.id === form.warehouse_id)?.warehouse_name || '') : undefined}
+
+                        totals={{ gross: lineTot.gross, billTerm: lineTot.term, net: lineTot.amount, taxable: lineTot.taxable, tax: lineTot.tax, nonTaxable: lineTot.nonTaxable }}
+
+                        party={{ label: 'Customer', name: selectedCustomer?.account_name, creditLimit: selectedCustomer?.credit_limit }}
+
+                        remarks={{ value: form.remarks_text, onChange: v => setForm(f => ({ ...f, remarks_text: v })), options: remarks.map(r => r.remark_text) }}
+
+                        onProductTerm={null} onBillTerm={false ? lineCtl.openOverall : null}
+
+                        panels={[{ key: 'billing', label: 'Party & Tax Info', content: <PartyDetailsPanel partyId={form.customer_ledger_id} partyLabel="Customer" info={partyInfo} onChange={setPartyInfo} /> }]}
+
+                        actions={<>
+
+
                             <button type="button" onClick={e => handleSubmit(e, true)} className="erp-btn">💾 Save as Draft</button>
-                            <button type="submit" className="erp-btn primary">{editingId ? 'Update' : 'Create'}</button>
-                        </div>
-                    </div>
+
+                            <button type="submit" className="erp-btn primary">💾 {editingId ? 'Update' : 'Save'}</button>
+
+                            <button type="button" onClick={() => { resetForm(); setShowForm(false); }} className="erp-btn">Cancel</button>
+
+                        </>}
+
+                    />
                 </form>
             )}
         </div>
@@ -576,7 +525,7 @@ export default function SalesDelivery() {
             <div className="flex items-center gap-2 mb-2">
                 <label className="flex items-center gap-1.5 text-sm">
                     <input type="checkbox" checked={showDraftsOnly} onChange={e => setShowDraftsOnly(e.target.checked)} />
-                    Show Drafts only
+                    Show unposted (awaiting approval) only
                 </label>
             </div>
             <ReportGrid
@@ -587,12 +536,11 @@ export default function SalesDelivery() {
                 rowActions={(row) => (
                     <div className="flex gap-2 justify-center">
                         {row.status === 'draft' && <button onClick={() => handleEdit(row)} className="px-2 py-1 bg-blue-600 text-white rounded text-xs">Open</button>}
+                        <DocActions type="sales_delivery" api="sales-deliveries" row={row} onOpen={handleEdit} onCopy={copyAsNew} onReverse={r => handleStatusChange(r, 'cancelled')} onDone={load} />
                         {row.status === 'posted' && <a href={`/print/sales_delivery/${row.id}`} target="_blank" rel="noopener noreferrer" className="px-2 py-1 bg-purple-600 text-white rounded text-xs">🖨️ Print</a>}
                         <button onClick={() => openAuditTrail(row)} className="px-2 py-1 bg-gray-500 text-white rounded text-xs">History</button>
                         <button onClick={() => setUdfDoc(row.id)} className="px-2 py-1 bg-indigo-500 text-white rounded text-xs" title="Custom fields (UDF)">UDF</button>{udfDoc === row.id && <UdfValuesModal docType="sales_delivery" docId={row.id} onClose={() => setUdfDoc(null)} />}
                         {row.status === 'draft' && <button onClick={() => handleStatusChange(row, 'posted')} className="px-2 py-1 bg-green-600 text-white rounded text-xs">Post</button>}
-                        {row.status !== 'cancelled' && <button onClick={() => handleStatusChange(row, 'cancelled')} className="px-2 py-1 bg-red-600 text-white rounded text-xs">Cancel</button>}
-                        {row.status === 'draft' && <button onClick={() => handleDeleteDraft(row)} className="px-2 py-1 bg-red-800 text-white rounded text-xs">Delete</button>}
                     </div>
                 )}
             />

@@ -12,6 +12,7 @@ import { useAuth } from '../contexts/AuthContext';
 import { useEnterKeyNavigation } from '../hooks/useEnterKeyNavigation';
 import ReportGrid from '../components/ReportGrid';
 import Layout from '../components/Layout';
+import { APPROVAL_DOCS } from '../components/entry/approvalDocs';
 
 const MODULES = [
     ['dashboard', 'Dashboard'], ['ledger', 'Ledger'], ['product', 'Product'],
@@ -19,11 +20,12 @@ const MODULES = [
     ['invoice', 'Invoice'], ['reports', 'Reports'], ['user_management', 'User Management'],
     ['security_groups', 'Security Groups'], ['company_settings', 'Company Settings'],
     ['tax_settings', 'Tax Settings'], ['ocr_bill', 'OCR Bill'], ['backup', 'Backup'], ['audit_log', 'Audit Log'],
-    ['data_access', 'Data Access (who sees which ledger / product / area)'], ['darta_chalani', 'Darta / Chalani'], ['tasks', 'Tasks (view = see everyone\'s tasks)'], ['poultry', 'Poultry & Hatchery']
+    ['data_access', 'Data Access (who sees which ledger / product / area)'], ['darta_chalani', 'Darta / Chalani'], ['tasks', 'Tasks (view = see everyone\'s tasks)'], ['poultry', 'Poultry & Hatchery'], ['construction', 'Construction (sites / running bills)'], ['automobile', 'Automobile (showroom / workshop)']
 ];
 const ACTIONS = ['view', 'create', 'edit', 'delete', 'print', 'export'];
 
-const emptyPermissions = () => Object.fromEntries(MODULES.map(([key]) => [key, Object.fromEntries(ACTIONS.map(a => [a, false]))]));
+// approvals: which documents this group may approve (System Control > Approval Needed For)
+const emptyPermissions = () => ({ ...Object.fromEntries(MODULES.map(([key]) => [key, Object.fromEntries(ACTIONS.map(a => [a, false]))])), approvals: {} });
 const emptyForm = { group_name: '', group_description: '', permissions: emptyPermissions() };
 
 export default function SecurityGroupManagement() {
@@ -85,6 +87,7 @@ export default function SecurityGroupManagement() {
         setEditingIsSystem(!!row.is_system);
         const mergedPermissions = emptyPermissions();
         MODULES.forEach(([key]) => { if (row.permissions?.[key]) mergedPermissions[key] = { ...mergedPermissions[key], ...row.permissions[key] }; });
+        mergedPermissions.approvals = { ...(row.permissions?.approvals || {}) };
         setForm({ group_name: row.group_name || '', group_description: row.group_description || '', permissions: mergedPermissions });
         setShowForm(true);
         window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -181,6 +184,22 @@ export default function SecurityGroupManagement() {
                                         ))}
                                     </tbody>
                                 </table>
+                            </div>
+
+                            <h2 className="font-semibold text-sm text-gray-500 uppercase mt-4 mb-1">Approvals</h2>
+                            <p className="text-xs text-gray-400 mb-2">Documents users of this group may approve (only for modules ticked in System Control › Approval Needed For; approving posts the document).</p>
+                            <div className="flex flex-wrap gap-x-4 gap-y-1 border rounded-lg px-3 py-2">
+                                {APPROVAL_DOCS.map(([t, label]) => (
+                                    <label key={t} className="flex items-center gap-1.5 text-sm">
+                                        <input type="checkbox" data-enter-skip="true" checked={!!form.permissions.approvals?.[t]}
+                                            onChange={() => setForm(f => ({ ...f, permissions: { ...f.permissions, approvals: { ...(f.permissions.approvals || {}), [t]: !f.permissions.approvals?.[t] } } }))} />
+                                        {label}
+                                    </label>
+                                ))}
+                                <button type="button" tabIndex={-1} className="text-blue-600 text-xs underline ml-auto"
+                                    onClick={() => setForm(f => { const all = APPROVAL_DOCS.every(([t]) => f.permissions.approvals?.[t]); return { ...f, permissions: { ...f.permissions, approvals: all ? {} : Object.fromEntries(APPROVAL_DOCS.map(([t]) => [t, true])) } }; })}>
+                                    {APPROVAL_DOCS.every(([t]) => form.permissions.approvals?.[t]) ? 'Clear' : 'All'}
+                                </button>
                             </div>
                         </div>
                     </fieldset>

@@ -21,7 +21,7 @@
 // Bill-level billing terms (freight, bill discount ...) are not spread
 // over lines; all figures are the lines' own.
 // =============================================
-const { toBaseQtyFromDual, getDualUomMode } = require('./dualUomCalculation');
+const { toBaseQtyFromDual, getDualUomResolver } = require('./dualUomCalculation');
 const { reportScope } = require('./dataAccess');
 
 const round2 = n => Math.round((Number(n) || 0) * 100) / 100;
@@ -120,7 +120,7 @@ const topOf = (id, rows, parentKey) => { let r = rows[id], guard = 0; while (r &
 // Load, normalize and filter the lines. Returns { lines, masters, warnings }.
 async function loadTradeLines(c, t, f, opts = {}) {
     const M = opts.masters || await loadMasters(c, t);
-    const dualMode = await getDualUomMode(c);
+    const dualModeOf = await getDualUomResolver(c);
     const sources = Object.entries(SOURCES).filter(([, s]) => s.side === f.side && f.kinds.includes(s.kind));
     const partyKey = f.side === 'sales' ? 'customer_ledger_id' : 'vendor_ledger_id';
 
@@ -178,7 +178,7 @@ async function loadTradeLines(c, t, f, opts = {}) {
             const dual = p.uom_mode === 'fixed_dual';
             const dualFactor = dual ? M.factor[`${p.id}|${p.dual_uom_primary_unit_id}`] || 1 : 1;
             const unitFactor = d.uom_id ? M.factor[`${p.id}|${d.uom_id}`] || 1 : 1;
-            const baseQty = dual && altQty ? toBaseQtyFromDual(qty, altQty, dualFactor, dualMode) : qty * unitFactor;
+            const baseQty = dual && altQty ? toBaseQtyFromDual(qty, altQty, dualFactor, dualModeOf(p.id)) : qty * unitFactor;
             const freeUnitFactor = d.free_uom_id ? M.factor[`${p.id}|${d.free_uom_id}`] || 1 : unitFactor;
             const freeBase = (Number(d.free_qty) || 0) * freeUnitFactor + (dual ? Number(d.free_alt_qty) || 0 : 0);
             const tax = Number(d.tax_amount) || 0, amount = Number(d.amount) || 0, discount = Number(d.discount_amount) || 0;

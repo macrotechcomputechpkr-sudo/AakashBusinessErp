@@ -12,15 +12,25 @@ function formatFiscalYearPart(fiscalYearName, fyDigitFormat) {
     return fyDigitFormat === 'full' ? digitsOnly : digitsOnly.slice(-4);
 }
 
+// The numbering category an entry uses: the one chosen on the entry, else the
+// default one of the voucher type, else (none marked default) its first active
+// one - so a series set up in Document Numbering applies without ticking Default.
+async function pickCategory(tenantClient, tenantId, voucherType, categoryId) {
+    const base = () => tenantClient.from('document_numbering_categories').select('*').eq('tenant_id', tenantId).eq('voucher_type', voucherType).eq('is_active', true);
+    if (categoryId) return (await base().eq('id', categoryId).maybeSingle()).data || null;
+    const { data: def } = await base().eq('is_default', true).maybeSingle();
+    if (def) return def;
+    const { data: all } = await base();
+    return (all || []).sort((a, b) => String(a.created_at || '').localeCompare(String(b.created_at || '')))[0] || null;
+}
+
 // Returns the final formatted document number string, e.g.
 // "PREQ-8182-000042-A" for prefix=PREQ-, fy=8182, digits=6, suffix=-A.
 // Throws a plain Error with a user-facing message on failure (manual
 // mode with no number supplied, duplicate manual number, or numbering
 // range exhausted) so route handlers can just catch-and-respond.
 async function resolveDocumentNumber(tenantClient, { tenantId, voucherType, userId, categoryId, manualNumber, tableName, currentFiscalYearId, currentFiscalYearName, userDefaultBranchId }) {
-    let query = tenantClient.from('document_numbering_categories').select('*').eq('tenant_id', tenantId).eq('voucher_type', voucherType).eq('is_active', true);
-    query = categoryId ? query.eq('id', categoryId) : query.eq('is_default', true);
-    const { data: category } = await query.maybeSingle();
+    const category = await pickCategory(tenantClient, tenantId, voucherType, categoryId);
 
     // FEATURE: no category configured yet for this voucher type - fall
     // back to the plain 12-char next_master_code() pattern every other
@@ -54,9 +64,7 @@ async function resolveDocumentNumber(tenantClient, { tenantId, voucherType, user
  * numbering category (the plain system series applies), manual = user types it.
  */
 async function previewDocumentNumber(tenantClient, { tenantId, voucherType, userId, categoryId, currentFiscalYearId, currentFiscalYearName, userDefaultBranchId }) {
-    let query = tenantClient.from('document_numbering_categories').select('*').eq('tenant_id', tenantId).eq('voucher_type', voucherType).eq('is_active', true);
-    query = categoryId ? query.eq('id', categoryId) : query.eq('is_default', true);
-    const { data: category } = await query.maybeSingle();
+    const category = await pickCategory(tenantClient, tenantId, voucherType, categoryId);
     if (!category) return { number: null, mode: 'system' };
     if (category.numbering_mode === 'manual') return { number: null, mode: 'manual', category_id: category.id };
     const branchId = category.scope === 'branch_wise' ? (userDefaultBranchId || null) : null;

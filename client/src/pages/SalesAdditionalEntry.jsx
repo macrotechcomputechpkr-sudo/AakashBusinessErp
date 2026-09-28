@@ -18,6 +18,9 @@ import BillWiseSettlementPanel from '../components/BillWiseSettlementPanel';
 import NumberingCategorySelector from '../components/NumberingCategorySelector';
 import UdfValuesModal from '../components/UdfValuesModal';
 import RecordHistory from '../components/RecordHistory';
+import DocActions, { asNewCopy, finalizeEntry } from '../components/entry/DocActions';
+import EntryFillBar from '../components/entry/EntryFillBar';
+import { saveEntryDraft, finishEntryDraft } from '../components/entry/entryDrafts';
 
 const emptyLine = () => ({ income_ledger_id: '', description: '', entry_sign: 'add', amount: '' });
 
@@ -89,6 +92,10 @@ export default function SalesAdditionalEntry() {
     const grandTotal = form.lines.reduce((sum, l) => sum + (l.entry_sign === 'deduct' ? -(Number(l.amount) || 0) : (Number(l.amount) || 0)), 0);
 
     const handleSubmit = async (e, saveAsDraft = false) => {
+
+        // Save as Draft (new entry): kept apart as a temporary draft - no number, no accounts / stock effect
+
+        if (saveAsDraft && !editingId) { if (e) e.preventDefault(); if (await saveEntryDraft(authFetch, 'sales_additional', form)) { resetForm(); setShowForm(false); } return; }
         e.preventDefault();
         if (!saveAsDraft) {
             const missing = efc.missingRequired(form);
@@ -104,11 +111,14 @@ export default function SalesAdditionalEntry() {
             const payload = { ...form, lines: validLines, ...(billWiseSettlements ? { bill_wise_settlements: billWiseSettlements } : {}), ...(saveAsDraft ? { status: 'draft', save_as_draft: true } : {}) };
             if (editingId) {
                 await authFetch(`/api/sales-additional-entries/${editingId}`, { method: 'PUT', body: JSON.stringify(payload) });
+                if (!saveAsDraft) await finalizeEntry(authFetch, 'sales-additional-entries', editingId, 'posted');
                 showAlert(saveAsDraft ? 'Draft saved' : 'Sales Additional Entry updated', 'success');
             } else {
                 const res = await authFetch('/api/sales-additional-entries', { method: 'POST', body: JSON.stringify(payload) });
+                if (!saveAsDraft) await finalizeEntry(authFetch, 'sales-additional-entries', res.data?.id, 'posted');
                 showAlert(saveAsDraft ? `Draft ${res.data.doc_no} saved` : `Sales Additional Entry ${res.data.doc_no} created`, 'success');
             }
+            await finishEntryDraft(authFetch, 'sales_additional');
             resetForm();
             setShowForm(false);
             load();
@@ -117,6 +127,7 @@ export default function SalesAdditionalEntry() {
         }
     };
 
+    const copyAsNew = async (row) => { await handleEdit(row); setEditingId(null); setForm(f => asNewCopy(f, row.id)); setShowForm(true); };
     const handleEdit = async (row) => {
         try {
             const res = await authFetch(`/api/sales-additional-entries/${row.id}`);
@@ -144,16 +155,6 @@ export default function SalesAdditionalEntry() {
         }
     };
 
-    const handleDeleteDraft = async (row) => {
-        if (!window.confirm(`Delete draft "${row.doc_no}"? This cannot be undone.`)) return;
-        try {
-            await authFetch(`/api/sales-additional-entries/${row.id}`, { method: 'DELETE' });
-            showAlert('Draft deleted', 'warning');
-            load();
-        } catch (err) {
-            showAlert(err.message, 'danger');
-        }
-    };
 
     const [udfDoc, setUdfDoc] = useState(null);
 
@@ -190,6 +191,7 @@ export default function SalesAdditionalEntry() {
 
             {showForm && (
                 <form onSubmit={handleSubmit} ref={formRef}>
+                    <EntryFillBar voucherType="sales_additional" api="sales-additional-entries" form={form} editing={!!editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={copyAsNew} />
                     <div className="erp-topbar grid-cols-1 md:grid-cols-4">
                         <div className={efc.isVisible('doc_date') ? 'erp-field' : 'erp-field hidden'}>
                             <label className="erp-label">Date <span className="req">*</span> {form.doc_date && <span className="hint">({formatDateForDisplay(form.doc_date, 'nepali')} BS)</span>} {efc.isRequired('doc_date') && <span className="req">*</span>}</label>
@@ -340,7 +342,7 @@ export default function SalesAdditionalEntry() {
             <div className="flex items-center gap-2 mb-2">
                 <label className="flex items-center gap-1.5 text-sm">
                     <input type="checkbox" checked={showDraftsOnly} onChange={e => setShowDraftsOnly(e.target.checked)} />
-                    Show Drafts only
+                    Show unposted (awaiting approval) only
                 </label>
             </div>
             <ReportGrid
@@ -351,12 +353,11 @@ export default function SalesAdditionalEntry() {
                 rowActions={(row) => (
                     <div className="flex gap-2 justify-center">
                         {row.status === 'draft' && <button onClick={() => handleEdit(row)} className="px-2 py-1 bg-blue-600 text-white rounded text-xs">Open</button>}
+                        <DocActions type="sales_additional" api="sales-additional-entries" row={row} onOpen={handleEdit} onCopy={copyAsNew} onReverse={r => handleStatusChange(r, 'cancelled')} onDone={load} />
                         {row.status === 'posted' && <a href={`/print/sales_additional_entry/${row.id}`} target="_blank" rel="noopener noreferrer" className="px-2 py-1 bg-purple-600 text-white rounded text-xs">🖨️ Print</a>}
                         <button onClick={() => openAuditTrail(row)} className="px-2 py-1 bg-gray-500 text-white rounded text-xs">History</button>
                         <button onClick={() => setUdfDoc(row.id)} className="px-2 py-1 bg-indigo-500 text-white rounded text-xs" title="Custom fields (UDF)">UDF</button>{udfDoc === row.id && <UdfValuesModal docType="sales_additional_entry" docId={row.id} onClose={() => setUdfDoc(null)} />}
                         {row.status === 'draft' && <button onClick={() => handleStatusChange(row, 'posted')} className="px-2 py-1 bg-green-600 text-white rounded text-xs">Post</button>}
-                        {row.status !== 'cancelled' && <button onClick={() => handleStatusChange(row, 'cancelled')} className="px-2 py-1 bg-red-600 text-white rounded text-xs">Cancel</button>}
-                        {row.status === 'draft' && <button onClick={() => handleDeleteDraft(row)} className="px-2 py-1 bg-red-800 text-white rounded text-xs">Delete</button>}
                     </div>
                 )}
             />

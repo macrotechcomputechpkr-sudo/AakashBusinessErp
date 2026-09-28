@@ -23,10 +23,17 @@ interface LogItem { product_id: string; qty: number | string; uom_id: string; ro
 interface Log { id: string; log_date: string; age: number; mortality: number; culls: number; mortality_reason: string | null; avg_weight_g: number | null; water_l: number | null; temp_min: number | null; temp_max: number | null; humidity: number | null; remarks: string | null; adjustment_no: string | null; items: LogItem[] }
 interface Lifting { id: string; lift_date: string; birds: number; weight_kg: number; avg_weight_kg: number; rate: number; amount: number; vehicle_no: string | null; adjustment_no: string | null; sales_bill_id: string | null; remarks: string | null }
 interface Day { date: string; age: number; opening: number; mortality: number; culls: number; lifted: number; closing: number; cum_mortality_pct: number; feed_kg: number; cum_feed_kg: number; feed_per_bird_g: number | null; avg_weight_g: number | null; std_weight_g: number | null; water_l: number | null; has_entry: boolean }
-type Detail = Batch & { summary: Summary; days: Day[]; logs: Log[]; liftings: Lifting[] };
+interface Receipt { id: string; receipt_date: string; bill_no: string; vendor_name: string; total_amount: number; adjustment_no: string | null; lines: { id: string; product_name: string; role: string; qty: number; rate: number; amount: number; feed_kg: number }[] }
+interface LotBill { id: string; doc_no: string; doc_date: string; vendor_name: string; items: string }
+interface BillLine { bill_detail_id: string; product_name: string; role: string; uom_name: string; qty: number; issued: number; left: number; rate: number }
+type Detail = Batch & { summary: Summary; days: Day[]; logs: Log[]; liftings: Lifting[]; purchase_receipts?: Receipt[] };
 
 const STAGE_TONE: Record<string, string> = { Brooding: 'bg-yellow-100', Grower: 'bg-green-100', Finisher: 'bg-blue-100', Closed: 'bg-gray-200' };
 const blankLog = () => ({ log_date: today(), mortality: '' as number | string, culls: '' as number | string, mortality_reason: '', avg_weight_g: '' as number | string, water_l: '' as number | string, temp_min: '' as number | string, temp_max: '' as number | string, humidity: '' as number | string, remarks: '', items: [] as LogItem[] });
+interface ChickSources {
+    purchases: { id: string; doc_no: string; doc_date: string; vendor_name: string; chicks_total: number; chicks_available: number; cost_per_chick: number; product_name: string }[];
+    hatches: { id: string; hatch_no: string; hatch_date: string; chicks_a: number; chicks_available: number; cost_per_chick: number | null }[];
+}
 const blankLift = () => ({ lift_date: today(), birds: '' as number | string, weight_kg: '' as number | string, rate: '' as number | string, customer_ledger_id: '', vehicle_no: '', make_sales_bill: false, remarks: '' });
 
 export default function PoultryBatches() {
@@ -41,10 +48,17 @@ export default function PoultryBatches() {
     const [items, setItems] = useState<PItem[]>([]);
     const [detail, setDetail] = useState<Detail | null>(null);
     const [tab, setTab] = useState('log');
+    const [lotBills, setLotBills] = useState<LotBill[]>([]);
+    const [billId, setBillId] = useState('');
+    const [billLines, setBillLines] = useState<BillLine[]>([]);
+    const [recQty, setRecQty] = useState<Record<string, string>>({});
+    const [recDate, setRecDate] = useState(today());
     const [ok, setOk] = useState('');
     const [err, setErr] = useState('');
     const [warn, setWarn] = useState<string[]>([]);
-    const [place, setPlace] = useState({ shed_id: '', placement_date: today(), chicks_placed: '' as number | string, free_chicks: '' as number | string, chick_product_id: '', chick_rate: '', chick_cost_manual: '', warehouse_id: '', breed: '', chick_source: '', target_weight_kg: '', expected_close_date: '', remarks: '' });
+    const blankRow = () => ({ shed_id: '', chicks_placed: '', free_chicks: '' });
+    const [place, setPlace] = useState({ source: 'purchase', source_id: '', placement_date: today(), breed: '', target_weight_kg: '', warehouse_id: '', chick_product_id: '', chick_rate: '', chick_cost_per_bird: '', chick_source: '', vendor_ledger_id: '', rows: [blankRow()] });
+    const [sources, setSources] = useState<ChickSources>({ purchases: [], hatches: [] });
     const [log, setLog] = useState(blankLog());
     const [lift, setLift] = useState(blankLift());
     const [closeForm, setCloseForm] = useState({ closed_on: today(), write_off_remaining: false, close_notes: '' });
@@ -65,6 +79,12 @@ export default function PoultryBatches() {
         authFetch<Shed[]>('/api/poultry/sheds?shed_type=broiler').then(r => setSheds(r.data)).catch(() => undefined);
         authFetch<{ items: PItem[] }>('/api/poultry/settings').then(r => setItems(r.data.items)).catch(() => undefined);
     }, [authFetch]);
+    useEffect(() => { if (id && tab === 'buy') authFetch<LotBill[]>('/api/poultry/lot-purchases').then(r => setLotBills(r.data)).catch(e => setErr(errText(e))); }, [authFetch, id, tab]);
+    useEffect(() => {
+        setBillLines([]); setRecQty({});
+        if (billId) authFetch<{ lines: BillLine[] }>(`/api/poultry/lot-purchases/${billId}`).then(r => setBillLines(r.data.lines)).catch(e => setErr(errText(e)));
+    }, [authFetch, billId]);
+    useEffect(() => { if (isNew) authFetch<ChickSources>('/api/poultry/chick-sources').then(r => setSources(r.data)).catch(e => setErr(errText(e))); }, [authFetch, isNew]);
 
     const run = async (fn: () => Promise<{ warnings?: string[] } | unknown>, done: string) => {
         setOk(''); setErr(''); setWarn([]);
@@ -85,63 +105,112 @@ export default function PoultryBatches() {
     const weightPoints = useMemo(() => (detail?.days || []).filter(d => d.avg_weight_g || d.std_weight_g).map(d => ({ label: `D${d.age}`, value: d.avg_weight_g || 0, value2: d.std_weight_g })), [detail]);
     const mortPoints = useMemo(() => (detail?.days || []).map(d => ({ label: `D${d.age}`, value: d.mortality + d.culls })), [detail]);
 
-    // ---------------------------------------------------------------- placement
+    // ---------------------------------------------------------------- placement (one or more sheds from one chick source)
     if (isNew) {
         const freeSheds = sheds.filter(x => x.is_active && !x.active_batch);
+        const pur = sources.purchases.find(x => x.id === place.source_id);
+        const hat = sources.hatches.find(x => x.id === place.source_id);
+        const available = place.source === 'purchase' ? pur?.chicks_available : place.source === 'hatch' ? hat?.chicks_available : undefined;
+        const placing = place.rows.reduce((t, r) => t + (Number(r.chicks_placed) || 0) + (Number(r.free_chicks) || 0), 0);
+        const setRow = (i: number, patch: Partial<ReturnType<typeof blankRow>>) => setPlace(p0 => ({ ...p0, rows: p0.rows.map((r, k) => (k === i ? { ...r, ...patch } : r)) }));
+        const canSave = placing > 0 && (place.source === 'stock' || (!!place.source_id && available !== undefined && placing <= available));
         return (
             <Layout>
-                <NavWindow title="🐣 New Batch Placement" tools={<button type="button" className="nav-tool-btn" onClick={() => setParams({})}>← Batches</button>}>
+                <NavWindow wide title="🐣 Chick Placement" tools={<button type="button" className="nav-tool-btn" onClick={() => setParams({})}>← Batches</button>}>
                     <Msg ok={ok} err={err} warn={warn} />
-                    <GroupBox title="Placement">
+                    <GroupBox title="Chicks from">
+                        <div className="flex flex-wrap gap-4 mb-2 text-sm">
+                            {([['purchase', '🛒 Purchased (Purchase Bill)'], ['hatch', '🥚 Own hatchery'], ['stock', '📦 Stock / cost by hand']] as [string, string][]).map(([k, l]) => (
+                                <label key={k} className="flex items-center gap-1"><input type="radio" name="src" checked={place.source === k} onChange={() => setPlace({ ...place, source: k, source_id: '' })} /> {l}</label>
+                            ))}
+                        </div>
                         <div className="nav-form-grid">
-                            <label className="nav-label required">Shed</label>
-                            <select className="nav-select" value={place.shed_id} onChange={e => setPlace({ ...place, shed_id: e.target.value })}>
-                                <option value="">— empty sheds —</option>{freeSheds.map(x => <option key={x.id} value={x.id}>{x.shed_code} · {x.shed_name}{x.capacity ? ` (${x.capacity})` : ''}</option>)}
-                            </select>
+                            {place.source === 'purchase' && <>
+                                <label className="nav-label required">Purchase bill</label>
+                                <select className="nav-select" value={place.source_id} onChange={e => setPlace({ ...place, source_id: e.target.value })}>
+                                    <option value="">— chick purchases with chicks left —</option>
+                                    {sources.purchases.map(x => <option key={x.id} value={x.id}>{x.doc_no} · {x.doc_date} · {x.vendor_name} · {n0(x.chicks_available)} left @ {n2(x.cost_per_chick)}</option>)}
+                                </select>
+                                {pur && <>
+                                    <label className="nav-label">Supplier / hatchery</label><div className="nav-input bg-gray-50">{pur.vendor_name}</div>
+                                    <label className="nav-label">Chicks bought / left</label><div className="nav-input bg-gray-50">{n0(pur.chicks_total)} ({pur.product_name}) / {n0(pur.chicks_available)}</div>
+                                    <label className="nav-label">Cost per chick</label><div className="nav-input bg-gray-50">{n2(pur.cost_per_chick)} <span className="text-xs text-gray-500">(bill value without VAT ÷ all chicks incl. free)</span></div>
+                                </>}
+                                {sources.purchases.length === 0 && <p className="text-xs text-orange-700" style={{ gridColumn: '1 / -1' }}>No posted Purchase Bill with chicks left. Enter the chick purchase in Purchase Bill first (item with the Chick role in Poultry Setup).</p>}
+                            </>}
+                            {place.source === 'hatch' && <>
+                                <label className="nav-label required">Hatch</label>
+                                <select className="nav-select" value={place.source_id} onChange={e => setPlace({ ...place, source_id: e.target.value })}>
+                                    <option value="">— hatches with chicks left —</option>
+                                    {sources.hatches.map(x => <option key={x.id} value={x.id}>{x.hatch_no} · {x.hatch_date} · {n0(x.chicks_available)} left{x.cost_per_chick !== null ? ` @ ${n2(x.cost_per_chick)}` : ''}</option>)}
+                                </select>
+                            </>}
+                            {place.source === 'stock' && <>
+                                <label className="nav-label">Chick product</label>
+                                <select className="nav-select" value={place.chick_product_id} onChange={e => setPlace({ ...place, chick_product_id: e.target.value })}>
+                                    <option value="">No stock issue (cost entered by hand)</option>{chickItems.map(c => <option key={c.product_id} value={c.product_id}>{c.product_name}</option>)}
+                                </select>
+                                {place.chick_product_id ? <>
+                                    <label className="nav-label">Rate per chick</label>
+                                    <input type="number" className="nav-input" placeholder="blank = stock cost" value={place.chick_rate} onChange={e => setPlace({ ...place, chick_rate: e.target.value })} />
+                                </> : <>
+                                    <label className="nav-label">Cost per chick</label>
+                                    <input type="number" className="nav-input" value={place.chick_cost_per_bird} onChange={e => setPlace({ ...place, chick_cost_per_bird: e.target.value })} />
+                                </>}
+                                <label className="nav-label">Supplier</label>
+                                <select className="nav-select" value={place.vendor_ledger_id} onChange={e => setPlace({ ...place, vendor_ledger_id: e.target.value })}>
+                                    <option value="">—</option>{L.ledgers.map(x => <option key={x.id} value={x.id}>{x.account_name}</option>)}
+                                </select>
+                                <label className="nav-label">Chick source note</label>
+                                <input className="nav-input" value={place.chick_source} onChange={e => setPlace({ ...place, chick_source: e.target.value })} />
+                            </>}
                             <label className="nav-label required">Placement date</label>
                             <input type="date" className="nav-input" value={place.placement_date} onChange={e => setPlace({ ...place, placement_date: e.target.value })} />
-                            <label className="nav-label required">Chicks placed (paid)</label>
-                            <input type="number" className="nav-input" value={place.chicks_placed} onChange={e => setPlace({ ...place, chicks_placed: e.target.value })} />
-                            <label className="nav-label">Free / extra chicks</label>
-                            <input type="number" className="nav-input" value={place.free_chicks} onChange={e => setPlace({ ...place, free_chicks: e.target.value })} />
-                            <label className="nav-label">Chick product</label>
-                            <select className="nav-select" value={place.chick_product_id} onChange={e => setPlace({ ...place, chick_product_id: e.target.value })}>
-                                <option value="">No stock issue (cost entered by hand)</option>{chickItems.map(c => <option key={c.product_id} value={c.product_id}>{c.product_name}</option>)}
-                            </select>
-                            {place.chick_product_id ? <>
-                                <label className="nav-label">Rate per chick</label>
-                                <input type="number" className="nav-input" placeholder="blank = stock cost" value={place.chick_rate} onChange={e => setPlace({ ...place, chick_rate: e.target.value })} />
-                            </> : <>
-                                <label className="nav-label">Total chick cost</label>
-                                <input type="number" className="nav-input" value={place.chick_cost_manual} onChange={e => setPlace({ ...place, chick_cost_manual: e.target.value })} />
-                            </>}
-                            <label className="nav-label">Issue from warehouse</label>
-                            <select className="nav-select" value={place.warehouse_id} onChange={e => setPlace({ ...place, warehouse_id: e.target.value })}>
-                                <option value="">Shed / farm warehouse</option>{L.warehouses.map(w => <option key={w.id} value={w.id}>{w.warehouse_name}</option>)}
-                            </select>
                             <label className="nav-label">Breed</label>
                             <input className="nav-input" list="breeds" value={place.breed} onChange={e => setPlace({ ...place, breed: e.target.value })} />
-                            <label className="nav-label">Hatchery / chick source</label>
-                            <input className="nav-input" value={place.chick_source} onChange={e => setPlace({ ...place, chick_source: e.target.value })} />
                             <label className="nav-label">Target weight (kg)</label>
                             <input type="number" className="nav-input" value={place.target_weight_kg} onChange={e => setPlace({ ...place, target_weight_kg: e.target.value })} />
-                            <label className="nav-label">Expected lifting by</label>
-                            <input type="date" className="nav-input" value={place.expected_close_date} onChange={e => setPlace({ ...place, expected_close_date: e.target.value })} />
-                            <label className="nav-label">Remarks</label>
-                            <input className="nav-input" value={place.remarks} onChange={e => setPlace({ ...place, remarks: e.target.value })} />
+                            <label className="nav-label">Issue from warehouse</label>
+                            <select className="nav-select" value={place.warehouse_id} onChange={e => setPlace({ ...place, warehouse_id: e.target.value })}>
+                                <option value="">Bill / shed / farm warehouse</option>{L.warehouses.map(w => <option key={w.id} value={w.id}>{w.warehouse_name}</option>)}
+                            </select>
                         </div>
                         <datalist id="breeds"><option value="Cobb 500" /><option value="Ross 308" /><option value="Hubbard" /><option value="Arbor Acres" /><option value="Vencobb 400" /></datalist>
                     </GroupBox>
+                    <GroupBox title="Sheds - one lot per shed (lifting due after the broiler cycle days, 45 by default)">
+                        <table className="erp-grid-table">
+                            <thead><tr><th style={{ minWidth: 220 }}>Shed (empty ones)</th><th className="text-right">Capacity</th><th>Chicks (paid)</th><th>Free / extra chicks</th><th /></tr></thead>
+                            <tbody>{place.rows.map((r, i) => {
+                                const sh = sheds.find(x => x.id === r.shed_id);
+                                return (
+                                    <tr key={i}>
+                                        <td><select className="nav-select" value={r.shed_id} onChange={e => setRow(i, { shed_id: e.target.value })}>
+                                            <option value="">—</option>{freeSheds.filter(x => x.id === r.shed_id || !place.rows.some(o => o.shed_id === x.id)).map(x => <option key={x.id} value={x.id}>{x.shed_code} · {x.shed_name}</option>)}
+                                        </select></td>
+                                        <td className="text-right">{sh?.capacity ? n0(sh.capacity) : ''}</td>
+                                        <td><input type="number" className="nav-input" style={{ width: 120 }} value={r.chicks_placed} onChange={e => setRow(i, { chicks_placed: e.target.value })} /></td>
+                                        <td><input type="number" className="nav-input" style={{ width: 100 }} value={r.free_chicks} onChange={e => setRow(i, { free_chicks: e.target.value })} /></td>
+                                        <td><button type="button" className="nav-btn small" onClick={() => setPlace(p0 => ({ ...p0, rows: p0.rows.length > 1 ? p0.rows.filter((_, k) => k !== i) : p0.rows }))}>✕</button></td>
+                                    </tr>
+                                );
+                            })}</tbody>
+                            <tfoot><tr><td colSpan={2}><button type="button" className="nav-btn small" onClick={() => setPlace(p0 => ({ ...p0, rows: [...p0.rows, blankRow()] }))}>➕ Another shed</button></td>
+                                <td colSpan={3} className={available !== undefined && placing > available ? 'text-red-700' : ''}>Placing {n0(placing)}{available !== undefined ? ` of ${n0(available)}` : ''}</td></tr></tfoot>
+                        </table>
+                        {freeSheds.length === 0 && <p className="text-xs text-orange-700 mt-1">Every broiler shed has a lot running - close one first (all-in all-out).</p>}
+                    </GroupBox>
                     <div className="flex justify-end gap-2">
                         <button type="button" className="nav-btn" onClick={() => setParams({})}>Cancel</button>
-                        <button type="button" className="nav-btn primary" onClick={async () => {
+                        <button type="button" className="nav-btn primary" disabled={!canSave} onClick={async () => {
                             setErr(''); setWarn([]);
                             try {
-                                const r = await authFetch<Batch & { warnings?: string[] }>('/api/poultry/batches', { method: 'POST', body: JSON.stringify(place) });
-                                setParams({ id: r.data.id });
-                                setOk(`Batch ${r.data.batch_no} placed${r.data.placement_adjustment_no ? ` - chicks issued on ${r.data.placement_adjustment_no}` : ''}`);
+                                const r = await authFetch<{ lots: { id: string; batch_no: string; shed_name: string }[]; warnings?: string[] }>('/api/poultry/place-lots', { method: 'POST', body: JSON.stringify(place) });
+                                if (r.data.warnings?.length) setWarn(r.data.warnings);
+                                setOk(`Placed: ${r.data.lots.map(l => `${l.batch_no} (${l.shed_name})`).join(', ')}`);
+                                if (r.data.lots.length === 1) setParams({ id: r.data.lots[0].id }); else setParams({});
+                                setPlace(p0 => ({ ...p0, source_id: '', rows: [blankRow()] }));
                             } catch (e) { setErr(errText(e)); }
-                        }}>💾 Place batch</button>
+                        }}>💾 Place lots</button>
                     </div>
                 </NavWindow>
             </Layout>
@@ -158,10 +227,10 @@ export default function PoultryBatches() {
         };
         return (
             <Layout>
-                <NavWindow wide title={<>🐔 Batch {detail.batch_no} · {detail.shed_name} <span className="font-normal">({detail.status === 'closed' ? `closed ${detail.closed_on}` : `day ${s.kpi.age_days}, ${s.stage}`})</span></>} tools={<>
+                <NavWindow wide title={<>🐔 Batch {detail.batch_no} · {detail.shed_name} <span className="font-normal">({detail.status === 'closed' ? `closed ${detail.closed_on}` : `day ${s.kpi.age_days}, ${s.stage}${s.cycle ? `, lift due ${s.cycle.lift_due_date}` : ''}`})</span></>} tools={<>
                     <button type="button" className="nav-tool-btn" onClick={() => setParams({})}>← Batches</button>
                     <span className="nav-tool-sep" />
-                    {([['log', '📝 Daily Log'], ['life', '📈 Lifecycle'], ['lift', '🚚 Lifting'], ['cost', '💰 Cost & Profit'], ['close', active ? '🔒 Close Batch' : '🔓 Reopen']] as [string, string][]).map(([k, l]) => (
+                    {([['log', '📝 Daily Log'], ['buy', '🛒 Feed / Medicine from Purchase'], ['life', '📈 Lifecycle'], ['lift', '🚚 Lifting'], ['birds', '🐔 Pcs & Kg Account'], ['cost', '💰 Cost & Profit'], ['close', active ? '🔒 Close Batch' : '🔓 Reopen']] as [string, string][]).map(([k, l]) => (
                         <button key={k} type="button" className={`nav-tool-btn ${tab === k ? 'active' : ''}`} onClick={() => setTab(k)}>{l}</button>
                     ))}
                     <span className="nav-tool-sep" />
@@ -322,6 +391,80 @@ export default function PoultryBatches() {
                         </>
                     )}
 
+                    {tab === 'buy' && (
+                        <>
+                            {active && (
+                                <GroupBox title="Issue feed / medicine bought on a Purchase Bill to this lot (at the bill price, without VAT)">
+                                    <div className="nav-form-grid">
+                                        <label className="nav-label required">Purchase bill</label>
+                                        <select className="nav-select" value={billId} onChange={e => setBillId(e.target.value)}>
+                                            <option value="">— purchases with feed / medicine left —</option>
+                                            {lotBills.map(b => <option key={b.id} value={b.id}>{b.doc_no} · {b.doc_date} · {b.vendor_name} · {b.items}</option>)}
+                                        </select>
+                                        <label className="nav-label required">Date received in shed</label>
+                                        <input type="date" className="nav-input" value={recDate} onChange={e => setRecDate(e.target.value)} />
+                                    </div>
+                                    {billLines.length > 0 && (
+                                        <table className="erp-grid-table mt-2">
+                                            <thead><tr><th>Item</th><th>Type</th><th className="text-right">Bought</th><th className="text-right">Already to lots</th><th className="text-right">Left</th><th className="text-right">Rate</th><th>Qty to this lot</th><th className="text-right">Amount</th></tr></thead>
+                                            <tbody>{billLines.map(l => (
+                                                <tr key={l.bill_detail_id}><td>{l.product_name}</td><td>{ROLE_LABEL[l.role] || l.role}</td><td className="text-right">{n2(l.qty)} {l.uom_name}</td><td className="text-right">{n2(l.issued)}</td><td className="text-right">{n2(l.left)}</td>
+                                                    <td className="text-right">{n2(l.rate)}</td>
+                                                    <td><input type="number" className="nav-input" style={{ width: 100 }} disabled={!l.left} value={recQty[l.bill_detail_id] || ''} onChange={e => setRecQty({ ...recQty, [l.bill_detail_id]: e.target.value })} />
+                                                        {l.left > 0 && <button type="button" className="nav-btn small ml-1" onClick={() => setRecQty({ ...recQty, [l.bill_detail_id]: String(l.left) })}>All</button>}</td>
+                                                    <td className="text-right">{n2((Number(recQty[l.bill_detail_id]) || 0) * l.rate)}</td></tr>
+                                            ))}</tbody>
+                                            <tfoot><tr><td colSpan={7}>Total to this lot</td><td className="text-right">{n2(billLines.reduce((t, l) => t + (Number(recQty[l.bill_detail_id]) || 0) * l.rate, 0))}</td></tr></tfoot>
+                                        </table>
+                                    )}
+                                    <div className="flex justify-end mt-3">
+                                        <button type="button" className="nav-btn primary" disabled={!billId || !Object.values(recQty).some(v => Number(v) > 0)} onClick={async () => {
+                                            const done = await run(() => post(`/api/poultry/batches/${detail.id}/purchase-receipts`, { purchase_bill_id: billId, receipt_date: recDate, lines: Object.entries(recQty).filter(([, v]) => Number(v) > 0).map(([k, v]) => ({ bill_detail_id: k, qty: Number(v) })) }), 'Issued to the lot - its cost now includes these items');
+                                            if (done) { setRecQty({}); setBillId(''); authFetch<LotBill[]>('/api/poultry/lot-purchases').then(r => setLotBills(r.data)).catch(() => undefined); }
+                                        }}>💾 Issue to lot</button>
+                                    </div>
+                                    <p className="text-xs text-gray-600 mt-1">Use this for feed / medicine delivered straight to the shed. Items used from the store day by day go in the Daily Log instead - do not enter the same feed in both.</p>
+                                </GroupBox>
+                            )}
+                            <GroupBox title="Feed / medicine from purchases in this lot">
+                                <table className="erp-grid-table">
+                                    <thead><tr><th>Date</th><th>Purchase</th><th>Supplier</th><th>Items</th><th className="text-right">Amount</th><th>Stock doc</th><th /></tr></thead>
+                                    <tbody>{(detail.purchase_receipts || []).map(r => (
+                                        <tr key={r.id}><td>{r.receipt_date}</td><td className="font-mono">{r.bill_no}</td><td>{r.vendor_name}</td>
+                                            <td>{r.lines.map(l => `${l.product_name} ${n2(l.qty)}${l.feed_kg ? ` (${n0(l.feed_kg)} kg)` : ''}`).join(', ')}</td><td className="text-right">{n2(r.total_amount)}</td><td>{r.adjustment_no || ''}</td>
+                                            <td>{active && <button type="button" className="nav-btn small danger" onClick={() => window.confirm('Remove this issue? The stock goes back and the lot cost drops.') && run(() => authFetch(`/api/poultry/purchase-receipts/${r.id}`, { method: 'DELETE' }), 'Removed')}>✕</button>}</td></tr>
+                                    ))}
+                                    {(detail.purchase_receipts || []).length === 0 && <tr><td colSpan={7} className="text-center text-gray-500 py-4">Nothing issued from purchases yet.</td></tr>}</tbody>
+                                    <tfoot><tr><td colSpan={4}>Total</td><td className="text-right">{n2((detail.purchase_receipts || []).reduce((t, r) => t + Number(r.total_amount), 0))}</td><td colSpan={2} /></tr></tfoot>
+                                </table>
+                            </GroupBox>
+                        </>
+                    )}
+
+                    {tab === 'birds' && s.account && (
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                            <GroupBox title="Birds - in pieces">
+                                <table className="erp-grid-table"><tbody>
+                                    <tr><td>Chicks placed (incl. free)</td><td className="text-right">{n0(s.account.chicks_in)} pcs</td></tr>
+                                    <tr><td>Less: mortality (dead)</td><td className="text-right text-red-700">- {n0(s.account.dead)} pcs</td></tr>
+                                    <tr><td>Less: culls</td><td className="text-right text-red-700">- {n0(s.account.culls)} pcs</td></tr>
+                                    <tr><td>Less: sold (lifted)</td><td className="text-right">- {n0(s.account.sold_pcs)} pcs</td></tr>
+                                </tbody><tfoot><tr><td>{active ? 'Still in the shed' : 'Left (written off at close)'}</td><td className="text-right">{n0(s.account.in_shed)} pcs</td></tr></tfoot></table>
+                                <p className="text-xs text-gray-600 mt-2">Mortality {pct(s.kpi.mortality_pct)} · livability {pct(s.kpi.livability_pct)} · value lost with dead chicks (chick cost) {n2(s.account.mortality_loss)}</p>
+                            </GroupBox>
+                            <GroupBox title="Sold - in kg">
+                                <table className="erp-grid-table"><tbody>
+                                    <tr><td>Birds sold</td><td className="text-right">{n0(s.account.sold_pcs)} pcs</td></tr>
+                                    <tr><td>Weight sold</td><td className="text-right">{n2(s.account.sold_kg)} kg</td></tr>
+                                    <tr><td>Average weight per bird</td><td className="text-right">{s.account.avg_kg_per_bird === null ? '—' : `${n3(s.account.avg_kg_per_bird)} kg`}</td></tr>
+                                    <tr><td>Average sale rate</td><td className="text-right">{s.account.sale_rate_per_kg === null ? '—' : `${n2(s.account.sale_rate_per_kg)} / kg`}</td></tr>
+                                    <tr><td>Cost per kg sold</td><td className="text-right">{s.account.cost_per_kg_sold === null ? '—' : `${n2(s.account.cost_per_kg_sold)} / kg`}</td></tr>
+                                    <tr><td>Feed per kg sold</td><td className="text-right">{s.account.feed_per_kg_sold === null ? '—' : `${n3(s.account.feed_per_kg_sold)} kg`}</td></tr>
+                                </tbody><tfoot><tr><td>Margin per kg</td><td className="text-right">{s.account.sale_rate_per_kg !== null && s.account.cost_per_kg_sold !== null ? n2(s.account.sale_rate_per_kg - s.account.cost_per_kg_sold) : '—'}</td></tr></tfoot></table>
+                            </GroupBox>
+                        </div>
+                    )}
+
                     {tab === 'cost' && (
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                             <GroupBox title="Cost">
@@ -384,22 +527,23 @@ export default function PoultryBatches() {
                 <button type="button" className="nav-tool-btn" onClick={loadList}>🔄 Refresh</button>
                 <a className="nav-tool-btn" href="/poultry/reports?view=profitability">📊 Reports</a>
             </>}>
-                <Msg err={err} />
+                <Msg ok={ok} err={err} warn={warn} />
                 {id && !detail && !err && <p className="text-sm text-gray-500">Loading…</p>}
                 <div className="overflow-x-auto">
                     <table className="erp-grid-table">
-                        <thead><tr><th>Batch</th><th>Shed</th><th>Breed</th><th>Placed on</th><th className="text-right">Age</th><th>Stage</th><th className="text-right">Placed</th><th className="text-right">Alive</th><th className="text-right">Mort %</th><th className="text-right">Feed kg</th><th className="text-right">FCR</th><th className="text-right">Avg kg</th><th className="text-right">Cost</th><th className="text-right">Profit</th></tr></thead>
+                        <thead><tr><th>Batch</th><th>Shed</th><th>Chicks from</th><th>Breed</th><th>Placed on</th><th className="text-right">Age</th><th>Stage</th><th>Lift due</th><th className="text-right">Placed</th><th className="text-right">Alive</th><th className="text-right">Mort %</th><th className="text-right">Feed kg</th><th className="text-right">FCR</th><th className="text-right">Avg kg</th><th className="text-right">Cost</th><th className="text-right">Profit</th></tr></thead>
                         <tbody>
                             {rows.map(b => (
                                 <tr key={b.id} className="cursor-pointer" onClick={() => setParams({ id: b.id })}>
-                                    <td className="font-mono text-blue-700 underline">{b.batch_no}</td><td>{b.shed_name}</td><td>{b.breed || ''}</td><td>{b.placement_date}</td>
+                                    <td className="font-mono text-blue-700 underline">{b.batch_no}</td><td>{b.shed_name}</td><td className="text-xs">{b.chick_source || ''}</td><td>{b.breed || ''}</td><td>{b.placement_date}</td>
                                     <td className="text-right">{b.kpi?.age_days}</td><td><span className={`px-1 ${STAGE_TONE[b.stage || ''] || ''}`}>{b.stage}</span></td>
+                                    <td className={b.cycle?.lift_due ? 'text-orange-700 font-semibold' : ''}>{b.status === 'active' && b.cycle ? `${b.cycle.lift_due_date} (${b.cycle.days_to_lift}d)` : ''}</td>
                                     <td className="text-right">{n0(b.birds?.placed)}</td><td className="text-right">{n0(b.birds?.alive)}</td><td className="text-right">{b.kpi?.mortality_pct?.toFixed(2)}</td>
                                     <td className="text-right">{n0(b.kpi?.feed_kg)}</td><td className="text-right">{n3(b.kpi?.fcr)}</td><td className="text-right">{n3(b.kpi?.avg_weight_kg)}</td>
                                     <td className="text-right">{n2(b.costs?.total)}</td><td className={`text-right ${(b.profit || 0) < 0 ? 'text-red-700' : ''}`}>{n2(b.profit)}</td>
                                 </tr>
                             ))}
-                            {rows.length === 0 && <tr><td colSpan={14} className="text-center text-gray-500 py-6">No batches. Click “New placement”.</td></tr>}
+                            {rows.length === 0 && <tr><td colSpan={16} className="text-center text-gray-500 py-6">No batches. Click “New placement”.</td></tr>}
                         </tbody>
                     </table>
                 </div>
