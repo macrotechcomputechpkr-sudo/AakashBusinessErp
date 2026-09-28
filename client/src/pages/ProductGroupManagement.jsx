@@ -25,12 +25,14 @@ const emptyGroupForm = {
     depreciation_method: '', depreciation_rate: '',
     default_discount_percentage: 0, default_profit_margin_percentage: 0, billing_term_id: '',
     print_barcode: true, allow_rate_change_on_mobile_order: false, description: '',
-    is_branch_wise: false, branch_id: ''
+    is_branch_wise: false, branch_id: '',
+    short_name: '', breakup_quantity: false, qty_decimal_places: 0
 };
 
 const emptyCompanyForm = {
     company_name: '', default_vendor_id: '', default_area_id: '', default_product_group_id: '', default_agent_id: '', default_sub_ledger_id: '',
-    print_barcode: true, allow_rate_change_on_mobile_order: false, description: ''
+    print_barcode: true, allow_rate_change_on_mobile_order: false, description: '',
+    short_name: '', street: '', phone_office: '', phone_residence: '', mobile: '', fax: '', email: '', contact_person: '', currency: '', discount_percentage: ''
 };
 
 export default function ProductGroupManagement() {
@@ -236,6 +238,8 @@ export default function ProductGroupManagement() {
                                     <label className="erp-label">Group Name *</label>
                                     <input className="erp-input" value={groupForm.group_name}
                                         onChange={e => setGroupForm({ ...groupForm, group_name: e.target.value })} required />
+                                    <label className="erp-label mt-2">Short Name</label>
+                                    <input className="erp-input" maxLength={30} value={groupForm.short_name || ''} onChange={e => setGroupForm({ ...groupForm, short_name: e.target.value })} />
                                 </div>
 
                                 <div>
@@ -323,6 +327,14 @@ export default function ProductGroupManagement() {
                                     <label className="flex items-center gap-2 text-sm">
                                         <input type="checkbox" checked={groupForm.allow_rate_change_on_mobile_order} onChange={e => setGroupForm({ ...groupForm, allow_rate_change_on_mobile_order: e.target.checked })} />
                                         Allow Rate Change on Mobile Order
+                                    </label>
+                                    <label className="flex items-center gap-2 text-sm" title="Quantity of this group's items can be broken into smaller units (e.g. loose pieces of a box)">
+                                        <input type="checkbox" checked={!!groupForm.breakup_quantity} onChange={e => setGroupForm({ ...groupForm, breakup_quantity: e.target.checked })} />
+                                        Breakup Quantity
+                                    </label>
+                                    <label className="flex items-center gap-2 text-sm">
+                                        Decimal places in qty totals
+                                        <input type="number" min="0" max="6" className="erp-input" style={{ width: 64 }} value={groupForm.qty_decimal_places ?? 0} onChange={e => setGroupForm({ ...groupForm, qty_decimal_places: e.target.value })} />
                                     </label>
                                     {sysControl?.enable_branch_wise_master && (
                                         <label className="flex items-center gap-2 text-sm">
@@ -464,6 +476,20 @@ export default function ProductGroupManagement() {
                                         onChange={(id) => setCompanyForm({ ...companyForm, default_sub_ledger_id: id })}
                                         placeholder="Select preferred sub-ledger"
                                     />
+                                </div>
+
+                                <div className="md:col-span-2 grid grid-cols-1 md:grid-cols-3 gap-3 border-t pt-4">
+                                    {[['short_name', 'Short Name', 30], ['contact_person', 'Contact Person', 150], ['email', 'E-mail', 150], ['street', 'Street / Address', 200],
+                                      ['phone_office', 'Phone (Office)', 40], ['phone_residence', 'Phone (Residence)', 40], ['mobile', 'Mobile', 40], ['fax', 'Fax', 40], ['currency', 'Currency', 10]].map(([k, l, max]) => (
+                                        <div key={k}>
+                                            <label className="erp-label">{l}</label>
+                                            <input className="erp-input" maxLength={max} value={companyForm[k] || ''} onChange={e => setCompanyForm({ ...companyForm, [k]: e.target.value })} />
+                                        </div>
+                                    ))}
+                                    <div>
+                                        <label className="erp-label">Discount %</label>
+                                        <input type="number" step="0.01" className="erp-input" value={companyForm.discount_percentage ?? ''} onChange={e => setCompanyForm({ ...companyForm, discount_percentage: e.target.value })} />
+                                    </div>
                                 </div>
 
                                 <div className="md:col-span-2 flex gap-6 border-t pt-4">

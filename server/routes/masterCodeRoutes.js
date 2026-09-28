@@ -41,7 +41,11 @@ router.put('/master-codes/formats', requireAuth, loadUserPermissions, requirePer
             if (/^\d/.test(prefix)) return res.status(400).json({ success: false, error: `${MC.MASTERS[m.key].label}: type must start with a letter` });
             if (prefixes.has(prefix)) return res.status(400).json({ success: false, error: `Type "${prefix}" is used for two masters` });
             prefixes.add(prefix);
-            out[m.key] = { prefix, sep: ['', '-', '/'].includes(m.sep) ? m.sep : '', digits: Math.min(9, Math.max(3, parseInt(m.digits, 10) || 6)) };
+            const digits = Math.min(9, Math.max(3, parseInt(m.digits, 10) || 6));
+            const maxLen = Math.min(40, Math.max(6, parseInt(m.max_len, 10) || 15));
+            // the longest possible code (8-digit year part, separator, type, body) must fit the Total Length
+            if (prefix.length + digits + (out.use_fy ? 5 : 0) > maxLen) return res.status(400).json({ success: false, error: `${MC.MASTERS[m.key].label}: type + digits (+ year) do not fit in Total Length ${maxLen}` });
+            out[m.key] = { prefix, sep: ['', '-', '/'].includes(m.sep) ? m.sep : '', digits, max_len: maxLen };
         }
         await c.rpc('ensure_system_control_settings', { p_tenant_id: t });
         const { error } = await c.from('system_control_settings').update({ master_code_format: out, updated_by: req.auth.userId, updated_at: new Date().toISOString() }).eq('tenant_id', t);

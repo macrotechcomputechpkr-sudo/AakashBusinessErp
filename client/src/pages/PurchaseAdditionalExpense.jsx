@@ -30,7 +30,7 @@ const r2 = n => Math.round((Number(n) || 0) * 100) / 100;
 
 const emptyForm = {
     vendor_sub_ledger_id: '', product_company_id: '', doc_date: new Date().toISOString().slice(0, 10),
-    source_order_id: '', source_grn_id: '', source_bill_id: '',
+    source_order_id: '', source_grn_id: '', source_bill_id: '', account_posting: true,
     vendor_ledger_id: '', cash_vendor_name: '', agent_id: '', invoice_type: 'credit', currency: 'NPR',
     party_bill_no: '', party_bill_date: '',
     remarks_text: '', cost_center_id: '', business_unit_id: '', priority: 'normal', narration: '',
@@ -53,6 +53,8 @@ export default function PurchaseAdditionalExpense() {
     const [showCopyModal, setShowCopyModal] = useState(false);
     const [auditModal, setAuditModal] = useState(null);
     const [allocationPreview, setAllocationPreview] = useState([]);
+    // reference document + additional / non-additional totals (allocation preview)
+    const [refInfo, setRefInfo] = useState(null);
 
     const [vendors, setVendors] = useState([]);
 
@@ -141,8 +143,8 @@ export default function PurchaseAdditionalExpense() {
     // lines with a Basis other than "Not Allocated" affect landed cost.
     useEffect(() => {
         const hasSource = form.source_order_id || form.source_grn_id || form.source_bill_id;
-        const hasAllocatableLine = form.expense_lines.some(l => l.allocation_basis !== 'none' && Number(l.amount) > 0);
-        if (!hasSource || !hasAllocatableLine) { setAllocationPreview([]); return; }
+        // the reference document's product lines show as soon as it is chosen
+        if (!hasSource) { setAllocationPreview([]); setRefInfo(null); return; }
         let cancelled = false;
         authFetch('/api/purchase-additional-expenses/allocation-preview', {
             method: 'POST',
@@ -151,8 +153,8 @@ export default function PurchaseAdditionalExpense() {
                 expense_lines: form.expense_lines.filter(l => Number(l.amount) > 0)
             })
         })
-            .then(res => { if (!cancelled) setAllocationPreview(res.data.allocations || []); })
-            .catch(() => { if (!cancelled) setAllocationPreview([]); });
+            .then(res => { if (!cancelled) { setAllocationPreview(res.data.allocations || []); setRefInfo({ reference: res.data.reference, totals: res.data.totals }); } })
+            .catch(() => { if (!cancelled) { setAllocationPreview([]); setRefInfo(null); } });
         return () => { cancelled = true; };
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [form.source_order_id, form.source_grn_id, form.source_bill_id, JSON.stringify(form.expense_lines)]);
@@ -307,6 +309,12 @@ export default function PurchaseAdditionalExpense() {
                             <select className="erp-select" value={form.source_bill_id} onChange={e => setForm({ ...form, source_bill_id: e.target.value })}>
                                 <option value="">— None —</option>
                                 {openBills.map(b => <option key={b.id} value={b.id}>{b.doc_no}</option>)}
+                            </select>
+                        </div>
+                        <div className="erp-field">
+                            <label className="erp-label">Account Posting <span className="hint">(No: costing only)</span></label>
+                            <select className="erp-select" value={form.account_posting === false ? 'no' : 'yes'} onChange={e => setForm({ ...form, account_posting: e.target.value === 'yes' })}>
+                                <option value="yes">Yes - post to the ledger</option><option value="no">No - landed cost only</option>
                             </select>
                         </div>
                     </div>
@@ -515,25 +523,43 @@ export default function PurchaseAdditionalExpense() {
 
                         {allocationPreview.length > 0 && (
                             <div>
-                                <h2 className="font-semibold text-sm text-gray-500 uppercase mb-2">Allocation Preview (Landed Cost)</h2>
-                                <p className="text-xs text-gray-400 mb-2">Only lines with a Basis other than "Not Allocated" reach here - a VAT or TDS line doesn't change what the item cost.</p>
+                                {refInfo?.reference && (
+                                    <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-sm border rounded-lg px-3 py-2 mb-2 bg-gray-50">
+                                        <div><span className="text-xs text-gray-500 block">Reference</span><b className="font-mono">{refInfo.reference.doc_no}</b> <span className="text-xs text-gray-500">{String(refInfo.reference.doc_date || '').slice(0, 10)}</span></div>
+                                        <div className="md:col-span-2"><span className="text-xs text-gray-500 block">Supplier of the goods</span>{refInfo.reference.vendor_name_snapshot || '—'}</div>
+                                        <div><span className="text-xs text-gray-500 block">Reference amount</span><b>{Number(refInfo.reference.total_amount || 0).toFixed(2)}</b></div>
+                                        <div><span className="text-xs text-gray-500 block">Total qty (alt / primary)</span>{refInfo.totals?.alt_qty ? `${refInfo.totals.alt_qty} / ` : ''}{refInfo.totals?.qty}</div>
+                                    </div>
+                                )}
+                                <h2 className="font-semibold text-sm text-gray-500 uppercase mb-2">Products of the reference - additional cost per product</h2>
                                 <table className="erp-grid-table">
                                     <thead>
-                                        <tr><th>Product</th><th>Qty</th><th>Line Value</th><th>Allocated Expense</th><th>Landed Cost / Unit</th><th>Net Amount</th></tr>
+                                        <tr><th>#</th><th>Product</th><th className="text-right">Alt Qty</th><th className="text-right">Qty</th><th className="text-right">Amount</th><th className="text-right">Additional</th><th className="text-right">Cost / Unit</th><th className="text-right">Net Amount</th></tr>
                                     </thead>
                                     <tbody>
                                         {allocationPreview.map((a, i) => (
                                             <tr key={i}>
+                                                <td>{i + 1}</td>
                                                 <td>{a.product_name_snapshot}</td>
-                                                <td>{a.qty}</td>
-                                                <td>{a.value.toFixed(2)}</td>
-                                                <td>{a.allocated_amount.toFixed(2)}</td>
-                                                <td>{a.landed_cost_per_unit}</td>
-                                                <td className="font-medium">{(a.value + a.allocated_amount).toFixed(2)}</td>
+                                                <td className="text-right">{a.alt_qty || ''}</td>
+                                                <td className="text-right">{a.qty}</td>
+                                                <td className="text-right">{a.value.toFixed(2)}</td>
+                                                <td className="text-right">{a.allocated_amount.toFixed(2)}</td>
+                                                <td className="text-right">{a.qty ? ((a.value + a.allocated_amount) / a.qty).toFixed(4) : ''}</td>
+                                                <td className="text-right font-medium">{(a.value + a.allocated_amount).toFixed(2)}</td>
                                             </tr>
                                         ))}
                                     </tbody>
                                 </table>
+                                {refInfo?.totals && (
+                                    <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-sm mt-2">
+                                        {[['Net Basic', refInfo.totals.net_basic], ['Additional (to cost)', refInfo.totals.additional], ['Non-Additional (VAT / not in cost)', refInfo.totals.non_additional],
+                                          ['Additional Bill Total', netPayable], ['Net Total (goods + additional)', Number(refInfo.totals.net_basic || 0) + Number(refInfo.totals.additional || 0)]].map(([l, v]) => (
+                                            <div key={l} className="border rounded px-2 py-1"><span className="text-xs text-gray-500 block">{l}</span><b>{Number(v || 0).toFixed(2)}</b></div>
+                                        ))}
+                                    </div>
+                                )}
+                                <p className="text-xs text-gray-400 mt-1">Only lines with a Basis other than "Not Allocated" go to the cost of the goods; VAT that can be claimed stays out (non-additional).</p>
                             </div>
                         )}
                     </div>

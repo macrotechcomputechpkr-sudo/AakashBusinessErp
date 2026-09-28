@@ -11,7 +11,8 @@ import { useEnterKeyNavigation } from '../hooks/useEnterKeyNavigation';
 import ReportGrid from '../components/ReportGrid';
 import Layout from '../components/Layout';
 
-const emptyForm = { agent_name: '', phone: '', email: '', commission_percentage: 0, allow_rate_change_on_mobile_order: false };
+const EXTRA = { short_name: '', parent_agent_id: '', product_company_id: '', sub_ledger_id: '', credit_limit: '', credit_control: 'system', street: '', phone_office: '', phone_residence: '', mobile: '', fax: '' };
+const emptyForm = { agent_name: '', phone: '', email: '', commission_percentage: 0, allow_rate_change_on_mobile_order: false, ...EXTRA };
 
 export default function SalesmanAgentManagement() {
     const { authFetch } = useAuth();
@@ -20,6 +21,8 @@ export default function SalesmanAgentManagement() {
     const [form, setForm] = useState(emptyForm);
     const [editingId, setEditingId] = useState(null);
     const [alert, setAlert] = useState(null);
+    const [companies, setCompanies] = useState([]);
+    const [subLedgers, setSubLedgers] = useState([]);
     const formRef = useRef(null);
     useEnterKeyNavigation(formRef);
 
@@ -34,6 +37,12 @@ export default function SalesmanAgentManagement() {
         }
     }, [authFetch]);
     useEffect(() => { load(); }, [load]);
+
+    // pickers of the extra details (main agent comes from the list itself)
+    useEffect(() => {
+        authFetch('/api/product-companies').then(r => setCompanies(r.data || [])).catch(() => setCompanies([]));
+        authFetch('/api/sub-ledgers').then(r => setSubLedgers(r.data || [])).catch(() => setSubLedgers([]));
+    }, [authFetch]);
 
     const resetForm = () => { setForm(emptyForm); setEditingId(null); };
 
@@ -61,7 +70,8 @@ export default function SalesmanAgentManagement() {
         setEditingId(row.id);
         setForm({
             agent_name: row.agent_name || '', phone: row.phone || '', email: row.email || '',
-            commission_percentage: row.commission_percentage || 0, allow_rate_change_on_mobile_order: !!row.allow_rate_change_on_mobile_order
+            commission_percentage: row.commission_percentage || 0, allow_rate_change_on_mobile_order: !!row.allow_rate_change_on_mobile_order,
+            ...Object.fromEntries(Object.keys(EXTRA).map(k => [k, row[k] ?? EXTRA[k]]))
         });
         setShowForm(true);
         window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -127,6 +137,47 @@ export default function SalesmanAgentManagement() {
                                 <label className="erp-label">Commission %</label>
                                 <input type="number" step="0.01" className="erp-input" value={form.commission_percentage} onChange={e => setForm({ ...form, commission_percentage: e.target.value })} />
                             </div>
+                            <div className="erp-field">
+                                <label className="erp-label">Short Name</label>
+                                <input className="erp-input" maxLength={30} value={form.short_name || ''} onChange={e => setForm({ ...form, short_name: e.target.value })} />
+                            </div>
+                            <div className="erp-field">
+                                <label className="erp-label">Main Agent <span className="hint">(this one works under)</span></label>
+                                <select className="erp-select" value={form.parent_agent_id || ''} onChange={e => setForm({ ...form, parent_agent_id: e.target.value })}>
+                                    <option value="">None</option>
+                                    {rows.filter(r => r.id !== editingId).map(r => <option key={r.id} value={r.id}>{r.agent_name}</option>)}
+                                </select>
+                            </div>
+                            <div className="erp-field">
+                                <label className="erp-label">Product Company</label>
+                                <select className="erp-select" value={form.product_company_id || ''} onChange={e => setForm({ ...form, product_company_id: e.target.value })}>
+                                    <option value="">All companies</option>
+                                    {companies.map(c => <option key={c.id} value={c.id}>{c.company_name}</option>)}
+                                </select>
+                            </div>
+                            <div className="erp-field">
+                                <label className="erp-label">Sub-Ledger</label>
+                                <select className="erp-select" value={form.sub_ledger_id || ''} onChange={e => setForm({ ...form, sub_ledger_id: e.target.value })}>
+                                    <option value="">None</option>
+                                    {subLedgers.map(sl => <option key={sl.id} value={sl.id}>{sl.sub_ledger_name}</option>)}
+                                </select>
+                            </div>
+                            <div className="erp-field">
+                                <label className="erp-label">Credit Limit</label>
+                                <input type="number" step="0.01" className="erp-input" value={form.credit_limit ?? ''} onChange={e => setForm({ ...form, credit_limit: e.target.value })} />
+                            </div>
+                            <div className="erp-field">
+                                <label className="erp-label">Credit Control</label>
+                                <select className="erp-select" value={form.credit_control || 'system'} onChange={e => setForm({ ...form, credit_control: e.target.value })}>
+                                    <option value="system">As System Control</option><option value="none">None</option><option value="warn">Warn</option><option value="block">Block</option>
+                                </select>
+                            </div>
+                            {[['street', 'Street / Address', 200], ['phone_office', 'Phone (Office)', 40], ['phone_residence', 'Phone (Residence)', 40], ['mobile', 'Mobile', 40], ['fax', 'Fax', 40]].map(([k, l, max]) => (
+                                <div key={k} className="erp-field">
+                                    <label className="erp-label">{l}</label>
+                                    <input className="erp-input" maxLength={max} value={form[k] || ''} onChange={e => setForm({ ...form, [k]: e.target.value })} />
+                                </div>
+                            ))}
                             <div className="erp-field md:col-span-2">
                                 <label className="flex items-center gap-2 text-sm">
                                     <input type="checkbox" checked={form.allow_rate_change_on_mobile_order} onChange={e => setForm({ ...form, allow_rate_change_on_mobile_order: e.target.checked })} />

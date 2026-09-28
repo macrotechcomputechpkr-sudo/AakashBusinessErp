@@ -8,6 +8,7 @@
 // =============================================
 
 const express = require('express');
+const { extras } = require('../utils/masterExtras');
 const masterCodes = require('../utils/masterCodes');
 const router = express.Router();
 const { getTenantClient, loadUserPermissions, logAudit } = require('../utils/dbHelpers');
@@ -64,6 +65,7 @@ router.post('/product-companies', requireAuth, loadUserPermissions, requirePermi
                 default_sub_ledger_id: default_sub_ledger_id || null,
                 print_barcode: print_barcode !== undefined ? !!print_barcode : true,
                 allow_rate_change_on_mobile_order: !!allow_rate_change_on_mobile_order,
+                ...extras('product_company', req.body),
                 description,
                 created_by: req.auth.userId,
                 updated_by: req.auth.userId
@@ -94,7 +96,7 @@ router.put('/product-companies/:id', requireAuth, loadUserPermissions, requirePe
             }
         }
 
-        const update = { ...req.body, updated_by: req.auth.userId, updated_at: new Date().toISOString() };
+        const update = { ...req.body, ...extras('product_company', req.body), updated_by: req.auth.userId, updated_at: new Date().toISOString() };
         const { data, error } = await tenantClient
             .from('product_companies').update(update).eq('id', req.params.id).eq('tenant_id', tenantId).select().single();
         if (error) throw error;

@@ -13,6 +13,7 @@
 // =============================================
 
 const express = require('express');
+const { extras } = require('../utils/masterExtras');
 const masterCodes = require('../utils/masterCodes');
 const router = express.Router();
 const { getTenantClient, loadUserPermissions, logAudit } = require('../utils/dbHelpers');
@@ -187,7 +188,7 @@ router.post('/salesman-agents', requireAuth, loadUserPermissions, requirePermiss
         if (codeErr) throw codeErr;
         const { data, error } = await tenantClient
             .from('salesman_agents')
-            .insert({ tenant_id: tenantId, agent_code: codeRow, agent_name: agent_name.trim(), phone, email, commission_percentage: commission_percentage || 0, allow_rate_change_on_mobile_order: !!allow_rate_change_on_mobile_order, created_by: req.auth.userId, updated_by: req.auth.userId })
+            .insert({ tenant_id: tenantId, agent_code: codeRow, agent_name: agent_name.trim(), phone, email, commission_percentage: commission_percentage || 0, allow_rate_change_on_mobile_order: !!allow_rate_change_on_mobile_order, ...extras('agent', req.body), created_by: req.auth.userId, updated_by: req.auth.userId })
             .select().single();
         if (error) throw error;
         await logAudit(tenantId, req.auth.userId, 'create_salesman_agent', 'salesman_agent', data.id, { new_data: data });
@@ -207,7 +208,7 @@ router.put('/salesman-agents/:id', requireAuth, loadUserPermissions, requirePerm
         if (!existing) return res.status(404).json({ success: false, error: 'Salesman/Agent not found' });
         const { data, error } = await tenantClient
             .from('salesman_agents')
-            .update({ agent_name: agent_name.trim(), phone, email, commission_percentage: commission_percentage || 0, allow_rate_change_on_mobile_order: !!allow_rate_change_on_mobile_order, updated_by: req.auth.userId, updated_at: new Date().toISOString() })
+            .update({ agent_name: agent_name.trim(), phone, email, commission_percentage: commission_percentage || 0, allow_rate_change_on_mobile_order: !!allow_rate_change_on_mobile_order, ...extras('agent', req.body), updated_by: req.auth.userId, updated_at: new Date().toISOString() })
             .eq('id', req.params.id).eq('tenant_id', tenantId)
             .select().single();
         if (error) throw error;

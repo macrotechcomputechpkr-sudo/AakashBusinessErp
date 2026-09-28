@@ -17,7 +17,8 @@ import ReportGrid from '../components/ReportGrid';
 import Layout from '../components/Layout';
 
 // VAT and Excise terms post to the VAT / Excise ledgers and reports; Cash Discount works on credit days
-const TERM_TYPES = [{ value: 'none', label: 'Normal' }, { value: 'vat', label: 'VAT' }, { value: 'excise', label: 'Excise' }, { value: 'service_tax', label: 'Service Tax' }, { value: 'tsc', label: 'TSC' }, { value: 'cash_discount', label: 'Cash Discount' }];
+// sales / purchase terms: Normal, VAT or Excise only (no Service Tax / TSC / Cash Discount)
+const TERM_TYPES = [{ value: 'none', label: 'Normal' }, { value: 'vat', label: 'VAT' }, { value: 'excise', label: 'Excise' }];
 
 // what may be typed for the term in a transaction line: % of value, rate per qty (x qty) or an amount
 const ENTRY_INPUTS = [['percent', '%'], ['rate', 'Rate (x qty)'], ['amount', 'Amount'], ['all', 'All'], ['rate_percent', 'Rate and %'],
