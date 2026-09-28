@@ -16,7 +16,8 @@ import { useEnterKeyNavigation } from '../hooks/useEnterKeyNavigation';
 import { formatDateForDisplay } from '../utils/nepaliDateUtils';
 import UdfValuesModal from '../components/UdfValuesModal';
 import RecordHistory from '../components/RecordHistory';
-import DocActions, { asNewCopy } from '../components/entry/DocActions';
+import DocActions, { asNewCopy, finalizeEntry } from '../components/entry/DocActions';
+import EntryFillBar from '../components/entry/EntryFillBar';
 
 const emptyRawMaterialRow = () => ({ product_id: '', batch_no: '', warehouse_id: '', qty: '', uom_id: '', alt_qty: '', alt_unit_id: '', rate_basis: 'primary', process_name: '', cost_rate: '', billing_term_ids: [] });
 const emptyByproductRow = () => ({ product_id: '', batch_no: '', warehouse_id: '', qty: '', uom_id: '', alt_qty: '', alt_unit_id: '', rate_basis: 'primary', allocation_basis: 'fixed_recovery', recovery_rate: '', relative_value: '' });
@@ -260,9 +261,11 @@ export default function ProductionOrder() {
             const payload = { ...form, raw_materials: validRawMaterials, byproducts: validByproducts, ...(saveAsDraft ? { status: 'draft', save_as_draft: true } : {}) };
             if (editingId) {
                 await authFetch(`/api/production-orders/${editingId}`, { method: 'PUT', body: JSON.stringify(payload) });
+                if (!saveAsDraft) await finalizeEntry(authFetch, 'production-orders', editingId, 'posted');
                 showAlert(saveAsDraft ? 'Draft saved' : 'Production Order updated', 'success');
             } else {
                 const res = await authFetch('/api/production-orders', { method: 'POST', body: JSON.stringify(payload) });
+                if (!saveAsDraft) await finalizeEntry(authFetch, 'production-orders', res.data?.id, 'posted');
                 showAlert(saveAsDraft ? `Draft ${res.data.doc_no} saved` : `Production Order ${res.data.doc_no} created`, 'success');
             }
             resetForm();
@@ -345,6 +348,7 @@ export default function ProductionOrder() {
 
             {showForm && (
                 <form onSubmit={handleSubmit} ref={formRef}>
+                    <EntryFillBar voucherType="production" api="production-orders" form={form} editing={!!editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={copyAsNew} onOpenDraft={r => handleEdit({ ...r, status: 'draft' })} />
                     <div className="erp-topbar grid-cols-1 md:grid-cols-4">
                         <div className={efc.isVisible('doc_date') ? 'erp-field' : 'erp-field hidden'}>
                             <label className="erp-label">Date <span className="req">*</span> {form.doc_date && <span className="hint">({formatDateForDisplay(form.doc_date, 'nepali')} BS)</span>} {efc.isRequired('doc_date') && <span className="req">*</span>}</label>

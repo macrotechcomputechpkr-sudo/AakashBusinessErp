@@ -22,7 +22,8 @@ import { formatDateForDisplay } from '../utils/nepaliDateUtils';
 import BillWiseSettlementPanel from '../components/BillWiseSettlementPanel';
 import UdfValuesModal from '../components/UdfValuesModal';
 import RecordHistory from '../components/RecordHistory';
-import DocActions, { asNewCopy } from '../components/entry/DocActions';
+import DocActions, { asNewCopy, finalizeEntry } from '../components/entry/DocActions';
+import EntryFillBar from '../components/entry/EntryFillBar';
 import DocNumberField from '../components/entry/DocNumberField';
 
 const PAYMENT_MODES = [
@@ -143,9 +144,11 @@ export default function CashBankEntry() {
             ['party_ledger_id', 'party_sub_ledger_id', 'amount', 'bill_wise_settlements'].forEach(k => delete payload[k]);
             if (editingId) {
                 await authFetch(`/api/cash-bank-entries/${editingId}`, { method: 'PUT', body: JSON.stringify(payload) });
+                if (!saveAsDraft) await finalizeEntry(authFetch, 'cash-bank-entries', editingId, 'posted');
                 showAlert('Entry updated', 'success');
             } else {
                 const res = await authFetch('/api/cash-bank-entries', { method: 'POST', body: JSON.stringify(payload) });
+                if (!saveAsDraft) await finalizeEntry(authFetch, 'cash-bank-entries', res.data?.id, 'posted');
                 showAlert(`${net > 0 ? 'Receipt' : 'Payment'} ${res.data.doc_no} created`, 'success');
             }
             resetForm();
@@ -259,6 +262,7 @@ export default function CashBankEntry() {
 
             {mode === 'single' && showForm && (
                 <form onSubmit={handleSubmit} ref={formRef}>
+                    <EntryFillBar voucherType="cash_bank_entry" api="cash-bank-entries" form={form} editing={!!editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={copyAsNew} onOpenDraft={r => handleEdit({ ...r, status: 'draft' })} />
                     {/* ==================== MASTER ==================== */}
                     <div className="erp-topbar grid-cols-1 md:grid-cols-4">
                         <DocNumberField voucherType="cash_bank_entry" categoryId={form.numbering_category_id} docNo={editingId ? form.doc_no : ''} value={form.doc_no} onChange={v => setForm({ ...form, doc_no: v })} label="Voucher No" />

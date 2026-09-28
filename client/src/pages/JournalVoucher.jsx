@@ -17,7 +17,8 @@ import { amountToWords } from '../utils/numberToWords';
 import UdfValuesModal from '../components/UdfValuesModal';
 import useLedgerPurposes from '../components/useLedgerPurposes';
 import RecordHistory from '../components/RecordHistory';
-import DocActions from '../components/entry/DocActions';
+import DocActions, { finalizeEntry } from '../components/entry/DocActions';
+import EntryFillBar from '../components/entry/EntryFillBar';
 
 const emptyDetailRow = () => ({ ledger_id: '', sub_ledger_id: '', product_company_id: '', agent_id: '', debit_amount: '', credit_amount: '', tds_percent: '', narration: '' });
 
@@ -163,9 +164,11 @@ export default function JournalVoucher() {
             const payload = { ...form, details: validDetails, ...(saveAsDraft ? { status: 'draft', save_as_draft: true } : {}) };
             if (editingId) {
                 await authFetch(`/api/journal-vouchers/${editingId}`, { method: 'PUT', body: JSON.stringify(payload) });
+                if (!saveAsDraft) await finalizeEntry(authFetch, 'journal-vouchers', editingId, 'posted');
                 showAlert(saveAsDraft ? 'Draft saved' : 'Journal Voucher updated', 'success');
             } else {
                 const res = await authFetch('/api/journal-vouchers', { method: 'POST', body: JSON.stringify(payload) });
+                if (!saveAsDraft) await finalizeEntry(authFetch, 'journal-vouchers', res.data?.id, 'posted');
                 showAlert(saveAsDraft ? `Draft ${res.data.doc_no} saved` : `Journal Voucher ${res.data.doc_no} created`, 'success');
             }
             resetForm();
@@ -280,6 +283,7 @@ export default function JournalVoucher() {
 
             {showForm && (
                 <form onSubmit={handleSubmit} ref={formRef}>
+                    <EntryFillBar voucherType="journal" api="journal-vouchers" form={form} editing={!!editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={r => handleCopyFrom(r.id)} onOpenDraft={r => handleEdit({ ...r, status: 'draft' })} />
                     <div className="erp-topbar grid-cols-1 md:grid-cols-4">
                         <div className={efc.isVisible('doc_date') ? 'erp-field' : 'erp-field hidden'}>
                             <label className="erp-label">Date <span className="req">*</span> {form.doc_date && <span className="hint">({formatDateForDisplay(form.doc_date, 'nepali')} BS)</span>} {efc.isRequired('doc_date') && <span className="req">*</span>}</label>

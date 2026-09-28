@@ -19,7 +19,8 @@ import { amountToWords } from '../utils/numberToWords';
 import UdfValuesModal from '../components/UdfValuesModal';
 import useLedgerPurposes from '../components/useLedgerPurposes';
 import RecordHistory from '../components/RecordHistory';
-import DocActions from '../components/entry/DocActions';
+import DocActions, { finalizeEntry } from '../components/entry/DocActions';
+import EntryFillBar from '../components/entry/EntryFillBar';
 
 const emptyExpenseLine = () => ({ expense_ledger_id: '', description: '', allocation_basis: 'value_wise', entry_sign: 'add', rate_percent: '', amount: '',
     party_ledger_id: '', bill_type: 'no_bill', party_bill_no: '', party_bill_date: '', vat_percent: '', vat_amount: '', vat_in_cost: false });
@@ -171,9 +172,11 @@ export default function PurchaseAdditionalExpense() {
             const payload = { ...form, expense_lines: validLines, ...(saveAsDraft ? { status: 'draft', save_as_draft: true } : {}) };
             if (editingId) {
                 await authFetch(`/api/purchase-additional-expenses/${editingId}`, { method: 'PUT', body: JSON.stringify(payload) });
+                if (!saveAsDraft) await finalizeEntry(authFetch, 'purchase-additional-expenses', editingId, 'posted');
                 showAlert(saveAsDraft ? 'Draft saved' : 'Additional Expense updated', 'success');
             } else {
                 const res = await authFetch('/api/purchase-additional-expenses', { method: 'POST', body: JSON.stringify(payload) });
+                if (!saveAsDraft) await finalizeEntry(authFetch, 'purchase-additional-expenses', res.data?.id, 'posted');
                 showAlert(saveAsDraft ? `Draft ${res.data.doc_no} saved` : `Additional Expense ${res.data.doc_no} created`, 'success');
             }
             resetForm();
@@ -273,6 +276,7 @@ export default function PurchaseAdditionalExpense() {
 
             {showForm && (
                 <form onSubmit={handleSubmit} ref={formRef}>
+                    <EntryFillBar voucherType="purchase_additional" api="purchase-additional-expenses" form={form} editing={!!editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={r => handleCopyFrom(r.id)} onOpenDraft={r => handleEdit({ ...r, status: 'draft' })} />
                     <div className="erp-topbar grid-cols-1 md:grid-cols-4">
                         <div className={efc.isVisible('doc_date') ? 'erp-field' : 'erp-field hidden'}>
                             <label className="erp-label">Date <span className="req">*</span> {form.doc_date && <span className="hint">({formatDateForDisplay(form.doc_date, 'nepali')} BS)</span>} {efc.isRequired('doc_date') && <span className="req">*</span>}</label>

@@ -26,7 +26,8 @@ import SalesLineGrid, { useLineGridControl, lineTotals } from '../components/ent
 import { EntryFooter, useEntryHotkeys, latestOf } from '../components/entry/EntryParts';
 
 import { dualHelpers } from '../components/entry/dualHelpers';
-import DocActions, { asNewCopy } from '../components/entry/DocActions';
+import DocActions, { asNewCopy, finalizeEntry } from '../components/entry/DocActions';
+import EntryFillBar from '../components/entry/EntryFillBar';
 
 const emptyDetailRow = () => ({ product_id: '', qty: '', uom_id: '', alt_qty: '', alt_unit_id: '', rate_basis: 'primary', rate: '', discount_percent: '', warehouse_id: '', batch_no: '', source_bill_detail_id: '' });
 
@@ -201,14 +202,19 @@ export default function SalesNonsaleableReturn() {
         let savedId = editingId;
         try {
             const payload = { ...form, details: validDetails, ...(billWiseSettlements ? { bill_wise_settlements: billWiseSettlements } : {}), ...(saveAsDraft ? { status: 'draft', save_as_draft: true } : {}) };
+            let postId = null;
             if (editingId) {
                 await authFetch(`/api/sales-nonsaleable-returns/${editingId}`, { method: 'PUT', body: JSON.stringify(payload) });
+                postId = editingId;
                 showAlert(saveAsDraft ? 'Draft saved' : 'Sales Non-saleable Return updated', 'success');
             } else {
                 const res = await authFetch('/api/sales-nonsaleable-returns', { method: 'POST', body: JSON.stringify(payload) }); savedId = res.data?.id;
+                postId = res.data?.id;
                 showAlert(saveAsDraft ? `Draft ${res.data.doc_no} saved` : `Sales Non-saleable Return ${res.data.doc_no} created`, 'success');
             }
             try { await savePartyInfo(authFetch, 'sales_nonsalable_return', savedId, partyInfo); } catch (pe) { showAlert(`Saved, but the party details were not: ${pe.message}`, 'warning'); }
+            // Save (not Save as Draft): post it now, after its party details are stored
+            if (!saveAsDraft) await finalizeEntry(authFetch, 'sales-nonsaleable-returns', postId, 'posted');
             resetForm();
             setShowForm(false);
             load();
@@ -285,6 +291,7 @@ export default function SalesNonsaleableReturn() {
 
             {showForm && (
                 <form onSubmit={handleSubmit} ref={formRef} className="ent-entry">
+                    <EntryFillBar voucherType="sales_nonsalable_return" api="sales-nonsaleable-returns" form={form} editing={!!editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={copyAsNew} onOpenDraft={r => handleEdit({ ...r, status: 'draft' })} />
                     <p className="mx-4 mt-3 text-xs text-amber-700 bg-amber-50 border-l-4 border-amber-400 px-3 py-2 rounded">
                         ⚠️ These goods are tracked separately from regular sellable stock and will NOT be available for future sales.
                     </p>

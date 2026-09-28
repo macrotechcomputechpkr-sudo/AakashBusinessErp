@@ -17,6 +17,9 @@
 //   GET    /held-entries?voucher_type=              this user's held entries
 //   POST   /held-entries  { voucher_type, label, payload }
 //   DELETE /held-entries/:id
+//   GET    /entry-templates?voucher_type=           company templates + this user's own
+//   POST   /entry-templates { voucher_type, template_name, payload, is_personal }
+//   DELETE /entry-templates/:id
 // =============================================
 const express = require('express');
 const router = express.Router();
@@ -54,7 +57,8 @@ router.get('/document-actions/policy', requireAuth, async (req, res) => {
         const type = req.query.type;
         const locked = ird && IRD_LOCKED.includes(type);
         res.json({ success: true, data: { ird_billing: ird, locked, locked_types: ird ? IRD_LOCKED : [],
-            actions: locked ? ['copy', 'hold', 'cancel', 'modify_draft', 'remove_draft'] : ['copy', 'hold', 'reverse', 'modify', 'remove'] } });
+            // IRD (computerized) billing: a posted Sales Bill / Return is only reversed; otherwise the full set
+            actions: locked ? ['create', 'copy', 'template', 'print', 'reverse', 'modify_draft', 'remove_draft'] : ['create', 'copy', 'template', 'print', 'cancel', 'modify', 'remove', 'draft'] } });
     } catch (e) { fail(res, e); }
 });
 
@@ -114,6 +118,61 @@ router.delete('/held-entries/:id', requireAuth, async (req, res) => {
     try {
         const c = await getTenantClient(req.auth.tenantId);
         const { error } = await c.from('held_entries').delete().eq('tenant_id', req.auth.tenantId).eq('user_id', req.auth.userId).eq('id', req.params.id);
+        if (error) throw error;
+        res.json({ success: true });
+    } catch (e) { fail(res, e); }
+});
+
+// Templates -------------------------------------------------------------------
+const MAX_TEMPLATES = 100;
+const validType = vt => !!DOC_TABLES[vt] || /^[a-z_]{3,50}$/.test(vt || '');
+
+router.get('/entry-templates', requireAuth, async (req, res) => {
+    try {
+        const vt = req.query.voucher_type;
+        if (!validType(vt)) return res.status(400).json({ success: false, error: 'Invalid voucher_type' });
+        const c = await getTenantClient(req.auth.tenantId);
+        const { data, error } = await c.from('entry_templates').select('*').eq('tenant_id', req.auth.tenantId).eq('voucher_type', vt).order('template_name');
+        if (error) throw error;
+        // personal templates only for the user who made them
+        res.json({ success: true, data: (data || []).filter(x => !x.is_personal || x.created_by === req.auth.userId) });
+    } catch (e) { fail(res, e); }
+});
+
+router.post('/entry-templates', requireAuth, async (req, res) => {
+    try {
+        const { voucher_type: vt, template_name: name, payload, is_personal: personal } = req.body || {};
+        if (!validType(vt)) return res.status(400).json({ success: false, error: 'Invalid voucher_type' });
+        const nm = String(name || '').trim().slice(0, 150);
+        if (!nm) return res.status(400).json({ success: false, error: 'Template name is required' });
+        if (!payload || typeof payload !== 'object') return res.status(400).json({ success: false, error: 'Nothing to save' });
+        if (JSON.stringify(payload).length > MAX_PAYLOAD) return res.status(400).json({ success: false, error: 'This entry is too large for a template' });
+        const t = req.auth.tenantId, c = await getTenantClient(t);
+        // the same name again replaces that template
+        const { data: same } = await c.from('entry_templates').select('id, created_by, is_personal').eq('tenant_id', t).eq('voucher_type', vt).ilike('template_name', nm);
+        const mine = (same || [])[0];
+        if (mine) {
+            if (mine.is_personal && mine.created_by !== req.auth.userId) return res.status(409).json({ success: false, error: 'Another user has a template with this name' });
+            const { data, error } = await c.from('entry_templates').update({ payload, is_personal: !!personal, updated_at: new Date().toISOString() }).eq('tenant_id', t).eq('id', mine.id).select().single();
+            if (error) throw error;
+            return res.json({ success: true, data, replaced: true });
+        }
+        const { count } = await c.from('entry_templates').select('id', { count: 'exact', head: true }).eq('tenant_id', t).eq('voucher_type', vt);
+        if ((count || 0) >= MAX_TEMPLATES) return res.status(400).json({ success: false, error: `There are already ${MAX_TEMPLATES} templates for this screen` });
+        const { data, error } = await c.from('entry_templates').insert({ tenant_id: t, voucher_type: vt, template_name: nm, payload, is_personal: !!personal, created_by: req.auth.userId }).select().single();
+        if (error) throw error;
+        res.json({ success: true, data });
+    } catch (e) { fail(res, e); }
+});
+
+router.delete('/entry-templates/:id', requireAuth, async (req, res) => {
+    try {
+        if (!UUID.test(req.params.id)) return res.status(400).json({ success: false, error: 'Invalid id' });
+        const t = req.auth.tenantId, c = await getTenantClient(t);
+        const { data: row } = await c.from('entry_templates').select('id, is_personal, created_by').eq('tenant_id', t).eq('id', req.params.id).maybeSingle();
+        if (!row) return res.status(404).json({ success: false, error: 'Template not found' });
+        if (row.is_personal && row.created_by !== req.auth.userId) return res.status(403).json({ success: false, error: 'Not your template' });
+        const { error } = await c.from('entry_templates').delete().eq('tenant_id', t).eq('id', req.params.id);
         if (error) throw error;
         res.json({ success: true });
     } catch (e) { fail(res, e); }

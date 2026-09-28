@@ -24,6 +24,7 @@ import { formatDateForDisplay } from '../utils/nepaliDateUtils';
 import UdfValuesModal from '../components/UdfValuesModal';
 import RecordHistory from '../components/RecordHistory';
 import DocActions from '../components/entry/DocActions';
+import EntryFillBar from '../components/entry/EntryFillBar';
 
 const emptyDetailRow = () => ({
     product_id: '', batch_no: '', mfg_date: '', exp_date: '',
@@ -357,6 +358,7 @@ export default function StockTransfer() {
 
             {showForm && (
                 <form onSubmit={handleSubmit} ref={formRef}>
+                    <EntryFillBar voucherType="stock_transfer" api="stock-transfers" form={form} editing={!!editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={r => handleCopyFrom(r.id)} onOpenDraft={r => handleEdit({ ...r, status: 'draft' })} />
                     <div className="erp-topbar grid-cols-1 md:grid-cols-4">
                         <div className="erp-field">
                             <label className="erp-label">Transfer Type</label>

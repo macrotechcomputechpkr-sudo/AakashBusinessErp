@@ -26,7 +26,8 @@ import DocNumberField from '../components/entry/DocNumberField';
 import PendingDocsPanel, { mergePulled } from '../components/entry/PendingDocsPanel';
 import { PartyDetailsPanel, emptyPartyInfo, savePartyInfo, partyInfoFromDoc } from '../components/entry/PartyFooterTabs';
 import { CodeCell } from '../components/entry/SalesLineGrid';
-import DocActions from '../components/entry/DocActions';
+import DocActions, { finalizeEntry } from '../components/entry/DocActions';
+import EntryFillBar from '../components/entry/EntryFillBar';
 import { EntryFooter, useEntryHotkeys, latestOf } from '../components/entry/EntryParts';
 import { PurchaseProductTermPopup, PurchaseOverallTermPopup } from '../components/entry/PurchaseTermPopups';
 import { productTermIds, withTermValue } from '../components/entry/lineCalc';
@@ -367,14 +368,19 @@ export default function PurchaseReturn() {
                 ...(billWiseSettlements ? { bill_wise_settlements: billWiseSettlements } : {}),
                 ...(saveAsDraft ? { status: 'draft', save_as_draft: true } : {})
             };
+            let postId = null;
             if (editingId) {
                 await authFetch(`/api/purchase-returns/${editingId}`, { method: 'PUT', body: JSON.stringify(payload) });
+                postId = editingId;
                 showAlert(saveAsDraft ? 'Draft saved' : 'Return updated', 'success');
             } else {
                 const res = await authFetch('/api/purchase-returns', { method: 'POST', body: JSON.stringify(payload) }); savedId = res.data?.id;
+                postId = res.data?.id;
                 showAlert(saveAsDraft ? `Draft ${res.data.doc_no} saved` : `Return ${res.data.doc_no} created`, 'success');
             }
             try { await savePartyInfo(authFetch, 'purchase_return', savedId, partyInfo); } catch (pe) { showAlert(`Saved, but the vendor details were not: ${pe.message}`, 'warning'); }
+            // Save (not Save as Draft): post it now, after its party details are stored
+            if (!saveAsDraft) await finalizeEntry(authFetch, 'purchase-returns', postId, 'posted');
             resetForm();
             setShowForm(false);
             load();
@@ -477,6 +483,7 @@ export default function PurchaseReturn() {
 
             {showForm && (
                 <form onSubmit={handleSubmit} ref={formRef} className="ent-entry">
+                    <EntryFillBar voucherType="purchase_return" api="purchase-returns" form={form} editing={!!editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={r => handleCopyFrom(r.id)} onOpenDraft={r => handleEdit({ ...r, status: 'draft' })} />
                     {!editingId && (
                         <details className="mx-3 mt-2 text-xs"><summary className="cursor-pointer text-[#1a4a8a]">Pull from any earlier document (any party)</summary>
                         <div className="erp-topbar grid-cols-1 md:grid-cols-3" style={{ background: '#eff6ff' }}>

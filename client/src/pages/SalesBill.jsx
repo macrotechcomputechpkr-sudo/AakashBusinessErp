@@ -42,7 +42,8 @@ import SalesLineGrid, { useLineGridControl, lineTotals } from '../components/ent
 import { EntryFooter, useEntryHotkeys, latestOf } from '../components/entry/EntryParts';
 import { calcLine, defaultLineTerms, productLineTerms, lineForSave } from '../components/entry/lineCalc';
 import { dualHelpers } from '../components/entry/dualHelpers';
-import DocActions, { asNewCopy } from '../components/entry/DocActions';
+import DocActions, { asNewCopy, finalizeEntry } from '../components/entry/DocActions';
+import EntryFillBar from '../components/entry/EntryFillBar';
 
 const emptyDetailRow = () => ({ product_id: '', qty: '', uom_id: '', alt_qty: '', alt_unit_id: '', rate: '', rate_basis: 'primary', discount_percent: '', tax_percent: '', free_qty: '', free_alt_qty: '', free_uom_id: '', warehouse_id: '', batch_no: '', serial_no: '', line_terms: null, source_delivery_detail_id: '', source_order_detail_id: '', source_quotation_detail_id: '' });
 
@@ -226,14 +227,19 @@ export default function SalesBill() {
                 ...(overrideCreditBlock ? { override_credit_block: true } : {})
             };
             let res;
+            let postId = null;
             if (editingId) {
                 res = await authFetch(`/api/sales-bills/${editingId}`, { method: 'PUT', body: JSON.stringify(payload) });
+                postId = editingId;
                 showAlert(saveAsDraft ? 'Draft saved' : 'Sales Bill updated', 'success');
             } else {
                 res = await authFetch('/api/sales-bills', { method: 'POST', body: JSON.stringify(payload) });
+                postId = res.data?.id;
                 showAlert(saveAsDraft ? `Draft ${res.data.doc_no} saved` : `Sales Bill ${res.data.doc_no} created`, 'success');
             }
             try { await savePartyInfo(authFetch, 'sales_bill', res.data?.id || editingId, partyInfo); } catch (pe) { showAlert(`Saved, but the party details were not: ${pe.message}`, 'warning'); }
+            // Save (not Save as Draft): post it now, after its party details are stored
+            if (!saveAsDraft) await finalizeEntry(authFetch, 'sales-bills', postId, 'posted');
             if (res.warning) showAlert(res.warning, 'warning');
             resetForm();
             setShowForm(false);
@@ -325,6 +331,7 @@ export default function SalesBill() {
 
             {showForm && (
                 <form onSubmit={handleSubmit} ref={formRef} className="ent-entry">
+                    <EntryFillBar voucherType="sales_bill" api="sales-bills" form={form} editing={!!editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={copyAsNew} onOpenDraft={r => handleEdit({ ...r, status: 'draft' })} />
                     <div className="erp-topbar grid-cols-1 md:grid-cols-4">
                         <DocNumberField voucherType="sales_bill" categoryId={form.numbering_category_id} docNo={editingId ? form.doc_no : ''} value={form.doc_no} onChange={v => setForm({ ...form, doc_no: v })} />
                         <div className={efc.isVisible('doc_date') ? 'erp-field' : 'erp-field hidden'}>

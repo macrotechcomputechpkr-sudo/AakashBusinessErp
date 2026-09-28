@@ -18,7 +18,8 @@ import BillWiseSettlementPanel from '../components/BillWiseSettlementPanel';
 import NumberingCategorySelector from '../components/NumberingCategorySelector';
 import UdfValuesModal from '../components/UdfValuesModal';
 import RecordHistory from '../components/RecordHistory';
-import DocActions, { asNewCopy } from '../components/entry/DocActions';
+import DocActions, { asNewCopy, finalizeEntry } from '../components/entry/DocActions';
+import EntryFillBar from '../components/entry/EntryFillBar';
 
 const emptyLine = () => ({ income_ledger_id: '', description: '', entry_sign: 'add', amount: '' });
 
@@ -105,9 +106,11 @@ export default function SalesAdditionalEntry() {
             const payload = { ...form, lines: validLines, ...(billWiseSettlements ? { bill_wise_settlements: billWiseSettlements } : {}), ...(saveAsDraft ? { status: 'draft', save_as_draft: true } : {}) };
             if (editingId) {
                 await authFetch(`/api/sales-additional-entries/${editingId}`, { method: 'PUT', body: JSON.stringify(payload) });
+                if (!saveAsDraft) await finalizeEntry(authFetch, 'sales-additional-entries', editingId, 'posted');
                 showAlert(saveAsDraft ? 'Draft saved' : 'Sales Additional Entry updated', 'success');
             } else {
                 const res = await authFetch('/api/sales-additional-entries', { method: 'POST', body: JSON.stringify(payload) });
+                if (!saveAsDraft) await finalizeEntry(authFetch, 'sales-additional-entries', res.data?.id, 'posted');
                 showAlert(saveAsDraft ? `Draft ${res.data.doc_no} saved` : `Sales Additional Entry ${res.data.doc_no} created`, 'success');
             }
             resetForm();
@@ -182,6 +185,7 @@ export default function SalesAdditionalEntry() {
 
             {showForm && (
                 <form onSubmit={handleSubmit} ref={formRef}>
+                    <EntryFillBar voucherType="sales_additional" api="sales-additional-entries" form={form} editing={!!editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={copyAsNew} onOpenDraft={r => handleEdit({ ...r, status: 'draft' })} />
                     <div className="erp-topbar grid-cols-1 md:grid-cols-4">
                         <div className={efc.isVisible('doc_date') ? 'erp-field' : 'erp-field hidden'}>
                             <label className="erp-label">Date <span className="req">*</span> {form.doc_date && <span className="hint">({formatDateForDisplay(form.doc_date, 'nepali')} BS)</span>} {efc.isRequired('doc_date') && <span className="req">*</span>}</label>

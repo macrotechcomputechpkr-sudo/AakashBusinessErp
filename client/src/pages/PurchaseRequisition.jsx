@@ -22,6 +22,7 @@ import UdfValuesModal from '../components/UdfValuesModal';
 import useLedgerPurposes from '../components/useLedgerPurposes';
 import RecordHistory from '../components/RecordHistory';
 import DocActions, { asNewCopy } from '../components/entry/DocActions';
+import EntryFillBar from '../components/entry/EntryFillBar';
 import { EntryFooter, useEntryHotkeys, latestOf } from '../components/entry/EntryParts';
 import useEntrySettings, { showsProductTerms } from '../components/entry/useEntrySettings';
 import { PurchaseProductTermPopup, PurchaseOverallTermPopup } from '../components/entry/PurchaseTermPopups';
@@ -521,6 +522,7 @@ export default function PurchaseRequisition() {
 
             {showForm && (
                 <form onSubmit={handleSubmit} ref={formRef} className="ent-entry">
+                    <EntryFillBar voucherType="purchase_requisition" api="purchase-requisitions" form={form} editing={!!editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={copyAsNew} onOpenDraft={r => handleEdit({ ...r, status: 'draft' })} />
                     {/* ==================== TOP BAR (identity fields, Cash/Credit up front) ==================== */}
                     <div className="erp-topbar grid-cols-1 md:grid-cols-6">
                         <div className="erp-field">

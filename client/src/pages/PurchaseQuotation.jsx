@@ -27,6 +27,7 @@ import PendingDocsPanel, { mergePulled } from '../components/entry/PendingDocsPa
 import { PartyDetailsPanel, emptyPartyInfo, savePartyInfo, partyInfoFromDoc } from '../components/entry/PartyFooterTabs';
 import { CodeCell } from '../components/entry/SalesLineGrid';
 import DocActions from '../components/entry/DocActions';
+import EntryFillBar from '../components/entry/EntryFillBar';
 import { EntryFooter, useEntryHotkeys, latestOf } from '../components/entry/EntryParts';
 import { PurchaseProductTermPopup, PurchaseOverallTermPopup } from '../components/entry/PurchaseTermPopups';
 import { productTermIds, withTermValue } from '../components/entry/lineCalc';
@@ -604,6 +605,7 @@ export default function PurchaseQuotation() {
 
             {showForm && (
                 <form onSubmit={handleSubmit} ref={formRef} className="ent-entry">
+                    <EntryFillBar voucherType="purchase_quotation" api="purchase-quotations" form={form} editing={!!editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={r => handleCopyFrom(r.id)} onOpenDraft={r => handleEdit({ ...r, status: 'draft' })} />
                     {/* ==================== PULL FORWARD (from Requisition) ==================== */}
                     {!editingId && (
                         <details className="mx-3 mt-2 text-xs"><summary className="cursor-pointer text-[#1a4a8a]">Pull from any earlier document (any party)</summary>

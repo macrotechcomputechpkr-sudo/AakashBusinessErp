@@ -27,7 +27,8 @@ import DocNumberField from '../components/entry/DocNumberField';
 import PendingDocsPanel, { mergePulled } from '../components/entry/PendingDocsPanel';
 import { PartyDetailsPanel, emptyPartyInfo, savePartyInfo, partyInfoFromDoc } from '../components/entry/PartyFooterTabs';
 import { CodeCell } from '../components/entry/SalesLineGrid';
-import DocActions from '../components/entry/DocActions';
+import DocActions, { finalizeEntry } from '../components/entry/DocActions';
+import EntryFillBar from '../components/entry/EntryFillBar';
 import { EntryFooter, useEntryHotkeys, latestOf } from '../components/entry/EntryParts';
 import { PurchaseProductTermPopup, PurchaseOverallTermPopup } from '../components/entry/PurchaseTermPopups';
 import { productTermIds, withTermValue } from '../components/entry/lineCalc';
@@ -507,11 +508,14 @@ export default function PurchaseBill() {
                 ...(saveAsDraft ? { status: 'draft', save_as_draft: true } : {})
             };
             let billId = editingId, docNo = null;
+            let postId = null;
             if (editingId) {
                 await authFetch(`/api/purchase-bills/${editingId}`, { method: 'PUT', body: JSON.stringify(payload) });
+                postId = editingId;
                 showAlert(saveAsDraft ? 'Draft saved' : 'Bill updated', 'success');
             } else {
                 const res = await authFetch('/api/purchase-bills', { method: 'POST', body: JSON.stringify(payload) });
+                postId = res.data?.id;
                 billId = res.data.id; docNo = res.data.doc_no;
                 showAlert(saveAsDraft ? `Draft ${res.data.doc_no} saved` : `Bill ${res.data.doc_no} created`, 'success');
             }
@@ -527,6 +531,8 @@ export default function PurchaseBill() {
             }
             setLcPrompt(null);
             try { await savePartyInfo(authFetch, 'purchase_bill', billId, partyInfo); } catch (pe) { showAlert(`Saved, but the vendor details were not: ${pe.message}`, 'warning'); }
+            // Save (not Save as Draft): post it now, after its party details are stored
+            if (!saveAsDraft) await finalizeEntry(authFetch, 'purchase-bills', postId, 'posted');
             resetForm();
             setShowForm(false);
             load();
@@ -715,6 +721,7 @@ export default function PurchaseBill() {
 
             {showForm && (
                 <form onSubmit={handleSubmit} ref={formRef} className="ent-entry">
+                    <EntryFillBar voucherType="purchase_bill" api="purchase-bills" form={form} editing={!!editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={r => handleCopyFrom(r.id)} onOpenDraft={r => handleEdit({ ...r, status: 'draft' })} />
                     {/* ==================== PULL FORWARD (universal - any earlier stage) ==================== */}
                     {!editingId && (
                         <details className="mx-3 mt-2 text-xs"><summary className="cursor-pointer text-[#1a4a8a]">Pull from any earlier document (any party)</summary>

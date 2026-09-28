@@ -20,7 +20,8 @@ import { useEnterKeyNavigation } from '../hooks/useEnterKeyNavigation';
 import UdfValuesModal from '../components/UdfValuesModal';
 import useLedgerPurposes from '../components/useLedgerPurposes';
 import RecordHistory from '../components/RecordHistory';
-import DocActions from '../components/entry/DocActions';
+import DocActions, { finalizeEntry } from '../components/entry/DocActions';
+import EntryFillBar from '../components/entry/EntryFillBar';
 import DocNumberField from '../components/entry/DocNumberField';
 import { EntryFooter, useEntryHotkeys, latestOf } from '../components/entry/EntryParts';
 import useEntrySettings, { showsProductTerms } from '../components/entry/useEntrySettings';
@@ -322,9 +323,11 @@ export default function PurchaseNonsaleableReturn() {
             const payload = { ...form, details: validDetails, summary_overrides: summaryOverrides, ...(saveAsDraft ? { status: 'draft', save_as_draft: true } : {}) };
             if (editingId) {
                 await authFetch(`/api/purchase-nonsaleable-returns/${editingId}`, { method: 'PUT', body: JSON.stringify(payload) });
+                if (!saveAsDraft) await finalizeEntry(authFetch, 'purchase-nonsaleable-returns', editingId, 'posted');
                 showAlert(saveAsDraft ? 'Draft saved' : 'Non-saleable Return updated', 'success');
             } else {
                 const res = await authFetch('/api/purchase-nonsaleable-returns', { method: 'POST', body: JSON.stringify(payload) });
+                if (!saveAsDraft) await finalizeEntry(authFetch, 'purchase-nonsaleable-returns', res.data?.id, 'posted');
                 showAlert(saveAsDraft ? `Draft ${res.data.doc_no} saved` : `Non-saleable Return ${res.data.doc_no} created`, 'success');
             }
             resetForm();
@@ -428,6 +431,7 @@ export default function PurchaseNonsaleableReturn() {
 
             {showForm && (
                 <form onSubmit={handleSubmit} ref={formRef} className="ent-entry">
+                    <EntryFillBar voucherType="purchase_nonsalable_return" api="purchase-nonsaleable-returns" form={form} editing={!!editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={r => handleCopyFrom(r.id)} onOpenDraft={r => handleEdit({ ...r, status: 'draft' })} />
                     {!editingId && (
                         <div className="erp-topbar grid-cols-1 md:grid-cols-3" style={{ background: '#eff6ff' }}>
                             <div className="erp-field md:col-span-2">

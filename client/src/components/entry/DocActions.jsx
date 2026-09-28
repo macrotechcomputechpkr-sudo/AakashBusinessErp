@@ -1,15 +1,17 @@
 // =============================================
 // DocActions.jsx
-// Modify / Copy / Reverse / Remove on every transaction list row, and the
-// Hold / Recall buttons of the entry form (server: documentActionRoutes.js).
+// Modify / Copy / Cancel / Remove on every transaction list row
+// (server: documentActionRoutes.js); Print sits beside them on each screen.
 //   Modify  - draft: opens it. Otherwise it is cancelled by the module's own
 //             status route (ledger, stock and progress reversed), reopened as
 //             a draft with the same number and opened for edit - post again
 //             after changing it.
 //   Remove  - draft: deleted. Otherwise cancelled, reopened, then deleted.
-//   Reverse - the module's cancel (every effect reversed, document kept).
-// System Control "IRD Billing" on: Sales Bill / Sales Return show only
-// Cancel - never Modify or Remove once posted.
+//   Cancel  - the module's cancel (every effect reversed, document kept).
+//   Copy    - a posted entry into a new one (a draft is opened with Modify
+//             instead, so finishing it does not leave the draft behind).
+// System Control "Computerized (IRD) Billing" on: a posted Sales Bill /
+// Sales Return shows only Reverse - never Modify or Remove.
 // =============================================
 import React, { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
@@ -100,67 +102,27 @@ export default function DocActions({ type, api, row, onOpen, onCopy, onReverse, 
     return (
         <>
             {canModify && <button type="button" disabled={busy} onClick={modify} className={`${btn} bg-sky-700`} title={isDraft ? 'Edit this draft' : 'Reverse, reopen as draft and edit'}>✏️ Modify</button>}
-            {onCopy && <button type="button" disabled={busy} onClick={() => onCopy(row)} className={`${btn} bg-teal-600`} title="Copy into a new entry">⧉ Copy</button>}
+            {onCopy && !isDraft && <button type="button" disabled={busy} onClick={() => onCopy(row)} className={`${btn} bg-teal-600`} title="Copy into a new entry">⧉ Copy</button>}
             {canReverse && onReverse && !isDraft && !isClosed && status !== 'closed' && (
-                <button type="button" disabled={busy} onClick={() => onReverse(row)} className={`${btn} bg-red-600`} title={locked ? 'IRD billing: cancel with a reason' : 'Reverse every ledger / stock effect'}>{locked ? 'Cancel' : '↩ Reverse'}</button>
+                <button type="button" disabled={busy} onClick={() => onReverse(row)} className={`${btn} bg-red-600`} title={locked ? 'Computerized billing: reverse this bill (kept, marked reversed)' : 'Cancel: every ledger / stock effect is reversed'}>{locked ? '↩ Reverse' : '⊘ Cancel'}</button>
             )}
             {canRemove && <button type="button" disabled={busy} onClick={remove} className={`${btn} bg-red-800`} title="Delete this entry">🗑 Remove</button>}
         </>
     );
 }
 
-/** Hold the entry being typed and recall it later (per user, per screen); hotkey: F8 opens the held list */
-export function HoldButtons({ voucherType, form, label, onRecall, disabled, hotkey }) {
-    const { authFetch } = useAuth();
-    const [list, setList] = useState(null);
-    const [count, setCount] = useState(0);
-    const load = useCallback(async () => {
-        try { const r = await authFetch(`/api/held-entries?voucher_type=${voucherType}`); setCount((r.data || []).length); return r.data || []; } catch { return []; }
-    }, [authFetch, voucherType]);
-    useEffect(() => { load(); }, [load]);
-    useEffect(() => {
-        if (!hotkey) return undefined;
-        const onKey = async e => { if (e.key === 'F8') { e.preventDefault(); setList(await load()); } };
-        window.addEventListener('keydown', onKey);
-        return () => window.removeEventListener('keydown', onKey);
-    }, [hotkey, load]);
-
-    const hold = async () => {
-        try {
-            await authFetch('/api/held-entries', { method: 'POST', body: JSON.stringify({ voucher_type: voucherType, label: label || `Held ${new Date().toLocaleString()}`, payload: form }) });
-            await load();
-            onRecall && onRecall(null);
-        } catch (e) { window.alert(e.message); }
-    };
-    const recall = async (h) => {
-        try {
-            await authFetch(`/api/held-entries/${h.id}`, { method: 'DELETE' });
-            setList(null); load();
-            onRecall && onRecall(h.payload);
-        } catch (e) { window.alert(e.message); }
-    };
-    const discard = async (h) => {
-        if (!window.confirm('Discard this held entry?')) return;
-        try { await authFetch(`/api/held-entries/${h.id}`, { method: 'DELETE' }); setList(await load()); } catch (e) { window.alert(e.message); }
-    };
-    return (
-        <>
-            <button type="button" className="erp-btn" disabled={disabled} onClick={hold} title="Park this entry and start a new one">⏸ Hold</button>
-            <button type="button" className="erp-btn" onClick={async () => setList(await load())} title="Bring back a held entry">▶ Recall{count ? ` (${count})` : ''}</button>
-            {list && (
-                <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4" onClick={() => setList(null)}>
-                    <div className="bg-white rounded-lg shadow-xl w-full max-w-lg max-h-[80vh] overflow-auto p-4" onClick={e => e.stopPropagation()} data-enter-nav="off">
-                        <div className="flex justify-between items-center mb-3"><h3 className="font-semibold">Held entries</h3><button type="button" onClick={() => setList(null)}>✕</button></div>
-                        {list.length === 0 ? <p className="text-sm text-gray-500">Nothing on hold.</p> : list.map(h => (
-                            <div key={h.id} className="flex items-center gap-2 border rounded px-3 py-2 mb-2 text-sm">
-                                <div className="flex-1 min-w-0"><div className="truncate font-medium">{h.label || 'Held entry'}</div><div className="text-xs text-gray-500">{new Date(h.created_at).toLocaleString()}</div></div>
-                                <button type="button" className="px-2 py-1 bg-blue-600 text-white rounded text-xs" onClick={() => recall(h)}>Recall</button>
-                                <button type="button" className="px-2 py-1 bg-gray-200 rounded text-xs" onClick={() => discard(h)}>Discard</button>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            )}
-        </>
-    );
+/**
+ * Save (not Save as Draft) makes the entry a transaction: the saved document is posted by its
+ * module's own status route (ledger / stock effect), so a draft that was finished does not stay
+ * a draft. A posting refusal (credit limit, stock ...) leaves it saved as a draft and says why.
+ */
+export async function finalizeEntry(authFetch, api, id, status = 'posted') {
+    if (!id) return true;
+    try {
+        await authFetch(`/api/${api}/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) });
+        return true;
+    } catch (e) {
+        window.alert(`Saved as a draft, but it could not be ${status}: ${e.message}\n\nOpen it from the Draft list to finish it.`);
+        return false;
+    }
 }

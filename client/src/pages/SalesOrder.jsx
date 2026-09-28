@@ -28,7 +28,8 @@ import SalesLineGrid, { useLineGridControl, lineTotals } from '../components/ent
 import { EntryFooter, useEntryHotkeys, latestOf } from '../components/entry/EntryParts';
 import { defaultLineTerms, productLineTerms, lineForSave } from '../components/entry/lineCalc';
 import { dualHelpers } from '../components/entry/dualHelpers';
-import DocActions, { asNewCopy } from '../components/entry/DocActions';
+import DocActions, { asNewCopy, finalizeEntry } from '../components/entry/DocActions';
+import EntryFillBar from '../components/entry/EntryFillBar';
 
 const emptyDetailRow = () => ({
     product_id: '', qty: '', uom_id: '', alt_qty: '', alt_unit_id: '', rate_basis: 'primary',
@@ -238,14 +239,19 @@ export default function SalesOrder() {
                 ...(overrideCreditBlock ? { override_credit_block: true } : {})
             };
             let res;
+            let postId = null;
             if (editingId) {
                 res = await authFetch(`/api/sales-orders/${editingId}`, { method: 'PUT', body: JSON.stringify(payload) });
+                postId = editingId;
                 showAlert(saveAsDraft ? 'Draft saved' : 'Sales Order updated', 'success');
             } else {
                 res = await authFetch('/api/sales-orders', { method: 'POST', body: JSON.stringify(payload) });
+                postId = res.data?.id;
                 showAlert(saveAsDraft ? `Draft ${res.data.doc_no} saved` : `Sales Order ${res.data.doc_no} created`, 'success');
             }
             try { await savePartyInfo(authFetch, 'sales_order', res.data?.id || editingId, partyInfo); } catch (pe) { showAlert(`Saved, but the party details were not: ${pe.message}`, 'warning'); }
+            // Save (not Save as Draft): post it now, after its party details are stored
+            if (!saveAsDraft) await finalizeEntry(authFetch, 'sales-orders', postId, 'confirmed');
             if (res.warning) showAlert(res.warning, 'warning');
             resetForm();
             setShowForm(false);
@@ -389,6 +395,7 @@ export default function SalesOrder() {
 
             {showForm && (
                 <form onSubmit={handleSubmit} ref={formRef} className="ent-entry">
+                    <EntryFillBar voucherType="sales_order" api="sales-orders" form={form} editing={!!editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={r => handleCopyFrom(r.id)} onOpenDraft={r => handleEdit({ ...r, status: 'draft' })} />
                     <div className="erp-topbar grid-cols-1 md:grid-cols-4">
                         <DocNumberField voucherType="sales_order" categoryId={form.numbering_category_id} docNo={editingId ? form.doc_no : ''} value={form.doc_no} onChange={v => setForm({ ...form, doc_no: v })} />
                         <div className={efc.isVisible('doc_date') ? 'erp-field' : 'erp-field hidden'}>

@@ -430,3 +430,9 @@ table th, table td {
 label {
   font-size: 0.8125rem;
 }
+
+/* fill bar at the top of a transaction form: template / previous entry / draft */
+.ent-fillbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 4px 8px; margin-bottom: 6px; border: 1px dashed var(--nav-border, #c9cfd8); border-radius: 4px; background: rgba(120, 140, 170, 0.06); font-size: 12px; }
+.ent-fillbar-cap { font-weight: 600; color: #55607a; margin-right: 2px; }
+.ent-fillbar-sep { width: 1px; height: 18px; background: #c9cfd8; margin: 0 4px; }
+.ent-fillbar .nav-btn:disabled { opacity: .45; cursor: not-allowed; }

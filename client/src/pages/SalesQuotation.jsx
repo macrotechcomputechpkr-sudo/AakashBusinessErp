@@ -28,6 +28,7 @@ import { EntryFooter, useEntryHotkeys, latestOf } from '../components/entry/Entr
 import { defaultLineTerms, productLineTerms, lineForSave } from '../components/entry/lineCalc';
 import { dualHelpers } from '../components/entry/dualHelpers';
 import DocActions, { asNewCopy } from '../components/entry/DocActions';
+import EntryFillBar from '../components/entry/EntryFillBar';
 
 const emptyDetailRow = () => ({ product_id: '', qty: '', uom_id: '', alt_qty: '', alt_unit_id: '', rate_basis: 'primary', rate: '', discount_percent: '', tax_percent: '', warehouse_id: '', batch_no: '' });
 
@@ -303,6 +304,7 @@ export default function SalesQuotation() {
 
             {showForm && (
                 <form onSubmit={handleSubmit} ref={formRef} className="ent-entry">
+                    <EntryFillBar voucherType="sales_quotation" api="sales-quotations" form={form} editing={!!editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={copyAsNew} onOpenDraft={r => handleEdit({ ...r, status: 'draft' })} />
                     <div className="erp-topbar grid-cols-1 md:grid-cols-4">
                         <DocNumberField voucherType="sales_quotation" categoryId={form.numbering_category_id} docNo={editingId ? form.doc_no : ''} value={form.doc_no} onChange={v => setForm({ ...form, doc_no: v })} />
                         <div className={efc.isVisible('doc_date') ? 'erp-field' : 'erp-field hidden'}>

@@ -28,7 +28,8 @@ import SalesLineGrid, { useLineGridControl, lineTotals } from '../components/ent
 import { EntryFooter, useEntryHotkeys, latestOf } from '../components/entry/EntryParts';
 
 import { dualHelpers } from '../components/entry/dualHelpers';
-import DocActions, { asNewCopy } from '../components/entry/DocActions';
+import DocActions, { asNewCopy, finalizeEntry } from '../components/entry/DocActions';
+import EntryFillBar from '../components/entry/EntryFillBar';
 
 const emptyDetailRow = () => ({ product_id: '', qty: '', uom_id: '', alt_qty: '', alt_unit_id: '', rate_basis: 'primary', rate: '', warehouse_id: '', batch_no: '', serial_no: '', mfg_date: '', exp_date: '', source_order_detail_id: '' });
 
@@ -239,14 +240,19 @@ export default function SalesDelivery() {
         let savedId = editingId;
         try {
             const payload = { ...form, details: validDetails, ...(saveAsDraft ? { status: 'draft', save_as_draft: true } : {}) };
+            let postId = null;
             if (editingId) {
                 await authFetch(`/api/sales-deliveries/${editingId}`, { method: 'PUT', body: JSON.stringify(payload) });
+                postId = editingId;
                 showAlert(saveAsDraft ? 'Draft saved' : 'Sales Delivery updated', 'success');
             } else {
                 const res = await authFetch('/api/sales-deliveries', { method: 'POST', body: JSON.stringify(payload) }); savedId = res.data?.id;
+                postId = res.data?.id;
                 showAlert(saveAsDraft ? `Draft ${res.data.doc_no} saved` : `Sales Delivery ${res.data.doc_no} created`, 'success');
             }
             try { await savePartyInfo(authFetch, 'sales_delivery', savedId, partyInfo); } catch (pe) { showAlert(`Saved, but the party details were not: ${pe.message}`, 'warning'); }
+            // Save (not Save as Draft): post it now, after its party details are stored
+            if (!saveAsDraft) await finalizeEntry(authFetch, 'sales-deliveries', postId, 'posted');
             resetForm();
             setShowForm(false);
             load();
@@ -329,6 +335,7 @@ export default function SalesDelivery() {
 
             {showForm && (
                 <form onSubmit={handleSubmit} ref={formRef} className="ent-entry">
+                    <EntryFillBar voucherType="sales_delivery" api="sales-deliveries" form={form} editing={!!editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={copyAsNew} onOpenDraft={r => handleEdit({ ...r, status: 'draft' })} />
                     <div className="erp-topbar grid-cols-1 md:grid-cols-4">
                         <DocNumberField voucherType="sales_delivery" categoryId={form.numbering_category_id} docNo={editingId ? form.doc_no : ''} value={form.doc_no} onChange={v => setForm({ ...form, doc_no: v })} />
                         <div className={efc.isVisible('doc_date') ? 'erp-field' : 'erp-field hidden'}>
