@@ -13,9 +13,10 @@
 // back) into the entry.
 // Server: /api/pending-documents (utils/pendingDocs.js).
 // =============================================
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { EntryPopup } from './EntryParts';
+import { focusNextInForm } from '../../hooks/useEnterKeyNavigation';
 
 const SOURCES = {
     sales_order: ['sales_quotation'], sales_delivery: ['sales_quotation', 'sales_order'], sales_bill: ['sales_quotation', 'sales_order', 'sales_delivery'],
@@ -38,6 +39,16 @@ export default function PendingDocsPanel({ target, partyId, efc, onPull, disable
     const [viewing, setViewing] = useState(null);
     const [busy, setBusy] = useState(false);
     const [err, setErr] = useState('');
+    const [seen, setSeen] = useState({});
+    const boxes = useRef({});
+    useEffect(() => { setSeen({}); }, [partyId]);
+    // the pop-up closes back onto its box, so the next Enter moves on
+    const closePopup = (pulledNow = false) => {
+        const t = open;
+        setOpen(null);
+        if (pulledNow) setQs(x => ({ ...x, [t]: '' }));
+        setTimeout(() => { if (boxes.current[t]) boxes.current[t].focus(); }, 0);
+    };
     const [q, setQ] = useState('');
     const [qs, setQs] = useState({});          // number typed per source type
     const [open, setOpen] = useState(null);    // source type whose pending list is open
@@ -85,16 +96,24 @@ export default function PendingDocsPanel({ target, partyId, efc, onPull, disable
                     <div key={t} className="erp-field">
                         <label className="erp-label">{LABEL[t]} No.</label>
                         <div className="sps-row">
-                            <input className="erp-input sps-input" value={qs[t] || ''} placeholder={partyId ? (n ? `${n} pending - pick or type` : 'none pending') : 'type the number'}
+                            <input ref={el => { boxes.current[t] = el; }} className="erp-input sps-input" value={qs[t] || ''} placeholder={partyId ? (n ? `${n} pending - pick or type` : 'none pending') : 'type the number'}
                                 onChange={e => { setQs(x => ({ ...x, [t]: e.target.value })); setQ(e.target.value); openType(t); }}
-                                onKeyDown={e => { if (e.key === 'Enter' || e.key === 'F4') { e.preventDefault(); openType(t); } }} />
+                                onKeyDown={e => {
+                                    if (e.key === 'F4') { e.preventDefault(); openType(t); return; }
+                                    if (e.key !== 'Enter' || e.shiftKey) return;
+                                    e.preventDefault();
+                                    // Enter after the party: a number typed, or this party's pending list not yet
+                                    // seen -> the pop-up; otherwise on to the next field (Quotation -> Order -> ...)
+                                    if (qs[t] || (n && !seen[t])) { setSeen(x => ({ ...x, [t]: true })); openType(t); }
+                                    else if (e.currentTarget.form) focusNextInForm(e.currentTarget.form, e.currentTarget);
+                                }} />
                             <button type="button" tabIndex={-1} className="sps-gear" title={`Pending ${LABEL[t]}s`} onClick={() => { setQ(qs[t] || ''); openType(t); }}>▾</button>
                         </div>
                     </div>
                 );
             })}
             {open && (
-                <EntryPopup title={`Pull from ${LABEL[open]}${partyId ? ' - this party' : ''}`} onClose={() => setOpen(null)} width={820}>
+                <EntryPopup title={`Pull from ${LABEL[open]}${partyId ? ' - this party' : ''}`} onClose={() => closePopup()} width={820}>
                     {err && <div className="nav-msg err">{err}</div>}
                     {shown.length === 0 ? <p className="text-xs text-gray-600">{partyId ? `No pending ${LABEL[open]} for this party.` : (qs[open] ? `No pending ${LABEL[open]} with this number.` : 'Choose the party, or type a document number.')}</p> : (
                         <>
@@ -113,7 +132,7 @@ export default function PendingDocsPanel({ target, partyId, efc, onPull, disable
                                 </table>
                             </div>
                             <div className="flex items-center gap-2 mt-2">
-                                <button type="button" className="nav-btn primary small" disabled={!chosen.length || busy} onClick={async () => { await pull(); setOpen(null); }}>⬇ Pull {chosen.length || ''} selected</button>
+                                <button type="button" className="nav-btn primary small" disabled={!chosen.length || busy} onClick={async () => { await pull(); closePopup(true); }}>⬇ Pull {chosen.length || ''} selected</button>
                                 <span className="text-xs text-gray-600">Pulled lines replace the empty lines of the entry; qty can be reduced before saving.</span>
                             </div>
                         </>

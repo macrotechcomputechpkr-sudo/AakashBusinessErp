@@ -91,7 +91,6 @@ export default function PurchaseReturn() {
     const [showDraftsOnly, setShowDraftsOnly] = useState(false);
     const [showCopyModal, setShowCopyModal] = useState(false);
     const [auditModal, setAuditModal] = useState(null);
-    const [pullBillId, setPullBillId] = useState('');
     // FEATURE: "Return haru maa pani term...jastai hunu parxa" - the
     // SAME document-level + per-line Billing Term system Purchase Bill/
     // GRN/Order/Quotation already have, brought to Purchase Return too.
@@ -131,7 +130,7 @@ export default function PurchaseReturn() {
     const [businessUnits, setBusinessUnits] = useState([]);
     const [products, setProducts] = useState([]);
     const [units, setUnits] = useState([]);
-    const [openBills, setOpenBills] = useState([]);
+    const [, setOpenBills] = useState([]);
 
     const formRef = useRef(null);
     useEnterKeyNavigation(formRef, { onLastField: () => { addDetailRow(); return true; } });
@@ -175,7 +174,7 @@ export default function PurchaseReturn() {
     }, [authFetch]);
     useEffect(() => { load(); }, [load]);
 
-    const resetForm = () => { setForm(emptyForm); setEditingId(null); setPullBillId(''); setSummaryOverrides({}); setSelectedRowIndexes([]); setPartyInfo(emptyPartyInfo()); setPulledDocs([]); };
+    const resetForm = () => { setForm(emptyForm); setEditingId(null); setSummaryOverrides({}); setSelectedRowIndexes([]); setPartyInfo(emptyPartyInfo()); setPulledDocs([]); };
     const addDetailRow = () => setForm(f => ({ ...f, details: [...f.details, emptyDetailRow()] }));
     // barcode counter mode (System Control > Barcode System): the same item again adds one to its line
     const posPick = (idx, pid, uid) => {
@@ -330,29 +329,6 @@ export default function PurchaseReturn() {
     const footVendor = vendors.find(v => v.id === form.vendor_ledger_id);
     useEntryHotkeys(showForm, { F7: () => { const last = latestOf(rows); if (last) handleCopyFrom(last.id); } });
 
-    // FEATURE: "whichever module comes after should be able to fill from
-    // FEATURE: Return links to Bill only - a return is a Credit Note
-    // against what was actually billed. Only offering
-    // what's still genuinely returnable (the backend enforces the same
-    // limit as a hard check on save, this is just the convenient offer).
-    const handlePullForward = async () => {
-        if (!pullBillId) return showAlert('Pick a Bill to pull from', 'danger');
-        try {
-            const params = new URLSearchParams();
-            if (pullBillId) params.set('bill_id', pullBillId);
-            const res = await authFetch(`/api/purchase-returns/pull-forward?${params}`);
-            const { master, details } = res.data;
-            setForm(f => ({
-                ...f, ...master,
-                source_bill_id: pullBillId || '',
-                details: (details && details.length > 0) ? details.map(d => ({ ...emptyDetailRow(), ...d })) : f.details
-            }));
-            showAlert('Pulled forward - review and adjust before saving', 'success');
-        } catch (err) {
-            showAlert(err.message, 'danger');
-        }
-    };
-
     const handleSubmit = async (e, saveAsDraft = false) => {
 
         // Save as Draft (new entry): kept apart as a temporary draft - no number, no accounts / stock effect
@@ -494,23 +470,6 @@ export default function PurchaseReturn() {
             {showForm && (
                 <form onSubmit={handleSubmit} ref={formRef} className="ent-entry">
                     <EntryFillBar voucherType="purchase_return" api="purchase-returns" form={form} editing={!!editingId} docId={editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={r => handleCopyFrom(r.id)} />
-                    {!editingId && (
-                        <details className="mx-3 mt-2 text-xs"><summary className="cursor-pointer text-[#1a4a8a]">Pull from any earlier document (any party)</summary>
-                        <div className="erp-topbar grid-cols-1 md:grid-cols-3" style={{ background: '#eff6ff' }}>
-                            <div className="erp-field md:col-span-2">
-                                <label className="erp-label">Pull From Bill</label>
-                                <select className="erp-select" value={pullBillId} onChange={e => setPullBillId(e.target.value)}>
-                                    <option value="">— None —</option>
-                                    {openBills.map(b => <option key={b.id} value={b.id}>{b.doc_no}</option>)}
-                                </select>
-                            </div>
-                            <div className="erp-field justify-end">
-                                <button type="button" onClick={handlePullForward} className="erp-btn primary">⬇ Pull Forward</button>
-                            </div>
-                            <p className="text-xs text-gray-400 md:col-span-3">Only what's still genuinely returnable (qty minus already-returned) gets offered - and the server rejects anything beyond that even if typed in manually.</p>
-                        </div>
-                        </details>
-                    )}
 
                     <div className="erp-topbar grid-cols-1 md:grid-cols-4">
                         <DocNumberField docDate={form.doc_date || form.voucher_date} voucherType="purchase_return" categoryId={form.numbering_category_id} docNo={editingId ? form.doc_no : ''} value={form.doc_no} onChange={v => setForm({ ...form, doc_no: v })} label="Doc No" />

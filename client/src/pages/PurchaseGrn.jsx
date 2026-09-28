@@ -102,12 +102,9 @@ export default function PurchaseGrn() {
     const [auditModal, setAuditModal] = useState(null); // { doc_no, entries }
     // FEATURE: "pulls forward from Requisition and/or Quotation" - the
     // "pulls forward from any earlier stage" capability.
-    const [pullRequisitionId, setPullRequisitionId] = useState('');
-    const [pullQuotationId, setPullQuotationId] = useState('');
-    const [pullOrderId, setPullOrderId] = useState('');
-    const [openRequisitions, setOpenRequisitions] = useState([]);
-    const [openQuotations, setOpenQuotations] = useState([]);
-    const [openOrders, setOpenOrders] = useState([]);
+    const [, setOpenRequisitions] = useState([]);
+    const [, setOpenQuotations] = useState([]);
+    const [, setOpenOrders] = useState([]);
     // FEATURE: Master reorganized into tabs (not all fields flat) plus a
     // bottom bar for narration-style fields, matching the "own concept,
     // NAV style" desktop-form pattern.
@@ -208,30 +205,7 @@ export default function PurchaseGrn() {
     }, [authFetch]);
     useEffect(() => { load(); }, [load]);
 
-    const resetForm = () => { setForm(emptyForm); setEditingId(null); setPullRequisitionId(''); setPullQuotationId(''); setPullOrderId(''); setPartyInfo(emptyPartyInfo()); setPulledDocs([]); };
-
-    // FEATURE: fetches the shared pull-forward endpoint and populates the
-    // Master + Details with whatever it returns - user can still edit
-    // everything afterward, this is a starting point, not a lock-in.
-    const handlePullForward = async () => {
-        if (!pullRequisitionId && !pullQuotationId && !pullOrderId) return showAlert('Pick a Requisition, Quotation, and/or Order to pull from', 'danger');
-        try {
-            const params = new URLSearchParams();
-            if (pullRequisitionId) params.set('requisition_id', pullRequisitionId);
-            if (pullQuotationId) params.set('quotation_id', pullQuotationId);
-            if (pullOrderId) params.set('order_id', pullOrderId);
-            const res = await authFetch(`/api/purchase-grns/pull-forward?${params}`);
-            const { master, details } = res.data;
-            setForm(f => ({
-                ...f, ...master,
-                source_requisition_id: pullRequisitionId || '', source_quotation_id: pullQuotationId || '', source_order_id: pullOrderId || '',
-                details: (details && details.length > 0) ? details.map(d => ({ ...emptyDetailRow(), ...d })) : f.details
-            }));
-            showAlert('Pulled forward - review and adjust before saving', 'success');
-        } catch (err) {
-            showAlert(err.message, 'danger');
-        }
-    };
+    const resetForm = () => { setForm(emptyForm); setEditingId(null); setPartyInfo(emptyPartyInfo()); setPulledDocs([]); };
 
     // FEATURE: Entry Field Control - resolved per-field mode drives
     // visibility/required/readonly across the whole form. Section
@@ -659,38 +633,6 @@ export default function PurchaseGrn() {
             {showForm && (
                 <form onSubmit={handleSubmit} ref={formRef} className="ent-entry">
                     <EntryFillBar voucherType="purchase_grn" api="purchase-grns" form={form} editing={!!editingId} docId={editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={r => handleCopyFrom(r.id)} />
-                    {/* ==================== PULL FORWARD (universal - any earlier stage) ==================== */}
-                    {!editingId && (
-                        <details className="mx-3 mt-2 text-xs"><summary className="cursor-pointer text-[#1a4a8a]">Pull from any earlier document (any party)</summary>
-                        <div className="erp-topbar grid-cols-1 md:grid-cols-4" style={{ background: '#eff6ff' }}>
-                            <div className="erp-field">
-                                <label className="erp-label">Pull From Requisition</label>
-                                <select className="erp-select" value={pullRequisitionId} onChange={e => setPullRequisitionId(e.target.value)}>
-                                    <option value="">— None —</option>
-                                    {openRequisitions.map(r => <option key={r.id} value={r.id}>{r.doc_no} — {r.vendor_display_name || 'No vendor yet'}</option>)}
-                                </select>
-                            </div>
-                            <div className="erp-field">
-                                <label className="erp-label">Pull From Quotation</label>
-                                <select className="erp-select" value={pullQuotationId} onChange={e => setPullQuotationId(e.target.value)}>
-                                    <option value="">— None —</option>
-                                    {openQuotations.map(q => <option key={q.id} value={q.id}>{q.doc_no}</option>)}
-                                </select>
-                            </div>
-                            <div className="erp-field">
-                                <label className="erp-label">Pull From Order</label>
-                                <select className="erp-select" value={pullOrderId} onChange={e => setPullOrderId(e.target.value)}>
-                                    <option value="">— None —</option>
-                                    {openOrders.map(o => <option key={o.id} value={o.id}>{o.doc_no} — {o.vendor_display_name || 'No vendor yet'}</option>)}
-                                </select>
-                            </div>
-                            <div className="erp-field justify-end">
-                                <button type="button" onClick={handlePullForward} className="erp-btn primary">⬇ Pull Forward</button>
-                            </div>
-                            <p className="text-xs text-gray-400 md:col-span-4">Pick any combination - all their lines get merged in. Order lines only bring in what's still outstanding (not yet received).</p>
-                        </div>
-                        </details>
-                    )}
 
                     {/* ==================== TOP BAR (identity fields, Cash/Credit up front) ==================== */}
                     <div className="erp-topbar grid-cols-1 md:grid-cols-6">

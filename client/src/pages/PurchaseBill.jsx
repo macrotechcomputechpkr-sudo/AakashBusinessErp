@@ -116,12 +116,9 @@ export default function PurchaseBill() {
     const [auditModal, setAuditModal] = useState(null); // { doc_no, entries }
     // FEATURE: "pulls forward from Requisition and/or Quotation" - the
     // "pulls forward from any earlier stage" capability.
-    const [pullQuotationId, setPullQuotationId] = useState('');
-    const [pullOrderId, setPullOrderId] = useState('');
-    const [pullGrnId, setPullGrnId] = useState('');
-    const [openQuotations, setOpenQuotations] = useState([]);
-    const [openOrders, setOpenOrders] = useState([]);
-    const [openGrns, setOpenGrns] = useState([]);
+    const [, setOpenQuotations] = useState([]);
+    const [, setOpenOrders] = useState([]);
+    const [, setOpenGrns] = useState([]);
     const [customsOffices, setCustomsOffices] = useState([]);
     // FEATURE: Master reorganized into tabs (not all fields flat) plus a
     // bottom bar for narration-style fields, matching the "own concept,
@@ -226,30 +223,7 @@ export default function PurchaseBill() {
     }, [authFetch]);
     useEffect(() => { load(); }, [load]);
 
-    const resetForm = () => { setForm(emptyForm); setEditingId(null); setPullQuotationId(''); setPullOrderId(''); setPullGrnId(''); setPartyInfo(emptyPartyInfo()); setPulledDocs([]); };
-
-    // FEATURE: fetches the shared pull-forward endpoint and populates the
-    // Master + Details with whatever it returns - user can still edit
-    // everything afterward, this is a starting point, not a lock-in.
-    const handlePullForward = async () => {
-        if (!pullQuotationId && !pullOrderId && !pullGrnId) return showAlert('Pick a Quotation, Order, and/or GRN to pull from', 'danger');
-        try {
-            const params = new URLSearchParams();
-            if (pullQuotationId) params.set('quotation_id', pullQuotationId);
-            if (pullOrderId) params.set('order_id', pullOrderId);
-            if (pullGrnId) params.set('grn_id', pullGrnId);
-            const res = await authFetch(`/api/purchase-bills/pull-forward?${params}`);
-            const { master, details } = res.data;
-            setForm(f => ({
-                ...f, ...master,
-                source_quotation_id: pullQuotationId || '', source_order_id: pullOrderId || '', source_grn_id: pullGrnId || '',
-                details: (details && details.length > 0) ? details.map(d => ({ ...emptyDetailRow(), ...d })) : f.details
-            }));
-            showAlert('Pulled forward - review and adjust before saving', 'success');
-        } catch (err) {
-            showAlert(err.message, 'danger');
-        }
-    };
+    const resetForm = () => { setForm(emptyForm); setEditingId(null); setPartyInfo(emptyPartyInfo()); setPulledDocs([]); };
 
     // FEATURE: Entry Field Control - resolved per-field mode drives
     // visibility/required/readonly across the whole form. Section
@@ -736,38 +710,6 @@ export default function PurchaseBill() {
             {showForm && (
                 <form onSubmit={handleSubmit} ref={formRef} className="ent-entry">
                     <EntryFillBar voucherType="purchase_bill" api="purchase-bills" form={form} editing={!!editingId} docId={editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={r => handleCopyFrom(r.id)} />
-                    {/* ==================== PULL FORWARD (universal - any earlier stage) ==================== */}
-                    {!editingId && (
-                        <details className="mx-3 mt-2 text-xs"><summary className="cursor-pointer text-[#1a4a8a]">Pull from any earlier document (any party)</summary>
-                        <div className="erp-topbar grid-cols-1 md:grid-cols-4" style={{ background: '#eff6ff' }}>
-                            <div className="erp-field">
-                                <label className="erp-label">Pull From Quotation</label>
-                                <select className="erp-select" value={pullQuotationId} onChange={e => setPullQuotationId(e.target.value)}>
-                                    <option value="">— None —</option>
-                                    {openQuotations.map(q => <option key={q.id} value={q.id}>{q.doc_no}</option>)}
-                                </select>
-                            </div>
-                            <div className="erp-field">
-                                <label className="erp-label">Pull From Order</label>
-                                <select className="erp-select" value={pullOrderId} onChange={e => setPullOrderId(e.target.value)}>
-                                    <option value="">— None —</option>
-                                    {openOrders.map(o => <option key={o.id} value={o.id}>{o.doc_no} — {o.vendor_display_name || 'No vendor yet'}</option>)}
-                                </select>
-                            </div>
-                            <div className="erp-field">
-                                <label className="erp-label">Pull From GRN</label>
-                                <select className="erp-select" value={pullGrnId} onChange={e => setPullGrnId(e.target.value)}>
-                                    <option value="">— None —</option>
-                                    {openGrns.map(g => <option key={g.id} value={g.id}>{g.doc_no} — {g.vendor_display_name || 'No vendor yet'}</option>)}
-                                </select>
-                            </div>
-                            <div className="erp-field justify-end">
-                                <button type="button" onClick={handlePullForward} className="erp-btn primary">⬇ Pull Forward</button>
-                            </div>
-                            <p className="text-xs text-gray-400 md:col-span-4">Pick any combination - all their lines get merged in. GRN lines only bring in what's still outstanding (not yet billed).</p>
-                        </div>
-                        </details>
-                    )}
 
                     {/* ==================== TOP BAR (identity fields, Cash/Credit up front) ==================== */}
                     <div className="erp-topbar grid-cols-1 md:grid-cols-6">
