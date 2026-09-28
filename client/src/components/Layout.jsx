@@ -11,6 +11,8 @@
 //   * every screen sits in a NAV window: title bar with the screen name and
 //     minimise / maximise / close, ribbon (Home, Related screens of the same
 //     menu group, Reports for that area) and a tool bar
+//   * ❓ Help on every tool bar: the screen's help panel (components/help);
+//     every field caption gets a tooltip from the help glossary
 //   * status bar (ready, user, company, date / time)
 // Phones and tablets get the same menus in a slide-in drawer.
 // =============================================
@@ -23,6 +25,8 @@ import { useNotifications, BellButton, NotificationOverlay } from './Notificatio
 import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { TOP_MENUS, REPORT_GROUPS, featureOn, visibleReportGroups } from './menu';
 import { useAuth } from '../contexts/AuthContext';
+import HelpPanel from './help/HelpPanel';
+import useFieldTips from './help/useFieldTips';
 
 // links with a query string reload the page so a report / tab opens on the chosen view
 function MenuLink({ item, className, onClick }) {
@@ -62,6 +66,15 @@ export default function Layout({ children }) {
     const contentRef = useRef(null);
     useGlobalEnterNav(contentRef);
     const excelMenu = useExcelTableFilters(contentRef);
+    // field help: tooltip on every caption the glossary knows; ❓ Help panel of the screen (Shift+F1)
+    useFieldTips(contentRef, [location.pathname]);
+    const [helpOpen, setHelpOpen] = useState(false);
+    useEffect(() => { setHelpOpen(false); }, [location.pathname]);
+    useEffect(() => {
+        const k = e => { if (e.key === 'F1' && e.shiftKey) { e.preventDefault(); setHelpOpen(o => !o); } };
+        window.addEventListener('keydown', k);
+        return () => window.removeEventListener('keydown', k);
+    }, []);
     // 🔔 notifications (bell, list, popups)
     const notes = useNotifications();
 
@@ -292,12 +305,15 @@ export default function Layout({ children }) {
                                         <span className="nav-tool-sep" />
                                         <Link to="/dashboard" className="nav-tool-btn">🏠 Dashboard</Link>
                                         <Link to="/reports" className="nav-tool-btn">📚 Report Center</Link>
+                                        <span className="nav-tool-sep" />
+                                        <button type="button" className={`nav-tool-btn ${helpOpen ? 'active' : ''}`} title="Help of this screen (Shift+F1)" onClick={() => setHelpOpen(o => !o)}>❓ Help</button>
                                     </>
                                 )}
                                 {ribbon === 'related' && related.map(it => <MenuLink key={it.to} item={it} className="nav-tool-btn" />)}
                                 {ribbon === 'reports' && reports.map(it => <MenuLink key={it.to} item={it} className="nav-tool-btn" />)}
                             </div>
-                            <div className="nav-page-body">{children}</div>
+                            <div className={`nav-page-body ${helpOpen ? 'with-help' : ''}`}>{children}</div>
+                            {helpOpen && <HelpPanel pathname={location.pathname} isSuperAdmin={isSuperAdmin} onClose={() => setHelpOpen(false)} />}
                         </>
                     )}
                 </div>

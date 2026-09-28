@@ -404,9 +404,12 @@ async function reconcileStock(c, t, { from, to, loadTaxDocs }) {
         });
     }
 
-    // numbers of receipts with no bill yet (GRN not billed)
-    const grnOnly = [...rows.values()].filter(r => !r.in_register && r.book_type === 'purchase_grn');
-    const grnNos = Object.fromEntries((await inChunks([...new Set(grnOnly.map(r => r.book_id))], 200, async ch => safe(c.from('purchase_grns').select('id, doc_no, vendor_name_snapshot').in('id', ch)))).map(g => [g.id, g]));
+    // numbers / parties of stock rows with nothing in the register (GRN not billed yet, a bill / return outside the register)
+    const grnNos = {};
+    for (const [type, table] of [['purchase_grn', 'purchase_grns'], ['purchase_bill', 'purchase_bills'], ['purchase_return', 'purchase_returns']]) {
+        const ids = [...new Set([...rows.values()].filter(r => !r.in_register && r.book_type === type).map(r => r.book_id))];
+        (await inChunks(ids, 200, async ch => safe(c.from(table).select('id, doc_no, vendor_name_snapshot').in('id', ch)))).forEach(g => { grnNos[g.id] = g; });
+    }
     rows.forEach(r => {
         if (r.key.startsWith('purchase_grn:') && r.in_register) r.label = 'Purchase Bill (with GRN)';
         if (!r.in_register) {

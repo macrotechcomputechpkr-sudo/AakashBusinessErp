@@ -6,6 +6,12 @@ The effect of each transaction is shown in a box like this:
 
 > **Accounts:** what is debited and credited. **Stock:** what goes in or out.
 
+
+> **Help inside the system**
+> - Every screen: **❓ Help** on the tool bar (or Shift+F1) - what the screen is for, how to use it, its effect on accounts, stock and VAT, and every field on it.
+> - Every field caption with a dotted underline shows its help when you point at it.
+> - **Tools > Help Center**: this manual, a manual for each Business Nature, the IRD Billing architecture and user manual (everyone); the Developer Guide and the PDF of every menu screen (super admin).
+
 ## 1. Getting started
 
 ### 1.1 Logging in and the screen

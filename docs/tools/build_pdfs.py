@@ -46,7 +46,9 @@ SUB = ParagraphStyle('sub', parent=BODY, fontSize=12, leading=16, alignment=TA_C
 def plain(text):
     for k, v in PLAIN.items():
         text = text.replace(k, v)
-    return text
+    # emoji / symbols the built-in fonts cannot draw (menu icons, ❓ ...) are left out
+    text = text.replace('\u2753', '?')
+    return re.sub(r'[\u2190-\u21ff\u2300-\u2bff\ufe0f\U0001F000-\U0001FAFF]\s?', '', text)
 
 
 def inline(text):

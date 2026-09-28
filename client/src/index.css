@@ -511,3 +511,25 @@ label {
 }
 .nav-page-body form[class~="rounded-xl"] > :is(h1, h2, h3):first-child { border-bottom: 1px solid #c9c6ba; padding-bottom: 2px; margin-bottom: 6px; }
 .nav-page-body form[class~="space-y-4"] > * + * { margin-top: 8px !important; }
+
+/* ---- in-system help (components/help) ---- */
+.has-help { text-decoration: underline dotted #8aa4c8; text-underline-offset: 3px; cursor: help; }
+.help-panel { position: fixed; right: 8px; top: 118px; bottom: 30px; width: 380px; max-width: calc(100vw - 16px); z-index: 60;
+  background: #fbfaf5; border: 1px solid #7f9db9; box-shadow: -2px 2px 8px rgba(0,0,0,.18); display: flex; flex-direction: column; }
+.help-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 3px 6px;
+  background: linear-gradient(180deg, #2a5ea8 0%, #1d4d94 100%); color: #fff; font-size: 12px; font-weight: 700; }
+.help-panel-body { overflow: auto; padding: 8px 10px; font-size: 12px; line-height: 1.45; }
+.help-panel-body h4 { margin: 8px 0 3px; font-size: 11px; font-weight: 700; color: #1a4a8a; text-transform: uppercase; letter-spacing: .03em; border-bottom: 1px solid #c9c6ba; }
+.help-panel-body ol { list-style: decimal; padding-left: 18px; }
+.help-panel-body ul { list-style: disc; padding-left: 18px; }
+.help-panel-body li { margin: 2px 0; }
+.help-table { width: 100%; border-collapse: collapse; }
+.help-table th { width: 34%; text-align: left; vertical-align: top; padding: 2px 4px; font-weight: 600; color: #333; background: #eceae1; border: 1px solid #d8d4c6; }
+.help-table td { vertical-align: top; padding: 2px 4px; border: 1px solid #d8d4c6; }
+@media (min-width: 1100px) { .nav-page-body.with-help { padding-right: 396px; } }
+.nav-tool-btn.active { background: #d4d0c8; border-color: #aca899; }
+/* field grids: a caption (136px) + box need ~280px - a grid of fields never
+   squeezes them narrower (6-column filter bars wrapped their captions over the boxes) */
+@media (min-width: 768px) {
+  .nav-page-body .grid:has(> .erp-field) { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)) !important; }
+}

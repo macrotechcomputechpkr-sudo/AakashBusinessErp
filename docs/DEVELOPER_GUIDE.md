@@ -118,6 +118,23 @@ Document-level terms that are not VAT (freight, bill discount) go to the documen
 
 Other billing terms post to the ledger set on the term (Billing Terms master), with the sub-ledger chosen in the entry popup (`utils/termSubLedgers.js`: Return Sub-Ledger on returns, Billing Sub-Ledger elsewhere). Excise terms (`tax_type = 'excise'`) post to their ledger and are reported by `exciseOf`.
 
+### 3.3c Stock cost of purchases, landed cost, non-stock items (round 16)
+
+- `utils/purchaseStockCost.js`
+  - `lineUnitCosts`: GRN / direct Bill / Purchase Return lines enter stock at their share of the document's goods value without VAT (what the purchase account gets) divided by the base-unit qty.
+  - `refreshLandedCost`: adds the allocated amount of every **posted** additional expense (`purchase_expense_allocations`) to the cost of the stock receipt of that line. The link can be the GRN line, the Bill line (or the GRN line it came from), or an Order line (split by qty).
+  - `stock_movements.base_unit_cost` keeps the cost without landed cost. Posting or cancelling an expense, or re-posting the GRN / Bill, recomputes it.
+- `utils/stockItems.js`: item types `service`, `non_inventory` and `fixed_asset` write no stock movement.
+- `utils/negativeStock.js`: one negative-stock rule for delivery, direct sales bill and purchase return. Lines are added up per item, warehouse and batch, in base units.
+- Stock engine (`stockEngine` / `stockReport`): sales returns come back at cost, never at the selling rate.
+- Production output and by-products: total cost / base qty.
+- Migrations:
+  - 145: re-costs existing receipts and production.
+  - 146: DB trigger - no GL batch or stock movement is added to or removed from a closed / locked fiscal year.
+  - 147: removes stock movements of non-stock items in open years.
+- Purchase bill: the same supplier bill no cannot be entered twice for one supplier (`duplicatePartyBill`, on save and on posting).
+- `authFetch` keeps the server's extra error fields (`warnings`, `credit_blocked`), so "Post anyway?" and the credit override work.
+
 ### 3.3b Reconciliation of registers and books (`utils/taxReconciliation.js`)
 
 `GET /api/vat-reports/reconciliation?section=vat|sales|purchase|tds|all&date_from&date_to&ledger_ids=` (page `TaxReconciliation.jsx`, `/tax-reconciliation`).
@@ -377,3 +394,8 @@ Shown only when System Control turns them on.
 - Server tests: `node r5/<name>_test.js` (each prints PASS/FAIL).
 - Client checks: `npx eslint src`, `npx tsc --noEmit -p .`, `CI= npx react-scripts build`.
 - Rebuild the PDFs: `python3 docs/tools/build_pdfs.py` (needs `reportlab`).
+- In-system help: edit `docs/tools/help_fields.py` (caption -> what it does), `help_pages_entry.py` / `help_pages_other.py` (per screen: purpose, steps, effect), then run `python3 docs/tools/build_help.py`. It writes:
+  - `client/public/help/helpCatalog.json`, loaded on demand by `components/help` (❓ Help panel of every screen, caption tooltips through `useFieldTips` in `Layout`);
+  - one PDF per menu screen in `client/public/help/menus/` - the field list of a screen is read from its page source (`erp-label` captions);
+  - the manuals (complete, per Business Nature, IRD architecture / user manual, developer guide, audit) in `client/public/help/`, with copies in `docs/pdf/`;
+  - `client/public/help/index.json` for the Help Center (`/help-center`, `pages/HelpCenter.jsx`). The developer guide, the audit and the menu PDFs are shown to super admin only.

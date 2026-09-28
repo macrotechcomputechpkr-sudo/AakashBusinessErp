@@ -1,0 +1,1968 @@
+{
+"built": "2026-09-28",
+"manuals": [
+{
+"file": "/help/Aakash_ERP_User_Manual.pdf",
+"title": "User Manual (complete)",
+"subtitle": "Every menu and every screen - how to use it and its effect on accounts, stock and VAT",
+"audience": "all",
+"group": "Manuals"
+},
+{
+"file": "/help/User_Manual_Trading.pdf",
+"title": "User Manual - Trading",
+"subtitle": "106 screens used by a trading company",
+"audience": "all",
+"group": "Manuals by business nature"
+},
+{
+"file": "/help/User_Manual_Distribution.pdf",
+"title": "User Manual - Distribution",
+"subtitle": "106 screens used by a distribution company",
+"audience": "all",
+"group": "Manuals by business nature"
+},
+{
+"file": "/help/User_Manual_Retail.pdf",
+"title": "User Manual - Retail",
+"subtitle": "106 screens used by a retail company",
+"audience": "all",
+"group": "Manuals by business nature"
+},
+{
+"file": "/help/User_Manual_Manufacturing.pdf",
+"title": "User Manual - Manufacturing",
+"subtitle": "109 screens used by a manufacturing company",
+"audience": "all",
+"group": "Manuals by business nature"
+},
+{
+"file": "/help/User_Manual_Service.pdf",
+"title": "User Manual - Service",
+"subtitle": "106 screens used by a service company",
+"audience": "all",
+"group": "Manuals by business nature"
+},
+{
+"file": "/help/User_Manual_Automobile.pdf",
+"title": "User Manual - Automobile Dealer & Workshop",
+"subtitle": "113 screens used by a automobile dealer & workshop company",
+"audience": "all",
+"group": "Manuals by business nature"
+},
+{
+"file": "/help/User_Manual_Construction.pdf",
+"title": "User Manual - Construction / Contractor",
+"subtitle": "110 screens used by a construction / contractor company",
+"audience": "all",
+"group": "Manuals by business nature"
+},
+{
+"file": "/help/User_Manual_Poultry.pdf",
+"title": "User Manual - Poultry & Hatchery",
+"subtitle": "114 screens used by a poultry & hatchery company",
+"audience": "all",
+"group": "Manuals by business nature"
+},
+{
+"file": "/help/IRD_System_Architecture.pdf",
+"title": "IRD Billing - System Architecture",
+"subtitle": "Components, data flow, database controls and CBMS integration",
+"audience": "all",
+"group": "IRD billing"
+},
+{
+"file": "/help/IRD_User_Manual.pdf",
+"title": "IRD Billing - User Manual",
+"subtitle": "Setup, daily work, CBMS sync and month end",
+"audience": "all",
+"group": "IRD billing"
+},
+{
+"file": "/help/Aakash_ERP_Developer_Guide.pdf",
+"title": "Developer Guide",
+"subtitle": "Architecture, posting logic and module reference",
+"audience": "admin",
+"group": "Developer"
+},
+{
+"file": "/help/Audit_Round16.pdf",
+"title": "Logic Audit - Round 16",
+"subtitle": "What was checked, compared with other ERPs and fixed",
+"audience": "admin",
+"group": "Developer"
+}
+],
+"menus": [
+{
+"path": "/sales-quotation",
+"title": "Sales Quotation",
+"module": "Sales",
+"pdf": "/help/menus/sales-quotation.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/sales-order",
+"title": "Sales Order",
+"module": "Sales",
+"pdf": "/help/menus/sales-order.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/order-billing",
+"title": "Order -> Bill (single / multiple)",
+"module": "Sales",
+"pdf": "/help/menus/order-billing.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/sales-delivery",
+"title": "Sales Delivery / Challan",
+"module": "Sales",
+"pdf": "/help/menus/sales-delivery.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/sales-bill",
+"title": "Sales Bill / Invoice",
+"module": "Sales",
+"pdf": "/help/menus/sales-bill.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/sales-return",
+"title": "Sales Return",
+"module": "Sales",
+"pdf": "/help/menus/sales-return.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/sales-nonsaleable-return",
+"title": "Sales Non-saleable Return",
+"module": "Sales",
+"pdf": "/help/menus/sales-nonsaleable-return.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/sales-additional-entry",
+"title": "Sales Additional Entry",
+"module": "Sales",
+"pdf": "/help/menus/sales-additional-entry.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/agent-targets",
+"title": "Salesman Targets & Commission",
+"module": "Sales",
+"pdf": "/help/menus/agent-targets.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/purchase-quotation",
+"title": "Purchase Quotation",
+"module": "Purchase",
+"pdf": "/help/menus/purchase-quotation.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/purchase-order",
+"title": "Purchase Order",
+"module": "Purchase",
+"pdf": "/help/menus/purchase-order.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/purchase-grn",
+"title": "Purchase GRN (Goods Received)",
+"module": "Purchase",
+"pdf": "/help/menus/purchase-grn.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/purchase-bill",
+"title": "Purchase Bill",
+"module": "Purchase",
+"pdf": "/help/menus/purchase-bill.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/purchase-bill-import",
+"title": "Purchase Bill from Image / PDF",
+"module": "Purchase",
+"pdf": "/help/menus/purchase-bill-import.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/purchase-additional-expense",
+"title": "Purchase Additional Expense",
+"module": "Purchase",
+"pdf": "/help/menus/purchase-additional-expense.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/purchase-return",
+"title": "Purchase Return",
+"module": "Purchase",
+"pdf": "/help/menus/purchase-return.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/purchase-nonsaleable-return",
+"title": "Purchase Non-saleable Return",
+"module": "Purchase",
+"pdf": "/help/menus/purchase-nonsaleable-return.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/lc-register",
+"title": "LC Register & Mapping",
+"module": "Purchase",
+"pdf": "/help/menus/lc-register.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/journal-voucher",
+"title": "Journal Voucher",
+"module": "Accounts",
+"pdf": "/help/menus/journal-voucher.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/cash-bank-entry",
+"title": "Cash / Bank Entry",
+"module": "Accounts",
+"pdf": "/help/menus/cash-bank-entry.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/debit-note",
+"title": "Debit Note",
+"module": "Accounts",
+"pdf": "/help/menus/debit-note.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/credit-note",
+"title": "Credit Note",
+"module": "Accounts",
+"pdf": "/help/menus/credit-note.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/pdc-voucher",
+"title": "PDC (Post-dated Cheque)",
+"module": "Accounts",
+"pdf": "/help/menus/pdc-voucher.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/bulk-cash-settlement",
+"title": "Bulk Cash Settlement",
+"module": "Accounts",
+"pdf": "/help/menus/bulk-cash-settlement.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/bank-reconciliation",
+"title": "Bank Reconciliation",
+"module": "Accounts",
+"pdf": "/help/menus/bank-reconciliation.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/interest-posting",
+"title": "Interest on Overdue",
+"module": "Accounts",
+"pdf": "/help/menus/interest-posting.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/fixed-assets",
+"title": "Fixed Assets & Depreciation",
+"module": "Accounts",
+"pdf": "/help/menus/fixed-assets.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/budgets",
+"title": "Budgets",
+"module": "Accounts",
+"pdf": "/help/menus/budgets.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/confirmation-letters",
+"title": "Account Confirmation Letters",
+"module": "Accounts",
+"pdf": "/help/menus/confirmation-letters.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/stock-transfer",
+"title": "Stock Transfer",
+"module": "Inventory",
+"pdf": "/help/menus/stock-transfer.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/barcode-print",
+"title": "Barcode / Label Printing",
+"module": "Inventory",
+"pdf": "/help/menus/barcode-print.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/production-order",
+"title": "Production Order",
+"module": "Production",
+"pdf": "/help/menus/production-order.pdf",
+"nature": [
+"manufacturing",
+"poultry"
+]
+},
+{
+"path": "/bom-template",
+"title": "BOM Template",
+"module": "Production",
+"pdf": "/help/menus/bom-template.pdf",
+"nature": [
+"manufacturing",
+"poultry"
+]
+},
+{
+"path": "/chart-of-accounts",
+"title": "Chart of Accounts (Ledger)",
+"module": "Masters",
+"pdf": "/help/menus/chart-of-accounts.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/sub-ledgers",
+"title": "Sub Ledgers",
+"module": "Masters",
+"pdf": "/help/menus/sub-ledgers.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/cost-profit-centers",
+"title": "Cost & Profit Centers",
+"module": "Masters",
+"pdf": "/help/menus/cost-profit-centers.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/billing-terms",
+"title": "Billing Terms",
+"module": "Masters",
+"pdf": "/help/menus/billing-terms.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/remarks-terms",
+"title": "Remarks & Terms",
+"module": "Masters",
+"pdf": "/help/menus/remarks-terms.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/ledger-opening",
+"title": "Ledger Opening Balance",
+"module": "Masters",
+"pdf": "/help/menus/ledger-opening.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/products",
+"title": "Product Master",
+"module": "Masters",
+"pdf": "/help/menus/products.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/product-units",
+"title": "Product Units",
+"module": "Masters",
+"pdf": "/help/menus/product-units.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/product-groups",
+"title": "Product Groups & Companies",
+"module": "Masters",
+"pdf": "/help/menus/product-groups.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/categories",
+"title": "Categories",
+"module": "Masters",
+"pdf": "/help/menus/categories.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/product-opening",
+"title": "Product Opening Stock",
+"module": "Masters",
+"pdf": "/help/menus/product-opening.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/pricing-masters",
+"title": "Rate Types, Rate Category, Discount Category",
+"module": "Masters",
+"pdf": "/help/menus/pricing-masters.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/product-rate-change",
+"title": "Product Rate Change",
+"module": "Masters",
+"pdf": "/help/menus/product-rate-change.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/product-offer-rate",
+"title": "Offer Rate",
+"module": "Masters",
+"pdf": "/help/menus/product-offer-rate.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/salesman-agents",
+"title": "Salesman / Agent",
+"module": "Masters",
+"pdf": "/help/menus/salesman-agents.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/route-sequencing",
+"title": "Route Sequencing",
+"module": "Masters",
+"pdf": "/help/menus/route-sequencing.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/route-plan",
+"title": "Route Plan & Mobile Login",
+"module": "Masters",
+"pdf": "/help/menus/route-plan.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/transport-master",
+"title": "Transport Master",
+"module": "Masters",
+"pdf": "/help/menus/transport-master.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/system-control",
+"title": "System Control",
+"module": "Setup",
+"pdf": "/help/menus/system-control.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/fiscal-years",
+"title": "Fiscal Years",
+"module": "Setup",
+"pdf": "/help/menus/fiscal-years.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/branches-warehouses",
+"title": "Branches & Warehouses",
+"module": "Setup",
+"pdf": "/help/menus/branches-warehouses.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/business-units",
+"title": "Business Units",
+"module": "Setup",
+"pdf": "/help/menus/business-units.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/ledger-mapping",
+"title": "Ledger Mapping",
+"module": "Setup",
+"pdf": "/help/menus/ledger-mapping.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/document-numbering",
+"title": "Document Numbering",
+"module": "Setup",
+"pdf": "/help/menus/document-numbering.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/currencies",
+"title": "Currencies",
+"module": "Setup",
+"pdf": "/help/menus/currencies.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/entry-field-control",
+"title": "Entry Field Control",
+"module": "Setup",
+"pdf": "/help/menus/entry-field-control.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/user-defined-fields",
+"title": "User Defined Fields",
+"module": "Setup",
+"pdf": "/help/menus/user-defined-fields.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/users",
+"title": "Users",
+"module": "Setup",
+"pdf": "/help/menus/users.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/security-groups",
+"title": "Security Groups",
+"module": "Setup",
+"pdf": "/help/menus/security-groups.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/data-access",
+"title": "Data Access",
+"module": "Setup",
+"pdf": "/help/menus/data-access.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/audit-log",
+"title": "Audit Log",
+"module": "Setup",
+"pdf": "/help/menus/audit-log.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/change-password",
+"title": "Change My Password",
+"module": "Setup",
+"pdf": "/help/menus/change-password.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/document-designer",
+"title": "Document Designer",
+"module": "Setup",
+"pdf": "/help/menus/document-designer.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/messaging",
+"title": "Messaging",
+"module": "Setup",
+"pdf": "/help/menus/messaging.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/notification-settings",
+"title": "My Notification Settings",
+"module": "Setup",
+"pdf": "/help/menus/notification-settings.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/ledger-report",
+"title": "Ledger Report",
+"module": "Accounts Report",
+"pdf": "/help/menus/ledger-report.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/party-summary",
+"title": "Party Summary",
+"module": "Accounts Report",
+"pdf": "/help/menus/party-summary.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/control-reports",
+"title": "Control Reports",
+"module": "Accounts Report",
+"pdf": "/help/menus/control-reports.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/financial-reports",
+"title": "Financial Reports",
+"module": "Accounts Report",
+"pdf": "/help/menus/financial-reports.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/funds-position",
+"title": "Net Position of Funds",
+"module": "Accounts Report",
+"pdf": "/help/menus/funds-position.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/outstanding-report",
+"title": "Outstanding Report",
+"module": "Accounts Report",
+"pdf": "/help/menus/outstanding-report.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/ageing",
+"title": "Ageing Report",
+"module": "Accounts Report",
+"pdf": "/help/menus/ageing.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/bill-wise-ageing-report",
+"title": "Bill-wise Ageing",
+"module": "Accounts Report",
+"pdf": "/help/menus/bill-wise-ageing-report.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/dimension-reports",
+"title": "Dimension Reports",
+"module": "Accounts Report",
+"pdf": "/help/menus/dimension-reports.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/vat-reports",
+"title": "VAT Reports",
+"module": "Accounts Report",
+"pdf": "/help/menus/vat-reports.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/tax-reconciliation",
+"title": "Reconciliation (VAT / Sales / Purchase / Stock / TDS)",
+"module": "Accounts Report",
+"pdf": "/help/menus/tax-reconciliation.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/ird",
+"title": "IRD Compliance / CBMS",
+"module": "Accounts Report",
+"pdf": "/help/menus/ird.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/register",
+"title": "Universal Register",
+"module": "Accounts Report",
+"pdf": "/help/menus/register.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/lc-bg-dashboard",
+"title": "LC / BG / PDC Dashboard",
+"module": "Accounts Report",
+"pdf": "/help/menus/lc-bg-dashboard.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/pdc-dashboard",
+"title": "PDC Dashboard",
+"module": "Accounts Report",
+"pdf": "/help/menus/pdc-dashboard.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/document-printing",
+"title": "Document Print Status",
+"module": "Tools",
+"pdf": "/help/menus/document-printing.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/sales-purchase-analysis",
+"title": "Sales / Purchase Analysis",
+"module": "Sales/Purchase",
+"pdf": "/help/menus/sales-purchase-analysis.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/monthly-analysis",
+"title": "Monthly Analysis",
+"module": "Sales/Purchase",
+"pdf": "/help/menus/monthly-analysis.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/profitability",
+"title": "Profitability",
+"module": "Sales/Purchase",
+"pdf": "/help/menus/profitability.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/rate-history",
+"title": "Rate History",
+"module": "Sales/Purchase",
+"pdf": "/help/menus/rate-history.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/product-rate-history",
+"title": "Rate & Discount History",
+"module": "Sales/Purchase",
+"pdf": "/help/menus/product-rate-history.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/salesman-reports",
+"title": "Salesman Reports",
+"module": "Sales/Purchase",
+"pdf": "/help/menus/salesman-reports.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/loading-sheet",
+"title": "Loading Sheet",
+"module": "Sales/Purchase",
+"pdf": "/help/menus/loading-sheet.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/purchase-register-report",
+"title": "Purchase Register (all)",
+"module": "Sales/Purchase",
+"pdf": "/help/menus/purchase-register-report.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/grn-outstanding-report",
+"title": "GRN Outstanding",
+"module": "Sales/Purchase",
+"pdf": "/help/menus/grn-outstanding-report.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/consignment-cost",
+"title": "Consignment Cost / Sales",
+"module": "Sales/Purchase",
+"pdf": "/help/menus/consignment-cost.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/stock-report",
+"title": "Stock Report",
+"module": "Inventory",
+"pdf": "/help/menus/stock-report.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/stock-movement",
+"title": "Stock Movement",
+"module": "Inventory",
+"pdf": "/help/menus/stock-movement.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/stock-in-out",
+"title": "Stock In / Out (Qty)",
+"module": "Inventory",
+"pdf": "/help/menus/stock-in-out.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/stock-valuation",
+"title": "Stock Valuation",
+"module": "Inventory",
+"pdf": "/help/menus/stock-valuation.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/stock-ageing",
+"title": "Stock Ageing & Expiry",
+"module": "Inventory",
+"pdf": "/help/menus/stock-ageing.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/reorder",
+"title": "Re-order & Over-stock",
+"module": "Inventory",
+"pdf": "/help/menus/reorder.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/production-report",
+"title": "Production Reports",
+"module": "Inventory",
+"pdf": "/help/menus/production-report.pdf",
+"nature": [
+"manufacturing",
+"poultry"
+]
+},
+{
+"path": "/analytics",
+"title": "Forecasting & Inventory Analytics",
+"module": "Analysis",
+"pdf": "/help/menus/analytics.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/dashboard",
+"title": "Dashboard",
+"module": "Analysis",
+"pdf": "/help/menus/dashboard.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/work-dashboard",
+"title": "Work Dashboard",
+"module": "Office",
+"pdf": "/help/menus/work-dashboard.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/help-center",
+"title": "Help Center",
+"module": "Tools",
+"pdf": "/help/menus/help-center.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/reports",
+"title": "Report Center",
+"module": "Tools",
+"pdf": "/help/menus/reports.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/tasks",
+"title": "Tasks",
+"module": "Office",
+"pdf": "/help/menus/tasks.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/darta-chalani",
+"title": "Darta / Chalani",
+"module": "Office",
+"pdf": "/help/menus/darta-chalani.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/mobile",
+"title": "Salesman Mobile App",
+"module": "Tools",
+"pdf": "/help/menus/mobile.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/poultry",
+"title": "Poultry Dashboard",
+"module": "Poultry",
+"pdf": "/help/menus/poultry.pdf",
+"nature": [
+"poultry"
+]
+},
+{
+"path": "/poultry/batches",
+"title": "Broiler Batches",
+"module": "Poultry",
+"pdf": "/help/menus/poultry-batches.pdf",
+"nature": [
+"poultry"
+]
+},
+{
+"path": "/poultry/hatchery",
+"title": "Hatchery",
+"module": "Poultry",
+"pdf": "/help/menus/poultry-hatchery.pdf",
+"nature": [
+"poultry"
+]
+},
+{
+"path": "/poultry/reports",
+"title": "Poultry Reports",
+"module": "Poultry",
+"pdf": "/help/menus/poultry-reports.pdf",
+"nature": [
+"poultry"
+]
+},
+{
+"path": "/poultry/setup",
+"title": "Poultry & Hatchery Setup",
+"module": "Poultry",
+"pdf": "/help/menus/poultry-setup.pdf",
+"nature": [
+"poultry"
+]
+},
+{
+"path": "/construction",
+"title": "Construction Dashboard",
+"module": "Construction",
+"pdf": "/help/menus/construction.pdf",
+"nature": [
+"construction"
+]
+},
+{
+"path": "/construction/sites",
+"title": "Sites / Contracts",
+"module": "Construction",
+"pdf": "/help/menus/construction-sites.pdf",
+"nature": [
+"construction"
+]
+},
+{
+"path": "/construction/reports",
+"title": "Construction Reports",
+"module": "Construction",
+"pdf": "/help/menus/construction-reports.pdf",
+"nature": [
+"construction"
+]
+},
+{
+"path": "/construction/setup",
+"title": "Construction Setup",
+"module": "Construction",
+"pdf": "/help/menus/construction-setup.pdf",
+"nature": [
+"construction"
+]
+},
+{
+"path": "/auto",
+"title": "Automobile Dashboard",
+"module": "Automobile",
+"pdf": "/help/menus/auto.pdf",
+"nature": [
+"automobile"
+]
+},
+{
+"path": "/auto/enquiries",
+"title": "Customer Enquiries",
+"module": "Automobile",
+"pdf": "/help/menus/auto-enquiries.pdf",
+"nature": [
+"automobile"
+]
+},
+{
+"path": "/auto/vehicles",
+"title": "Vehicles / PDI / Delivery",
+"module": "Automobile",
+"pdf": "/help/menus/auto-vehicles.pdf",
+"nature": [
+"automobile"
+]
+},
+{
+"path": "/auto/job-cards",
+"title": "Job Cards",
+"module": "Automobile",
+"pdf": "/help/menus/auto-job-cards.pdf",
+"nature": [
+"automobile"
+]
+},
+{
+"path": "/auto/reminders",
+"title": "Service Reminders",
+"module": "Automobile",
+"pdf": "/help/menus/auto-reminders.pdf",
+"nature": [
+"automobile"
+]
+},
+{
+"path": "/auto/reports",
+"title": "Automobile Reports",
+"module": "Automobile",
+"pdf": "/help/menus/auto-reports.pdf",
+"nature": [
+"automobile"
+]
+},
+{
+"path": "/auto/setup",
+"title": "Automobile Setup",
+"module": "Automobile",
+"pdf": "/help/menus/auto-setup.pdf",
+"nature": [
+"automobile"
+]
+}
+]
+}
