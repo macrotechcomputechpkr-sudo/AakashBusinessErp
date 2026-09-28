@@ -271,6 +271,16 @@
   .erp-header-btn.danger { color: #a92a1a; }
   .erp-header-btn:disabled { opacity: .55; cursor: default; }
 
+  /* NAV-style FastTab: a collapsible section of a card - bold caption with an arrow, a thin
+     rule under it, its summary on the right while folded, fields in even caption-left columns */
+  .nav-fasttab { margin: 2px 10px 0; }
+  .nav-fasttab-head { display: flex; align-items: center; gap: 6px; width: 100%; padding: 5px 2px 4px; background: none; border: 0;
+    border-bottom: 1px solid #c9c6ba; font-size: 13px; font-weight: 700; color: #1a4a8a; text-align: left; cursor: pointer; }
+  .nav-fasttab-head:hover { color: #0f3470; background: #f6f5ef; }
+  .nav-fasttab-sum { margin-left: auto; font-size: 11px; font-weight: 400; color: #555; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 60%; }
+  .nav-fasttab-body { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 4px 18px; padding: 7px 4px 6px; }
+  @media (max-width: 1279px) { .nav-fasttab-body { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 767px) { .nav-fasttab-body { grid-template-columns: minmax(0, 1fr); } }
   .erp-topbar { display: grid; gap: 7px 12px; background: #f0f0f0; border: 1px solid #aca899; border-right-color: #d4d0c8; border-bottom-color: #d4d0c8; margin: 12px 10px 6px; padding: 14px 12px 10px; position: relative; }
   .erp-field { display: flex; flex-direction: column; gap: 2px; }
   .erp-label { font-size: 12px; font-weight: 400; color: #1a1a1a; }

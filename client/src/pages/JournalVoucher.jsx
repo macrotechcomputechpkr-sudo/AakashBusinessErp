@@ -43,6 +43,9 @@ export const JV_TYPES = [
     { key: 'service_sales', label: 'Taxable / Non-taxable Service Sales', side: 'sales', purposes: ['income'], acct: 'Service Income A/c' },
     { key: 'tds', label: 'TDS', side: 'tds', purposes: ['expense', 'purchase_goods', 'fixed_asset'], acct: 'Expense A/c' }
 ];
+// the JV Type drop-down: one choice, TDS split into on-purchase / on-sales
+const TYPE_CHOICES = [...JV_TYPES.filter(t => t.key !== 'tds').map(t => ({ value: t.key, label: t.label })),
+    { value: 'tds:purchase', label: 'TDS on Purchase' }, { value: 'tds:sales', label: 'TDS on Sales' }];
 const typeOf = k => JV_TYPES.find(t => t.key === k) || JV_TYPES[0];
 const Arrow = ({ open }) => <span className="inline-block w-3 text-center" style={{ transform: open ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform .15s' }}>▾</span>;
 
@@ -171,10 +174,12 @@ export default function JournalVoucher() {
     // TDS journal against bills: the party's open bills (newest first), several can be chosen
     const [openBills, setOpenBills] = useState([]);
     // the bill list folds away with the arrow; the chosen bills' total stays visible
-    const [billsOpen, setBillsOpen] = useState(false);
-    // the type's option panel and the (optional) TDS part fold with their arrows too
-    const [panelOpen, setPanelOpen] = useState(true);
+    // FastTabs of the type's options: each folds with its arrow (summary shown when folded)
+    const [partyOpen, setPartyOpen] = useState(true);
+    const [detailOpen, setDetailOpen] = useState(true);
+    const [billsOpen, setBillsOpen] = useState(true);
     const [tdsOpen, setTdsOpen] = useState(false);
+    useEffect(() => { setTdsOpen(form.jv_type === 'tds' || Number(form.tds_amount) > 0); }, [form.jv_type]); // eslint-disable-line react-hooks/exhaustive-deps
     useEffect(() => {
         if (!isTds || !form.party_ledger_id) { setOpenBills([]); return; }
         const q = new URLSearchParams({ side: form.tds_side || 'purchase', party_id: form.party_ledger_id, ...(editingId ? { jv_id: editingId } : {}) });
@@ -198,12 +203,12 @@ export default function JournalVoucher() {
     const lineLedgers = jt.key === 'normal' ? ledgers : ledgers.filter(l => partyCats.includes(l.category_type)
         || (jt.purposes || []).some(p => lp.can(l.id, p)) || lp.can(l.id, partySales ? 'income' : 'expense')
         || [taxAcct.vat, form.tds_ledger_id, defaultTdsLedger, sysCtl.vat_ledger_id].includes(l.id) || form.details.some(d => d.ledger_id === l.id));
-    const changeType = key => {
+    const changeType = (key, side) => {
         setAutoLines(true);
+        setPartyOpen(true); setDetailOpen(true); setBillsOpen(true);
         // a new type starts its TDS afresh (the TDS type's base is not a purchase's)
-        setForm(f => ({ ...f, jv_type: key, tds_ledger_id: '', tds_sub_ledger_id: '', tds_percent: '', tds_base_amount: '', tds_amount: '', tds_bills: [], party_ledger_id: '', party_pan: '', ...(key === 'normal' ? { details: [emptyDetailRow(), emptyDetailRow()] } : {}) }));
+        setForm(f => ({ ...f, jv_type: key, tds_ledger_id: '', tds_sub_ledger_id: '', tds_percent: '', tds_base_amount: '', tds_amount: '', tds_bills: [], party_ledger_id: '', party_pan: '', tds_side: side || 'purchase', ...(key === 'normal' ? { details: [emptyDetailRow(), emptyDetailRow()] } : {}) }));
     };
-    const changeTdsSide = side => { setAutoLines(true); setForm(f => ({ ...f, tds_side: side, party_ledger_id: '', party_pan: '', tds_bills: [], tds_ledger_id: '', tds_sub_ledger_id: '', tds_base_amount: '', tds_amount: '' })); };
     const buildTaxLines = (f, acct) => {
         const t = typeOf(f.jv_type);
         const goodsAmt = r2(Number(f.taxable_amount || 0) + Number(f.non_taxable_amount || 0)), vat = r2(f.vat_amount), total = r2(goodsAmt + vat), tds = r2(f.tds_amount);
@@ -388,16 +393,17 @@ export default function JournalVoucher() {
             {showForm && (
                 <form onSubmit={handleSubmit} ref={formRef}>
                     <EntryFillBar voucherType="journal" api="journal-vouchers" form={form} editing={!!editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={r => handleCopyFrom(r.id)} />
-                    <div className="erp-topbar grid-cols-1 md:grid-cols-4">
+                    <div className="erp-topbar grid-cols-1 md:grid-cols-3">
                         <DocNumberField docDate={form.doc_date} voucherType="journal" categoryId={form.numbering_category_id} docNo={editingId ? form.doc_no : ''} value={form.doc_no} onChange={v => setForm(f => ({ ...f, doc_no: v }))} />
-                        <div className={efc.isVisible('doc_date') ? 'erp-field md:col-span-2' : 'erp-field hidden'}>
+                        <div className={efc.isVisible('doc_date') ? 'erp-field' : 'erp-field hidden'}>
                             <label className="erp-label">Date <span className="req">*</span></label>
                             <DualDateInput value={form.doc_date} onChange={v => setForm(f => ({ ...f, doc_date: v }))} disabled={efc.isReadonly('doc_date')} required defaultMode={sysCtl.date_format_entry} />
                         </div>
                         <div className={efc.isVisible('jv_type') ? 'erp-field' : 'erp-field hidden'}>
                             <label className="erp-label">JV Type</label>
-                            <select className="erp-select" value={form.jv_type} disabled={efc.isReadonly('jv_type')} onChange={e => changeType(e.target.value)}>
-                                {JV_TYPES.map(t => <option key={t.key} value={t.key}>{t.label}</option>)}
+                            <select className="erp-select" value={form.jv_type === 'tds' ? `tds:${form.tds_side || 'purchase'}` : form.jv_type} disabled={efc.isReadonly('jv_type')}
+                                onChange={e => { const [k, side] = e.target.value.split(':'); changeType(k, side); }}>
+                                {TYPE_CHOICES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                             </select>
                         </div>
                         <div className="erp-field justify-end">
@@ -410,7 +416,7 @@ export default function JournalVoucher() {
                             <label className="erp-label">Ref Doc No {efc.isRequired('ref_doc_no') && <span className="req">*</span>}</label>
                             <input disabled={efc.isReadonly('ref_doc_no')} className="erp-input" value={form.ref_doc_no} onChange={e => setForm({ ...form, ref_doc_no: e.target.value })} />
                         </div>
-                        <div className={efc.isVisible('ref_doc_date') ? 'erp-field md:col-span-2' : 'erp-field hidden'}>
+                        <div className={efc.isVisible('ref_doc_date') ? 'erp-field' : 'erp-field hidden'}>
                             <label className="erp-label">Ref Doc Date {efc.isRequired('ref_doc_date') && <span className="req">*</span>}</label>
                             <DualDateInput value={form.ref_doc_date} onChange={v => setForm(f => ({ ...f, ref_doc_date: v }))} disabled={efc.isReadonly('ref_doc_date')} defaultMode={sysCtl.date_format_entry} />
                         </div>
@@ -442,59 +448,69 @@ export default function JournalVoucher() {
                     </div>
 
                     <div className="erp-tab-content">
-                        {jt.key !== 'normal' && (
-                        <div className="border rounded px-3 py-2 mb-3 bg-blue-50/40">
-                            <button type="button" className="flex items-center gap-1 text-sm font-semibold" onClick={() => setPanelOpen(o => !o)} aria-expanded={panelOpen} title={panelOpen ? 'Collapse' : 'Expand'}>
-                                <Arrow open={panelOpen} /> {jt.label}
-                                {!panelOpen && <span className="font-normal text-gray-500 text-xs ml-2">{ledgers.find(l => l.id === form.party_ledger_id)?.account_name || 'no party'}{isTax ? ` · bill ${taxTotal.toFixed(2)}` : ''}{tdsAmount > 0 ? ` · TDS ${tdsAmount.toFixed(2)}` : ''}</span>}
+                        {jt.key !== 'normal' && (<>
+                        {/* ---- Vendor / Customer (FastTab) ---- */}
+                        <div className="nav-fasttab">
+                            <button type="button" className="nav-fasttab-head" onClick={() => setPartyOpen(o => !o)} aria-expanded={partyOpen}>
+                                <Arrow open={partyOpen} /> {partySales ? 'Customer' : 'Vendor'} Details
+                                {!partyOpen && <span className="nav-fasttab-sum">{ledgers.find(l => l.id === form.party_ledger_id)?.account_name || 'not chosen'}{form.party_pan ? ` · PAN ${form.party_pan}` : ''}{form.party_bill_no ? ` · Bill ${form.party_bill_no}` : ''}</span>}
                             </button>
-                            {panelOpen && (<>
-                            <div className="grid grid-cols-2 md:grid-cols-6 gap-x-3 gap-y-1 mt-1">
-                                {isTds && (
-                                    <div className="md:col-span-6 col-span-2 flex flex-wrap items-center gap-x-6 gap-y-1 text-sm py-1">
-                                        {[['purchase', 'TDS on Purchase (supplier\'s bills - TDS payable)'], ['sales', 'TDS on Sales (customer\'s bills - TDS receivable)']].map(([k, t]) => (
-                                            <label key={k} className="flex items-center gap-1 mr-4"><input type="radio" name="jv_tds_side" checked={(form.tds_side || 'purchase') === k} onChange={() => changeTdsSide(k)} /> {t}</label>
-                                        ))}
+                            {partyOpen && (
+                                <div className="nav-fasttab-body">
+                                    <div className="erp-field"><label className="erp-label">{partySales ? 'Customer' : 'Vendor'} <span className="req">*</span></label>
+                                        <SearchablePopupSelect
+                                            listKey="jv_tax_party_picker"
+                                            columns={[{ key: 'account_code', label: 'Code' }, { key: 'account_name', label: 'Name' }, { key: 'pan_number', label: 'PAN' }]}
+                                            defaultVisibleKeys={['account_name']}
+                                            items={partyLedgers} getId={l => l.id} getLabel={l => l.account_name}
+                                            searchKeys={['account_name', 'account_code', 'pan_number']}
+                                            value={form.party_ledger_id} onChange={id => setTax({ party_ledger_id: id, tds_bills: [], tds_base_amount: '', tds_amount: '' })} placeholder={partySales ? 'Customer / both' : 'Vendor / both'}
+                                        /></div>
+                                    <div className="erp-field"><label className="erp-label">PAN / VAT No</label><input className="erp-input" value={form.party_pan || ''} onChange={e => setTax({ party_pan: e.target.value })} /></div>
+                                    <div className="erp-field"><label className="erp-label">{jt.side === 'purchase' ? "Vendor's Bill No" : jt.side === 'sales' ? 'Invoice No' : 'Bill / Ref No'}{jt.side === 'purchase' && <span className="req">*</span>}</label><input className="erp-input" value={form.party_bill_no || ''} onChange={e => setTax({ party_bill_no: e.target.value })} /></div>
+                                    <div className="erp-field"><label className="erp-label">Bill Date</label><DualDateInput value={form.party_bill_date || ''} onChange={v => setTax({ party_bill_date: v })} defaultMode={sysCtl.date_format_entry} /></div>
+                                </div>
+                            )}
+                        </div>
+
+                        {/* ---- Bill Details (FastTab): amounts and accounts of the tax types ---- */}
+                        {(isTax || (isTds && !billMode && !tdsSales)) && (
+                            <div className="nav-fasttab">
+                                <button type="button" className="nav-fasttab-head" onClick={() => setDetailOpen(o => !o)} aria-expanded={detailOpen}>
+                                    <Arrow open={detailOpen} /> Bill Details
+                                    {!detailOpen && <span className="nav-fasttab-sum">{isTax ? `Taxable ${r2(form.taxable_amount).toFixed(2)} · Non-taxable ${r2(form.non_taxable_amount).toFixed(2)} · VAT ${r2(form.vat_amount).toFixed(2)} · Total ${taxTotal.toFixed(2)}` : `Expense ${r2(form.tds_base_amount).toFixed(2)}`}</span>}
+                                </button>
+                                {detailOpen && (
+                                    <div className="nav-fasttab-body">
+                                        {isTax && (<>
+                                            <div className="erp-field"><label className="erp-label">Taxable Amount</label><input type="number" step="0.01" className="erp-input text-right" value={form.taxable_amount} onChange={e => setTax({ taxable_amount: e.target.value })} /></div>
+                                            <div className="erp-field"><label className="erp-label">VAT %</label><input type="number" step="0.01" className="erp-input text-right" value={form.vat_percent ?? ''} onChange={e => setTax({ vat_percent: e.target.value })} /></div>
+                                            <div className="erp-field"><label className="erp-label">VAT Amount</label><input type="number" step="0.01" className="erp-input text-right" value={form.vat_amount} onChange={e => setTax({ vat_amount: e.target.value })} /></div>
+                                            <div className="erp-field"><label className="erp-label">Non-taxable Amount</label><input type="number" step="0.01" className="erp-input text-right" value={form.non_taxable_amount} onChange={e => setTax({ non_taxable_amount: e.target.value })} /></div>
+                                        </>)}
+                                        <div className="erp-field"><label className="erp-label">{jt.acct}</label>
+                                            <SearchablePopupSelect listKey="jv_tax_goods_picker" columns={[{ key: 'account_code', label: 'Code' }, { key: 'account_name', label: 'Name' }]} defaultVisibleKeys={['account_name']}
+                                                items={filterAny(ledgers, jt.purposes || [], taxAcct.goods)} getId={l => l.id} getLabel={l => l.account_name} searchKeys={['account_name', 'account_code']}
+                                                value={taxAcct.goods} onChange={id => { setAutoLines(true); setTaxAcct(a => ({ ...a, goods: id })); }} placeholder="Choose account" /></div>
+                                        {isTax && <div className="erp-field"><label className="erp-label">VAT A/c</label>
+                                            <SearchablePopupSelect listKey="jv_tax_vat_picker" columns={[{ key: 'account_code', label: 'Code' }, { key: 'account_name', label: 'Name' }]} defaultVisibleKeys={['account_name']}
+                                                items={lp.filter(ledgers, 'vat', taxAcct.vat)} getId={l => l.id} getLabel={l => l.account_name} searchKeys={['account_name', 'account_code']}
+                                                value={taxAcct.vat} onChange={id => { setAutoLines(true); setTaxAcct(a => ({ ...a, vat: id })); }} placeholder="VAT ledger" /></div>}
+                                        {isTax && <div className="erp-field"><label className="erp-label">Bill Total</label><input className="erp-input text-right font-semibold" readOnly tabIndex={-1} value={taxTotal.toFixed(2)} /></div>}
                                     </div>
                                 )}
-                                <div className="erp-field md:col-span-2"><label className="erp-label">{partySales ? 'Customer' : 'Supplier'} <span className="hint">({partySales ? 'customer / both' : 'supplier / both'})</span> <span className="req">*</span></label>
-                                    <SearchablePopupSelect
-                                        listKey="jv_tax_party_picker"
-                                        columns={[{ key: 'account_code', label: 'Code' }, { key: 'account_name', label: 'Name' }, { key: 'pan_number', label: 'PAN' }]}
-                                        defaultVisibleKeys={['account_name']}
-                                        items={partyLedgers} getId={l => l.id} getLabel={l => l.account_name}
-                                        searchKeys={['account_name', 'account_code', 'pan_number']}
-                                        value={form.party_ledger_id} onChange={id => setTax({ party_ledger_id: id, tds_bills: [], tds_base_amount: '', tds_amount: '' })} placeholder="Choose party"
-                                    /></div>
-                                <div className="erp-field"><label className="erp-label">PAN / VAT No</label><input className="erp-input" value={form.party_pan || ''} onChange={e => setTax({ party_pan: e.target.value })} /></div>
-                                <div className="erp-field"><label className="erp-label">{jt.side === 'purchase' ? "Supplier's Bill No *" : jt.side === 'sales' ? 'Invoice No' : 'Bill / Ref No'}</label><input className="erp-input" value={form.party_bill_no || ''} onChange={e => setTax({ party_bill_no: e.target.value })} /></div>
-                                <div className="erp-field md:col-span-2"><label className="erp-label">Bill Date</label><DualDateInput value={form.party_bill_date || ''} onChange={v => setTax({ party_bill_date: v })} defaultMode={sysCtl.date_format_entry} /></div>
-                                {isTax && (<>
-                                    <div className="erp-field"><label className="erp-label">Taxable Amount</label><input type="number" step="0.01" className="erp-input" value={form.taxable_amount} onChange={e => setTax({ taxable_amount: e.target.value })} /></div>
-                                    <div className="erp-field"><label className="erp-label">Non-taxable Amount</label><input type="number" step="0.01" className="erp-input" value={form.non_taxable_amount} onChange={e => setTax({ non_taxable_amount: e.target.value })} /></div>
-                                    <div className="erp-field"><label className="erp-label">VAT %</label><input type="number" step="0.01" className="erp-input" value={form.vat_percent ?? ''} onChange={e => setTax({ vat_percent: e.target.value })} /></div>
-                                    <div className="erp-field"><label className="erp-label">VAT Amount</label><input type="number" step="0.01" className="erp-input" value={form.vat_amount} onChange={e => setTax({ vat_amount: e.target.value })} /></div>
-                                </>)}
-                                {!(isTds && (billMode || tdsSales)) && <div className="erp-field"><label className="erp-label">{jt.acct}</label>
-                                    <SearchablePopupSelect listKey="jv_tax_goods_picker" columns={[{ key: 'account_code', label: 'Code' }, { key: 'account_name', label: 'Name' }]} defaultVisibleKeys={['account_name']}
-                                        items={filterAny(ledgers, jt.purposes || [], taxAcct.goods)} getId={l => l.id} getLabel={l => l.account_name} searchKeys={['account_name', 'account_code']}
-                                        value={taxAcct.goods} onChange={id => { setAutoLines(true); setTaxAcct(a => ({ ...a, goods: id })); }} placeholder="Choose account" /></div>}
-                                {isTax && <div className="erp-field"><label className="erp-label">VAT A/c</label>
-                                    <SearchablePopupSelect listKey="jv_tax_vat_picker" columns={[{ key: 'account_code', label: 'Code' }, { key: 'account_name', label: 'Name' }]} defaultVisibleKeys={['account_name']}
-                                        items={lp.filter(ledgers, 'vat', taxAcct.vat)} getId={l => l.id} getLabel={l => l.account_name} searchKeys={['account_name', 'account_code']}
-                                        value={taxAcct.vat} onChange={id => { setAutoLines(true); setTaxAcct(a => ({ ...a, vat: id })); }} placeholder="VAT ledger" /></div>}
                             </div>
-                            {isTds && form.party_ledger_id && (
-                                <fieldset className="border rounded px-2 py-1 mt-2">
-                                    <legend className="px-1 text-xs font-semibold text-gray-600 uppercase">
-                                        <button type="button" className="flex items-center gap-1 uppercase" onClick={() => setBillsOpen(o => !o)} title={billsOpen ? 'Collapse the bill list' : 'Expand the bill list'} aria-expanded={billsOpen}>
-                                            <Arrow open={billsOpen} />
-                                            {tdsSales ? 'Sales bills' : 'Purchase bills / additional expenses'} of this party without TDS (newest first)
-                                            <span className="normal-case font-normal text-gray-500">- {shownBills.length} bill(s){(form.tds_bills || []).length ? `, ${form.tds_bills.length} chosen` : ''}</span>
-                                        </button>
-                                    </legend>
-                                    {billsOpen && (
-                                    <div className="overflow-auto" style={{ maxHeight: 180 }}>
+                        )}
+
+                        {/* ---- Bills without TDS (FastTab) ---- */}
+                        {isTds && form.party_ledger_id && (
+                            <div className="nav-fasttab">
+                                <button type="button" className="nav-fasttab-head" onClick={() => setBillsOpen(o => !o)} aria-expanded={billsOpen}>
+                                    <Arrow open={billsOpen} /> {tdsSales ? 'Sales Bills' : 'Purchase Bills / Additional Expenses'} without TDS
+                                    <span className="nav-fasttab-sum">{shownBills.length} bill(s){billMode ? ` · ${form.tds_bills.length} chosen · base ${r2(form.tds_base_amount).toFixed(2)} · TDS ${tdsAmount.toFixed(2)}` : ''}</span>
+                                </button>
+                                {billsOpen && (
+                                    <div className="overflow-auto my-1" style={{ maxHeight: 180 }}>
                                         <table className="erp-grid-table">
                                             <thead><tr>
                                                 <th style={{ width: 30 }}><input type="checkbox" checked={shownBills.length > 0 && shownBills.every(b => (form.tds_bills || []).some(x => billKey(x) === billKey(b)))}
@@ -514,48 +530,43 @@ export default function JournalVoucher() {
                                                         </tr>
                                                     );
                                                 })}
-                                                {shownBills.length === 0 && <tr><td colSpan={9} className="text-center text-gray-400">No bill of this party is waiting for TDS{tdsSales ? '' : ' - enter the amount below for TDS on an expense without a bill'}.</td></tr>}
+                                                {shownBills.length === 0 && <tr><td colSpan={9} className="text-center text-gray-400">No bill of this party is waiting for TDS{tdsSales ? '' : ' - use Bill Details for TDS on an expense without a bill'}.</td></tr>}
                                             </tbody>
                                         </table>
                                     </div>
-                                    )}
-                                    {billMode && <p className="text-xs text-gray-600 mt-1">{form.tds_bills.length} bill(s): base {r2(form.tds_base_amount).toFixed(2)}, TDS {tdsAmount.toFixed(2)} - {tdsSales ? 'Dr TDS receivable, Cr customer.' : 'Dr supplier, Cr TDS payable.'}</p>}
-                                </fieldset>
-                            )}
-                            <fieldset className="border rounded px-2 py-1 mt-2">
-                                <legend className="px-1 text-xs font-semibold text-gray-600 uppercase">
-                                    <button type="button" className="flex items-center gap-1 uppercase" onClick={() => setTdsOpen(o => !o)} aria-expanded={isTds || tdsOpen || tdsAmount > 0}>
-                                        <Arrow open={isTds || tdsOpen || tdsAmount > 0} />
-                                        TDS {partySales ? '(deducted by the customer - receivable)' : '(withheld from the supplier - payable)'}{jt.side !== 'tds' && <span className="font-normal normal-case"> - optional</span>}
-                                        {tdsAmount > 0 && <span className="normal-case font-normal text-gray-500">- {tdsAmount.toFixed(2)}</span>}
-                                    </button>
-                                </legend>
-                                {(isTds || tdsOpen || tdsAmount > 0) && (<>
-                                <div className="grid grid-cols-2 md:grid-cols-6 gap-x-3 gap-y-1">
-                                    <div className="erp-field"><label className="erp-label">{isTds ? (billMode ? 'Base of the bills' : 'Amount (TDS base) *') : 'TDS Base'}</label><input type="number" step="0.01" className="erp-input" readOnly={billMode} value={form.tds_base_amount} onChange={e => setTax({ tds_base_amount: e.target.value })} placeholder={isTds ? '' : goodsAmount.toFixed(2)} /></div>
-                                    <div className="erp-field"><label className="erp-label">TDS %</label><input type="number" step="0.001" className="erp-input" value={form.tds_percent} onChange={e => setTax({ tds_percent: e.target.value })} placeholder={sysCtl.default_tds_percent ? String(sysCtl.default_tds_percent) : '1.5'} /></div>
-                                    <div className="erp-field"><label className="erp-label">TDS Amount</label><input type="number" step="0.01" className="erp-input" value={form.tds_amount} onChange={e => setTax({ tds_amount: e.target.value })} /></div>
+                                )}
+                            </div>
+                        )}
+
+                        {/* ---- TDS (FastTab) ---- */}
+                        <div className="nav-fasttab">
+                            <button type="button" className="nav-fasttab-head" onClick={() => setTdsOpen(o => !o)} aria-expanded={tdsOpen}>
+                                <Arrow open={tdsOpen} /> TDS {partySales ? '(receivable)' : '(payable)'}{!isTds && <span className="font-normal text-xs text-gray-500 ml-1">optional</span>}
+                                <span className="nav-fasttab-sum">{tdsAmount > 0 ? `${Number(form.tds_percent || 0) ? `${form.tds_percent}% · ` : ''}TDS ${tdsAmount.toFixed(2)}` : 'none'}</span>
+                            </button>
+                            {tdsOpen && (
+                                <div className="nav-fasttab-body">
+                                    <div className="erp-field"><label className="erp-label">{billMode ? 'Base of Bills' : 'TDS Base'}{isTds && !billMode && !tdsSales && <span className="req">*</span>}</label><input type="number" step="0.01" className="erp-input text-right" readOnly={billMode} value={form.tds_base_amount} onChange={e => setTax({ tds_base_amount: e.target.value })} placeholder={isTds ? '' : goodsAmount.toFixed(2)} /></div>
+                                    <div className="erp-field"><label className="erp-label">TDS %</label><input type="number" step="0.001" className="erp-input text-right" value={form.tds_percent} onChange={e => setTax({ tds_percent: e.target.value })} placeholder={sysCtl.default_tds_percent ? String(sysCtl.default_tds_percent) : '1.5'} /></div>
+                                    <div className="erp-field"><label className="erp-label">TDS Amount</label><input type="number" step="0.01" className="erp-input text-right" value={form.tds_amount} onChange={e => setTax({ tds_amount: e.target.value })} /></div>
                                     <div className="erp-field"><label className="erp-label">TDS Ledger</label>
                                         <SearchablePopupSelect listKey="jv_tds_ledger_picker" columns={[{ key: 'account_code', label: 'Code' }, { key: 'account_name', label: 'Name' }]} defaultVisibleKeys={['account_name']}
-                                        items={lp.filter(ledgers, 'tds', form.tds_ledger_id)} getId={l => l.id} getLabel={l => l.account_name} searchKeys={['account_name', 'account_code']}
-                                        value={form.tds_ledger_id} onChange={id => { setAutoLines(true); setForm(f => ({ ...f, tds_ledger_id: id, tds_sub_ledger_id: '' })); }} placeholder="System Control default" /></div>
-                                    <div className="erp-field md:col-span-2"><label className="erp-label">TDS Sub-Ledger</label>
+                                            items={lp.filter(ledgers, 'tds', form.tds_ledger_id)} getId={l => l.id} getLabel={l => l.account_name} searchKeys={['account_name', 'account_code']}
+                                            value={form.tds_ledger_id} onChange={id => { setAutoLines(true); setForm(f => ({ ...f, tds_ledger_id: id, tds_sub_ledger_id: '' })); }} placeholder="System Control default" /></div>
+                                    <div className="erp-field"><label className="erp-label">TDS Sub-Ledger</label>
                                         <SearchablePopupSelect listKey="jv_tds_subledger_picker" columns={[{ key: 'sub_ledger_code', label: 'Code' }, { key: 'sub_ledger_name', label: 'Name' }]} defaultVisibleKeys={['sub_ledger_name']}
                                             items={subLedgers.filter(x => x.main_ledger_id === (form.tds_ledger_id || defaultTdsLedger))} getId={x => x.id} getLabel={x => x.sub_ledger_name} searchKeys={['sub_ledger_name', 'sub_ledger_code']}
                                             value={form.tds_sub_ledger_id} onChange={id => { setAutoLines(true); setForm(f => ({ ...f, tds_sub_ledger_id: id, tds_ledger_id: f.tds_ledger_id || defaultTdsLedger || '' })); }} placeholder={(form.tds_ledger_id || defaultTdsLedger) ? 'None' : 'Choose the TDS ledger first'} /></div>
+                                    <div className="erp-field"><label className="erp-label">{partySales ? 'Customer Pays' : isTds && (billMode || tdsSales) ? 'Entry' : 'Vendor Gets'}</label>
+                                        <input className="erp-input text-right" readOnly tabIndex={-1} value={isTds && (billMode || tdsSales) ? (tdsSales ? 'Dr TDS / Cr customer' : 'Dr vendor / Cr TDS') : r2((isTax ? taxTotal : tdsBase) - tdsAmount).toFixed(2)} /></div>
                                 </div>
-                                {tdsAmount > 0 && !billMode && <p className="text-xs text-gray-500 mt-1">TDS {tdsBase.toFixed(2)} x {Number(form.tds_percent || 0)}% = {tdsAmount.toFixed(2)} · {partySales ? 'Dr TDS receivable.' : 'Cr TDS payable.'}</p>}
-                                </>)}
-                            </fieldset>
-                            <div className="flex items-center gap-3 text-sm mt-1 flex-wrap">
-                                {isTax && <span>Bill total <b>{taxTotal.toFixed(2)}</b>{tdsAmount > 0 && <> · {jt.side === 'sales' ? 'Customer' : 'Supplier'} <b>{r2(taxTotal - tdsAmount).toFixed(2)}</b></>}</span>}
-                                {isTds && !billMode && !tdsSales && <span>Party gets <b>{r2(tdsBase - tdsAmount).toFixed(2)}</b></span>}
-                                {!autoLines && <button type="button" className="erp-btn" onClick={() => setAutoLines(true)}>↻ Refill voucher lines from these</button>}
-                                <span className="text-xs text-gray-500">{autoLines ? 'Lines below are filled automatically - edit any line to change it.' : 'Lines were edited by hand.'}</span>
-                            </div>
-                            </>)}
+                            )}
                         </div>
-                        )}
+                        <div className="flex items-center gap-3 text-xs text-gray-500 mx-3 mt-1 mb-2">
+                            {!autoLines && <button type="button" className="nav-btn small" onClick={() => setAutoLines(true)}>↻ Refill voucher lines</button>}
+                            <span>{autoLines ? 'Voucher lines below are filled from these - you can still edit them.' : 'Voucher lines were edited by hand.'}</span>
+                        </div>
+                        </>)}
 
                         <h2 className="font-semibold text-sm text-gray-500 uppercase mb-2">Voucher Lines</h2>
                         <div className="overflow-x-auto">

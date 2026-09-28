@@ -196,6 +196,7 @@ The effect of each transaction is shown in a box like this:
 - Example: taxable 1000, VAT 13% (130 worked out), non-taxable 1000 -> Purchase A/c 2000 Dr, VAT 130 Dr, supplier 2130 Cr.
 - **Auto balance** (every JV): type 100 Debit on line 1, choose the ledger on the next line and press Enter - 100 Credit is filled in (and the other way round). You can change it.
 - The lines are filled automatically and can still be edited; **Refill** puts them back.
+- The type's options are in folding sections (**Vendor/Customer Details, Bill Details, Bills without TDS, TDS**): click the arrow to hide one after filling it - its summary stays on the right. TDS on Purchase and TDS on Sales are separate choices in the JV Type drop-down.
 - **Narration** is one field in the footer (saved remarks are offered as you type).
 
 > **Accounts:** exactly the voucher lines. Tax types appear in the VAT register and VAT return; any TDS appears in the TDS report. Party lines create bill-wise references. **Stock:** none.
