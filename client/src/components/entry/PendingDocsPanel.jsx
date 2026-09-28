@@ -20,7 +20,8 @@ import { EntryPopup } from './EntryParts';
 const SOURCES = {
     sales_order: ['sales_quotation'], sales_delivery: ['sales_quotation', 'sales_order'], sales_bill: ['sales_quotation', 'sales_order', 'sales_delivery'],
     sales_return: ['sales_bill'], purchase_quotation: ['purchase_requisition'], purchase_order: ['purchase_requisition', 'purchase_quotation'],
-    purchase_grn: ['purchase_quotation', 'purchase_order'], purchase_bill: ['purchase_quotation', 'purchase_order', 'purchase_grn'], purchase_return: ['purchase_bill']
+    purchase_grn: ['purchase_quotation', 'purchase_order'], purchase_bill: ['purchase_quotation', 'purchase_order', 'purchase_grn'], purchase_return: ['purchase_bill'],
+    sales_nonsalable_return: ['sales_bill'], purchase_nonsalable_return: ['purchase_bill']
 };
 const LABEL = { sales_quotation: 'Quotation', sales_order: 'Order', sales_delivery: 'Challan', sales_bill: 'Bill', purchase_requisition: 'Requisition', purchase_quotation: 'Quotation', purchase_order: 'Order', purchase_grn: 'GRN', purchase_bill: 'Bill' };
 const money = n => Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });

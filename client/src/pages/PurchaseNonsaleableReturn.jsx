@@ -30,6 +30,7 @@ import useEntrySettings, { showsProductTerms } from '../components/entry/useEntr
 import { PurchaseProductTermPopup, PurchaseOverallTermPopup } from '../components/entry/PurchaseTermPopups';
 import { productTermIds, withTermValue } from '../components/entry/lineCalc';
 import AmountCell, { patchFromGross } from '../components/entry/AmountCell';
+import PendingDocsPanel, { mergePulled } from '../components/entry/PendingDocsPanel';
 
 const RETURN_REASONS = [
     { value: 'damaged', label: 'Damaged' },
@@ -88,6 +89,7 @@ export default function PurchaseNonsaleableReturn() {
     const [showCopyModal, setShowCopyModal] = useState(false);
     const [auditModal, setAuditModal] = useState(null);
     const [pullBillId, setPullBillId] = useState('');
+    const [pulledDocs, setPulledDocs] = useState([]);
     const [billingTerms, setBillingTerms] = useState([]);
     const [billingPreview, setBillingPreview] = useState(null);
     const [productTermModalIndexes, setProductTermModalIndexes] = useState(null);
@@ -148,7 +150,7 @@ export default function PurchaseNonsaleableReturn() {
     }, [authFetch]);
     useEffect(() => { load(); }, [load]);
 
-    const resetForm = () => { setForm(emptyForm); setEditingId(null); setPullBillId(''); setSummaryOverrides({}); setSelectedRowIndexes([]); };
+    const resetForm = () => { setForm(emptyForm); setEditingId(null); setPullBillId(''); setPulledDocs([]); setSummaryOverrides({}); setSelectedRowIndexes([]); };
     const addDetailRow = () => setForm(f => ({ ...f, details: [...f.details, emptyDetailRow()] }));
     const removeDetailRow = (idx) => {
         setForm(f => ({ ...f, details: f.details.length > 1 ? f.details.filter((_, i) => i !== idx) : f.details }));
@@ -443,6 +445,7 @@ export default function PurchaseNonsaleableReturn() {
                 <form onSubmit={handleSubmit} ref={formRef} className="ent-entry">
                     <EntryFillBar voucherType="purchase_nonsalable_return" api="purchase-nonsaleable-returns" form={form} editing={!!editingId} docId={editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={r => handleCopyFrom(r.id)} />
                     {!editingId && (
+                        <details className="mx-3 mt-2 text-xs"><summary className="cursor-pointer text-[#1a4a8a]">Pull from any earlier document (any party)</summary>
                         <div className="erp-topbar grid-cols-1 md:grid-cols-3" style={{ background: '#eff6ff' }}>
                             <div className="erp-field md:col-span-2">
                                 <label className="erp-label">Pull From Bill</label>
@@ -456,6 +459,7 @@ export default function PurchaseNonsaleableReturn() {
                             </div>
                             <p className="text-xs text-gray-400 md:col-span-3">Only what's still genuinely returnable (qty minus already-returned) gets offered - and the server rejects anything beyond that even if typed in manually.</p>
                         </div>
+                        </details>
                     )}
 
                     <div className="erp-topbar grid-cols-1 md:grid-cols-4">
@@ -487,6 +491,8 @@ export default function PurchaseNonsaleableReturn() {
                                 />
                             )}
                         </div>
+                        {/* Bill No. - the source's master part, remarks and terms come along */}
+                        <PendingDocsPanel target="purchase_nonsalable_return" partyId={form.vendor_ledger_id} efc={efc} disabled={!!editingId} pulled={pulledDocs} onPull={data => { setForm(f => mergePulled(f, data, emptyDetailRow)); setPulledDocs(p => [...p, ...data.documents.map(x => x.id)]); showAlert(`Pulled ${data.lines.length} line(s) from ${data.documents.map(x => x.doc_no).join(', ')}`, 'success'); }} />
                         <div className="erp-field">
                             <label className="erp-label">Vendor Sub-Ledger</label>
                             <SearchablePopupSelect

@@ -56,7 +56,10 @@ const TARGETS = {
         ['purchase_order', 'qty_received', 'source_order_detail_id', 'source_order_id'],
         ['purchase_grn', 'qty_billed', 'source_grn_detail_id', 'source_grn_id']
     ],
-    purchase_return: [['purchase_bill', 'qty_returned', 'source_bill_detail_id', 'source_bill_id']]
+    purchase_return: [['purchase_bill', 'qty_returned', 'source_bill_detail_id', 'source_bill_id']],
+    // non-saleable (damage / expiry) returns share the bill's returned counter with the normal returns
+    sales_nonsalable_return: [['sales_bill', 'qty_returned', 'source_bill_detail_id', 'source_bill_id']],
+    purchase_nonsalable_return: [['purchase_bill', 'qty_returned', 'source_bill_detail_id', 'source_bill_id']]
 };
 
 const bad = (msg, status = 400) => Object.assign(new Error(msg), { status });

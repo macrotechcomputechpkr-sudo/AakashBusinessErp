@@ -236,6 +236,7 @@ A later document can be filled from earlier ones (`utils/pendingDocs.js`, `Pendi
 | Sales Bill | Quotation + Order + Delivery |
 | Purchase Bill | Quotation + Order + GRN |
 | Sales Return / Purchase Return | Bill |
+| Non-saleable Return (sales / purchase) | Bill |
 
 Each pulled line keeps its `source_*_detail_id`, so the child knows where it came from, and stock is never moved twice (a bill line from a delivery/GRN skips the stock movement).
 
