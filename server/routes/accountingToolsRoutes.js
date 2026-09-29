@@ -6,6 +6,7 @@
 //   /api/lc-bg/...                    LC / BG / PDC dashboard, reports, actions, BG register
 //   /api/fixed-assets/...             asset register, depreciation, disposal, reports
 //   /api/dimension-reports/...        ledger / sub-ledger / cost center / unit / branch / doc class
+//   /api/balance-writeoff/...         small customer / supplier balances nilled by one JV (preview, post, register)
 // =============================================
 const express = require('express');
 const router = express.Router();
@@ -111,5 +112,15 @@ router.get('/dimension-reports/pl', ...reports, send((c, t, req) => D.plByDimens
 router.get('/dimension-reports/statement', ...reports, send((c, t, req) => D.statement(c, t, req.query)));
 router.get('/dimension-reports/exceptions', ...reports, send((c, t, req) => D.exceptions(c, t, req.query)));
 router.get('/dimension-reports/doc-class', ...reports, send((c, t, req) => D.docClassRegister(c, t, req.query)));
+
+// ---------- small balance write-off ----------
+const BW = require('../utils/balanceWriteoff');
+router.get('/balance-writeoff/preview', ...view, send((c, t, req) => BW.previewWriteoff(c, t, req.query)));
+router.get('/balance-writeoff/register', ...view, send((c, t, req) => BW.writeoffRegister(c, t, req.query)));
+router.post('/balance-writeoff/post', requireAuth, loadUserPermissions, requirePermission('ledger', 'create'), send(async (c, t, req) => {
+    const out = await BW.postWriteoff(c, t, req, req.body || {});
+    await logAudit(t, req.auth.userId, 'balance_writeoff', 'journal_voucher', out.jv_id, { parties: out.parties, dr: out.dr_total, cr: out.cr_total });
+    return out;
+}));
 
 module.exports = router;

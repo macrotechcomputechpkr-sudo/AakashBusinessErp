@@ -24,7 +24,7 @@ const si = (to: string, label: string, feature?: Feature): MenuItem => ({ ...i(t
 export const REPORT_GROUPS: ReportGroup[] = [
     { title: 'Accounts & Finance', items: [
         ['/ledger-report', 'Ledger Report (detail)'], ['/ledger-report?mode=summary', 'Ledger Summary (PDC separate option)'], ['/ledger-report?mode=monthly', 'Ledger Monthly Summary'],
-        ['/party-summary', 'Party Summary (PDC separate option)'], ['/control-reports?view=day_book', 'Day Book'], ['/control-reports?view=cash_bank_book', 'Cash & Bank Book'],
+        ['/party-summary', 'Party Summary (PDC separate option)'], ['/day-book', 'Day Book (all-in-one: user / agent / voucher type)'], ['/control-reports?view=day_book', 'Day Book (ledger lines)'], ['/control-reports?view=cash_bank_book', 'Cash & Bank Book'],
         ['/financial-reports?tab=tb', 'Trial Balance'], ['/financial-reports?tab=pl', 'Profit & Loss'], ['/financial-reports?tab=bs', 'Balance Sheet'],
         ['/financial-reports?tab=notes', 'Schedules / Notes'], ['/financial-reports?tab=ratios', 'Ratio Analysis'], ['/financial-reports?tab=cash', 'Cash Flow'], ['/financial-reports?tab=funds', 'Funds Flow'],
         ['/financial-reports?tab=map', 'Group Mapping (P&L / BS)'], ['/funds-position', 'Net Position of Funds'], ['/bank-reconciliation?tab=brs', 'Bank Reconciliation Statement'],
@@ -33,7 +33,7 @@ export const REPORT_GROUPS: ReportGroup[] = [
     ] },
     { title: 'Budget & Dimensions', items: [
         ['/budgets', 'Budget vs Actual / Variance (ledger, sub-ledger, cost center, unit, doc class)'], ['/financial-reports?tab=budget', 'Budget vs Actual (quick)'],
-        ['/dimension-reports?preset=sub_summary', 'Sub-ledger Summary'], ['/dimension-reports?preset=statement', 'Sub-ledger / Cost Center Statement'],
+        ['/dimension-reports?preset=sub_summary', 'Ledger + Sub-ledger Balance (module filter)'], ['/dimension-reports?preset=statement', 'Sub-ledger / Cost Center Statement'],
         ['/dimension-reports?preset=pl_cc', 'P&L by Cost Center'], ['/dimension-reports?preset=pl_unit', 'P&L by Unit'], ['/dimension-reports?preset=pl_branch', 'P&L by Branch'],
         ['/dimension-reports?preset=pl_class', 'P&L by Doc Class'], ['/dimension-reports?preset=cc_summary', 'Cost Center x Ledger'], ['/dimension-reports?preset=monthly', 'Cost Center Monthly Trend'],
         ['/dimension-reports?preset=doc_class', 'Doc Class Register (number gaps)'], ['/dimension-reports?preset=exceptions', 'Missing Dimensions']
@@ -129,7 +129,7 @@ export const TOP_MENUS: TopMenu[] = [
     ] },
     { key: 'entry', title: 'Data Entry', groups: [
         { title: 'Accounts', items: [
-            i('/journal-voucher', '📗 Journal Voucher'), i('/cash-bank-entry', '💵 Cash / Bank Entry'), si('/debit-note', '📤 Debit Note'), i('/credit-note', '📥 Credit Note'),
+            i('/journal-voucher', '📗 Journal Voucher'), i('/balance-writeoff', '🧹 Small Balance Write-off (JV)'), i('/cash-bank-entry', '💵 Cash / Bank Entry'), si('/debit-note', '📤 Debit Note'), i('/credit-note', '📥 Credit Note'),
             si('/pdc-voucher', '🏦 PDC'), i('/bulk-cash-settlement', '💰 Bulk Cash Settlement'), i('/bank-reconciliation', '🏦 Bank Reconciliation'),
             si('/interest-posting', '% Interest on Overdue'), i('/fixed-assets?tab=depreciation', '🏗 Depreciation Posting'), si('/budgets', '💼 Budgets'),
             i('/confirmation-letters', '✉ Account Confirmation Letters')

@@ -7,10 +7,14 @@
 // Master-rate bases value the same closing qty at the item master's rate
 // (base unit row of product_unit_rates):
 //   master_purchase (Purchase Rate), mrp (MRP), sales_rate (Sales Rate SR1)
+// Batch / serial products follow System Control's batch / serial costing
+// (e.g. batch-wise: each batch at its own receipt cost, landed cost of
+// Purchase Additional included) - the same rule as the Stock Report, the
+// financial statements' closing stock and Profitability's cost of sales.
 // Rows: item, item + warehouse or item + batch. Filters and stock status are
 // the Stock Report's (utils/stockReport.js).
 // =============================================
-const { itemMovement, METHODS } = require('./stockEngine');
+const { itemMovement, METHODS, costingSettings, methodFor, keyEvents, COSTING_CHOICES } = require('./stockEngine');
 const { parseQuery, loadProducts, loadEvents, statusOk } = require('./stockReport');
 
 const round2 = n => Math.round((Number(n) || 0) * 100) / 100;
@@ -35,6 +39,7 @@ async function stockValuation(c, t, q) {
     if (!methods.length) methods = ['weighted_average'];
     const { products, info } = await loadProducts(c, t, f);
     const ev = await loadEvents(c, t, f, products);
+    const cs = await costingSettings(c, t);
 
     // Master rates per base unit.
     const masterRate = {};
@@ -53,8 +58,11 @@ async function stockValuation(c, t, q) {
         const p = info[r.product_id], k = p.factor;
         const byMethod = {};
         let qty = 0;
+        let costing = null;
         methods.filter(m => METHODS[m]).forEach(m => {
-            const mv = itemMovement(r.events, m, asOn, asOn);
+            const eff = methodFor(p, m, cs);
+            if (eff.method !== m) costing = eff.method === 'specific' ? (eff.keyBy === 'serial' ? 'Serial-wise' : 'Batch-wise') : METHODS[eff.method] || eff.method;
+            const mv = itemMovement(keyEvents(r.events, eff.keyBy), eff.method, asOn, asOn);
             qty = mv.closing.qty;
             byMethod[m] = { rate: mv.closing.qty > 1e-9 ? round4(mv.closing.value / mv.closing.qty * k) : 0, value: round2(mv.closing.value) };
         });
@@ -67,7 +75,7 @@ async function stockValuation(c, t, q) {
         return {
             ...p, key: r.key, batch_no: r.batch_no, exp_date: meta?.exp_date || null,
             warehouse_name: r.warehouse_id ? ev.whName[r.warehouse_id] || '' : (f.groupBy === 'item_warehouse' ? '(Opening - no warehouse)' : null),
-            qty: round4(qty / k), _base: qty, methods: byMethod
+            qty: round4(qty / k), _base: qty, methods: byMethod, costing
         };
     });
     if (f.hideZero) rows = rows.filter(r => Math.abs(r.qty) > 1e-9);
@@ -77,7 +85,8 @@ async function stockValuation(c, t, q) {
     const totals = Object.fromEntries(methods.map(m => [m, round2(rows.reduce((s, r) => s + (r.methods[m]?.value || 0), 0))]));
     return {
         as_on: asOn, group_by: f.groupBy, methods: methods.map(m => ({ key: m, label: ALL_METHODS[m], ledger: !!METHODS[m] })),
-        rows, totals, warnings: [...new Set(warnings)]
+        rows, totals, warnings: [...new Set(warnings)],
+        batch_serial_costing: { batch: COSTING_CHOICES.batch[cs.batch], serial: COSTING_CHOICES.serial[cs.serial] }
     };
 }
 

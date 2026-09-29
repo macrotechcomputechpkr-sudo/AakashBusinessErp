@@ -2358,7 +2358,7 @@
 "accounts": "Exactly the lines (Dr = Cr, enforced by the database).",
 "stock": "None.",
 "vat": "Purchase / sales / asset / service types go to the VAT register (JV Purchase / JV Sales).",
-"other": "TDS types: TDS register and the record of bills already taken.",
+"other": "TDS types: TDS register and the record of bills already taken. JV Type \"Small Balance Write-off (bulk)\" opens its own screen.",
 "fields": [
 [
 "Date",
@@ -2439,6 +2439,40 @@
 ],
 "slug": "journal-voucher",
 "pdf": "/help/menus/journal-voucher.pdf"
+},
+"/balance-writeoff": {
+"path": "/balance-writeoff",
+"title": "Small Balance Write-off (JV)",
+"module": "Accounts",
+"kind": "entry",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Nil many small customer / supplier balances (e.g. up to Rs 50) in one Journal Voucher against discount.",
+"steps": [
+"Choose customers / suppliers / both, Dr / Cr / both balances, the \"up to\" amount (and \"from\"), the date, area / agent.",
+"List balances; tick all or some.",
+"Choose the discount allowed ledger (for Dr balances) and discount received ledger (for Cr balances); Post write-off JV."
+],
+"accounts": "One JV (type Small Balance Write-off): Dr balance - Cr party, Dr discount allowed; Cr balance - Dr party, Cr discount received.",
+"stock": "None.",
+"vat": "None.",
+"other": "Each party's open bills are settled (bill-wise / ageing clear). Cancel the JV in Journal Voucher to undo the ledger entry and the settlements.",
+"fields": [
+[
+"Narration",
+"One line description printed on the voucher and shown in the ledger. Pick a saved remark or type."
+]
+],
+"slug": "balance-writeoff",
+"pdf": "/help/menus/balance-writeoff.pdf"
 },
 "/cash-bank-entry": {
 "path": "/cash-bank-entry",
@@ -4695,9 +4729,11 @@
 "construction",
 "poultry"
 ],
-"purpose": "Sub-ledger summary / statement, P&L by cost center / unit / branch / doc class, cost center x ledger, monthly trend, doc class number gaps, missing dimensions.",
+"purpose": "Ledger + sub-ledger balances, sub-ledger statement, P&L by cost center / unit / branch / doc class, cost center x ledger, monthly trend, doc class number gaps, missing dimensions.",
 "steps": [
-"Choose the preset from the menu and the period."
+"Choose the preset from the menu and the period.",
+"Ledger + Sub-ledger Balance: every sub-ledger with opening / debit / credit / closing and, after them, the \"Ledger balance\" row of the ledger (its master opening included).",
+"Filters: Module (Sales, Purchase, Cash / Bank / PDC, Journal / Notes, Inventory / Production, Other), ledger, group, sub-ledger, cost center, unit, branch, document type, doc class, product company."
 ],
 "views": {},
 "tips": [],
@@ -4716,6 +4752,46 @@
 ],
 "slug": "dimension-reports",
 "pdf": "/help/menus/dimension-reports.pdf"
+},
+"/day-book": {
+"path": "/day-book",
+"title": "Day Book (all-in-one)",
+"module": "Accounts Report",
+"kind": "report",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Every voucher of a day or period with cash / credit split, cash & bank book, party-wise credit summary, and totals per agent and per user.",
+"steps": [
+"Choose the dates. No user / agent = the whole business (cash and bank with opening and closing).",
+"User: vouchers entered by that user. Salesman / Agent: that agent's sales, returns, receipts (also cash / bank lines of the agent), PDC, credit notes.",
+"Voucher type: any of Sales Bill, Sales Return, Sales Non-saleable Return, Sales Additional, Purchase Bill / Return / Additional, Cash / Bank Receipt, Payment, PDC Received / Issued, Journal, Credit / Debit Note. Party filter; drafts / pending on request.",
+"Show / hide sections: summary, by voucher type, cash & bank, party-wise credit, by agent, by user, voucher list. Print."
+],
+"views": {},
+"tips": [],
+"accounts": "None - read only.",
+"stock": "None - read only.",
+"vat": "None.",
+"fields": [
+[
+"From",
+"First date of the report period."
+],
+[
+"To",
+"Last date of the report period."
+]
+],
+"slug": "day-book",
+"pdf": "/help/menus/day-book.pdf"
 },
 "/vat-reports": {
 "path": "/vat-reports",
@@ -5576,9 +5652,9 @@
 "construction",
 "poultry"
 ],
-"purpose": "Closing stock value by FIFO, moving / weighted average, last purchase.",
+"purpose": "Closing stock value by FIFO, moving / weighted average, last purchase - batch / serial items by System Control's batch / serial costing (e.g. batch-wise: each batch at its own cost, landed cost of Purchase Additional included).",
 "steps": [
-"Choose the date and method."
+"Choose the date and method; item + batch shows each batch's value. A tag on the item shows when batch / serial costing replaced the method."
 ],
 "views": {},
 "tips": [],

@@ -41,11 +41,14 @@ export const JV_TYPES = [
     { key: 'asset_sales', label: 'Taxable / Non-taxable Asset Sales', side: 'sales', purposes: ['fixed_asset', 'income'], acct: 'Fixed Asset / Disposal A/c' },
     { key: 'service_purchase', label: 'Taxable / Non-taxable Service Purchase', side: 'purchase', purposes: ['pl_expense'], acct: 'Service / Expense A/c' },
     { key: 'service_sales', label: 'Taxable / Non-taxable Service Sales', side: 'sales', purposes: ['income'], acct: 'Service Income A/c' },
+    { key: 'balance_writeoff', label: 'Small Balance Write-off' },
     { key: 'tds', label: 'TDS', side: 'tds', purposes: ['expense', 'purchase_goods', 'fixed_asset'], acct: 'Expense A/c' }
 ];
 // the JV Type drop-down: one choice, TDS split into on-purchase / on-sales
-const TYPE_CHOICES = [...JV_TYPES.filter(t => t.key !== 'tds').map(t => ({ value: t.key, label: t.label })),
-    { value: 'tds:purchase', label: 'TDS on Purchase' }, { value: 'tds:sales', label: 'TDS on Sales' }];
+const TYPE_CHOICES = [...JV_TYPES.filter(t => t.key !== 'tds' && t.key !== 'balance_writeoff').map(t => ({ value: t.key, label: t.label })),
+    { value: 'tds:purchase', label: 'TDS on Purchase' }, { value: 'tds:sales', label: 'TDS on Sales' },
+    // many small customer / supplier balances at once: its own screen (BalanceWriteoff.jsx)
+    { value: 'balance_writeoff', label: 'Small Balance Write-off (bulk) …' }];
 const typeOf = k => JV_TYPES.find(t => t.key === k) || JV_TYPES[0];
 const Arrow = ({ open }) => <span className="inline-block w-3 text-center" style={{ transform: open ? 'rotate(0deg)' : 'rotate(-90deg)', transition: 'transform .15s' }}>▾</span>;
 
@@ -402,7 +405,7 @@ export default function JournalVoucher() {
                         <div className={efc.isVisible('jv_type') ? 'erp-field' : 'erp-field hidden'}>
                             <label className="erp-label">JV Type</label>
                             <select className="erp-select" value={form.jv_type === 'tds' ? `tds:${form.tds_side || 'purchase'}` : form.jv_type} disabled={efc.isReadonly('jv_type')}
-                                onChange={e => { const [k, side] = e.target.value.split(':'); changeType(k, side); }}>
+                                onChange={e => { if (e.target.value === 'balance_writeoff') { window.location.assign('/balance-writeoff'); return; } const [k, side] = e.target.value.split(':'); changeType(k, side); }}>
                                 {TYPE_CHOICES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                             </select>
                         </div>

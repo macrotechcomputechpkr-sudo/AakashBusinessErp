@@ -135,6 +135,13 @@ Other billing terms post to the ledger set on the term (Billing Terms master), w
 - Purchase bill: the same supplier bill no cannot be entered twice for one supplier (`duplicatePartyBill`, on save and on posting).
 - `authFetch` keeps the server's extra error fields (`warnings`, `credit_blocked`), so "Post anyway?" and the credit override work.
 
+### 3.3f Day book, write-off, module filter, batch valuation (migration 150)
+
+- `utils/dayBook.js` (`/api/day-book`, `/types`): reads the documents (not the GL) so it can filter by `created_by` and `agent_id` (multi-line cash / bank entries by line agent); cash / credit per voucher (sales bill `received_amount` counts as cash); cash & bank from the GL lines of the shown vouchers on cash / bank ledgers (opening / closing only when not narrowed); party summary with closing balance.
+- `utils/balanceWriteoff.js` (`/api/balance-writeoff/preview|post|register`): one JV `jv_type = 'balance_writeoff'` through the JV handlers; `balance_writeoff_lines` per party carry the bill-wise settlement (`source_type 'balance_writeoff'`); JV cancel calls `reverseWriteoffSettlements`.
+- `utils/dimensionReports.js`: `modules` filter (`moduleOf(doc_type)`); a pivot with rows ledger + sub-ledger returns `subtotals` per ledger (master opening included).
+- `utils/stockValuation.js`: `methodFor` / `keyEvents` per product like `stockMovement` - batch / serial costing of System Control; `rows[].costing` names the method used. Landed cost lives in `stock_movements.unit_cost`, so batch-wise layers and Profitability (`costRatesOn`) carry it.
+
 ### 3.3e Salesman mobile collection / returns, bill-wise commission (migration 149)
 
 - `utils/mobileEntries.js`: `createMobileReceipt` (customer must be on a route planned for the salesman that day unless `allow_off_route_orders`; cash ledger = `salesman_agents.mobile_cash_ledger_id` or System Control `default_cash_ledger_id`) and `createMobileReturn` (customer of any route). Both run the screens' own create handlers (`handlerOf(router, method, path)` + `invoke`), stay `draft`, and are marked `entry_source = 'mobile'` with `agent_id` = the salesman.

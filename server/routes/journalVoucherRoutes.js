@@ -40,7 +40,9 @@ const JV_TYPES = {
     sales: { side: 'sales', purposes: ['sales_goods'], label: 'sales' },
     asset_sales: { side: 'sales', purposes: ['fixed_asset', 'income'], label: 'fixed asset (or disposal income)' },
     service_sales: { side: 'sales', purposes: ['income'], label: 'service income' },
-    tds: { side: null, tds: true }
+    tds: { side: null, tds: true },
+    // many small customer / supplier balances nilled against discount (utils/balanceWriteoff.js)
+    balance_writeoff: { side: null, writeoff: true }
 };
 const jvTypeOf = b => (JV_TYPES[b.jv_type] ? b.jv_type
     : b.tax_entry_type === 'purchase' ? (b.is_capital ? 'asset_purchase' : 'purchase') : b.tax_entry_type === 'sales' ? 'sales' : 'normal');
@@ -73,6 +75,7 @@ async function checkJvTax(c, t, b, isDraft) {
     const f = await withTdsLedger(c, t, taxFields(b));
     if (f.jv_type === 'normal' || isDraft) return null;
     const T = JV_TYPES[f.jv_type];
+    if (T.writeoff) return null;   // plain Dr / Cr lines, many parties
     const purchase = T.side !== 'sales' && !(T.tds && f.tds_side === 'sales');   // purchase side and TDS on purchase: TDS payable credited
     const who = T.side === 'sales' || f.tds_side === 'sales' ? 'customer' : T.side === 'purchase' || f.tds_side === 'purchase' ? 'supplier' : 'party';
     if (!f.party_ledger_id) return `Choose the ${who}`;
@@ -445,6 +448,7 @@ router.put('/journal-vouchers/:id/status', requireAuth, loadUserPermissions, req
             await postJvToLedger(tenantClient, tenantId, data, details || [], req.auth.userId);
         } else if (status === 'cancelled' && existing.status === 'posted') {
             await reverseJvLedgerBatch(tenantClient, req.params.id);
+            if (existing.jv_type === 'balance_writeoff') await require('../utils/balanceWriteoff').reverseWriteoffSettlements(tenantClient, req.params.id);
         }
 
         await logAudit(tenantId, req.auth.userId, 'change_jv_status', 'journal_voucher', req.params.id, { new_status: status, cancellation_reason });

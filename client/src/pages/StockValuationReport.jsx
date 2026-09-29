@@ -146,6 +146,7 @@ export default function StockValuationReport() {
                     <button className="erp-btn" onClick={() => { setConfig(defaultConfig()); setData(null); }}>↺ Reset</button>
                 </div>
                 {error && <p className="text-sm text-red-600 mb-2">{error}</p>}
+                {data?.batch_serial_costing && <p className="text-xs text-gray-600 mb-1">Batch items: <b>{data.batch_serial_costing.batch}</b> · Serial items: <b>{data.batch_serial_costing.serial}</b> (System Control) - landed cost of Purchase Additional is in each receipt's cost.</p>}
                 {data?.warnings?.length > 0 && <p className="text-xs text-amber-700 mb-2">{data.warnings.slice(0, 10).join(' · ')}{data.warnings.length > 10 ? ` (+${data.warnings.length - 10} more)` : ''}</p>}
 
                 {data && (
@@ -172,7 +173,7 @@ export default function StockValuationReport() {
                                         {g.rows.map(r => (
                                             <tr key={r.key}>
                                                 <td className="text-gray-500">{r.product_code}</td>
-                                                <td>{r.product_name}{rowLabel(r) && <span className="text-xs text-gray-500"> · {rowLabel(r)}</span>}</td>
+                                                <td>{r.product_name}{rowLabel(r) && <span className="text-xs text-gray-500"> · {rowLabel(r)}</span>}{r.costing && <span className="text-[10px] ml-1 px-1 rounded bg-blue-50 text-blue-700" title="Batch / serial costing from System Control">{r.costing}</span>}</td>
                                                 <td className="text-gray-500">{r.unit}</td>
                                                 <td className={`text-right tabular-nums ${r.qty < 0 ? 'text-red-600' : ''}`}>{fmtQ(r.qty)}</td>
                                                 {methodCells(m => r.methods[m]?.value || 0, m => r.methods[m]?.rate)}

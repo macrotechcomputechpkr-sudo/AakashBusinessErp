@@ -346,6 +346,14 @@ Only quantities still pending are offered. The source document shows as partiall
 
 > **Accounts:** Dr commission expense / Cr commission payable (salesman's ledgers, or chosen on posting).
 
+**Small Balance Write-off (Journal Voucher)**
+
+- Journal Voucher > JV Type "Small Balance Write-off (bulk)" (or Accounts > Small Balance Write-off).
+- Choose customers / suppliers / both, Dr / Cr balances, the "up to" amount (e.g. 50) and the date; list; tick all or some; choose the discount ledgers; post.
+- One JV nils all ticked parties; their open bills are settled. Cancelling the JV undoes it.
+
+> **Accounts:** Dr balances - Dr Discount Allowed / Cr party; Cr balances - Dr party / Cr Discount Received.
+
 **Mobile Approvals**
 
 - Cash receipts and sales returns entered on the salesman's phone wait here as pending (no effect).
@@ -632,7 +640,18 @@ For each transaction (and user, if needed):
 - **Manual Document Printing**: print or reprint documents in bulk.
 - **Messaging**: send documents or statements; see the message log.
 - **IRD Compliance / CBMS**: the IRD register, sync status and resend.
-- **Salesman Mobile App**: the salesman sees only the route(s) planned for them on the day (a date-range plan shows on each date of the range). Opening a route lists its customers in visiting sequence, with search. Per customer: **Order** (becomes a Sales Order), **Receipt** (cash / cheque / online) and **No order**. The **Return** tab takes a sales return from a customer of any area / route. Receipts and returns are tagged with the salesman and wait for the office in **Mobile Approvals**. Settings per salesman (Route Plan > Mobile): allow receipts / returns, the mobile cash ledger, off-route customers.
+- **Salesman Mobile App**: the salesman sees only the route(s) planned for them on the day (a date-range plan shows on each date of the range). Opening a route lists its customers in visiting sequence, with search. Per customer: **Order** (becomes a Sales Order), **Receipt** (cash / cheque / online) and **No order**. The **Return** tab takes a sales return from a customer of any area / route. Receipts and returns are tagged with the salesman and wait for the office in **Small Balance Write-off (Journal Voucher)**
+
+- Journal Voucher > JV Type "Small Balance Write-off (bulk)" (or Accounts > Small Balance Write-off).
+- Choose customers / suppliers / both, Dr / Cr balances, the "up to" amount (e.g. 50) and the date; list; tick all or some; choose the discount ledgers; post.
+- One JV nils all ticked parties; their open bills are settled. Cancelling the JV undoes it.
+
+> **Accounts:** Dr balances - Dr Discount Allowed / Cr party; Cr balances - Dr party / Cr Discount Received.
+
+**Mobile Approvals**. Settings per salesman (Route Plan > Mobile): allow receipts / returns, the mobile cash ledger, off-route customers.
+- **Day Book (all-in-one)**: one day or a period, with filters for user, salesman / agent, voucher type (sales, returns, purchase, receipts, payments, PDC, journal, notes ...), party and drafts. It shows sales / purchase split into cash and credit, returns, receipts and payments split into cash and bank, PDC, the cash & bank book (opening and closing for the whole business), a party-wise credit summary with closing balances, totals per agent and per user, and every voucher. Without user / agent it is the overall day book.
+- **Ledger + Sub-ledger Balance**: every sub-ledger's opening / debit / credit / closing with the ledger balance after them, and a Module filter (sales, purchase, cash / bank, journal, inventory, other).
+- **Stock Valuation**: batch / serial items follow System Control's batch / serial costing; batch-wise costing values each batch at its own cost, including the landed cost of Purchase Additional. Profitability costs a sale of a batch / serial the same way.
 - **Loading Sheet**: items to load with qty by UOM mode (fixed dual "5 Crt 2 Pcs · Total 62 Pcs", flexible "5 Crt = 10 Pcs"), and a Total row with the qty as entered per unit and the total in base unit. Print it together with the **Bill Summary** (and Bill x Item) on one sheet.
 - **Office**: work dashboard, tasks, Darta/Chalani, notification settings, and their reports.
 

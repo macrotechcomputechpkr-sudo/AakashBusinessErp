@@ -93,6 +93,11 @@ router.post('/agent-commission/bills/post', ...edit, send(async (c, t, req) => {
 }));
 router.get('/agent-commission/register', ...reports, send((c, t, req) => AT.commissionRegister(c, t, req.query)));
 
+// ---------------- all-in-one day book (user / agent / voucher type filters) ----------------
+const DB = require('../utils/dayBook');
+router.get('/day-book', ...reports, send((c, t, req) => DB.dayBook(c, t, req.query)));
+router.get('/day-book/types', ...reports, send(async () => DB.TYPE_LIST));
+
 // ---------------- master / control reports (day book, cash book, masters, exceptions) ----------------
 router.get('/control-reports/:view', ...reports, send((c, t, req) => controlReport(c, t, req.params.view, req.query)));
 // FSN / ABC / XYZ, stock cover, turnover, dead stock, forecasts, period comparison, RFM

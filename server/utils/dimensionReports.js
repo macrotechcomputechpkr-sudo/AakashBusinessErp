@@ -19,6 +19,10 @@
 //               a sub-ledger) with running balance and contra ledgers
 //   exceptions  lines missing a dimension - P&L lines without cost center /
 //               unit, ledgers that need a sub-ledger posted without one
+//   (every view: Module filter - sales / purchase / cash-bank / journal /
+//   inventory / other - by the document type of the GL line; a pivot with
+//   rows Ledger + Sub-ledger also returns each ledger's subtotal = ledger
+//   balance with its master opening)
 //   doc_class   document class register from the documents themselves:
 //               count, amount, first / last no, cancelled, drafts, and
 //               gaps / duplicates in the numbering sequence
@@ -60,6 +64,10 @@ const DOCS = {
     construction_wage: ['construction_wage_sheets', null, 'Wage Sheet'],
     auto_job_invoice: ['auto_job_cards', null, 'Job Card Invoice'], auto_outside_work: ['auto_outside_works', null, 'Outside Work (Job Card)']
 };
+// module of each GL document type (Module filter)
+const MODULES = { sales: 'Sales', purchase: 'Purchase', cash_bank: 'Cash / Bank / PDC', journal: 'Journal / Notes', inventory: 'Inventory / Production', other: 'Other (interest, depreciation, commission ...)' };
+const moduleOf = ty => (/^sales_/.test(ty) ? 'sales' : /^purchase_/.test(ty) ? 'purchase' : ['cash_bank_entry', 'pdc'].includes(ty) ? 'cash_bank'
+    : ['journal_voucher', 'credit_note', 'debit_note', 'ledger_opening'].includes(ty) ? 'journal' : ['production', 'stock_transfer', 'stock_adjustment'].includes(ty) ? 'inventory' : 'other');
 // document tables for the doc-class register (all documents, posted or not)
 const CLASS_TABLES = {
     sales_quotation: 'sales_quotations', sales_order: 'sales_orders', sales_delivery: 'sales_deliveries', sales_bill: 'sales_bills', sales_return: 'sales_returns',
@@ -168,6 +176,8 @@ function applyFilters(lines, q) {
         if (v.length) r = r.filter(l => v.includes(l[dim] === null ? '__none__' : l[dim]));
     });
     if (q.statement) r = r.filter(l => l.statement === q.statement);
+    const mods = f('modules');
+    if (mods.length) r = r.filter(l => mods.includes(moduleOf(l.doc_type)));
     return r;
 }
 
@@ -205,7 +215,23 @@ async function pivot(c, t, q) {
         .sort((a, b) => rowsDims.map(d => String(a.labels[d]).localeCompare(String(b.labels[d]))).find(x => x) || 0);
     const columns = [...colSet.entries()].map(([key, label]) => ({ key, label })).sort((a, b) => colDim === 'month' ? a.key.localeCompare(b.key) : String(a.label).localeCompare(String(b.label)));
     const sum = k => round2(rows.reduce((s, r) => s + r[k], 0));
-    return { from, to, rows_dims: rowsDims.map(d => ({ key: d, label: DIMS[d] })), column_dim: colDim ? { key: colDim, label: DIMS[colDim] } : null, columns, rows,
+    // ledger balance with its sub-ledgers: a subtotal per ledger (its master opening balance included)
+    let subtotals = null;
+    if (rowsDims[0] === 'ledger' && rowsDims.length > 1) {
+        subtotals = {};
+        rows.forEach(r => {
+            const id = r.ids.ledger || '__none__';
+            const x = (subtotals[id] = subtotals[id] || { ledger: r.labels.ledger, opening: 0, dr: 0, cr: 0, cols: {}, sub_count: 0 });
+            x.opening += r.opening; x.dr += r.dr; x.cr += r.cr; x.sub_count++;
+            Object.entries(r.cols).forEach(([k, v]) => { x.cols[k] = round2((x.cols[k] || 0) + v); });
+        });
+        Object.entries(subtotals).forEach(([id, x]) => {
+            const led = M.ledgers[id];
+            if (withOpening && led) x.opening += (led.opening_balance_type === 'cr' ? -1 : 1) * (Number(led.opening_balance) || 0);
+            Object.assign(x, { opening: round2(x.opening), dr: round2(x.dr), cr: round2(x.cr), net: round2(x.dr - x.cr), closing: round2(x.opening + x.dr - x.cr) });
+        });
+    }
+    return { from, to, subtotals, modules: csv(q.modules).map(m => MODULES[m]).filter(Boolean), rows_dims: rowsDims.map(d => ({ key: d, label: DIMS[d] })), column_dim: colDim ? { key: colDim, label: DIMS[colDim] } : null, columns, rows,
         totals: { opening: sum('opening'), dr: sum('dr'), cr: sum('cr'), closing: sum('closing'), cols: Object.fromEntries(columns.map(cl => [cl.key, round2(rows.reduce((s, r) => s + (r.cols[cl.key] || 0), 0))])) } };
 }
 
@@ -352,7 +378,7 @@ async function dimensionMeta(c, t) {
         sub_ledgers: Object.values(M.subs).map(s => ({ id: s.id, name: `${s.sub_ledger_name} · ${M.ledgers[s.main_ledger_id]?.account_name || ''}`, main_ledger_id: s.main_ledger_id, type: s.sub_ledger_type })),
         cost_centers: list(M.ccs, 'cost_center_name'), business_units: list(M.bus, 'unit_name'), branches: list(M.branches, 'branch_name'), product_companies: list(M.companies, 'company_name'),
         doc_classes: M.cats.map(cat => ({ id: cat.id, name: `${cat.category_name} (${cat.voucher_type})`, voucher_type: cat.voucher_type })),
-        doc_types: Object.entries(DOCS).map(([id, d]) => ({ id, name: d[2] })), voucher_types: Object.keys(CLASS_TABLES).map(v => ({ id: v, name: v.replace(/_/g, ' ') }))
+        doc_types: Object.entries(DOCS).map(([id, d]) => ({ id, name: d[2] })), modules: Object.entries(MODULES).map(([id, name]) => ({ id, name })), voucher_types: Object.keys(CLASS_TABLES).map(v => ({ id: v, name: v.replace(/_/g, ' ') }))
     };
 }
 
