@@ -27,6 +27,9 @@ Multi-tenant ERP for Nepal - Supabase/PostgreSQL, Node/Express, React 18 + Tailw
    ```
    The client is React + **Tailwind CSS** and is moving to **TypeScript** step by step: `tsconfig.json` has `allowJs`, so the existing `.jsx` pages keep working while new modules are `.ts` / `.tsx` (shared types in `src/types/erp.ts`).
 
+## Deploying (one server, one domain)
+At the repo root `npm install` installs `server/` + `client/` and builds the React app; `npm start` runs the API, which also serves the app. Step by step for Yeti Cloud (and the Supabase side): **docs/DEPLOY_YETI_CLOUD.md**.
+
 ## Default sign-in details
 | Who | Company code | Email | Password |
 |---|---|---|---|
