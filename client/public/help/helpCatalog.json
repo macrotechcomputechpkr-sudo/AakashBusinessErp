@@ -4506,7 +4506,9 @@
 "Click a line to open the document."
 ],
 "views": {},
-"tips": [],
+"tips": [
+"▦ Grid / 📄 Report above the table: Grid filters (▾ picks one or many values, AutoFilter, conditions), groups (drag a header to ☰ Rows - sub-totals), pivots (drag to ⫼ Columns, Σ Values; 📋 Columns = Field Selector), totals per column (Σ Footer), 📊 chart / pivot chart, data bars, added columns (running balance, % of total, formula), CSV and print. 📁 Views keep it all."
+],
 "accounts": "None - read only.",
 "stock": "None - read only.",
 "vat": "None.",
@@ -4543,7 +4545,9 @@
 "Choose party type and period."
 ],
 "views": {},
-"tips": [],
+"tips": [
+"▦ Grid / 📄 Report above the table: Grid filters (▾ picks one or many values, AutoFilter, conditions), groups (drag a header to ☰ Rows - sub-totals), pivots (drag to ⫼ Columns, Σ Values; 📋 Columns = Field Selector), totals per column (Σ Footer), 📊 chart / pivot chart, data bars, added columns (running balance, % of total, formula), CSV and print. 📁 Views keep it all."
+],
 "accounts": "None - read only.",
 "stock": "None - read only.",
 "vat": "None.",
@@ -4580,7 +4584,9 @@
 "Choose the view from the menu (deep link) and the filters."
 ],
 "views": {},
-"tips": [],
+"tips": [
+"▦ Grid / 📄 Report above the table: Grid filters (▾ picks one or many values, AutoFilter, conditions), groups (drag a header to ☰ Rows - sub-totals), pivots (drag to ⫼ Columns, Σ Values; 📋 Columns = Field Selector), totals per column (Σ Footer), 📊 chart / pivot chart, data bars, added columns (running balance, % of total, formula), CSV and print. 📁 Views keep it all."
+],
 "accounts": "None - read only.",
 "stock": "None - read only.",
 "vat": "None.",
@@ -4622,7 +4628,9 @@
 "Closing stock comes from the stock engine (same as the Stock Movement report)."
 ],
 "views": {},
-"tips": [],
+"tips": [
+"▦ Grid / 📄 Report above the table: Grid filters (▾ picks one or many values, AutoFilter, conditions), groups (drag a header to ☰ Rows - sub-totals), pivots (drag to ⫼ Columns, Σ Values; 📋 Columns = Field Selector), totals per column (Σ Footer), 📊 chart / pivot chart, data bars, added columns (running balance, % of total, formula), CSV and print. 📁 Views keep it all."
+],
 "accounts": "None - read only.",
 "stock": "None - read only.",
 "vat": "None.",
@@ -4663,7 +4671,9 @@
 "Choose the as-on date."
 ],
 "views": {},
-"tips": [],
+"tips": [
+"▦ Grid / 📄 Report above the table: Grid filters (▾ picks one or many values, AutoFilter, conditions), groups (drag a header to ☰ Rows - sub-totals), pivots (drag to ⫼ Columns, Σ Values; 📋 Columns = Field Selector), totals per column (Σ Footer), 📊 chart / pivot chart, data bars, added columns (running balance, % of total, formula), CSV and print. 📁 Views keep it all."
+],
 "accounts": "None - read only.",
 "stock": "None - read only.",
 "vat": "None.",
@@ -4696,7 +4706,9 @@
 "Choose side, as-on date."
 ],
 "views": {},
-"tips": [],
+"tips": [
+"▦ Grid / 📄 Report above the table: Grid filters (▾ picks one or many values, AutoFilter, conditions), groups (drag a header to ☰ Rows - sub-totals), pivots (drag to ⫼ Columns, Σ Values; 📋 Columns = Field Selector), totals per column (Σ Footer), 📊 chart / pivot chart, data bars, added columns (running balance, % of total, formula), CSV and print. 📁 Views keep it all."
+],
 "accounts": "None - read only.",
 "stock": "None - read only.",
 "vat": "None.",
@@ -4733,7 +4745,9 @@
 "Choose buckets, as-on date, basis."
 ],
 "views": {},
-"tips": [],
+"tips": [
+"▦ Grid / 📄 Report above the table: Grid filters (▾ picks one or many values, AutoFilter, conditions), groups (drag a header to ☰ Rows - sub-totals), pivots (drag to ⫼ Columns, Σ Values; 📋 Columns = Field Selector), totals per column (Σ Footer), 📊 chart / pivot chart, data bars, added columns (running balance, % of total, formula), CSV and print. 📁 Views keep it all."
+],
 "accounts": "None - read only.",
 "stock": "None - read only.",
 "vat": "None.",
@@ -4778,7 +4792,9 @@
 "Choose party / as-on date."
 ],
 "views": {},
-"tips": [],
+"tips": [
+"▦ Grid / 📄 Report above the table: Grid filters (▾ picks one or many values, AutoFilter, conditions), groups (drag a header to ☰ Rows - sub-totals), pivots (drag to ⫼ Columns, Σ Values; 📋 Columns = Field Selector), totals per column (Σ Footer), 📊 chart / pivot chart, data bars, added columns (running balance, % of total, formula), CSV and print. 📁 Views keep it all."
+],
 "accounts": "None - read only.",
 "stock": "None - read only.",
 "vat": "None.",
@@ -4825,7 +4841,9 @@
 "Filters: Module (Sales, Purchase, Cash / Bank / PDC, Journal / Notes, Inventory / Production, Other), ledger, group, sub-ledger, cost center, unit, branch, document type, doc class, product company."
 ],
 "views": {},
-"tips": [],
+"tips": [
+"▦ Grid / 📄 Report above the table: Grid filters (▾ picks one or many values, AutoFilter, conditions), groups (drag a header to ☰ Rows - sub-totals), pivots (drag to ⫼ Columns, Σ Values; 📋 Columns = Field Selector), totals per column (Σ Footer), 📊 chart / pivot chart, data bars, added columns (running balance, % of total, formula), CSV and print. 📁 Views keep it all."
+],
 "accounts": "None - read only.",
 "stock": "None - read only.",
 "vat": "None.",
@@ -4865,7 +4883,9 @@
 "Show / hide sections: summary, by voucher type, cash & bank, party-wise credit, by agent, by user, voucher list. Print."
 ],
 "views": {},
-"tips": [],
+"tips": [
+"▦ Grid / 📄 Report above the table: Grid filters (▾ picks one or many values, AutoFilter, conditions), groups (drag a header to ☰ Rows - sub-totals), pivots (drag to ⫼ Columns, Σ Values; 📋 Columns = Field Selector), totals per column (Σ Footer), 📊 chart / pivot chart, data bars, added columns (running balance, % of total, formula), CSV and print. 📁 Views keep it all."
+],
 "accounts": "None - read only.",
 "stock": "None - read only.",
 "vat": "None.",
@@ -4904,7 +4924,8 @@
 ],
 "views": {},
 "tips": [
-"Export in English or Nepali headers with BS dates."
+"Export in English or Nepali headers with BS dates.",
+"▦ Grid / 📄 Report above the table: Grid filters (▾ picks one or many values, AutoFilter, conditions), groups (drag a header to ☰ Rows - sub-totals), pivots (drag to ⫼ Columns, Σ Values; 📋 Columns = Field Selector), totals per column (Σ Footer), 📊 chart / pivot chart, data bars, added columns (running balance, % of total, formula), CSV and print. 📁 Views keep it all."
 ],
 "accounts": "None - read only.",
 "stock": "None - read only.",
@@ -4960,7 +4981,9 @@
 "Add or remove accounts compared with the chips."
 ],
 "views": {},
-"tips": [],
+"tips": [
+"▦ Grid / 📄 Report above the table: Grid filters (▾ picks one or many values, AutoFilter, conditions), groups (drag a header to ☰ Rows - sub-totals), pivots (drag to ⫼ Columns, Σ Values; 📋 Columns = Field Selector), totals per column (Σ Footer), 📊 chart / pivot chart, data bars, added columns (running balance, % of total, formula), CSV and print. 📁 Views keep it all."
+],
 "accounts": "None - read only.",
 "stock": "None - read only.",
 "vat": "None.",
@@ -5001,7 +5024,9 @@
 "See the IRD User Manual in the Help Center."
 ],
 "views": {},
-"tips": [],
+"tips": [
+"▦ Grid / 📄 Report above the table: Grid filters (▾ picks one or many values, AutoFilter, conditions), groups (drag a header to ☰ Rows - sub-totals), pivots (drag to ⫼ Columns, Σ Values; 📋 Columns = Field Selector), totals per column (Σ Footer), 📊 chart / pivot chart, data bars, added columns (running balance, % of total, formula), CSV and print. 📁 Views keep it all."
+],
 "accounts": "None - read only.",
 "stock": "None - read only.",
 "vat": "None.",
@@ -5038,7 +5063,9 @@
 "Filter by type, date, status."
 ],
 "views": {},
-"tips": [],
+"tips": [
+"▦ Grid / 📄 Report above the table: Grid filters (▾ picks one or many values, AutoFilter, conditions), groups (drag a header to ☰ Rows - sub-totals), pivots (drag to ⫼ Columns, Σ Values; 📋 Columns = Field Selector), totals per column (Σ Footer), 📊 chart / pivot chart, data bars, added columns (running balance, % of total, formula), CSV and print. 📁 Views keep it all."
+],
 "accounts": "None - read only.",
 "stock": "None - read only.",
 "vat": "None.",
@@ -5075,7 +5102,9 @@
 "Act on due items."
 ],
 "views": {},
-"tips": [],
+"tips": [
+"▦ Grid / 📄 Report above the table: Grid filters (▾ picks one or many values, AutoFilter, conditions), groups (drag a header to ☰ Rows - sub-totals), pivots (drag to ⫼ Columns, Σ Values; 📋 Columns = Field Selector), totals per column (Σ Footer), 📊 chart / pivot chart, data bars, added columns (running balance, % of total, formula), CSV and print. 📁 Views keep it all."
+],
 "accounts": "None - read only.",
 "stock": "None - read only.",
 "vat": "None.",
@@ -5116,7 +5145,9 @@
 "Choose received / issued and the period."
 ],
 "views": {},
-"tips": [],
+"tips": [
+"▦ Grid / 📄 Report above the table: Grid filters (▾ picks one or many values, AutoFilter, conditions), groups (drag a header to ☰ Rows - sub-totals), pivots (drag to ⫼ Columns, Σ Values; 📋 Columns = Field Selector), totals per column (Σ Footer), 📊 chart / pivot chart, data bars, added columns (running balance, % of total, formula), CSV and print. 📁 Views keep it all."
+],
 "accounts": "None - read only.",
 "stock": "None - read only.",
 "vat": "None.",
@@ -5165,7 +5196,9 @@
 "Filter documents, tick and print."
 ],
 "views": {},
-"tips": [],
+"tips": [
+"▦ Grid / 📄 Report above the table: Grid filters (▾ picks one or many values, AutoFilter, conditions), groups (drag a header to ☰ Rows - sub-totals), pivots (drag to ⫼ Columns, Σ Values; 📋 Columns = Field Selector), totals per column (Σ Footer), 📊 chart / pivot chart, data bars, added columns (running balance, % of total, formula), CSV and print. 📁 Views keep it all."
+],
 "accounts": "None - read only.",
 "stock": "None - read only.",
 "vat": "None.",
@@ -5206,7 +5239,9 @@
 "Choose side, grouping and period."
 ],
 "views": {},
-"tips": [],
+"tips": [
+"▦ Grid / 📄 Report above the table: Grid filters (▾ picks one or many values, AutoFilter, conditions), groups (drag a header to ☰ Rows - sub-totals), pivots (drag to ⫼ Columns, Σ Values; 📋 Columns = Field Selector), totals per column (Σ Footer), 📊 chart / pivot chart, data bars, added columns (running balance, % of total, formula), CSV and print. 📁 Views keep it all."
+],
 "accounts": "None - read only.",
 "stock": "None - read only.",
 "vat": "None.",
@@ -5243,7 +5278,9 @@
 "Choose the year and grouping."
 ],
 "views": {},
-"tips": [],
+"tips": [
+"▦ Grid / 📄 Report above the table: Grid filters (▾ picks one or many values, AutoFilter, conditions), groups (drag a header to ☰ Rows - sub-totals), pivots (drag to ⫼ Columns, Σ Values; 📋 Columns = Field Selector), totals per column (Σ Footer), 📊 chart / pivot chart, data bars, added columns (running balance, % of total, formula), CSV and print. 📁 Views keep it all."
+],
 "accounts": "None - read only.",
 "stock": "None - read only.",
 "vat": "None.",
@@ -5280,7 +5317,9 @@
 "Choose the period and valuation method."
 ],
 "views": {},
-"tips": [],
+"tips": [
+"▦ Grid / 📄 Report above the table: Grid filters (▾ picks one or many values, AutoFilter, conditions), groups (drag a header to ☰ Rows - sub-totals), pivots (drag to ⫼ Columns, Σ Values; 📋 Columns = Field Selector), totals per column (Σ Footer), 📊 chart / pivot chart, data bars, added columns (running balance, % of total, formula), CSV and print. 📁 Views keep it all."
+],
 "accounts": "None - read only.",
 "stock": "None - read only.",
 "vat": "None.",
@@ -5317,7 +5356,9 @@
 "Choose item / party."
 ],
 "views": {},
-"tips": [],
+"tips": [
+"▦ Grid / 📄 Report above the table: Grid filters (▾ picks one or many values, AutoFilter, conditions), groups (drag a header to ☰ Rows - sub-totals), pivots (drag to ⫼ Columns, Σ Values; 📋 Columns = Field Selector), totals per column (Σ Footer), 📊 chart / pivot chart, data bars, added columns (running balance, % of total, formula), CSV and print. 📁 Views keep it all."
+],
 "accounts": "None - read only.",
 "stock": "None - read only.",
 "vat": "None.",
@@ -5354,7 +5395,9 @@
 "Choose the product."
 ],
 "views": {},
-"tips": [],
+"tips": [
+"▦ Grid / 📄 Report above the table: Grid filters (▾ picks one or many values, AutoFilter, conditions), groups (drag a header to ☰ Rows - sub-totals), pivots (drag to ⫼ Columns, Σ Values; 📋 Columns = Field Selector), totals per column (Σ Footer), 📊 chart / pivot chart, data bars, added columns (running balance, % of total, formula), CSV and print. 📁 Views keep it all."
+],
 "accounts": "None - read only.",
 "stock": "None - read only.",
 "vat": "None.",
@@ -5395,7 +5438,9 @@
 "Choose the view and period."
 ],
 "views": {},
-"tips": [],
+"tips": [
+"▦ Grid / 📄 Report above the table: Grid filters (▾ picks one or many values, AutoFilter, conditions), groups (drag a header to ☰ Rows - sub-totals), pivots (drag to ⫼ Columns, Σ Values; 📋 Columns = Field Selector), totals per column (Σ Footer), 📊 chart / pivot chart, data bars, added columns (running balance, % of total, formula), CSV and print. 📁 Views keep it all."
+],
 "accounts": "None - read only.",
 "stock": "None - read only.",
 "vat": "None.",
@@ -5447,7 +5492,9 @@
 "Print sections: Items, Bill Summary (bill no, customer, route, amounts, received / sign) and Bill x Item - print them together on one sheet."
 ],
 "views": {},
-"tips": [],
+"tips": [
+"▦ Grid / 📄 Report above the table: Grid filters (▾ picks one or many values, AutoFilter, conditions), groups (drag a header to ☰ Rows - sub-totals), pivots (drag to ⫼ Columns, Σ Values; 📋 Columns = Field Selector), totals per column (Σ Footer), 📊 chart / pivot chart, data bars, added columns (running balance, % of total, formula), CSV and print. 📁 Views keep it all."
+],
 "accounts": "None - read only.",
 "stock": "None - read only.",
 "vat": "None.",
@@ -5488,7 +5535,9 @@
 "Choose the module and filters; Outstanding only."
 ],
 "views": {},
-"tips": [],
+"tips": [
+"▦ Grid / 📄 Report above the table: Grid filters (▾ picks one or many values, AutoFilter, conditions), groups (drag a header to ☰ Rows - sub-totals), pivots (drag to ⫼ Columns, Σ Values; 📋 Columns = Field Selector), totals per column (Σ Footer), 📊 chart / pivot chart, data bars, added columns (running balance, % of total, formula), CSV and print. 📁 Views keep it all."
+],
 "accounts": "None - read only.",
 "stock": "None - read only.",
 "vat": "None.",
@@ -5557,7 +5606,9 @@
 "Filter by vendor and dates."
 ],
 "views": {},
-"tips": [],
+"tips": [
+"▦ Grid / 📄 Report above the table: Grid filters (▾ picks one or many values, AutoFilter, conditions), groups (drag a header to ☰ Rows - sub-totals), pivots (drag to ⫼ Columns, Σ Values; 📋 Columns = Field Selector), totals per column (Σ Footer), 📊 chart / pivot chart, data bars, added columns (running balance, % of total, formula), CSV and print. 📁 Views keep it all."
+],
 "accounts": "None - read only.",
 "stock": "None - read only.",
 "vat": "None.",
@@ -5601,7 +5652,9 @@
 "Other views: bill-wise, product-wise, ledger summary and mismatches. Export CSV."
 ],
 "views": {},
-"tips": [],
+"tips": [
+"▦ Grid / 📄 Report above the table: Grid filters (▾ picks one or many values, AutoFilter, conditions), groups (drag a header to ☰ Rows - sub-totals), pivots (drag to ⫼ Columns, Σ Values; 📋 Columns = Field Selector), totals per column (Σ Footer), 📊 chart / pivot chart, data bars, added columns (running balance, % of total, formula), CSV and print. 📁 Views keep it all."
+],
 "accounts": "None - read only.",
 "stock": "None - read only.",
 "vat": "None.",
@@ -5642,7 +5695,9 @@
 "With a user / agent filter only their vouchers are listed; opening / closing cash, stock and profit are left out. Print for signature."
 ],
 "views": {},
-"tips": [],
+"tips": [
+"▦ Grid / 📄 Report above the table: Grid filters (▾ picks one or many values, AutoFilter, conditions), groups (drag a header to ☰ Rows - sub-totals), pivots (drag to ⫼ Columns, Σ Values; 📋 Columns = Field Selector), totals per column (Σ Footer), 📊 chart / pivot chart, data bars, added columns (running balance, % of total, formula), CSV and print. 📁 Views keep it all."
+],
 "accounts": "None - read only.",
 "stock": "None - read only.",
 "vat": "None.",
@@ -5679,7 +5734,9 @@
 "Choose the date, grouping and method."
 ],
 "views": {},
-"tips": [],
+"tips": [
+"▦ Grid / 📄 Report above the table: Grid filters (▾ picks one or many values, AutoFilter, conditions), groups (drag a header to ☰ Rows - sub-totals), pivots (drag to ⫼ Columns, Σ Values; 📋 Columns = Field Selector), totals per column (Σ Footer), 📊 chart / pivot chart, data bars, added columns (running balance, % of total, formula), CSV and print. 📁 Views keep it all."
+],
 "accounts": "None - read only.",
 "stock": "None - read only.",
 "vat": "None.",
@@ -5712,7 +5769,9 @@
 "Choose period, method, summary / detail."
 ],
 "views": {},
-"tips": [],
+"tips": [
+"▦ Grid / 📄 Report above the table: Grid filters (▾ picks one or many values, AutoFilter, conditions), groups (drag a header to ☰ Rows - sub-totals), pivots (drag to ⫼ Columns, Σ Values; 📋 Columns = Field Selector), totals per column (Σ Footer), 📊 chart / pivot chart, data bars, added columns (running balance, % of total, formula), CSV and print. 📁 Views keep it all."
+],
 "accounts": "None - read only.",
 "stock": "None - read only.",
 "vat": "None.",
@@ -5753,7 +5812,9 @@
 "Choose item and period."
 ],
 "views": {},
-"tips": [],
+"tips": [
+"▦ Grid / 📄 Report above the table: Grid filters (▾ picks one or many values, AutoFilter, conditions), groups (drag a header to ☰ Rows - sub-totals), pivots (drag to ⫼ Columns, Σ Values; 📋 Columns = Field Selector), totals per column (Σ Footer), 📊 chart / pivot chart, data bars, added columns (running balance, % of total, formula), CSV and print. 📁 Views keep it all."
+],
 "accounts": "None - read only.",
 "stock": "None - read only.",
 "vat": "None.",
@@ -5790,7 +5851,9 @@
 "Choose the date and method; item + batch shows each batch's value. A tag on the item shows when batch / serial costing replaced the method."
 ],
 "views": {},
-"tips": [],
+"tips": [
+"▦ Grid / 📄 Report above the table: Grid filters (▾ picks one or many values, AutoFilter, conditions), groups (drag a header to ☰ Rows - sub-totals), pivots (drag to ⫼ Columns, Σ Values; 📋 Columns = Field Selector), totals per column (Σ Footer), 📊 chart / pivot chart, data bars, added columns (running balance, % of total, formula), CSV and print. 📁 Views keep it all."
+],
 "accounts": "None - read only.",
 "stock": "None - read only.",
 "vat": "None.",
@@ -5818,7 +5881,9 @@
 "Choose buckets and near-expiry days."
 ],
 "views": {},
-"tips": [],
+"tips": [
+"▦ Grid / 📄 Report above the table: Grid filters (▾ picks one or many values, AutoFilter, conditions), groups (drag a header to ☰ Rows - sub-totals), pivots (drag to ⫼ Columns, Σ Values; 📋 Columns = Field Selector), totals per column (Σ Footer), 📊 chart / pivot chart, data bars, added columns (running balance, % of total, formula), CSV and print. 📁 Views keep it all."
+],
 "accounts": "None - read only.",
 "stock": "None - read only.",
 "vat": "None.",
@@ -5851,7 +5916,9 @@
 "Choose warehouse."
 ],
 "views": {},
-"tips": [],
+"tips": [
+"▦ Grid / 📄 Report above the table: Grid filters (▾ picks one or many values, AutoFilter, conditions), groups (drag a header to ☰ Rows - sub-totals), pivots (drag to ⫼ Columns, Σ Values; 📋 Columns = Field Selector), totals per column (Σ Footer), 📊 chart / pivot chart, data bars, added columns (running balance, % of total, formula), CSV and print. 📁 Views keep it all."
+],
 "accounts": "None - read only.",
 "stock": "None - read only.",
 "vat": "None.",
@@ -5878,7 +5945,9 @@
 "Choose the view and period."
 ],
 "views": {},
-"tips": [],
+"tips": [
+"▦ Grid / 📄 Report above the table: Grid filters (▾ picks one or many values, AutoFilter, conditions), groups (drag a header to ☰ Rows - sub-totals), pivots (drag to ⫼ Columns, Σ Values; 📋 Columns = Field Selector), totals per column (Σ Footer), 📊 chart / pivot chart, data bars, added columns (running balance, % of total, formula), CSV and print. 📁 Views keep it all."
+],
 "accounts": "None - read only.",
 "stock": "None - read only.",
 "vat": "None.",
@@ -5919,7 +5988,9 @@
 "Choose the view from the menu and the period."
 ],
 "views": {},
-"tips": [],
+"tips": [
+"▦ Grid / 📄 Report above the table: Grid filters (▾ picks one or many values, AutoFilter, conditions), groups (drag a header to ☰ Rows - sub-totals), pivots (drag to ⫼ Columns, Σ Values; 📋 Columns = Field Selector), totals per column (Σ Footer), 📊 chart / pivot chart, data bars, added columns (running balance, % of total, formula), CSV and print. 📁 Views keep it all."
+],
 "accounts": "None - read only.",
 "stock": "None - read only.",
 "vat": "None.",
@@ -5972,7 +6043,9 @@
 "Add / arrange widgets."
 ],
 "views": {},
-"tips": [],
+"tips": [
+"▦ Grid / 📄 Report above the table: Grid filters (▾ picks one or many values, AutoFilter, conditions), groups (drag a header to ☰ Rows - sub-totals), pivots (drag to ⫼ Columns, Σ Values; 📋 Columns = Field Selector), totals per column (Σ Footer), 📊 chart / pivot chart, data bars, added columns (running balance, % of total, formula), CSV and print. 📁 Views keep it all."
+],
 "accounts": "None - read only.",
 "stock": "None - read only.",
 "vat": "None.",
@@ -6000,7 +6073,9 @@
 "Filter by your tasks / all."
 ],
 "views": {},
-"tips": [],
+"tips": [
+"▦ Grid / 📄 Report above the table: Grid filters (▾ picks one or many values, AutoFilter, conditions), groups (drag a header to ☰ Rows - sub-totals), pivots (drag to ⫼ Columns, Σ Values; 📋 Columns = Field Selector), totals per column (Σ Footer), 📊 chart / pivot chart, data bars, added columns (running balance, % of total, formula), CSV and print. 📁 Views keep it all."
+],
 "accounts": "None - read only.",
 "stock": "None - read only.",
 "vat": "None.",
@@ -6057,7 +6132,9 @@
 "Search or open a group."
 ],
 "views": {},
-"tips": [],
+"tips": [
+"▦ Grid / 📄 Report above the table: Grid filters (▾ picks one or many values, AutoFilter, conditions), groups (drag a header to ☰ Rows - sub-totals), pivots (drag to ⫼ Columns, Σ Values; 📋 Columns = Field Selector), totals per column (Σ Footer), 📊 chart / pivot chart, data bars, added columns (running balance, % of total, formula), CSV and print. 📁 Views keep it all."
+],
 "accounts": "None - read only.",
 "stock": "None - read only.",
 "vat": "None.",
@@ -6199,7 +6276,9 @@
 "Open a batch or the hatchery."
 ],
 "views": {},
-"tips": [],
+"tips": [
+"▦ Grid / 📄 Report above the table: Grid filters (▾ picks one or many values, AutoFilter, conditions), groups (drag a header to ☰ Rows - sub-totals), pivots (drag to ⫼ Columns, Σ Values; 📋 Columns = Field Selector), totals per column (Σ Footer), 📊 chart / pivot chart, data bars, added columns (running balance, % of total, formula), CSV and print. 📁 Views keep it all."
+],
 "accounts": "None - read only.",
 "stock": "None - read only.",
 "vat": "None.",
@@ -6265,7 +6344,9 @@
 "Choose the view."
 ],
 "views": {},
-"tips": [],
+"tips": [
+"▦ Grid / 📄 Report above the table: Grid filters (▾ picks one or many values, AutoFilter, conditions), groups (drag a header to ☰ Rows - sub-totals), pivots (drag to ⫼ Columns, Σ Values; 📋 Columns = Field Selector), totals per column (Σ Footer), 📊 chart / pivot chart, data bars, added columns (running balance, % of total, formula), CSV and print. 📁 Views keep it all."
+],
 "accounts": "None - read only.",
 "stock": "None - read only.",
 "vat": "None.",
@@ -6307,7 +6388,9 @@
 "Open a site."
 ],
 "views": {},
-"tips": [],
+"tips": [
+"▦ Grid / 📄 Report above the table: Grid filters (▾ picks one or many values, AutoFilter, conditions), groups (drag a header to ☰ Rows - sub-totals), pivots (drag to ⫼ Columns, Σ Values; 📋 Columns = Field Selector), totals per column (Σ Footer), 📊 chart / pivot chart, data bars, added columns (running balance, % of total, formula), CSV and print. 📁 Views keep it all."
+],
 "accounts": "None - read only.",
 "stock": "None - read only.",
 "vat": "None.",
@@ -6353,7 +6436,9 @@
 "Choose the view."
 ],
 "views": {},
-"tips": [],
+"tips": [
+"▦ Grid / 📄 Report above the table: Grid filters (▾ picks one or many values, AutoFilter, conditions), groups (drag a header to ☰ Rows - sub-totals), pivots (drag to ⫼ Columns, Σ Values; 📋 Columns = Field Selector), totals per column (Σ Footer), 📊 chart / pivot chart, data bars, added columns (running balance, % of total, formula), CSV and print. 📁 Views keep it all."
+],
 "accounts": "None - read only.",
 "stock": "None - read only.",
 "vat": "None.",
@@ -6395,7 +6480,9 @@
 "Open a list."
 ],
 "views": {},
-"tips": [],
+"tips": [
+"▦ Grid / 📄 Report above the table: Grid filters (▾ picks one or many values, AutoFilter, conditions), groups (drag a header to ☰ Rows - sub-totals), pivots (drag to ⫼ Columns, Σ Values; 📋 Columns = Field Selector), totals per column (Σ Footer), 📊 chart / pivot chart, data bars, added columns (running balance, % of total, formula), CSV and print. 📁 Views keep it all."
+],
 "accounts": "None - read only.",
 "stock": "None - read only.",
 "vat": "None.",
@@ -6503,7 +6590,9 @@
 "Choose the view."
 ],
 "views": {},
-"tips": [],
+"tips": [
+"▦ Grid / 📄 Report above the table: Grid filters (▾ picks one or many values, AutoFilter, conditions), groups (drag a header to ☰ Rows - sub-totals), pivots (drag to ⫼ Columns, Σ Values; 📋 Columns = Field Selector), totals per column (Σ Footer), 📊 chart / pivot chart, data bars, added columns (running balance, % of total, formula), CSV and print. 📁 Views keep it all."
+],
 "accounts": "None - read only.",
 "stock": "None - read only.",
 "vat": "None.",

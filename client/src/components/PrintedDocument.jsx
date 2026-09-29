@@ -30,7 +30,7 @@ export default function PrintedDocument({ data, className = 'bg-white shadow-lg 
         if (b.field_key === 'byproducts_summary') {
             const rows = b.value?.table || [];
             return (
-                <table key={i} style={{ ...style, height: 'auto', fontSize: '8pt', borderCollapse: 'collapse' }}>
+                <table data-no-smart key={i} style={{ ...style, height: 'auto', fontSize: '8pt', borderCollapse: 'collapse' }}>
                     <thead>
                         <tr>
                             <th style={{ border: '1px solid #ccc', padding: '2px 6px', textAlign: 'left' }}>Byproduct</th>
@@ -61,7 +61,7 @@ export default function PrintedDocument({ data, className = 'bg-white shadow-lg 
         if (b.field_key === 'product_term_summary') {
             const rows = b.value?.table || [];
             return (
-                <table key={i} style={{ ...style, height: 'auto', fontSize: '8pt', borderCollapse: 'collapse' }}>
+                <table data-no-smart key={i} style={{ ...style, height: 'auto', fontSize: '8pt', borderCollapse: 'collapse' }}>
                     <thead>
                         <tr>
                             <th style={{ border: '1px solid #ccc', padding: '2px 6px', textAlign: 'left' }}>Product</th>

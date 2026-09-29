@@ -118,7 +118,7 @@ export default function PendingDocsPanel({ target, partyId, efc, onPull, disable
                     {shown.length === 0 ? <p className="text-xs text-gray-600">{partyId ? `No pending ${LABEL[open]} for this party.` : (qs[open] ? `No pending ${LABEL[open]} with this number.` : 'Choose the party, or type a document number.')}</p> : (
                         <>
                             <div className="overflow-auto" style={{ maxHeight: 300 }}>
-                                <table className="erp-grid-table" data-no-excel>
+                                <table data-no-smart className="erp-grid-table" data-no-excel>
                                     <thead><tr><th style={{ width: 30 }}><input type="checkbox" checked={chosenHere.length === shown.length} onChange={e => setTicked(x => ({ ...x, ...Object.fromEntries(shown.map(d => [keyOf(d), e.target.checked])) }))} /></th>
                                         <th>Doc No</th><th>Date</th>{!partyId && <th>Party</th>}<th className="text-right">Lines pending</th><th className="text-right">Pending value</th><th className="text-right">Doc total</th><th /></tr></thead>
                                     <tbody>{shown.filter(d => !qs[open] || String(d.doc_no || '').toLowerCase().includes(String(qs[open]).toLowerCase()) || !partyId).map(d => (
@@ -144,7 +144,7 @@ export default function PendingDocsPanel({ target, partyId, efc, onPull, disable
                     <div className="nav-window w-full max-w-3xl max-h-[80vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
                         <div className="erp-header"><span className="erp-header-title">👁 {viewing.type_label} {viewing.doc_no} · {String(viewing.doc_date || '').slice(0, 10)}</span></div>
                         <div className="nav-content">
-                            <table className="erp-grid-table">
+                            <table data-no-smart className="erp-grid-table">
                                 <thead><tr><th>#</th><th>Product</th><th className="text-right">Qty</th><th className="text-right">Pending</th><th>Unit</th><th className="text-right">Rate</th><th className="text-right">Amount</th><th>Batch</th></tr></thead>
                                 <tbody>{viewing.lines.map((l, i) => (
                                     <tr key={l.id} className={l.pending_qty > 0 ? '' : 'text-gray-400'}>

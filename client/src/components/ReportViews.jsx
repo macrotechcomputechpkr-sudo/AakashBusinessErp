@@ -9,6 +9,9 @@
 //   * every report table's column filters, sort and hidden columns
 //     (hooks/useExcelTableFilters.tsx; ▾ in a header > Hide this column,
 //     Columns below to show them again)
+//   * ▦ Grid / 📄 Report choice of each report table (hooks/useSmartTables)
+//     and each grid's full state: search, filters, sort levels, groups,
+//     footers, added columns, data bars, 📊 chart (grid/gridRegistry.js)
 // Opening a view puts the fields back, presses the report's Show / Run
 // button and puts the table filters back once the rows are in.
 // Stored with the saved report views of the screen (/api/saved-report-views,
@@ -19,6 +22,8 @@ import { createPortal } from 'react-dom';
 import { useLocation } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { captureTables, restoreTables, resetTables, reportTables, tableHeaders, hiddenColumns, setColumnHidden } from '../hooks/useExcelTableFilters';
+import { captureSmartModes, restoreSmartModes } from '../hooks/useSmartTables';
+import { captureGrids, restoreGrids, resetGrids } from './grid/gridRegistry';
 
 const txt = el => (el?.innerText ?? el?.textContent ?? '').replace(/\s+/g, ' ').replace(/[*▾▴•]/g, '').trim();
 const SKIP_TYPES = new Set(['hidden', 'password', 'file', 'button', 'submit', 'reset', 'image']);
@@ -69,7 +74,7 @@ function applyTabs(root, tabs) {
 }
 // the report's own Show / Run button
 function runButton(root) {
-    const btns = Array.from(root.querySelectorAll('button')).filter(b => !b.disabled && !b.closest('table') && /(^|\s|🔍)(show|run|generate|load|view report|search|refresh report)\b/i.test(txt(b)));
+    const btns = Array.from(root.querySelectorAll('button')).filter(b => !b.disabled && !b.closest('table, .sg-mount, [data-no-view]') && /(^|\s|🔍)(show|run|generate|load|view report|search|refresh report)\b/i.test(txt(b)));
     return btns.find(b => b.classList.contains('primary')) || btns[0] || null;
 }
 
@@ -97,6 +102,8 @@ export default function ReportViews({ rootRef }) {
         await new Promise(r => setTimeout(r, 250));
         applyFields(root, c.fields);
         await new Promise(r => setTimeout(r, 250));
+        if (c.modes) restoreSmartModes(c.modes);
+        restoreGrids(c.grids || {});
         restoreTables(root, c.tables || []);
         if (c.auto_run !== false) { const b = runButton(root); if (b) b.click(); }
         setActiveId(v.id);
@@ -121,7 +128,7 @@ export default function ReportViews({ rootRef }) {
     }, [open]);
 
     const flash = (m, t = 'ok') => { setMsg({ m, t }); setTimeout(() => setMsg(null), 3500); };
-    const config = () => { const root = rootRef.current; return { tabs: activeTabs(root), fields: captureFields(root), tables: captureTables(root), auto_run: true }; };
+    const config = () => { const root = rootRef.current; return { tabs: activeTabs(root), fields: captureFields(root), tables: captureTables(root), modes: captureSmartModes(), grids: captureGrids(root), auto_run: true }; };
     const saveAs = async () => {
         if (!name.trim()) return flash('Give the view a name', 'err');
         try {
@@ -179,7 +186,7 @@ export default function ReportViews({ rootRef }) {
                         </div>
                         <div className="border-t pt-2">
                             <div className="flex justify-between items-center"><span className="text-xs font-semibold text-gray-600">Columns (customise)</span>
-                                <button type="button" className="text-xs underline" onClick={() => { resetTables(rootRef.current); force(x => x + 1); }}>Reset filters & columns</button></div>
+                                <button type="button" className="text-xs underline" onClick={() => { resetTables(rootRef.current); resetGrids(rootRef.current); force(x => x + 1); }}>Reset filters & columns</button></div>
                             {tables.length === 0 && <p className="text-xs text-gray-500">Show the report first - its columns are listed here (▾ in a column header filters, sorts or hides it).</p>}
                             {tables.map((t, ti) => {
                                 const hid = new Set(hiddenColumns(t));
@@ -196,7 +203,7 @@ export default function ReportViews({ rootRef }) {
                             })}
                         </div>
                         {msg && <p className={`text-xs ${msg.t === 'err' ? 'text-red-700' : 'text-green-700'}`}>{msg.m}</p>}
-                        <p className="text-[10px] text-gray-500">A view keeps the tab, the filter / option fields (not pop-up pickers), and every table's filters, sort and hidden columns.</p>
+                        <p className="text-[10px] text-gray-500">A view keeps the tab, the filter / option fields (not pop-up pickers), every table's filters, sort and hidden columns, and each ▦ Grid's groups, totals, added columns and 📊 chart.</p>
                     </div>
                 </div>, document.body)}
         </>

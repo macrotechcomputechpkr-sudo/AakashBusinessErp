@@ -6,10 +6,17 @@ from help_pages_entry import ALL
 RO = dict(accounts='None - read only.', stock='None - read only.', vat='None.')
 
 
+# every report table has the grid (hooks/useSmartTables.jsx + components/ReportGrid.jsx)
+GRID_TIP = ('▦ Grid / 📄 Report above the table: Grid filters (▾ picks one or many values, AutoFilter, conditions), '
+            'groups (drag a header to ☰ Rows - sub-totals), pivots (drag to ⫼ Columns, Σ Values; 📋 Columns = Field Selector), '
+            'totals per column (Σ Footer), 📊 chart / pivot chart, data bars, added columns (running balance, % of total, formula), '
+            'CSV and print. 📁 Views keep it all.')
+
+
 def R(path, title, module, purpose, how, views=None, nature=None, tips=None):
     """a report page"""
     return dict(path=path, title=title, module=module, kind='report', nature=nature or ALL, purpose=purpose,
-                steps=how, views=views or {}, tips=tips or [], **RO)
+                steps=how, views=views or {}, tips=(tips or []) + [GRID_TIP], **RO)
 
 
 def M(path, title, module, purpose, steps, other='', nature=None, tips=None, accounts='None.', stock='None.', vat='None.'):

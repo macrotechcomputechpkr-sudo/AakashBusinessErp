@@ -33,7 +33,7 @@ export function PostingTable({ docId, status }) {
                 return (
                     <div key={b.id}>
                         <div className="text-xs text-gray-600 mb-0.5">{String(b.batch_date || '').slice(0, 10)} · {b.narration || b.document_type}</div>
-                        <table className="erp-grid-table">
+                        <table data-no-smart className="erp-grid-table">
                             <thead><tr><th>Ledger</th><th>Sub-Ledger</th><th>Narration</th><th className="text-right">Debit</th><th className="text-right">Credit</th></tr></thead>
                             <tbody>
                                 {b.lines.map((x, i) => (

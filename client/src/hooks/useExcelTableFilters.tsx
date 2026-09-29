@@ -39,8 +39,10 @@ const asNumber = (s: string): number | null => {
 const emptyState = (): TableState => ({ filters: new Map(), sort: null, hidden: new Set() });
 
 /** the header cell of every real column: the header rows read as a grid (colSpan / rowSpan) */
+// a header row that is one caption across the whole table ("Columns: Month - Amount") has no column of its own
+const captionRow = (r: HTMLTableRowElement) => r.cells.length === 1 && (r.cells[0].colSpan || 1) > 1;
 function leafHeaders(table: HTMLTableElement): HTMLTableCellElement[] | null {
-    const rows = table.tHead ? Array.from(table.tHead.rows) : [];
+    const rows = table.tHead ? Array.from(table.tHead.rows).filter(r => !captionRow(r)) : [];
     if (!rows.length) return null;
     const grid: (HTMLTableCellElement | undefined)[][] = rows.map(() => []);
     rows.forEach((r, ri) => {
@@ -202,8 +204,10 @@ export default function useExcelTableFilters(ref: RefObject<HTMLElement>): React
         const root = ref.current;
         if (!root) return undefined;
         let timer: ReturnType<typeof setTimeout> | null = null;
-        const observer = new MutationObserver(() => {
+        const observer = new MutationObserver(list => {
             if (busy.current) return;
+            // typing / clicking in a ▦ Grid view (hooks/useSmartTables) changes no report table
+            if (list.every(m => { const el = (m.target.nodeType === 1 ? m.target : m.target.parentElement) as Element | null; return !!el?.closest('.sg-mount'); })) return;
             if (timer) clearTimeout(timer);
             timer = setTimeout(() => scan(root, observer), 120);
         });

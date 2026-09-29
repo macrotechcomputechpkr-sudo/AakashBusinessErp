@@ -21,6 +21,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import useGlobalEnterNav from '../hooks/useGlobalEnterNav';
 import useExcelTableFilters from '../hooks/useExcelTableFilters';
+import useSmartTables from '../hooks/useSmartTables';
 import ReportViews from './ReportViews';
 import useAppFeatures from '../hooks/useAppFeatures';
 import { useNotifications, BellButton, NotificationOverlay } from './NotificationCenter';
@@ -68,6 +69,8 @@ export default function Layout({ children }) {
     const contentRef = useRef(null);
     useGlobalEnterNav(contentRef);
     const excelMenu = useExcelTableFilters(contentRef);
+    // ▦ Grid view (filter, group, totals, chart, pivot) on every report table
+    const smartGrids = useSmartTables(contentRef, location.pathname);
     // field help: tooltip on every caption the glossary knows; ❓ Help panel of the screen (Shift+F1)
     useFieldTips(contentRef, [location.pathname]);
     const [helpOpen, setHelpOpen] = useState(false);
@@ -334,6 +337,7 @@ export default function Layout({ children }) {
                 </div>
             </div>
             {excelMenu}
+            {smartGrids}
             <NotificationOverlay api={notes} />
         </div>
     );

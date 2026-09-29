@@ -37,13 +37,13 @@ export default function HelpPanel({ pathname, isSuperAdmin, onClose }) {
                         )}
                         {effects.length > 0 && (
                             <section><h4>Effect</h4>
-                                <table className="help-table"><tbody>{effects.map(([k, v]) => <tr key={k}><th>{k}</th><td>{v}</td></tr>)}</tbody></table>
+                                <table data-no-smart className="help-table"><tbody>{effects.map(([k, v]) => <tr key={k}><th>{k}</th><td>{v}</td></tr>)}</tbody></table>
                             </section>
                         )}
                         {help.fields?.length > 0 && (
                             <section><h4>Fields ({help.fields.length})</h4>
                                 <input className="erp-input mb-1" placeholder="Find a field…" value={q} onChange={e => setQ(e.target.value)} />
-                                <table className="help-table"><tbody>{fields.map(([l, t]) => <tr key={l}><th>{l}</th><td>{t}</td></tr>)}</tbody></table>
+                                <table data-no-smart className="help-table"><tbody>{fields.map(([l, t]) => <tr key={l}><th>{l}</th><td>{t}</td></tr>)}</tbody></table>
                             </section>
                         )}
                         {help.tips?.length > 0 && (

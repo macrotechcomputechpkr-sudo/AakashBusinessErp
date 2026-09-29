@@ -483,6 +483,15 @@ The flow is Quotation → Order → GRN → Bill → Return, with the same pull 
 
 ## 4. Accounts Report menu
 
+> **Every report: ▦ Grid, pivot and chart.** Above each report table there is a switch **▦ Grid | 📄 Report** (simple lists open as Grid; reports with headings or sub-totals open as Report - the choice is kept per report). In **Grid**:
+> - **☰ Rows / ⫼ Columns** (the thin line above the toolbar): drag a column header to **Rows** to group (a tree with sub-totals, ▲▼ orders the groups); drag it - or a Rows chip - to **Columns** and its values become columns (**pivot**, e.g. Party x Month); drag a chip back from Columns to Rows. **Σ Values** decides what the pivot adds up (Sum / Average / Count / Min / Max / Distinct); with no value the pivot counts rows. **🌡 Heat map** shades pivot cells by size.
+> - **📋 Columns** opens the **Field Selector** (a pane on the right): tick fields to show / hide, drag ⠿ to reorder, **Show Grouped** on / off, and the four areas **Filters / Columns / Rows / Values** - drag fields between them; drop a chip on the list to remove it.
+> - **Filters**: ▾ in a header (faint until you point at it) picks one or many values; **📋 AutoFilter** adds a box under every header (text, `> 1000`, `< 50`, `= value`) with its own ▾ value picker; **🔽 Filter** holds conditions (between, blank, not blank …) and lists every active filter. Nothing is listed outside the grid.
+> - **⇅ Manager**: several sort levels (Shift+click a header adds one) and the group levels, each ordered by name, row count or the Sum of a number column (e.g. parties biggest first). **Σ Footer**: an aggregate under every column. **↔ Fit**: columns fitted to their content (again: automatic).
+> - **📊 Chart**: column, stacked, horizontal bar, line, area, pie, donut of the rows shown - category, one or more values, **split by** a column, Top N + Other, pivot table, PNG / SVG / CSV; click a bar to filter the grid to it. In the pivot view the chart follows the pivot.
+> - **🎨 Highlight** (row colours, data bars), **➕ Column** (running balance, % of total, formula), **⬇ CSV**, **🖨 Print** (as shown - groups, sub-totals / the pivot), right-click a header for the same actions.
+> - Report headings (e.g. Sundry Debtors) and tree levels (Customer › Product Group › Product) become columns of their own, grouped; the report's opening / total rows stay pinned (yellow). Links and buttons in the rows (open voucher, Edit …) work from the grid. **📄 Report** and the page's print show the report as designed.
+
 ### 4.1 Accounts & Finance
 
 | Report | What it shows |
@@ -641,7 +650,7 @@ For each transaction (and user, if needed):
 
 ## 8. Tools and Office menus
 
-- **📁 Views (every screen)**: on the title bar of every report. Set the tab, filters and options, filter / sort / hide columns with ▾ in the column headers (▾ > *Hide this column*; grouped headers such as Sales / Purchase work too), then **Save As** a named view - mine or shared with colleagues, one of mine can open by default. Opening a view puts the tab and fields back, presses Show and restores the column filters, sort and hidden columns. *Columns* lists the columns to show / hide; *Reset filters & columns* clears them. (Pop-up pickers such as a party are not kept in a view.)
+- **📁 Views (every screen)**: on the title bar of every report. Set the tab, filters and options, filter / sort / hide columns with ▾ in the column headers (▾ > *Hide this column*; grouped headers such as Sales / Purchase work too), then **Save As** a named view - mine or shared with colleagues, one of mine can open by default. Opening a view puts the tab and fields back, presses Show and restores the column filters, sort and hidden columns, the ▦ Grid / 📄 Report choice and the whole grid: groups, pivot (Rows / Columns / Values), filters, footers, added columns and the chart. *Columns* lists the columns to show / hide; *Reset filters & columns* clears them. (Pop-up pickers such as a party are not kept in a view.)
 - **Import from another Firm** (Tools): copy masters (account groups, ledgers, sub-ledgers, units, product groups / categories / companies, products, areas, agents, routes, cost / profit centres, business units, warehouses, currencies, billing terms, transport, remarks) and transactions (sales / purchase orders, bills, returns, credit / debit notes, cash / bank entries, journal vouchers) from another firm you can open. Masters are matched by code (only new ones added, or existing ones updated if chosen); documents come in as drafts - **Post imported drafts** posts them here. Nothing is imported twice.
 - **Super Admin**: logs in to the **Admin Panel** (all companies, users, last login, subscription; suspend / activate; new company). A company opened from there is **VIEW ONLY** - the server refuses every entry, change or delete; *🛡 Admin Panel* on the title bar goes back.
 

@@ -61,7 +61,7 @@ export default function ExcelFilterMenu({ anchor, title, values, selected, onApp
     const top = Math.min(anchor.bottom + 2, window.innerHeight - 380);
 
     return createPortal(
-        <div ref={ref} data-enter-nav="off" className="fixed z-[1000] bg-white border border-slate-300 rounded-lg shadow-xl text-sm normal-case font-normal text-gray-800"
+        <div ref={ref} data-enter-nav="off" data-rg-keep className="fixed z-[1000] bg-white border border-slate-300 rounded-lg shadow-xl text-sm normal-case font-normal text-gray-800"
             style={{ left, top: Math.max(8, top), width }} onClick={e => e.stopPropagation()}>
             {title && <div className="px-3 pt-2 text-xs font-semibold text-gray-500 truncate">{title}</div>}
             {onSort && (
