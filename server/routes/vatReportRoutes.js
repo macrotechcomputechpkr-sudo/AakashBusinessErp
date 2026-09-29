@@ -129,18 +129,21 @@ async function loadCustomTaxDocs(tenantClient, tenantId, docType, cfg, { dateFro
             if (withLines) b.lines.push({ product_name: l.description || 'Expense', qty: null, uom: null, rate: null, taxable: l.bill_type === 'taxable' ? base : 0, exempt: l.bill_type === 'taxable' ? 0 : base, vat, amount: round2(base + vat) });
         });
         out.push(...bills.values());
-        // Customs (Bhansar) rows: each pragyapan patra is an import purchase - taxable = import taxable
+        // Customs (Bhansar) rows: each pragyapan patra is an import purchase - taxable = import taxable.
+        // VAT-report only (no posting of their own); item-wise rows list their products as the bill lines.
         const customs = await inChunks(headers.map(h => h.id), 200, async chunk => (await tenantClient.from('purchase_additional_customs').select('*').in('expense_id', chunk)).data || []);
         customs.forEach(cu => {
-            const h = byId[cu.expense_id], pid = cu.paid_ledger_id || h.vendor_ledger_id || null;
-            if (partyId && pid !== partyId) return;
+            const h = byId[cu.expense_id];
             const taxable = round2(cu.taxable_amount), exempt = round2(cu.non_taxable_amount), vat = round2(cu.vat_amount);
+            const items = cu.detail_mode === 'item_wise' && Array.isArray(cu.item_details) && cu.item_details.length ? cu.item_details : null;
             out.push({ doc_type: docType, doc_label: `${cfg.label} (Import / Customs)`, side: cfg.side, sign: cfg.sign, id: `cu|${cu.id}`, document_id: h.id, doc_no: h.doc_no, doc_date: h.doc_date,
-                party_ledger_id: pid, party_name: cu.customs_office ? `Customs - ${cu.customs_office}` : 'Customs (import)', party_pan: null,
-                party_bill_no: cu.pragyapan_no || null, party_bill_date: cu.pragyapan_date || null, invoice_type: h.invoice_type || null, is_import: true,
+                party_ledger_id: null, party_name: cu.customs_office ? `Customs - ${cu.customs_office}` : 'Customs (import)', party_pan: null,
+                party_bill_no: cu.pragyapan_no || null, party_bill_date: cu.pragyapan_date || null, invoice_type: h.invoice_type || null, is_import: true, detail_mode: cu.detail_mode || 'bill_wise',
                 taxable, exempt, vat, total: round2(taxable + exempt + vat), import_taxable: taxable,
                 vat_by_ledger: vat ? { [cu.vat_ledger_id || defaultLedger || 'unassigned']: vat } : {},
-                lines: withLines ? [{ product_name: `Import (assessable ${round2(cu.assessable_value)})`, qty: null, uom: null, rate: null, taxable, exempt, vat, amount: round2(taxable + exempt + vat) }] : undefined });
+                lines: withLines ? (items
+                    ? items.map(x => ({ product_name: x.product_name, qty: Number(x.qty) || null, uom: null, rate: null, assessable: round2(x.assessable_value), taxable: round2(x.taxable_amount), exempt: round2(x.non_taxable_amount), vat: round2(x.vat_amount), amount: round2(Number(x.taxable_amount || 0) + Number(x.non_taxable_amount || 0) + Number(x.vat_amount || 0)) }))
+                    : [{ product_name: `Import (assessable ${round2(cu.assessable_value)})`, qty: null, uom: null, rate: null, taxable, exempt, vat, amount: round2(taxable + exempt + vat) }]) : undefined });
         });
     } else {
         const vatIds = new Set(await allVatLedgerIds(tenantClient, tenantId));

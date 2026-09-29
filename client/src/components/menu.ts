@@ -120,7 +120,7 @@ export const TOP_MENUS: TopMenu[] = [
             i('/product-rate-change', '💲 Product Rate Change'), i('/product-offer-rate', '🏷️ Offer Rate')
         ] },
         { title: 'Sales Force & Routes', items: [
-            i('/salesman-agents', '🧑‍💼 Salesman / Agent'), i('/route-sequencing', '🚚 Route Sequencing'), i('/route-plan', '🗓 Route Plan & Mobile Login'), i('/transport-master', '🚚 Transport Master')
+            i('/salesman-agents', '🧑‍💼 Salesman / Agent'), i('/route-sequencing', '🚚 Route Sequencing'), i('/route-plan', '🗓 Route Plan & Mobile Login'), i('/transport-master', '🚚 Transport Master'), i('/customs-offices', '🛃 Customs Offices (Bhansar)')
         ] },
         { title: 'Poultry Masters', feature: 'poultry', items: [
             i('/poultry/setup?tab=sheds', '🏠 Sheds / Hatchers'), i('/poultry/setup?tab=items', '🐣 Poultry Items (chick / feed / medicine…)'),

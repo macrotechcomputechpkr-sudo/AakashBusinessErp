@@ -215,19 +215,6 @@ async function buildAdditionalExpenseGl(tenantClient, tenantId, exp, lines) {
         }
         addParty(payTo, paySub, amt + vat);
     }
-    // Customs (Bhansar) rows: the VAT paid at customs on the import - Dr VAT / Cr the ledger that paid it
-    for (const [i, cu] of (exp.customs_entries || []).entries()) {
-        const vat = round2(Number(cu.vat_amount) || 0);
-        if (vat <= 0) continue;
-        const payTo = cu.paid_ledger_id || exp.vendor_ledger_id;
-        if (!payTo) throw new Error(`Customs row ${i + 1}: choose who paid the customs VAT (customs agent, bank, cash ...)`);
-        if (fallbackVat === undefined) fallbackVat = await defaultVatLedger(tenantClient, tenantId, 'purchase');
-        const vatLedger = cu.vat_ledger_id || fallbackVat;
-        if (!vatLedger) throw new Error(`Customs row ${i + 1}: no VAT ledger - set one in System Control`);
-        const text = ['Import VAT', cu.pragyapan_no ? `PP ${cu.pragyapan_no}` : null, cu.customs_office].filter(Boolean).join(' · ');
-        glLines.push({ ledgerId: vatLedger, debit: vat, narration: text });
-        addParty(payTo, cu.paid_ledger_id ? cu.paid_sub_ledger_id : exp.vendor_sub_ledger_id, vat);
-    }
     Object.entries(party).forEach(([k, net]) => {
         if (!net) return;
         const [ledgerId, subLedgerId] = k.split('|');

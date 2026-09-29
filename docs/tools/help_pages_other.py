@@ -37,6 +37,8 @@ PAGES = [
        'Effect: Include In Costing (the amount goes into the cost of the goods / landed cost; off = an expense only), Include In Profitability (counted in the profitability reports) and TDS Applicable (the TDS of a Purchase Additional entry is worked out on these terms only).',
        'Product Wise: entered per product (popup per product); otherwise bill-wise, divided over the products by the basis.'],
       other='Term Mapping in System Control decides which term is VAT, discount 1-5, bill discount. VAT terms decide which VAT ledger gets the VAT.'),
+    M('/customs-offices', 'Customs Offices (Bhansar)', 'Masters', 'Customs offices picked on import Purchase Bills and on the Customs (Bhansar) tab of Purchase Additional. Nepal\'s customs offices are created with a code the first time the list opens.',
+      ['Edit a code / name, add a new office, or deactivate one not used.']),
     M('/remarks-terms', 'Remarks & Terms', 'Masters', 'Saved remarks (narrations) and terms & conditions offered on documents.', ['Add remarks and terms; pick them on entries.']),
     M('/ledger-opening', 'Ledger Opening Balance', 'Masters', 'Opening balances of ledgers on the first day of the opening fiscal year (with bill-wise opening bills).',
       ['Enter Dr / Cr per ledger; party ledgers can have opening bills for bill-wise ageing.'], accounts='Opening balances of the Trial Balance (Dr must equal Cr overall).'),

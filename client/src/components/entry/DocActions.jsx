@@ -1,6 +1,7 @@
 // =============================================
 // DocActions.jsx
-// Modify / Copy / Cancel / Remove on every transaction list row
+// JV / Modify / Copy / Cancel / Remove on every transaction list row
+// (JV = the ledger entry the transaction posted, components/entry/PostingView.jsx)
 // (server: documentActionRoutes.js); Print sits beside them on each screen.
 //   Modify  - draft: opens it. Otherwise it is cancelled by the module's own
 //             status route (ledger, stock and progress reversed), reopened as
@@ -15,6 +16,7 @@
 // =============================================
 import React, { useCallback, useEffect, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
+import PostingView from './PostingView';
 
 const policyCache = {};
 const LINE_ARRAYS = ['details', 'lines', 'expense_lines', 'raw_materials', 'outputs', 'items'];
@@ -64,6 +66,7 @@ export default function DocActions({ type, api, row, onOpen, onCopy, onReverse, 
     const { authFetch } = useAuth();
     const policy = useDocPolicy(type);
     const [busy, setBusy] = useState(false);
+    const [showJv, setShowJv] = useState(false);
     const locked = !!policy?.locked;
     const status = row.status;
     const isDraft = status === 'draft';
@@ -103,6 +106,8 @@ export default function DocActions({ type, api, row, onOpen, onCopy, onReverse, 
     return (
         <>
             {isDraft && policy?.approval_required && <span className="px-1.5 py-0.5 rounded text-[10px] bg-amber-100 text-amber-800" title="Waiting for approval - no accounts / stock effect yet">Awaiting approval</span>}
+            {!isDraft && <button type="button" onClick={() => setShowJv(true)} className={`${btn} bg-slate-600`} title="Account Posting - the ledger entry (JV) of this transaction">📒 JV</button>}
+            {showJv && <PostingView docId={row.id} docNo={row.doc_no || row.voucher_no || row.bill_no} status={status} onClose={() => setShowJv(false)} />}
             {canModify && <button type="button" disabled={busy} onClick={modify} className={`${btn} bg-sky-700`} title={isDraft ? 'Edit this draft' : 'Reverse, reopen as draft and edit'}>✏️ Modify</button>}
             {onCopy && !isDraft && <button type="button" disabled={busy} onClick={() => onCopy(row)} className={`${btn} bg-teal-600`} title="Copy into a new entry">⧉ Copy</button>}
             {canReverse && onReverse && !isDraft && !isClosed && status !== 'closed' && (

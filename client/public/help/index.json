@@ -11,56 +11,56 @@
 {
 "file": "/help/User_Manual_Trading.pdf",
 "title": "User Manual - Trading",
-"subtitle": "110 screens used by a trading company",
+"subtitle": "111 screens used by a trading company",
 "audience": "all",
 "group": "Manuals by business nature"
 },
 {
 "file": "/help/User_Manual_Distribution.pdf",
 "title": "User Manual - Distribution",
-"subtitle": "110 screens used by a distribution company",
+"subtitle": "111 screens used by a distribution company",
 "audience": "all",
 "group": "Manuals by business nature"
 },
 {
 "file": "/help/User_Manual_Retail.pdf",
 "title": "User Manual - Retail",
-"subtitle": "110 screens used by a retail company",
+"subtitle": "111 screens used by a retail company",
 "audience": "all",
 "group": "Manuals by business nature"
 },
 {
 "file": "/help/User_Manual_Manufacturing.pdf",
 "title": "User Manual - Manufacturing",
-"subtitle": "113 screens used by a manufacturing company",
+"subtitle": "114 screens used by a manufacturing company",
 "audience": "all",
 "group": "Manuals by business nature"
 },
 {
 "file": "/help/User_Manual_Service.pdf",
 "title": "User Manual - Service",
-"subtitle": "110 screens used by a service company",
+"subtitle": "111 screens used by a service company",
 "audience": "all",
 "group": "Manuals by business nature"
 },
 {
 "file": "/help/User_Manual_Automobile.pdf",
 "title": "User Manual - Automobile Dealer & Workshop",
-"subtitle": "117 screens used by a automobile dealer & workshop company",
+"subtitle": "118 screens used by a automobile dealer & workshop company",
 "audience": "all",
 "group": "Manuals by business nature"
 },
 {
 "file": "/help/User_Manual_Construction.pdf",
 "title": "User Manual - Construction / Contractor",
-"subtitle": "114 screens used by a construction / contractor company",
+"subtitle": "115 screens used by a construction / contractor company",
 "audience": "all",
 "group": "Manuals by business nature"
 },
 {
 "file": "/help/User_Manual_Poultry.pdf",
 "title": "User Manual - Poultry & Hatchery",
-"subtitle": "118 screens used by a poultry & hatchery company",
+"subtitle": "119 screens used by a poultry & hatchery company",
 "audience": "all",
 "group": "Manuals by business nature"
 },
@@ -695,6 +695,22 @@
 "title": "Billing Terms",
 "module": "Masters",
 "pdf": "/help/menus/billing-terms.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/customs-offices",
+"title": "Customs Offices (Bhansar)",
+"module": "Masters",
+"pdf": "/help/menus/customs-offices.pdf",
 "nature": [
 "trading",
 "distribution",

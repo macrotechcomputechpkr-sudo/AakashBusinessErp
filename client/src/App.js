@@ -113,6 +113,7 @@ import ProductOfferRate from './pages/ProductOfferRate';
 import RemarksTermsManagement from './pages/RemarksTermsManagement';
 import UserDefinedFieldBuilder from './pages/UserDefinedFieldBuilder';
 import TransportManagement from './pages/TransportManagement';
+import CustomsOffices from './pages/CustomsOffices';
 import PurchaseRequisition from './pages/PurchaseRequisition';
 import PurchaseOrder from './pages/PurchaseOrder';
 import PurchaseQuotation from './pages/PurchaseQuotation';
@@ -279,6 +280,7 @@ function AppRoutes() {
             <Route path="/remarks-terms" element={<PrivateRoute><RemarksTermsManagement /></PrivateRoute>} />
             <Route path="/user-defined-fields" element={<PrivateRoute><UserDefinedFieldBuilder /></PrivateRoute>} />
             <Route path="/transport-master" element={<PrivateRoute><TransportManagement /></PrivateRoute>} />
+            <Route path="/customs-offices" element={<PrivateRoute><CustomsOffices /></PrivateRoute>} />
             {/* INACTIVE (per request): kept in code, route disabled for now. */}
             {/* <Route path="/purchase-requisition" element={<PrivateRoute><PurchaseRequisition /></PrivateRoute>} /> */}
             <Route path="/purchase-order" element={<PrivateRoute><PurchaseOrder /></PrivateRoute>} />

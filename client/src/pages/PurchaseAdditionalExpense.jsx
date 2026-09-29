@@ -72,7 +72,9 @@ const emptyForm = {
     expense_lines: [emptyExpenseLine()], customs_entries: []
 };
 // Customs (Bhansar) row of an import: pragyapan patra, values, VAT paid at customs, who paid it
-const emptyCustoms = () => ({ pragyapan_no: '', pragyapan_date: '', customs_office: '', paid_ledger_id: '', paid_sub_ledger_id: '', assessable_value: '', taxable_amount: '', non_taxable_amount: '', vat_percent: 13, vat_amount: '' });
+// (VAT report only - no ledger posting; bill-wise values, or item-wise per product of the Ref. Bill)
+const emptyCustoms = () => ({ pragyapan_no: '', pragyapan_date: '', customs_office_id: '', customs_office: '', detail_mode: 'bill_wise', item_details: [], assessable_value: '', taxable_amount: '', non_taxable_amount: '', vat_percent: 13, vat_amount: '' });
+const CUSTOMS_KEYS = ['assessable_value', 'taxable_amount', 'non_taxable_amount', 'vat_amount'];
 
 // Master fields of this screen covered by Entry Field Control (see useEntryFieldControls).
 const EFC_RENDERED_KEYS = ['agent_id', 'business_unit_id', 'cost_center_id', 'currency', 'doc_date', 'narration', 'party_bill_date', 'party_bill_no', 'priority'];
@@ -251,16 +253,29 @@ export default function PurchaseAdditionalExpense() {
     // adds, every '-' line (a TDS/withholding deduction, the standard
     // case) subtracts. Computed the same way the backend does, so what
     // the form shows while typing matches what gets saved.
-    const customsRows = (form.customs_entries || []).filter(r => Number(r.vat_amount) > 0 || Number(r.taxable_amount) > 0 || Number(r.assessable_value) > 0 || Number(r.non_taxable_amount) > 0);
+    const customsRows = (form.customs_entries || []).filter(r => CUSTOMS_KEYS.some(k => Number(r[k]) > 0));
     const importVat = r2(customsRows.reduce((s2, r) => s2 + (Number(r.vat_amount) || 0), 0));
+    const [customsOffices, setCustomsOffices] = useState([]);
+    useEffect(() => { authFetch('/api/customs-offices').then(r => setCustomsOffices(r.data || [])).catch(() => setCustomsOffices([])); }, [authFetch]);
+    // VAT = taxable value x VAT % unless the VAT itself was typed; item-wise rows sum their products
+    const withVat = (n, patch, pct) => (('taxable_amount' in patch || 'vat_percent' in patch) && !('vat_amount' in patch) && pct !== '' && pct != null
+        ? { ...n, vat_amount: r2((Number(n.taxable_amount) || 0) * (Number(pct) || 0) / 100) || '' } : n);
+    const sumItems = n => (n.detail_mode === 'item_wise' ? { ...n, ...Object.fromEntries(CUSTOMS_KEYS.map(k => [k, r2((n.item_details || []).reduce((s2, x) => s2 + (Number(x[k]) || 0), 0)) || ''])) } : n);
     const updateCustoms = (idx, patch) => setForm(f => ({ ...f, customs_entries: (f.customs_entries || []).map((r, i) => {
         if (i !== idx) return r;
-        const n = { ...r, ...patch };
-        // VAT = taxable value x VAT % unless the VAT itself was typed
-        if (('taxable_amount' in patch || 'vat_percent' in patch) && !('vat_amount' in patch) && n.vat_percent !== '') n.vat_amount = r2((Number(n.taxable_amount) || 0) * (Number(n.vat_percent) || 0) / 100) || '';
-        return n;
+        let n = { ...r, ...patch };
+        if (patch.detail_mode === 'item_wise' && !(n.item_details || []).length)
+            n.item_details = allocationPreview.map(a => ({ detail_id: detailIdOf(a), product_id: a.product_id || null, product_name: a.product_name_snapshot, qty: a.qty, assessable_value: '', taxable_amount: '', non_taxable_amount: '', vat_amount: '' }));
+        if (n.detail_mode === 'item_wise') {
+            if ('vat_percent' in patch) n.item_details = (n.item_details || []).map(x => withVat(x, { vat_percent: 1 }, n.vat_percent));
+            return sumItems(n);
+        }
+        return withVat(n, patch, n.vat_percent);
     }) }));
-    const netPayable = importVat + form.expense_lines.reduce((s, l) => s + (l.entry_sign === 'deduct' ? -(Number(l.amount) || 0) : (Number(l.amount) || 0) + (l.bill_type === 'taxable' ? Number(l.vat_amount) || 0 : 0)), 0);
+    const updateCustomsItem = (idx, j, patch) => setForm(f => ({ ...f, customs_entries: (f.customs_entries || []).map((r, i) => i !== idx ? r
+        : sumItems({ ...r, item_details: (r.item_details || []).map((x, k) => (k === j ? withVat({ ...x, ...patch }, patch, r.vat_percent) : x)) })) }));
+    const [customsOpen, setCustomsOpen] = useState(null);   // row whose item-wise details are open
+    const netPayable = form.expense_lines.reduce((s, l) => s + (l.entry_sign === 'deduct' ? -(Number(l.amount) || 0) : (Number(l.amount) || 0) + (l.bill_type === 'taxable' ? Number(l.vat_amount) || 0 : 0)), 0);
 
     // FEATURE: live allocation preview - refetches from the SAME math
     // the backend uses, whenever the source or any line changes. Only
@@ -303,8 +318,8 @@ export default function PurchaseAdditionalExpense() {
         if (!saveAsDraft && noBillNo >= 0) return showAlert(`${validLines[noBillNo].description || 'A line'}: VAT is entered - give the supplier's Bill No (taxable bill)`, 'danger');
         if (!saveAsDraft && validLines.length === 0) return showAlert('At least one complete expense line (Expense Type + Amount) is required', 'danger');
         try {
-            const badPP = customsRows.findIndex(r => !String(r.pragyapan_no || '').trim());
-            if (!saveAsDraft && badPP >= 0) return showAlert(`Customs row ${badPP + 1}: enter the Pragyapan Patra No`, 'danger');
+            const badPP = customsRows.findIndex(r => !String(r.pragyapan_no || '').trim() || !r.customs_office_id);
+            if (!saveAsDraft && badPP >= 0) return showAlert(`Customs row ${badPP + 1}: enter the Pragyapan Patra No and choose the Customs Office`, 'danger');
             const payload = { ...form, customs_entries: customsRows, expense_lines: validLines, ...(saveAsDraft ? { status: 'draft', save_as_draft: true } : {}) };
             if (editingId) {
                 await authFetch(`/api/purchase-additional-expenses/${editingId}`, { method: 'PUT', body: JSON.stringify(payload) });
@@ -350,7 +365,7 @@ export default function PurchaseAdditionalExpense() {
             setForm({
                 ...emptyForm, ...src,
                 doc_no: '', doc_date: new Date().toISOString().slice(0, 10), status: 'draft',
-                customs_entries: (src.customs_entries || []).map(r => ({ ...emptyCustoms(), pragyapan_no: '', customs_office: r.customs_office || '', paid_ledger_id: r.paid_ledger_id || '', vat_percent: r.vat_percent ?? 13 })),
+                customs_entries: (src.customs_entries || []).map(r => ({ ...emptyCustoms(), customs_office_id: r.customs_office_id || '', detail_mode: r.detail_mode || 'bill_wise', vat_percent: r.vat_percent ?? 13 })),
                 expense_lines: (src.expense_lines || []).length > 0 ? src.expense_lines.map(l => ({ ...emptyExpenseLine(), ...l })) : [emptyExpenseLine()]
             });
             setShowForm(true);
@@ -585,9 +600,9 @@ export default function PurchaseAdditionalExpense() {
                                                             <td className="w-48"><SearchablePopupSelect listKey="expense_party_picker" columns={[{ key: 'account_code', label: 'Code' }, { key: 'account_name', label: 'Name' }]} defaultVisibleKeys={['account_name']}
                                                                 items={lp.filter(ledgers, 'supplier', l.party_ledger_id)} getId={x => x.id} getLabel={x => x.account_name} searchKeys={['account_name', 'account_code']}
                                                                 value={l.party_ledger_id} onChange={id => set({ party_ledger_id: id, party_sub_ledger_id: '' })} placeholder="Entry vendor" />
-                                                                {l.party_ledger_id && subLedgersOf(l.party_ledger_id).length > 0 && (
-                                                                    <select className="erp-select mt-0.5" value={l.party_sub_ledger_id || ''} onChange={e => set({ party_sub_ledger_id: e.target.value })}>
-                                                                        <option value="">Sub-ledger: none</option>{subLedgersOf(l.party_ledger_id).map(x => <option key={x.id} value={x.id}>{x.sub_ledger_name}</option>)}</select>
+                                                                {subLedgersOf(l.party_ledger_id || form.vendor_ledger_id).length > 0 && (
+                                                                    <select className="erp-select mt-0.5" value={l.party_ledger_id ? l.party_sub_ledger_id || '' : ''} onChange={e => set({ party_ledger_id: l.party_ledger_id || form.vendor_ledger_id, party_sub_ledger_id: e.target.value })}>
+                                                                        <option value="">Credit sub-ledger: none</option>{subLedgersOf(l.party_ledger_id || form.vendor_ledger_id).map(x => <option key={x.id} value={x.id}>{x.sub_ledger_name}</option>)}</select>
                                                                 )}</td>
                                                             <td><input className="erp-input w-24" disabled={l.entry_sign === 'deduct'} value={l.party_bill_no || ''} onChange={e => set({ party_bill_no: e.target.value })} /></td>
                                                             <td><input type="number" step="0.01" className="erp-input w-16 text-right" disabled={l.entry_sign === 'deduct'} value={l.vat_percent ?? ''} onChange={e => set({ vat_percent: e.target.value })} placeholder="13" /></td>
@@ -613,13 +628,14 @@ export default function PurchaseAdditionalExpense() {
                                         <th className="min-w-[150px]">Ledger</th>
                                         <th className="min-w-[130px]">Sub-Ledger</th>
                                         <th className={`min-w-[52px] ${efc.isVisible('entry_sign', 'detail') ? '' : 'hidden'}`}>±</th>
-                                        <th className={`w-16 text-right ${efc.isVisible('rate_percent', 'detail') ? '' : 'hidden'}`}>Rate %</th>
-                                        <th className={`w-24 text-right ${efc.isVisible('amount', 'detail') ? '' : 'hidden'}`}>Amount</th>
+                                        <th className={`min-w-[56px] text-right ${efc.isVisible('rate_percent', 'detail') ? '' : 'hidden'}`}>Rate %</th>
+                                        <th className={`min-w-[96px] text-right ${efc.isVisible('amount', 'detail') ? '' : 'hidden'}`}>Amount</th>
                                         <th className="min-w-[160px]" title="Ledger credited with this line - vendor, cash, bank or any balance-sheet ledger; empty = the Ref. Bill vendor">Credit A/c (paid to)</th>
+                                        <th className="min-w-[130px]">Credit Sub-Ledger</th>
                                         <th className="w-24" title="Supplier's bill no - lines of one party with the same bill no make one bill">Supplier Bill No</th>
                                         <th className="w-32">Bill Date</th>
-                                        <th className="w-14 text-right">VAT %</th>
-                                        <th className="w-20 text-right">VAT</th>
+                                        <th className="min-w-[52px] text-right">VAT %</th>
+                                        <th className="min-w-[86px] text-right">VAT</th>
                                         <th className="w-24 text-right">Total</th>
                                         <th className="w-24">Bill</th>
                                         <th className="w-5"></th>
@@ -684,12 +700,20 @@ export default function PurchaseAdditionalExpense() {
                                                     searchKeys={['account_name', 'account_code']}
                                                     value={l.party_ledger_id} onChange={id => updateExpenseLine(idx, { party_ledger_id: id, party_sub_ledger_id: '' })} placeholder={form.vendor_ledger_id ? 'Ref. Bill vendor' : 'Choose'}
                                                 />
-                                                {l.party_ledger_id && subLedgersOf(l.party_ledger_id).length > 0 && (
-                                                    <select className="erp-select mt-0.5" value={l.party_sub_ledger_id || ''} onChange={e => updateExpenseLine(idx, { party_sub_ledger_id: e.target.value })}>
-                                                        <option value="">Sub-ledger: none</option>
-                                                        {subLedgersOf(l.party_ledger_id).map(x => <option key={x.id} value={x.id}>{x.sub_ledger_name}</option>)}
-                                                    </select>
-                                                )}
+                                            </td>
+                                            <td>
+                                                {(() => {
+                                                    // sub-ledger of the credited ledger: the line's own, or the Ref. Bill vendor's (header) when the line is empty
+                                                    const own = !!l.party_ledger_id, led = l.party_ledger_id || form.vendor_ledger_id;
+                                                    const list = subLedgersOf(led);
+                                                    return (
+                                                        <SearchablePopupSelect listKey="expense_party_sub_ledger_picker" columns={[{ key: 'code', label: 'Code' }, { key: 'name', label: 'Name' }]} defaultVisibleKeys={['name']}
+                                                            items={list.map(x => ({ id: x.id, code: x.sub_ledger_code, name: x.sub_ledger_name }))} getId={x => x.id} getLabel={x => x.name} searchKeys={['name', 'code']}
+                                                            value={own ? l.party_sub_ledger_id || '' : form.vendor_sub_ledger_id || ''}
+                                                            onChange={id => (own ? updateExpenseLine(idx, { party_sub_ledger_id: id }) : updateExpenseLine(idx, { party_ledger_id: form.vendor_ledger_id, party_sub_ledger_id: id }))}
+                                                            placeholder={!led ? '—' : list.length ? 'Choose sub-ledger' : 'No sub-ledger'} />
+                                                    );
+                                                })()}
                                             </td>
                                             <td><input className="erp-input" disabled={minus} value={minus ? '' : l.party_bill_no || ''} onChange={e => updateExpenseLine(idx, { party_bill_no: e.target.value })} placeholder={minus ? '' : 'no bill'} /></td>
                                             <td><input type="date" className="erp-input" disabled={minus || !String(l.party_bill_no || '').trim()} value={l.party_bill_date || ''} onChange={e => updateExpenseLine(idx, { party_bill_date: e.target.value })} /></td>
@@ -709,7 +733,7 @@ export default function PurchaseAdditionalExpense() {
                                     <tr className="font-semibold bg-gray-100">
                                         <td colSpan={2 + 2 + (efc.isVisible('entry_sign', 'detail') ? 1 : 0) + (efc.isVisible('rate_percent', 'detail') ? 1 : 0)} className="text-right">Bill-wise total</td>
                                         {efc.isVisible('amount', 'detail') && <td className="text-right">{f2(form.expense_lines.filter(l => !l.target_detail_id).reduce((s2, l) => s2 + (l.is_tds || l.entry_sign === 'deduct' ? -1 : 1) * (Number(l.amount) || 0), 0))}</td>}
-                                        <td colSpan={4} />
+                                        <td colSpan={5} />
                                         <td className="text-right">{f2(form.expense_lines.filter(l => !l.target_detail_id && (l.bill_type || billTypeOf(l)) === 'taxable').reduce((s2, l) => s2 + (Number(l.vat_amount) || 0), 0))}</td>
                                         <td className="text-right">{f2(form.expense_lines.filter(l => !l.target_detail_id).reduce((s2, l) => s2 + (l.is_tds || l.entry_sign === 'deduct' ? -1 : 1) * (Number(l.amount) || 0) + ((l.bill_type || billTypeOf(l)) === 'taxable' ? Number(l.vat_amount) || 0 : 0), 0))}</td>
                                         <td colSpan={2} />
@@ -722,35 +746,53 @@ export default function PurchaseAdditionalExpense() {
                         <div className="overflow-x-auto mb-1">
                             <table className="erp-grid-table pae-terms">
                                 <thead><tr>
-                                    <th className="w-6">#</th><th className="w-28">Pragyapan Patra No *</th><th className="w-32">PP Date</th><th className="min-w-[130px]">Customs Office</th>
-                                    <th className="min-w-[160px]" title="Ledger credited with the VAT paid at customs - customs agent, bank, cash, supplier ...; empty = the Ref. Bill vendor">Credit A/c (paid by)</th>
+                                    <th className="w-6">#</th><th className="w-28">Pragyapan Patra No *</th><th className="w-32">PP Date</th><th className="min-w-[200px]">Customs Office *</th>
+                                    <th className="w-28">Detail</th>
                                     <th className="w-28 text-right" title="Customs valuation (bhansar mulyankan)">Assessable Value</th><th className="w-28 text-right" title="Value VAT is charged on (assessable + duty + excise ...)">Taxable Value</th>
-                                    <th className="w-28 text-right">Non-taxable Value</th><th className="w-14 text-right">VAT %</th><th className="w-24 text-right">VAT Amount</th><th className="w-5" />
+                                    <th className="w-28 text-right">Tax-free Value</th><th className="w-14 text-right">VAT %</th><th className="w-24 text-right">VAT Amount</th><th className="w-5" />
                                 </tr></thead>
                                 <tbody>
-                                    {(form.customs_entries || []).map((r, i) => (
-                                        <tr key={i}>
+                                    {(form.customs_entries || []).map((r, i) => {
+                                        const item = r.detail_mode === 'item_wise';
+                                        return (
+                                        <React.Fragment key={i}>
+                                        <tr>
                                             <td className="text-gray-500">{i + 1}</td>
                                             <td><input className="erp-input" value={r.pragyapan_no || ''} onChange={e => updateCustoms(i, { pragyapan_no: e.target.value })} /></td>
                                             <td><input type="date" className="erp-input" value={r.pragyapan_date || ''} onChange={e => updateCustoms(i, { pragyapan_date: e.target.value })} /></td>
-                                            <td><input className="erp-input" value={r.customs_office || ''} onChange={e => updateCustoms(i, { customs_office: e.target.value })} placeholder="e.g. Birgunj" /></td>
                                             <td>
-                                                <SearchablePopupSelect listKey="expense_party_picker" columns={[{ key: 'account_code', label: 'Code' }, { key: 'account_name', label: 'Name' }]} defaultVisibleKeys={['account_name']}
-                                                    items={lp.filter(ledgers, 'supplier', r.paid_ledger_id)} getId={x => x.id} getLabel={x => x.account_name} searchKeys={['account_name', 'account_code']}
-                                                    value={r.paid_ledger_id} onChange={id => updateCustoms(i, { paid_ledger_id: id, paid_sub_ledger_id: '' })} placeholder={form.vendor_ledger_id ? 'Ref. Bill vendor' : 'Choose'} />
-                                                {r.paid_ledger_id && subLedgersOf(r.paid_ledger_id).length > 0 && (
-                                                    <select className="erp-select mt-0.5" value={r.paid_sub_ledger_id || ''} onChange={e => updateCustoms(i, { paid_sub_ledger_id: e.target.value })}>
-                                                        <option value="">Sub-ledger: none</option>{subLedgersOf(r.paid_ledger_id).map(x => <option key={x.id} value={x.id}>{x.sub_ledger_name}</option>)}</select>
-                                                )}
+                                                <SearchablePopupSelect listKey="customs_office_picker" columns={[{ key: 'office_code', label: 'Code' }, { key: 'office_name', label: 'Customs Office' }, { key: 'district', label: 'District' }]} defaultVisibleKeys={['office_code', 'office_name']}
+                                                    items={customsOffices} getId={x => x.id} getLabel={x => `${x.office_code ? x.office_code + ' · ' : ''}${x.office_name}`} searchKeys={['office_code', 'office_name', 'district', 'border_point']}
+                                                    value={r.customs_office_id || ''} onChange={id => updateCustoms(i, { customs_office_id: id })} placeholder={r.customs_office || 'Choose customs office'} />
                                             </td>
-                                            <td><input type="number" step="0.01" className="erp-input text-right" value={r.assessable_value ?? ''} onChange={e => updateCustoms(i, { assessable_value: e.target.value })} /></td>
-                                            <td><input type="number" step="0.01" className="erp-input text-right font-semibold" value={r.taxable_amount ?? ''} onChange={e => updateCustoms(i, { taxable_amount: e.target.value })} /></td>
-                                            <td><input type="number" step="0.01" className="erp-input text-right" value={r.non_taxable_amount ?? ''} onChange={e => updateCustoms(i, { non_taxable_amount: e.target.value })} /></td>
+                                            <td>
+                                                <select className="erp-select" value={r.detail_mode || 'bill_wise'} onChange={e => { updateCustoms(i, { detail_mode: e.target.value }); setCustomsOpen(e.target.value === 'item_wise' ? i : null); }}>
+                                                    <option value="bill_wise">Bill-wise</option><option value="item_wise">Item-wise</option>
+                                                </select>
+                                                {item && <button type="button" className="text-[11px] text-blue-700 underline" onClick={() => setCustomsOpen(customsOpen === i ? null : i)}>{customsOpen === i ? 'hide items' : `items (${(r.item_details || []).length})`}</button>}
+                                            </td>
+                                            {['assessable_value', 'taxable_amount', 'non_taxable_amount'].map(k => (
+                                                <td key={k}><input type="number" step="0.01" className={`erp-input text-right ${k === 'taxable_amount' ? 'font-semibold' : ''} ${item ? 'bg-gray-100' : ''}`} readOnly={item} title={item ? 'Sum of the items' : ''} value={r[k] ?? ''} onChange={e => updateCustoms(i, { [k]: e.target.value })} /></td>
+                                            ))}
                                             <td><input type="number" step="0.01" className="erp-input text-right" value={r.vat_percent ?? ''} onChange={e => updateCustoms(i, { vat_percent: e.target.value })} /></td>
-                                            <td><input type="number" step="0.01" className="erp-input text-right font-semibold" value={r.vat_amount ?? ''} onChange={e => updateCustoms(i, { vat_amount: e.target.value })} /></td>
+                                            <td><input type="number" step="0.01" className={`erp-input text-right font-semibold ${item ? 'bg-gray-100' : ''}`} readOnly={item} value={r.vat_amount ?? ''} onChange={e => updateCustoms(i, { vat_amount: e.target.value })} /></td>
                                             <td><button type="button" tabIndex={-1} className="text-red-500 text-xs" onClick={() => setForm(f => ({ ...f, customs_entries: f.customs_entries.filter((_, j) => j !== i) }))}>✕</button></td>
                                         </tr>
-                                    ))}
+                                        {item && customsOpen === i && (
+                                            <tr><td /><td colSpan={10} className="bg-[#f7f6f1] p-1">
+                                                {!(r.item_details || []).length ? <p className="text-xs text-gray-500 p-1">Choose the Ref. Bill first - its products are listed here.</p> : (
+                                                <table className="erp-grid-table">
+                                                    <thead><tr><th>#</th><th>Product</th><th className="text-right">Qty</th><th className="text-right">Assessable</th><th className="text-right">Taxable</th><th className="text-right">Tax-free</th><th className="text-right">VAT</th></tr></thead>
+                                                    <tbody>{(r.item_details || []).map((x, j) => (
+                                                        <tr key={j}><td>{j + 1}</td><td>{x.product_name}</td><td className="text-right">{x.qty}</td>
+                                                            {CUSTOMS_KEYS.map(k => <td key={k} className="w-28"><input type="number" step="0.01" className="erp-input text-right" value={x[k] ?? ''} onChange={e => updateCustomsItem(i, j, { [k]: e.target.value })} /></td>)}</tr>
+                                                    ))}</tbody>
+                                                </table>)}
+                                            </td></tr>
+                                        )}
+                                        </React.Fragment>
+                                        );
+                                    })}
                                 </tbody>
                                 <tfoot><tr className="font-semibold bg-gray-100">
                                     <td colSpan={5} className="text-right">Customs total</td>
@@ -760,7 +802,7 @@ export default function PurchaseAdditionalExpense() {
                             </table>
                             <div className="flex justify-between items-center mt-1">
                                 <button type="button" className="nav-btn small" onClick={() => setForm(f => ({ ...f, customs_entries: [...(f.customs_entries || []), emptyCustoms()] }))}>➕ Add Pragyapan</button>
-                                <span className="text-xs text-gray-500">Posting: Dr VAT (import) / Cr the Credit A/c. Purchase VAT register: shown as Import purchase (taxable = import taxable). Customs duty itself is a term on the Bill-wise tab.</span>
+                                <span className="text-xs text-gray-500">For the VAT report only - no ledger posting (customs duty / VAT are posted by the Bill-wise or Product-wise terms). Purchase VAT register: Import purchase, item details when item-wise.</span>
                             </div>
                         </div>
                         )}
@@ -794,18 +836,11 @@ export default function PurchaseAdditionalExpense() {
                                 if (!b.date && l.party_bill_date) b.date = l.party_bill_date;
                                 if (bt === 'taxable') { b.taxable = r2(b.taxable + amt); b.vat = r2(b.vat + (Number(l.vat_amount) || 0)); } else b.free = r2(b.free + amt);
                             });
-                            customsRows.forEach(cu => {
-                                const pid = cu.paid_ledger_id || form.vendor_ledger_id || '';
-                                if (!parties.has(pid)) parties.set(pid, { id: pid, bills: new Map(), less: 0, tds: 0 });
-                                const p = parties.get(pid), k = `pp|${cu.pragyapan_no}`;
-                                // only the VAT paid at customs is credited here; the values are for the VAT register (import)
-                                p.bills.set(k, { no: `PP ${cu.pragyapan_no || ''}`, date: cu.pragyapan_date || '', taxable: Number(cu.taxable_amount) || 0, vat: Number(cu.vat_amount) || 0, free: Number(cu.non_taxable_amount) || 0, import: true });
-                            });
                             const plist = [...parties.values()].map(p => {
-                                const bills = [...p.bills.values()].map(b => ({ ...b, total: b.import ? r2(b.vat) : r2(b.taxable + b.vat + b.free) }));
+                                const bills = [...p.bills.values()].map(b => ({ ...b, total: r2(b.taxable + b.vat + b.free) }));
                                 return { ...p, bills, credit: r2(bills.reduce((s2, b) => s2 + b.total, 0) - p.less - p.tds) };
                             });
-                            const sumOf = k => r2(plist.reduce((s2, p) => s2 + p.bills.filter(b => !b.import).reduce((s3, b) => s3 + b[k], 0), 0));
+                            const sumOf = k => r2(plist.reduce((s2, p) => s2 + p.bills.reduce((s3, b) => s3 + b[k], 0), 0));
                             const T = { impTaxable: r2(customsRows.reduce((s2, r) => s2 + (Number(r.taxable_amount) || 0), 0)), taxable: sumOf('taxable'), vat: sumOf('vat'), free: sumOf('free'), total: sumOf('total'), less: r2(plist.reduce((s2, p) => s2 + p.less, 0)), tds: r2(plist.reduce((s2, p) => s2 + p.tds, 0)), credit: r2(plist.reduce((s2, p) => s2 + p.credit, 0)) };
                             T.billsTotal = r2(plist.reduce((s2, p) => s2 + p.bills.reduce((s3, b) => s3 + b.total, 0), 0));
                             // Prd. (product-wise) / Gen. (bill-wise) additional (to the cost of the goods) / non-additional
@@ -818,7 +853,6 @@ export default function PurchaseAdditionalExpense() {
                                 parts[k + (cost(l) ? 'Add' : 'Non')] += amt;
                                 parts[k + (l.vat_in_cost && cost(l) ? 'Add' : 'Non')] += vat;
                             });
-                            parts.genNon += importVat;   // VAT paid at customs: claimable, never cost
                             const netAdd = r2(parts.prdAdd + parts.genAdd), netNon = r2(parts.prdNon + parts.genNon);
                             const goods = Number(refInfo?.totals?.net_basic || 0);
                             const gl = refInfo?.gl || [];
@@ -868,7 +902,7 @@ export default function PurchaseAdditionalExpense() {
                                                     <React.Fragment key={p.id || 'none'}>
                                                         {p.bills.map((b, i) => (
                                                             <tr key={i}><td>{i === 0 ? <b>{partyName(p.id)}</b> : ''}</td><td className="font-mono">{b.no || '—'}</td><td>{b.date}</td>
-                                                                <td className="text-xs">{b.import ? 'Import (customs) - VAT only' : b.taxable ? (b.free ? 'Taxable + tax-free' : 'Taxable (VAT)') : b.no ? 'Tax-free bill' : 'No bill'}</td>
+                                                                <td className="text-xs">{b.taxable ? (b.free ? 'Taxable + tax-free' : 'Taxable (VAT)') : b.no ? 'Tax-free bill' : 'No bill'}</td>
                                                                 <td className="text-right">{b.taxable ? f2(b.taxable) : ''}</td><td className="text-right">{b.vat ? f2(b.vat) : ''}</td><td className="text-right">{b.free ? f2(b.free) : ''}</td><td className="text-right font-semibold">{f2(b.total)}</td></tr>
                                                         ))}
                                                         {p.less > 0 && <tr className="text-red-700"><td /><td colSpan={6}>Less ("−" terms)</td><td className="text-right">-{f2(p.less)}</td></tr>}
@@ -877,7 +911,7 @@ export default function PurchaseAdditionalExpense() {
                                                     </React.Fragment>
                                                 ))}
                                             </tbody>
-                                            <tfoot><tr className="font-bold bg-gray-100"><td colSpan={4}>Total · {plist.reduce((s2, p) => s2 + p.bills.filter(b => b.no).length, 0)} supplier bill(s), {plist.length} part{plist.length === 1 ? 'y' : 'ies'}</td><td className="text-right">{f2(T.taxable + T.impTaxable)}</td><td className="text-right">{f2(T.vat + importVat)}</td><td className="text-right">{f2(T.free + r2(customsRows.reduce((s2, r) => s2 + (Number(r.non_taxable_amount) || 0), 0)))}</td>
+                                            <tfoot><tr className="font-bold bg-gray-100"><td colSpan={4}>Total · {plist.reduce((s2, p) => s2 + p.bills.filter(b => b.no).length, 0)} supplier bill(s), {plist.length} part{plist.length === 1 ? 'y' : 'ies'}</td><td className="text-right">{f2(T.taxable)}</td><td className="text-right">{f2(T.vat)}</td><td className="text-right">{f2(T.free)}</td>
                                                 <td className="text-right">{f2(T.credit)}{gl.length > 0 && <Check a={T.credit} b={glParty} label="= party credit in posting" />}</td></tr></tfoot>
                                         </table>
                                     ))}
@@ -902,7 +936,7 @@ export default function PurchaseAdditionalExpense() {
                                     <table className="w-full text-xs">
                                         <tbody>
                                             {[[['Prd. Additional', parts.prdAdd], ['Prd. Non-Add.', parts.prdNon]], [['Gen. Additional', parts.genAdd], ['Gen. Non-Add.', parts.genNon]],
-                                              [['Net Additional', netAdd, 'b'], ['Net Non-Add.', netNon, 'b']], [['Taxable Amt', T.taxable], ['VAT', T.vat]], [['Tax-free / no bill', T.free], ['Less TDS', -T.tds]], ...(importVat ? [[['Import taxable', T.impTaxable], ['Import VAT', importVat]]] : [])].map((row, i) => (
+                                              [['Net Additional', netAdd, 'b'], ['Net Non-Add.', netNon, 'b']], [['Taxable Amt', T.taxable], ['VAT', T.vat]], [['Tax-free / no bill', T.free], ['Less TDS', -T.tds]], ...(importVat ? [[['Import taxable (VAT rpt)', T.impTaxable], ['Import VAT (VAT rpt)', importVat]]] : [])].map((row, i) => (
                                                 <tr key={i} className="border-b border-[#e4e1d6]">{row.map(([lbl, v, st]) => (
                                                     <React.Fragment key={lbl}><td className={`px-2 py-1 text-gray-600 ${st ? 'font-semibold text-gray-800' : ''}`}>{lbl}</td><td className={`px-2 py-1 text-right ${st ? 'font-semibold' : ''}`}>{f2(v)}</td></React.Fragment>
                                                 ))}</tr>
