@@ -108,7 +108,7 @@ export default function VatAdvancedReports({ tab, quickPeriods = [], lang = 'en'
             </div>
             {err && <p className="text-sm text-red-700 mt-2">{err}</p>}
             {data && (
-                <div className="mt-3 overflow-x-auto" data-no-excel>
+                <div className="mt-3 overflow-x-auto">
                     <div className="text-center mb-2"><div className="font-semibold">{title}</div>
                         <div className="text-xs text-gray-600">{f.date_from || data.from ? `for the period ${f.date_from || data.from || ''} to ${f.date_to || data.to || ''}` : ''}{includedText ? ` · Including ${includedText}` : ''}</div></div>
                     {tab === 'sp_monthly' ? (

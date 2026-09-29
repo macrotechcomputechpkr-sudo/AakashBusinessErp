@@ -641,6 +641,10 @@ For each transaction (and user, if needed):
 
 ## 8. Tools and Office menus
 
+- **📁 Views (every screen)**: on the title bar of every report. Set the tab, filters and options, filter / sort / hide columns with ▾ in the column headers (▾ > *Hide this column*; grouped headers such as Sales / Purchase work too), then **Save As** a named view - mine or shared with colleagues, one of mine can open by default. Opening a view puts the tab and fields back, presses Show and restores the column filters, sort and hidden columns. *Columns* lists the columns to show / hide; *Reset filters & columns* clears them. (Pop-up pickers such as a party are not kept in a view.)
+- **Import from another Firm** (Tools): copy masters (account groups, ledgers, sub-ledgers, units, product groups / categories / companies, products, areas, agents, routes, cost / profit centres, business units, warehouses, currencies, billing terms, transport, remarks) and transactions (sales / purchase orders, bills, returns, credit / debit notes, cash / bank entries, journal vouchers) from another firm you can open. Masters are matched by code (only new ones added, or existing ones updated if chosen); documents come in as drafts - **Post imported drafts** posts them here. Nothing is imported twice.
+- **Super Admin**: logs in to the **Admin Panel** (all companies, users, last login, subscription; suspend / activate; new company). A company opened from there is **VIEW ONLY** - the server refuses every entry, change or delete; *🛡 Admin Panel* on the title bar goes back.
+
 - **Report Center**: every report in one place with search.
 - **Manual Document Printing**: print or reprint documents in bulk.
 - **Messaging**: send documents or statements; see the message log.

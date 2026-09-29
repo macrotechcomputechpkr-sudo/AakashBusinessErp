@@ -21,6 +21,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import useGlobalEnterNav from '../hooks/useGlobalEnterNav';
 import useExcelTableFilters from '../hooks/useExcelTableFilters';
+import ReportViews from './ReportViews';
 import useAppFeatures from '../hooks/useAppFeatures';
 import { useNotifications, BellButton, NotificationOverlay } from './NotificationCenter';
 import { Link, useLocation, useNavigate } from 'react-router-dom';
@@ -52,7 +53,7 @@ function useClock() {
 }
 
 export default function Layout({ children }) {
-    const { user, tenant, tenants, isSuperAdmin, logout, switchTenant } = useAuth();
+    const { user, tenant, tenants, isSuperAdmin, logout, switchTenant, exitTenant, readOnly } = useAuth();
     const navigate = useNavigate();
     const location = useLocation();
     const features = useAppFeatures();
@@ -236,7 +237,9 @@ export default function Layout({ children }) {
                 <div className="nav-titlebar-right">
                     <BellButton api={notes} className="nav-bell" />
                     <span className="hidden md:inline truncate max-w-[180px]" title={user?.email}>👤 {user?.full_name || user?.email}{isSuperAdmin ? ' (Super Admin)' : ''}</span>
-                    {tenants.length > 1 && (
+                    {readOnly && <span className="px-2 py-0.5 rounded bg-amber-400 text-black text-xs font-semibold" title="Super Admin opened this company view only - no entries or changes">👁 VIEW ONLY</span>}
+                    {isSuperAdmin && <button type="button" className="px-2 py-0.5 rounded bg-white/20 hover:bg-white/30 text-xs" title="Back to the Admin Panel (company list)" onClick={async () => { try { await exitTenant(); } catch { /* token without company anyway */ } navigate('/admin'); }}>🛡 Admin Panel</button>}
+                    {tenants.length > 1 && !isSuperAdmin && (
                         <select className="nav-title-select hidden md:block" value={tenant?.id || ''} onChange={e => switchTenant(e.target.value)} title="Switch company">
                             {tenants.map(t => <option key={t.id} value={t.id}>{t.company_name}</option>)}
                         </select>
@@ -287,6 +290,7 @@ export default function Layout({ children }) {
                             <button type="button" className="nav-pt-btn" title="Back" onClick={() => navigate(-1)}>◀</button>
                             <button type="button" className="nav-pt-btn" title="Refresh" onClick={() => window.location.reload()}>🔄</button>
                             <button type="button" className="nav-pt-btn hide-sm" title="Print" onClick={() => window.print()}>🖨</button>
+                            <ReportViews rootRef={contentRef} />
                             <Link to="/dashboard" className="nav-pt-btn hide-sm" title="Dashboard">🏠</Link>
                             <Link to="/reports" className="nav-pt-btn hide-sm" title="Report Center">📚</Link>
                             {[['related', 'Related', related], ['reports', 'Reports', reports]].map(([k, l, list]) => list.length > 0 && (

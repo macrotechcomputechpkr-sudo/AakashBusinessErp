@@ -149,10 +149,21 @@ export const AuthProvider = ({ children }) => {
         }
     };
 
+    // Super admin: leave the company (view-only) and go back to the Admin Panel
+    const exitTenant = async () => {
+        const data = await authFetch('/api/auth/exit-tenant', { method: 'POST' });
+        localStorage.removeItem('auth_tenant');
+        setTenant(null);
+        persist({ token: data.token, requiresCompanyCreation: false });
+        return data;
+    };
+
     return (
         <AuthContext.Provider value={{
             user, tenant, tenants, loading, error, initializing,
-            login, logout, switchTenant, authFetch,
+            login, logout, switchTenant, exitTenant, authFetch,
+            // super admin inside a company: view only (the server refuses every entry)
+            readOnly: !!(user?.is_global_admin && tenant),
             // after a successful password change (clears the forced-change flag)
             passwordChanged: () => persist({ user: user ? { ...user, must_change_password: false } : user }),
             isSuperAdmin: user?.is_global_admin || false,

@@ -3393,6 +3393,73 @@
 "slug": "billing-terms",
 "pdf": "/help/menus/billing-terms.pdf"
 },
+"/admin": {
+"path": "/admin",
+"title": "Admin Panel (Super Admin)",
+"module": "Admin",
+"kind": "master",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Where a Super Admin lands after login: every company (tenant) with users, last login and subscription. A company is opened VIEW ONLY - reports, lists and documents can be seen, no entry or change is allowed.",
+"steps": [
+"Search / filter the companies (status, company not created).",
+"Open (view only): the company opens with a VIEW ONLY badge; 🛡 Admin Panel on the title bar comes back here.",
+"Subscription: status, plan, end date, maximum users, active; Suspend / Activate.",
+"New Company: create a company (tenant) and its profile."
+],
+"accounts": "None.",
+"stock": "None.",
+"vat": "None.",
+"other": "",
+"tips": [],
+"fields": [],
+"slug": "admin",
+"pdf": "/help/menus/admin.pdf"
+},
+"/firm-import": {
+"path": "/firm-import",
+"title": "Import from another Firm",
+"module": "Tools",
+"kind": "master",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Copy masters and transactions from another firm (company) you can open into this one.",
+"steps": [
+"Choose the firm to copy from and Show what can be imported: per master list the count there, already here (same code) and new; per document type the count, posted and imported before.",
+"Tick masters (the masters they need come along - a ledger's group, a product's unit and group) and / or transactions (their ledgers, sub-ledgers, products and billing terms come along). Existing masters: keep, or update from the other firm. Opening balances / stock only when ticked.",
+"Transactions come in as DRAFTS with this firm's masters; a number already used here gets \"-<firm code>\". Post imported drafts posts them in date order (ledger / stock by this firm's rules).",
+"A record already imported is never imported twice; masters are matched again by code."
+],
+"accounts": "None.",
+"stock": "None.",
+"vat": "None.",
+"other": "",
+"tips": [],
+"fields": [
+[
+"To",
+"Last date of the report period."
+]
+],
+"slug": "firm-import",
+"pdf": "/help/menus/firm-import.pdf"
+},
 "/customs-offices": {
 "path": "/customs-offices",
 "title": "Customs Offices (Bhansar)",

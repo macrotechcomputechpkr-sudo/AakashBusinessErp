@@ -217,11 +217,13 @@ router.post('/switch-tenant', requireAuth, async (req, res) => {
                 .single();
             if (!tenant) return res.status(404).json({ success: false, error: 'Tenant not found' });
 
+            // opened from the Admin Panel: view only (middleware/auth.js refuses every entry)
             const token = jwt.sign(
-                { userId: req.auth.userId, email: req.auth.email, isSuperAdmin: true, tenantId: tenant.id },
+                { userId: req.auth.userId, email: req.auth.email, isSuperAdmin: true, tenantId: tenant.id, readOnly: true },
                 JWT_SECRET, { expiresIn: JWT_EXPIRY }
             );
-            return res.json({ success: true, token, tenant, requires_company_creation: !tenant.is_company_created });
+            await logAudit(tenant.id, req.auth.userId, 'super_admin_view_tenant', 'tenant', tenant.id, { read_only: true });
+            return res.json({ success: true, token, tenant: { ...tenant, read_only: true }, read_only: true, requires_company_creation: !tenant.is_company_created });
         }
 
         // Regular user: must be the primary tenant OR have an active user_tenant_access row.
@@ -262,6 +264,13 @@ router.post('/switch-tenant', requireAuth, async (req, res) => {
         console.error('Switch tenant error:', error);
         res.status(500).json({ success: false, error: error.message });
     }
+});
+
+// Super admin: leave the company and go back to the Admin Panel (token without a tenant)
+router.post('/exit-tenant', requireAuth, async (req, res) => {
+    if (!req.auth.isSuperAdmin) return res.status(403).json({ success: false, error: 'Super Admin only' });
+    const token = jwt.sign({ userId: req.auth.userId, email: req.auth.email, isSuperAdmin: true, tenantId: null }, JWT_SECRET, { expiresIn: JWT_EXPIRY });
+    res.json({ success: true, token, tenant: null });
 });
 
 router.post('/logout', requireAuth, async (req, res) => {

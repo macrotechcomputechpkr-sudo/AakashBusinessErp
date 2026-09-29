@@ -385,6 +385,9 @@ Per document type (and optionally per user):
 - **Security Rights Group** (`securityGroupRoutes`): `permissions[module][view|create|edit|delete|print]` and `permissions.approvals[type]`.
 - **Data Access** (`utils/dataAccess.js`): per user or group, the ledgers, sub-ledgers, products, companies, groups, categories and areas a user may see. `guard` filters every JSON response and refuses saves that use hidden ids. Postings are never filtered. Company admins are not restricted.
 
+- **Super Admin view only** (`middleware/auth.js`): a super admin token with a tenant (`switch-tenant`) is `readOnly`; `readOnlyBlocked` refuses every non-GET call except `READ_ONLY_ALLOW` (auth, admin, company create, previews, pending pull, UDF lookup, print log). `routes/adminRoutes.js` (`/admin/overview`, `/admin/tenants/:id`), `POST /auth/exit-tenant`, `pages/AdminPanel.jsx`; `PrivateRoute` sends a super admin without a company to `/admin`.
+- **Firm import** (`utils/firmImport.js`, `routes/firmImportRoutes.js`, migration 155 `firm_import_log`): sources = `getUserTenants` of the user; masters in dependency order matched by code, every `*_id` / `*_ids` UUID translated through one source-id -> target-id map (unknown -> null, same-list references filled after), opening columns zeroed unless asked; transactions (with lines and document / line billing terms) inserted as drafts per document all-or-nothing.
+
 ## 9. Reports
 
 - **Financial** (`financialReportRoutes` -> `financialEngine`): Trial Balance, P&L, Balance Sheet, notes, ratios, cash flow and funds flow, all from one engine.
@@ -399,6 +402,7 @@ Per document type (and optionally per user):
 - **Advanced VAT reports** (`utils/vatAnnex.js`: `annex13`, `monthlySalesPurchase`, `partySummary`; routes `/vat-reports/annex13|monthly-sales-purchase|party-summary`; client `components/vat/VatAdvancedReports.jsx`): all from `loadTaxDocs`, include flags per kind (`kinds(q)`), nature split by product `item_type`, balances from `financialEngine.ledgerBalances`. `loadTaxDocs` rows now carry `party_code`, `party_sub_ledger_id`, `product_company_id`, `currency`, `is_export`.
 - **Auto TDS** (migration 154: `billing_terms.tds_percent`, lines `tds_percent` / `tds_base`, header `auto_tds`): `PurchaseAdditionalExpense.jsx` `lineTds` / `buildTds` / `withTds` rebuild one TDS line per (party, rate) in an effect on every relevant change.
 - **JV view** (`components/entry/PostingView.jsx`, `GET /api/document-posting/:id` in `entryHelperRoutes`): every ledger batch of a document id; the "JV" button of `DocActions` (all transaction lists) and PDC.
+- **Report views & table filters** (`hooks/useExcelTableFilters.tsx`, `components/ReportViews.jsx`): leaf header cells read as a grid (colSpan / rowSpan); state per table = filters, sort, hidden columns; `captureTables` / `restoreTables` (pending until a table with the same header signature appears). `ReportViews` stores `{tabs, fields, tables}` under report key `page:<path>` in `saved_report_views`, sets fields with the native value setter and presses the page's Show / Run button.
 - **Universal register**: `registerRoutes` with `documentCatalog.js`, the list of every document type and its table.
 
 ## 10. Industry modules

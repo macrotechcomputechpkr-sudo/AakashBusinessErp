@@ -15,6 +15,16 @@ let dataAccess = null;
 
 const JWT_SECRET = process.env.JWT_SECRET || 'global-super-secret-key';
 
+// A super admin inside a company is VIEW ONLY: every write is refused except the
+// admin / login calls and the read-only POSTs (previews, lookups, print log).
+const READ_ONLY_ALLOW = [/^\/api\/auth\//, /^\/api\/admin\//, /^\/api\/company\/create$/, /preview$/, /\/pending-documents\/pull$/, /\/udf-values\/lookup$/, /\/document-print\/log$/];
+const isWrite = m => !['GET', 'HEAD', 'OPTIONS'].includes(String(m || '').toUpperCase());
+function readOnlyBlocked(req) {
+    if (!req.auth || !req.auth.readOnly || !isWrite(req.method)) return false;
+    const path = String(req.originalUrl || req.url || '').split('?')[0];
+    return !READ_ONLY_ALLOW.some(rx => rx.test(path));
+}
+
 function requireAuth(req, res, next) {
     const header = req.headers.authorization || '';
     const token = header.startsWith('Bearer ') ? header.slice(7) : null;
@@ -29,8 +39,13 @@ function requireAuth(req, res, next) {
             userId: decoded.userId,
             email: decoded.email,
             isSuperAdmin: !!decoded.isSuperAdmin,
-            tenantId: decoded.tenantId || null
+            tenantId: decoded.tenantId || null,
+            // super admin opened a company from the Admin Panel: view only, no entries
+            readOnly: !!decoded.isSuperAdmin && !!decoded.tenantId
         };
+        if (readOnlyBlocked(req)) {
+            return res.status(403).json({ success: false, read_only: true, error: 'Super Admin can only view a company - no entries or changes. Log in as the company\'s own user to make entries.' });
+        }
         // who / from where - read by the database audit trigger (utils/requestContext.js)
         const ip = String(req.headers['x-forwarded-for'] || req.ip || '').split(',')[0].trim();
         const ctx = { userId: decoded.userId, tenantId: decoded.tenantId || null, isSuperAdmin: !!decoded.isSuperAdmin, method: req.method,
@@ -79,4 +94,4 @@ function requirePermission(module, action) {
     };
 }
 
-module.exports = { requireAuth, requireSuperAdmin, requireTenant, requirePermission, JWT_SECRET };
+module.exports = { requireAuth, requireSuperAdmin, requireTenant, requirePermission, JWT_SECRET, readOnlyBlocked, READ_ONLY_ALLOW };

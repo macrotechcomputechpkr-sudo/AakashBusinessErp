@@ -203,7 +203,7 @@ export const TOP_MENUS: TopMenu[] = [
     { key: 'tools', title: 'Tools', groups: [
         { title: 'Tools', items: [
             i('/help-center', '❓ Help Center (manuals, IRD, menu PDFs)'), i('/reports', '📚 Report Center (all reports)'), i('/document-printing', '🖨 Manual Document Printing'), i('/messaging', '📨 Messaging (Email / SMS / WhatsApp / Viber)'),
-            i('/ird', '🏛 IRD Compliance / CBMS'), i('/mobile', '📱 Salesman Mobile App')
+            i('/ird', '🏛 IRD Compliance / CBMS'), i('/mobile', '📱 Salesman Mobile App'), i('/firm-import', '🔁 Import from another Firm (masters & transactions)')
         ] },
         rg('Messaging')
     ] },
