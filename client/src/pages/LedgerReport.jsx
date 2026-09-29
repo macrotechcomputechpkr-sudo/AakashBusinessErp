@@ -20,6 +20,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import SearchablePopupSelect from '../components/SearchablePopupSelect';
 import SavedViewsBar from '../components/SavedViewsBar';
+import ReportSidePanel from '../components/ReportSidePanel';
 import Layout from '../components/Layout';
 import { formatDateForDisplay } from '../utils/nepaliDateUtils';
 
@@ -70,7 +71,7 @@ export default function LedgerReport() {
     const [alert, setAlert] = useState(null);
     // the options panel folds to one line after Show; Filters open on request
     const [optionsOpen, setOptionsOpen] = useState(!urlConfig);
-    const [filtersOpen, setFiltersOpen] = useState(false);
+    const [company, setCompany] = useState({ name: '', pan: '', fiscalYears: [] });
 
     const showAlert = (message, type = 'info') => { setAlert({ message, type }); setTimeout(() => setAlert(null), 5000); };
     const set = (k, v) => setConfig(c => ({ ...c, [k]: v }));
@@ -93,6 +94,13 @@ export default function LedgerReport() {
         }
     }, [authFetch]);
     useEffect(() => { loadMasters(); }, [loadMasters]);
+    // company name / PAN / fiscal years for the report heading
+    useEffect(() => {
+        authFetch('/api/company/profile').then(r => {
+            const p = r.profile || r.data?.profile || {};
+            setCompany({ name: p.company_name || '', pan: p.pan_number || '', fiscalYears: r.fiscal_years || r.data?.fiscal_years || [] });
+        }).catch(() => {});
+    }, [authFetch]);
     // eslint-disable-next-line react-hooks/exhaustive-deps
     useEffect(() => { if (urlConfig) runReport(urlConfig); }, []);
 
@@ -117,7 +125,7 @@ export default function LedgerReport() {
             // A single ledger opens expanded; many start collapsed.
             setExpanded(res.data.ledgers.length === 1 ? { [res.data.ledgers[0].ledger_id]: true } : {});
             if (res.data.ledgers.length === 0) showAlert('No ledger movement for these filters', 'info');
-            else { setOptionsOpen(false); setFiltersOpen(false); }
+            else setOptionsOpen(false);
         } catch (err) {
             showAlert(err.message, 'danger');
         } finally {
@@ -170,6 +178,35 @@ export default function LedgerReport() {
     const ledgers = [...(result?.ledgers || [])].sort(SORTERS[config.sort_on] || SORTERS.name);
     const ledgersByGroup = {};
     ledgers.forEach(l => { (ledgersByGroup[l.group_id || 'none'] = ledgersByGroup[l.group_id || 'none'] || []).push(l); });
+
+    // summary: blank for zero, a signed balance split into Debit / Credit
+    const amt = n => (Math.abs(Number(n) || 0) < 0.005 ? '' : fmt(n));
+    const drCells = n => { const v = Number(n) || 0; return <><td className="num">{v > 0 ? amt(v) : ''}</td><td className="num">{v < 0 ? amt(-v) : ''}</td></>; };
+    const creditCol = ledgers.some(l => l.credit_limit_used_percent !== null && l.credit_limit_used_percent !== undefined);
+    const summaryCols = 8 + (pdcSplit ? 2 : 0) + (pdcBal ? 3 : 0) + (creditCol ? 1 : 0);
+    const sumRow = (label, rows, cls) => {
+        const t = k => rows.reduce((x, l) => x + (Number(k(l)) || 0), 0);
+        // Debit / Credit columns add up each side (as the ledgers show), not the net
+        const sides = k => [t(l => Math.max(0, Number(k(l)) || 0)), t(l => Math.max(0, -(Number(k(l)) || 0)))];
+        const [openDr, openCr] = sides(l => l.opening), [closeDr, closeCr] = sides(l => l.closing);
+        const dr = t(l => (pdcSplit && l.pdc ? l.pdc.debit_excl_pdc : l.total_debit)), cr = t(l => (pdcSplit && l.pdc ? l.pdc.credit_excl_pdc : l.total_credit));
+        return (
+            <tr className={cls}>
+                <td colSpan={2}>{label}</td>
+                <td className="num">{amt(openDr)}</td><td className="num">{amt(openCr)}</td>
+                <td className="num">{amt(dr)}</td><td className="num">{amt(cr)}</td>
+                {pdcSplit && <><td className="num">{amt(t(l => l.pdc?.posted_debit))}</td><td className="num">{amt(t(l => l.pdc?.posted_credit))}</td></>}
+                <td className="num">{amt(closeDr)}</td><td className="num">{amt(closeCr)}</td>
+                {pdcBal && <><td className="num">{amt(t(l => l.pdc?.pending_received))}</td><td className="num">{amt(t(l => l.pdc?.pending_issued))}</td><td className="num">{drcr(t(l => (l.pdc ? l.pdc.closing_after_pending : l.closing)))}</td></>}
+                {creditCol && <td></td>}
+            </tr>
+        );
+    };
+    const pickedName = (list, id, key) => (id ? (list.find(x => x.id === id) || {})[key] : '');
+    const scope = pickedName(masters.ledgers, config.ledger_id, 'account_name') || pickedName(masters.groups, config.account_group_id, 'group_name') || 'Ledger';
+    const reportTitle = result?.mode === 'summary' ? `${scope} Summary - (Including Opening)` : result?.mode === 'monthly' ? `${scope} - Monthly` : `${scope} - Detail`;
+    const fy = company.fiscalYears.find(f => f.start_date_eng <= config.date_to && config.date_to <= f.end_date_eng);
+    const fiscalYear = fy ? (fy.fiscal_year_name || fy.fiscal_year_code) : '';
 
     // columns that come and go with the ticks (Remarks, Doc. Agent)
     const extra = (config.show_remarks ? 1 : 0) + (config.show_doc_agent ? 1 : 0);
@@ -310,128 +347,136 @@ export default function LedgerReport() {
                     onReset={() => { setConfig(DEFAULT_CONFIG); setResult(null); }}
                 />
 
-                {optionsOpen || !result ? (
-                    <div className="lr-options border rounded p-2 mb-2 bg-slate-50/60 no-print">
-                        <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
-                            <div className="erp-field"><label className="erp-label">Date From</label><input type="date" className="erp-input" value={config.date_from} onChange={e => set('date_from', e.target.value)} /></div>
-                            <div className="erp-field"><label className="erp-label">Date To</label><input type="date" className="erp-input" value={config.date_to} onChange={e => set('date_to', e.target.value)} /></div>
-                            <div className="erp-field">
-                                <label className="erp-label">View Mode</label>
-                                <select className="erp-select" value={config.mode} onChange={e => set('mode', e.target.value)}>
-                                    <option value="detail">Detail (every entry)</option>
-                                    <option value="summary">Summary (per ledger)</option>
-                                    <option value="monthly">Monthly</option>
-                                </select>
-                            </div>
-                            <div className="erp-field">
-                                <label className="erp-label">Sort On</label>
-                                <select className="erp-select" value={config.sort_on} onChange={e => set('sort_on', e.target.value)}>
-                                    <option value="name">Ledger Name</option>
-                                    <option value="code">Ledger Code</option>
-                                    <option value="short_name">Short Name</option>
-                                    <option value="closing">Closing Balance</option>
-                                </select>
-                            </div>
-                        </div>
-                        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-x-4 gap-y-0.5 mt-2 text-[13px]">
-                            {OPTIONS.map(([k, label, only]) => {
-                                const off = !!only && only !== config.mode;
-                                return (
-                                    <label key={k} className={`flex items-center gap-1.5 ${off ? 'text-gray-400' : ''}`} title={off ? `Only in ${only} view` : ''}>
-                                        <input type="checkbox" checked={!!config[k]} disabled={off} onChange={e => set(k, e.target.checked)} /> {label}
-                                    </label>
-                                );
-                            })}
-                        </div>
-
-                        <div className="mt-2 border-t pt-1.5">
-                            <button type="button" className="text-xs font-semibold text-blue-700" onClick={() => setFiltersOpen(o => !o)}>
-                                {filtersOpen ? '▾' : '▸'} 🔽 Filters{activeFilters ? ` (${activeFilters} on)` : ''}
-                            </button>
-                            {filtersOpen && (
-                                <div data-no-fold className="mt-1.5">
-                                    <div className="grid grid-cols-1 md:grid-cols-4 gap-2">
-                                        {picker('ledger_id', masters.ledgers, i => i.account_name, 'Ledger', 'lr_ledger')}
-                                        {picker('account_group_id', masters.groups, i => i.group_name, 'Group (incl. sub-groups)', 'lr_group')}
-                                        {categorySetting.enabled && picker('ledger_category_id', masters.categories, i => i.category_name, categorySetting.label || 'Ledger Category', 'lr_category')}
-                                        {picker('area_id', masters.areas, i => i.area_name, 'Area', 'lr_area')}
-                                        {picker('agent_id', masters.agents, i => i.agent_name, 'Agent (ledger master)', 'lr_agent')}
-                                        {picker('doc_agent_id', masters.agents, i => i.agent_name, 'Doc. Agent (on the transaction)', 'lr_doc_agent')}
-                                        {picker('route_id', masters.routes, i => i.route_name, 'Route', 'lr_route')}
-                                        {picker('product_company_id', masters.companies, i => i.company_name, 'Product Company', 'lr_company')}
-                                        <div className="erp-field"><label className="erp-label">Narration contains</label><input className="erp-input" value={config.narration} onChange={e => set('narration', e.target.value)} /></div>
-                                        <div className="erp-field">
-                                            <label className="erp-label">Closing balance</label>
-                                            <select className="erp-select" value={config.balance_side || ''} onChange={e => set('balance_side', e.target.value)}>
-                                                <option value="">Any balance</option>
-                                                <option value="dr">Debit only (receivable)</option>
-                                                <option value="cr">Credit only (payable)</option>
-                                            </select>
-                                        </div>
-                                        <div className="erp-field"><label className="erp-label">Min balance</label><input type="number" className="erp-input" value={config.min_balance || ''} onChange={e => set('min_balance', e.target.value)} placeholder="0" /></div>
-                                    </div>
-                                    <div className="mt-2">
-                                        <p className="text-[11px] font-semibold text-gray-500 uppercase">Document Type <span className="normal-case font-normal text-gray-400">(none ticked = all)</span></p>
-                                        <div className="flex flex-wrap gap-3">
-                                            {meta.models.map(m => (
-                                                <label key={m.key} className="flex items-center gap-1 text-sm font-medium"><input type="checkbox" checked={config.models.includes(m.key)} onChange={() => toggleInList('models', m.key)} /> {m.label}</label>
-                                            ))}
-                                        </div>
-                                        <div className="flex flex-wrap gap-x-3">
-                                            {meta.document_types.filter(d => config.models.length === 0 || config.models.includes(d.model)).map(d => (
-                                                <label key={d.key} className="flex items-center gap-1 text-xs text-gray-600"><input type="checkbox" checked={config.document_types.includes(d.key)} onChange={() => toggleInList('document_types', d.key)} /> {d.label}</label>
-                                            ))}
-                                        </div>
-                                    </div>
-                                </div>
-                            )}
-                        </div>
-
-                        <div className="flex gap-2 mt-2">
-                            <button type="button" onClick={() => runReport()} disabled={loading} className="erp-btn primary">{loading ? 'Loading…' : '🔍 Show Report'}</button>
-                            {result && <button type="button" className="erp-btn" onClick={() => { setOptionsOpen(false); setFiltersOpen(false); }}>✕ Hide options</button>}
-                        </div>
+                {/* options + filters live in the side panel; the report keeps the whole width */}
+                <ReportSidePanel open={optionsOpen || !result} onOpen={() => setOptionsOpen(true)} onClose={() => { if (result) setOptionsOpen(false); }}
+                    onOk={() => runReport()} loading={loading} summary={`${config.date_from} → ${config.date_to}`}>
+                    <p className="rsp-sec">Period &amp; view</p>
+                    <div className="erp-field"><label className="erp-label">Date From</label><input type="date" className="erp-input" value={config.date_from} onChange={e => set('date_from', e.target.value)} /></div>
+                    <div className="erp-field"><label className="erp-label">Date To</label><input type="date" className="erp-input" value={config.date_to} onChange={e => set('date_to', e.target.value)} /></div>
+                    <div className="erp-field">
+                        <label className="erp-label">View Mode</label>
+                        <select className="erp-select" value={config.mode} onChange={e => set('mode', e.target.value)}>
+                            <option value="detail">Detail (every entry)</option>
+                            <option value="summary">Summary (per ledger)</option>
+                            <option value="monthly">Monthly</option>
+                        </select>
                     </div>
-                ) : (
-                    <div className="flex flex-wrap items-center gap-2 mb-2 text-xs border rounded px-2 py-1 bg-slate-50 no-print">
-                        <span className="font-semibold">{config.date_from} → {config.date_to}</span>
-                        <span className="text-gray-500">· {({ detail: 'Detail', summary: 'Summary', monthly: 'Monthly' })[config.mode]}{activeFilters ? ` · ${activeFilters} filter(s)` : ''}</span>
-                        <span className="flex-1" />
-                        <button type="button" className="erp-btn" onClick={() => setOptionsOpen(true)}>⚙ Options</button>
-                        <button type="button" className="erp-btn" onClick={() => { setOptionsOpen(true); setFiltersOpen(true); }}>🔽 Filters</button>
-                        <button type="button" className="erp-btn primary" disabled={loading} onClick={() => runReport()}>{loading ? 'Loading…' : '🔄 Reload'}</button>
+                    <div className="erp-field">
+                        <label className="erp-label">Sort On</label>
+                        <select className="erp-select" value={config.sort_on} onChange={e => set('sort_on', e.target.value)}>
+                            <option value="name">Ledger Name</option>
+                            <option value="code">Ledger Code</option>
+                            <option value="short_name">Short Name</option>
+                            <option value="closing">Closing Balance</option>
+                        </select>
                     </div>
-                )}
+
+                    <p className="rsp-sec">Options</p>
+                    <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[13px]">
+                        {OPTIONS.map(([k, label, only]) => {
+                            const off = !!only && only !== config.mode;
+                            return (
+                                <label key={k} className={`flex items-center gap-1.5 ${off ? 'text-gray-400' : ''}`} title={off ? `Only in ${only} view` : ''}>
+                                    <input type="checkbox" checked={!!config[k]} disabled={off} onChange={e => set(k, e.target.checked)} /> {label}
+                                </label>
+                            );
+                        })}
+                    </div>
+
+                    <p className="rsp-sec">🔽 Filters{activeFilters ? ` (${activeFilters} on)` : ''}</p>
+                    {picker('ledger_id', masters.ledgers, i => i.account_name, 'Ledger', 'lr_ledger')}
+                    {picker('account_group_id', masters.groups, i => i.group_name, 'Group (incl. sub-groups)', 'lr_group')}
+                    {categorySetting.enabled && picker('ledger_category_id', masters.categories, i => i.category_name, categorySetting.label || 'Ledger Category', 'lr_category')}
+                    {picker('area_id', masters.areas, i => i.area_name, 'Area', 'lr_area')}
+                    {picker('agent_id', masters.agents, i => i.agent_name, 'Agent (ledger master)', 'lr_agent')}
+                    {picker('doc_agent_id', masters.agents, i => i.agent_name, 'Doc. Agent (on the transaction)', 'lr_doc_agent')}
+                    {picker('route_id', masters.routes, i => i.route_name, 'Route', 'lr_route')}
+                    {picker('product_company_id', masters.companies, i => i.company_name, 'Product Company', 'lr_company')}
+                    <div className="erp-field"><label className="erp-label">Narration contains</label><input className="erp-input" value={config.narration} onChange={e => set('narration', e.target.value)} /></div>
+                    <div className="erp-field">
+                        <label className="erp-label">Closing balance</label>
+                        <select className="erp-select" value={config.balance_side || ''} onChange={e => set('balance_side', e.target.value)}>
+                            <option value="">Any balance</option>
+                            <option value="dr">Debit only (receivable)</option>
+                            <option value="cr">Credit only (payable)</option>
+                        </select>
+                    </div>
+                    <div className="erp-field"><label className="erp-label">Min balance</label><input type="number" className="erp-input" value={config.min_balance || ''} onChange={e => set('min_balance', e.target.value)} placeholder="0" /></div>
+                    <p className="text-[11px] font-semibold text-gray-500 uppercase mt-2">Document Type <span className="normal-case font-normal text-gray-400">(none ticked = all)</span></p>
+                    <div className="flex flex-wrap gap-x-3">
+                        {meta.models.map(m => (
+                            <label key={m.key} className="flex items-center gap-1 text-sm font-medium"><input type="checkbox" checked={config.models.includes(m.key)} onChange={() => toggleInList('models', m.key)} /> {m.label}</label>
+                        ))}
+                    </div>
+                    <div className="flex flex-wrap gap-x-3">
+                        {meta.document_types.filter(d => config.models.length === 0 || config.models.includes(d.model)).map(d => (
+                            <label key={d.key} className="flex items-center gap-1 text-xs text-gray-600"><input type="checkbox" checked={config.document_types.includes(d.key)} onChange={() => toggleInList('document_types', d.key)} /> {d.label}</label>
+                        ))}
+                    </div>
+                </ReportSidePanel>
 
                 {result && result.ledgers.length > 0 && (
                     <>
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
-                            <div className="border rounded-lg p-3"><p className="text-xs text-gray-500">Opening</p><p className="font-semibold">{drcr(result.totals.opening)}</p></div>
-                            <div className="border rounded-lg p-3"><p className="text-xs text-gray-500">Total Debit</p><p className="font-semibold">{fmt(result.totals.total_debit)}</p></div>
-                            <div className="border rounded-lg p-3"><p className="text-xs text-gray-500">Total Credit</p><p className="font-semibold">{fmt(result.totals.total_credit)}</p></div>
-                            <div className="border rounded-lg p-3"><p className="text-xs text-gray-500">Closing ({result.ledgers.length} ledgers)</p><p className="font-semibold">{drcr(result.totals.closing)}</p></div>
+                        {/* report heading, as it prints */}
+                        <div className="lr-heading">
+                            <div className="lr-heading-main">
+                                <div className="lr-company">{company.name}</div>
+                                <div className="lr-title">{reportTitle}</div>
+                                <div className="lr-period">(for the period of {formatDateForDisplay(result.period?.date_from || config.date_from)} to {formatDateForDisplay(result.period?.date_to || config.date_to)})</div>
+                            </div>
+                            <div className="lr-heading-side">
+                                {company.pan && <div>PAN : {company.pan}</div>}
+                                {fiscalYear && <div>{fiscalYear}</div>}
+                                <div className="text-blue-700">{result.ledgers.length} ledger(s)</div>
+                            </div>
                         </div>
 
                         {result.mode === 'summary' ? (
                             <div className="overflow-x-auto">
-                                <table className="erp-grid-table">
-                                    <thead><tr><th>Ledger</th><th>Group</th><th>Opening</th>{pdcSplit ? <><th>Debit (excl. PDC)</th><th>Credit (excl. PDC)</th><th>PDC Dr</th><th>PDC Cr</th></> : <><th>Debit</th><th>Credit</th></>}<th>Closing</th>{pdcBal && <><th>Pending PDC Recd.</th><th>Pending PDC Issued</th><th>Closing after PDC</th></>}<th>Credit Limit Used</th></tr></thead>
+                                <table className="erp-grid-table lr-summary">
+                                    <thead>
+                                        <tr>
+                                            <th rowSpan={2}>Short Name</th><th rowSpan={2}>Account Name</th>
+                                            <th colSpan={2}>Opening</th>
+                                            {pdcSplit ? <><th colSpan={2}>Period (excl. PDC)</th><th colSpan={2}>PDC</th></> : <th colSpan={2}>Period</th>}
+                                            <th colSpan={2}>Closing</th>
+                                            {pdcBal && <th colSpan={3}>Pending PDC</th>}
+                                            {creditCol && <th rowSpan={2}>Credit Limit Used</th>}
+                                        </tr>
+                                        <tr>
+                                            <th>Debit</th><th>Credit</th>
+                                            <th>Debit</th><th>Credit</th>
+                                            {pdcSplit && <><th>Debit</th><th>Credit</th></>}
+                                            <th>Debit</th><th>Credit</th>
+                                            {pdcBal && <><th>Received</th><th>Issued</th><th>Balance after PDC</th></>}
+                                        </tr>
+                                    </thead>
                                     <tbody>
-                                        {(config.group_wise ? result.groups : [{ group_id: '__all', group_name: null }]).map(g => (
-                                            <React.Fragment key={g.group_id || 'none'}>
-                                                {config.group_wise && <tr className="bg-slate-100 font-semibold"><td colSpan={2}>{g.group_name} ({g.ledger_count})</td><td>{drcr(g.opening)}</td><td>{fmt(g.total_debit)}</td><td>{fmt(g.total_credit)}</td>{pdcSplit && <><td></td><td></td></>}<td>{drcr(g.closing)}</td>{pdcBal && <><td></td><td></td><td></td></>}<td></td></tr>}
-                                                {(config.group_wise ? (ledgersByGroup[g.group_id || 'none'] || []) : ledgers).map(l => (
-                                                    <tr key={l.ledger_id}>
-                                                        <td>{l.account_name}{config.show_ledger_details && ledgerDetails(l) && <div className="text-[11px] text-gray-500">{ledgerDetails(l)}</div>}</td><td className="text-xs text-gray-500">{l.group_name}</td>
-                                                        <td>{drcr(l.opening)}</td>
-                                                        {pdcSplit && l.pdc ? <><td>{fmt(l.pdc.debit_excl_pdc)}</td><td>{fmt(l.pdc.credit_excl_pdc)}</td><td>{l.pdc.posted_debit ? fmt(l.pdc.posted_debit) : ''}</td><td>{l.pdc.posted_credit ? fmt(l.pdc.posted_credit) : ''}</td></> : pdcSplit ? <><td>{fmt(l.total_debit)}</td><td>{fmt(l.total_credit)}</td><td></td><td></td></> : <><td>{fmt(l.total_debit)}</td><td>{fmt(l.total_credit)}</td></>}
-                                                        <td>{drcr(l.closing)}</td>
-                                                        {pdcBal && (l.pdc ? <><td>{l.pdc.pending_received ? fmt(l.pdc.pending_received) : ''}</td><td>{l.pdc.pending_issued ? fmt(l.pdc.pending_issued) : ''}</td><td className="font-semibold">{drcr(l.pdc.closing_after_pending)}</td></> : <><td></td><td></td><td>{drcr(l.closing)}</td></>)}
-                                                        <td className={l.credit_limit_used_percent >= 100 ? 'text-red-600 font-semibold' : ''}>{l.credit_limit_used_percent !== null ? `${l.credit_limit_used_percent}%` : '—'}</td>
-                                                    </tr>
-                                                ))}
-                                            </React.Fragment>
-                                        ))}
+                                        {(config.group_wise ? result.groups : [{ group_id: '__all', group_name: null }]).map(g => {
+                                            const rows = config.group_wise ? (ledgersByGroup[g.group_id || 'none'] || []) : ledgers;
+                                            return (
+                                                <React.Fragment key={g.group_id || 'none'}>
+                                                    {config.group_wise && <tr className="lr-group-row"><td colSpan={summaryCols}>{g.group_name || '(No Group)'} ({rows.length})</td></tr>}
+                                                    {rows.map(l => {
+                                                        const pdrc = pdcSplit && l.pdc ? [l.pdc.debit_excl_pdc, l.pdc.credit_excl_pdc] : [l.total_debit, l.total_credit];
+                                                        return (
+                                                            <tr key={l.ledger_id}>
+                                                                <td>{l.short_name || l.account_code || ''}</td>
+                                                                <td>{l.account_name}{config.show_ledger_details && ledgerDetails(l) && <div className="text-[11px] text-gray-500">{ledgerDetails(l)}</div>}</td>
+                                                                {drCells(l.opening)}
+                                                                <td className="num">{amt(pdrc[0])}</td><td className="num">{amt(pdrc[1])}</td>
+                                                                {pdcSplit && <><td className="num">{amt(l.pdc?.posted_debit)}</td><td className="num">{amt(l.pdc?.posted_credit)}</td></>}
+                                                                {drCells(l.closing)}
+                                                                {pdcBal && <><td className="num">{amt(l.pdc?.pending_received)}</td><td className="num">{amt(l.pdc?.pending_issued)}</td><td className="num font-semibold">{drcr(l.pdc ? l.pdc.closing_after_pending : l.closing)}</td></>}
+                                                                {creditCol && <td className={`num ${l.credit_limit_used_percent >= 100 ? 'text-red-600 font-semibold' : ''}`}>{l.credit_limit_used_percent !== null && l.credit_limit_used_percent !== undefined ? `${l.credit_limit_used_percent}%` : ''}</td>}
+                                                            </tr>
+                                                        );
+                                                    })}
+                                                    {config.group_wise && sumRow(`Sub Total - ${g.group_name || '(No Group)'}`, rows, 'lr-subtotal')}
+                                                </React.Fragment>
+                                            );
+                                        })}
+                                        {sumRow('Grand Total', ledgers, 'lr-grandtotal')}
                                     </tbody>
                                 </table>
                             </div>

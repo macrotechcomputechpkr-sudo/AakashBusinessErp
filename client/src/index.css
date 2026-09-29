@@ -529,7 +529,7 @@ label {
 .rg-chip { background: #dde8f6 !important; color: #1a4a8a !important; border: 1px solid #8aaad5; }
 /* ReportGrid: the ▾ of a header shows faintly until the header is pointed at (or the column is filtered) */
 /* reports: empty product / party / area … filter boxes fold away (hooks/useCompactFilters.js) */
-[data-sg-dims="closed"] [data-sg-dim] { display: none !important; }
+[data-sg-dims="closed"] [data-sg-dim]:not([data-rsp="open"] [data-sg-dim]) { display: none !important; }
 [data-sg-dims="open"] [data-sg-dim] { outline: 1px dashed #8aaad5; outline-offset: 1px; }
 .rg-root th .rg-xf { opacity: .3; }
 .rg-root th:hover .rg-xf, .rg-root th .rg-xf.on { opacity: 1; }
@@ -698,3 +698,57 @@ html, body { background: var(--hd-bg); color: var(--hd-text); text-rendering: op
 @media (max-width: 767px) {
   .nav-page .erp-card:has(> form > .ent-fillbar:first-child) > .erp-header { background: var(--hd-bar) !important; border-color: var(--hd-border); }
 }
+
+/* components/ReportSidePanel.jsx - report options in a side panel */
+.rsp-tab, .rsp-gtab {
+  position: fixed; left: 0; top: 38%; z-index: 40; writing-mode: vertical-rl; transform: rotate(180deg);
+  padding: 12px 5px; font-size: 12px; font-weight: 600; color: #fff; background: #1f5fbf;
+  border: 1px solid #174a96; border-left: none; border-radius: 0 6px 6px 0; box-shadow: 2px 2px 6px rgba(0,0,0,.2); cursor: pointer;
+}
+.rsp-tab:hover { background: #174a96; }
+.rsp-backdrop { position: fixed; inset: 0; z-index: 44; background: rgba(15, 23, 42, .25); }
+.rsp-panel {
+  position: fixed; left: 0; top: 0; bottom: 0; z-index: 45; width: 420px; max-width: 100vw; display: flex; flex-direction: column;
+  background: #fff; border-right: 1px solid #94a3b8; box-shadow: 4px 0 16px rgba(0,0,0,.18); animation: rsp-in .15s ease-out;
+}
+@keyframes rsp-in { from { transform: translateX(-100%); } to { transform: none; } }
+.rsp-head { display: flex; align-items: center; justify-content: space-between; padding: 8px 12px; background: #1f5fbf; color: #fff; font-size: 13px; }
+.rsp-x { font-size: 12px; padding: 2px 8px; border: 1px solid rgba(255,255,255,.6); border-radius: 4px; }
+.rsp-x:hover { background: rgba(255,255,255,.15); }
+.rsp-body { flex: 1; overflow-y: auto; padding: 10px 12px; }
+.rsp-foot { display: flex; gap: 8px; padding: 8px 12px; border-top: 1px solid #e2e8f0; background: #f8fafc; }
+.rsp-body .erp-field { margin-bottom: 4px; }
+.rsp-sec { margin: 10px 0 4px; padding-bottom: 2px; border-bottom: 1px solid #e2e8f0; font-size: 11px; font-weight: 700; color: #475569; text-transform: uppercase; letter-spacing: .03em; }
+.rsp-sec:first-child { margin-top: 0; }
+
+/* Ledger Report heading + summary (NAV style) */
+.lr-heading { display: flex; align-items: flex-start; gap: 12px; margin: 4px 0 8px; }
+.lr-heading-main { flex: 1; text-align: center; }
+.lr-company { font-size: 18px; font-weight: 700; }
+.lr-title { font-size: 13px; font-weight: 600; }
+.lr-period { font-size: 11px; font-weight: 600; color: #334155; }
+.lr-heading-side { text-align: right; font-size: 12px; line-height: 1.35; white-space: nowrap; }
+table.lr-summary th { text-align: center; }
+table.lr-summary td.num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+table.lr-summary tr.lr-group-row td { background: #eef2f7; font-weight: 700; }
+table.lr-summary tr.lr-subtotal td { background: #f8fafc; font-weight: 600; border-top: 1px solid #94a3b8; }
+table.lr-summary tr.lr-grandtotal td { background: #fff7d6; font-weight: 700; border-top: 2px solid #475569; }
+
+/* hooks/useReportSidePanel - every report's options / filters in a side panel */
+[data-rsp="closed"] > [data-rsp-part] { display: none !important; }
+[data-rsp="open"] {
+  position: fixed !important; left: 0 !important; top: 0 !important; bottom: 0 !important; width: 440px !important; max-width: 100vw;
+  z-index: 46; margin: 0 !important; padding: 48px 12px 16px !important; overflow-y: auto !important; background: #fff !important;
+  display: block !important; border-right: 1px solid #94a3b8; box-shadow: 4px 0 16px rgba(0,0,0,.18); animation: rsp-in .15s ease-out;
+}
+[data-rsp="open"] > :not([data-rsp-part]) { display: none !important; }
+[data-rsp="open"] > [data-rsp-part] { margin-bottom: 8px; }
+[data-rsp="open"] .grid { grid-template-columns: minmax(0, 1fr) !important; }
+[data-rsp="open"] [data-sg-dimbtn] { display: none !important; }
+.rsp-gbar {
+  position: fixed; left: 0; top: 0; width: 440px; max-width: 100vw; height: 40px; z-index: 47; display: flex; align-items: center; gap: 8px;
+  padding: 0 10px 0 12px; background: #1f5fbf; color: #fff; font-size: 13px;
+}
+.rsp-gbar .rsp-hint { flex: 1; font-size: 11px; opacity: .85; }
+.rsp-gbar .rsp-x { font-size: 12px; padding: 2px 8px; border: 1px solid rgba(255,255,255,.6); border-radius: 4px; }
+@media print { .rsp-gtab, .rsp-gbar, .rsp-backdrop { display: none !important; } [data-rsp] > [data-rsp-part] { display: none !important; } }

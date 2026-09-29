@@ -23,6 +23,7 @@ import useGlobalEnterNav from '../hooks/useGlobalEnterNav';
 import useExcelTableFilters from '../hooks/useExcelTableFilters';
 import useSmartTables from '../hooks/useSmartTables';
 import useCompactFilters from '../hooks/useCompactFilters';
+import useReportSidePanel from '../hooks/useReportSidePanel';
 import ReportViews from './ReportViews';
 import useAppFeatures from '../hooks/useAppFeatures';
 import { useNotifications, BellButton, NotificationOverlay } from './NotificationCenter';
@@ -74,6 +75,8 @@ export default function Layout({ children }) {
     const smartGrids = useSmartTables(contentRef, location.pathname);
     // only dates up top on reports: product / party / area … boxes fold under "⚙ More filters"
     useCompactFilters(contentRef, location.pathname);
+    // once a report is shown its options / filters move to a side panel (⚙ tab on the left)
+    useReportSidePanel(contentRef, location.pathname);
     // field help: tooltip on every caption the glossary knows; ❓ Help panel of the screen (Shift+F1)
     useFieldTips(contentRef, [location.pathname]);
     const [helpOpen, setHelpOpen] = useState(false);

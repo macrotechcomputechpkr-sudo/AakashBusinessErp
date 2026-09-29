@@ -19,8 +19,8 @@ const KEEP_RE = /date|from|^to$|period|month|year|as\s*on|report|view|rows?\s*(b
 const txt = el => (el?.textContent || '').replace(/\s+/g, ' ').replace(/[*▾]/g, '').trim();
 const KEY = 'sg_dims_open';
 
-function runButton(root) {
-    const btns = Array.from(root.querySelectorAll('button')).filter(b => !b.disabled && !b.closest('table, .sg-mount, [data-no-view], form')
+export function runButton(root) {
+    const btns = Array.from(root.querySelectorAll('button')).filter(b => !b.disabled && !b.closest('table, .sg-mount, [data-no-view], form, .rsp-panel')
         && /(^|\s|🔍|▶)(show|run|generate|load|view report|refresh report)\b/i.test(txt(b)));
     return btns.find(b => b.classList.contains('primary')) || btns[0] || null;
 }
