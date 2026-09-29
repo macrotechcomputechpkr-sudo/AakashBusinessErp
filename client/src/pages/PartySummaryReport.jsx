@@ -87,7 +87,8 @@ export default function PartySummaryReport() {
                 {/* options + filters in the side panel; the report keeps the whole width */}
                 <ReportSidePanel open={optionsOpen || !data} onOpen={() => setOptionsOpen(true)} onClose={() => { if (data) setOptionsOpen(false); }}
                     onOk={() => run()} loading={loading} summary={`${config.date_from} → ${config.date_to}`}>
-                    <p className="rsp-sec">Period &amp; parties</p>
+                    <div className="rsp-box">
+                    <p className="rsp-box-title">Period &amp; Parties</p>
                     <div className="erp-field"><label className="erp-label">From</label><input type="date" className="erp-input" value={config.date_from} onChange={e => set('date_from', e.target.value)} /></div>
                     <div className="erp-field"><label className="erp-label">To</label><input type="date" className="erp-input" value={config.date_to} onChange={e => set('date_to', e.target.value)} /></div>
                     <div className="erp-field"><label className="erp-label">Parties</label>
@@ -95,7 +96,9 @@ export default function PartySummaryReport() {
                             <option value="all">Customers & Suppliers</option><option value="customers">Customers</option><option value="suppliers">Suppliers</option>
                         </select></div>
                     {picker('account_group_id', masters.groups, 'Account Group (overrides Parties)', g => g.group_name)}
-                    <p className="rsp-sec">🔽 Filters</p>
+                    </div>
+                    <div className="rsp-box">
+                    <p className="rsp-box-title">🔽 Filters</p>
                     {picker('party_ledger_id', masters.parties, 'Single Party', l => l.account_name)}
                     {picker('ledger_category_id', masters.categories, 'Ledger Category', c => c.category_name)}
                     {picker('area_id', masters.areas, 'Area', a => a.area_name)}
@@ -107,9 +110,14 @@ export default function PartySummaryReport() {
                         <select className="erp-select" value={config.balance_side} onChange={e => set('balance_side', e.target.value)}>
                             <option value="">Any</option><option value="dr">Debit (receivable) only</option><option value="cr">Credit (payable) only</option>
                         </select></div>
-                    <p className="rsp-sec">Options</p>
-                    <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={config.hide_zero} onChange={e => set('hide_zero', e.target.checked)} /> Hide parties with nothing to show</label>
-                    <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={config.pdc_separate} onChange={e => set('pdc_separate', e.target.checked)} /> Show PDC separately (matured + pending cheques)</label>
+                    </div>
+                    <div className="rsp-box">
+                    <p className="rsp-box-title">Options</p>
+                    <div data-rsp-opts>
+                    <label><input type="checkbox" checked={config.hide_zero} onChange={e => set('hide_zero', e.target.checked)} /> Hide parties with nothing to show</label>
+                    <label><input type="checkbox" checked={config.pdc_separate} onChange={e => set('pdc_separate', e.target.checked)} /> Show PDC separately (matured + pending cheques)</label>
+                    </div>
+                    </div>
                 </ReportSidePanel>
                 {data?.rows?.length > 0 && <div className="flex gap-2 mb-2 justify-end"><button className="erp-btn" onClick={exportCsv}>⬇ Excel</button></div>}
                 <p className="text-xs text-gray-500 mb-2">JV entries are shown under Debit Note (party debited) or Credit Note (party credited). Cash/Bank and PDC: party credited = Receipt, debited = Payment (tick "Show PDC separately" to split matured PDCs into their own columns and see pending cheques).{config.product_company_id ? ' Company view: only that company\u2019s entries; the ledger\u2019s master opening is not included.' : ''}</p>

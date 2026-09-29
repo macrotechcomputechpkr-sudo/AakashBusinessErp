@@ -752,3 +752,47 @@ table.lr-summary tr.lr-grandtotal td { background: #fff7d6; font-weight: 700; bo
 .rsp-gbar .rsp-hint { flex: 1; font-size: 11px; opacity: .85; }
 .rsp-gbar .rsp-x { font-size: 12px; padding: 2px 8px; border: 1px solid rgba(255,255,255,.6); border-radius: 4px; }
 @media print { .rsp-gtab, .rsp-gbar, .rsp-backdrop { display: none !important; } [data-rsp] > [data-rsp-part] { display: none !important; } }
+
+/* Tick-box options on every report (hooks/useReportSidePanel tags the row data-rsp-optg;
+   a page can mark its own with data-rsp-opts): one box, equal columns, each option a small box */
+[data-rsp-optg], [data-rsp-opts] {
+  display: grid !important; grid-template-columns: repeat(auto-fill, minmax(168px, 1fr)); gap: 6px; align-items: stretch;
+  margin: 6px 0; padding: 8px; border: 1px solid #d5dde8; border-radius: 8px; background: #f8fafc; width: 100%;
+}
+:is([data-rsp-optg], [data-rsp-opts]) > :not(label) {
+  grid-column: 1 / -1; margin: 0; font-size: 11px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: #475569;
+}
+:is([data-rsp-optg], [data-rsp-opts]) > label {
+  display: flex !important; align-items: center; gap: 7px; margin: 0 !important; min-height: 30px; padding: 4px 9px;
+  border: 1px solid #d5dde8; border-radius: 6px; background: #fff; font-size: 12.5px; line-height: 1.25; color: #1e293b;
+  cursor: pointer; user-select: none; transition: background .12s, border-color .12s;
+}
+:is([data-rsp-optg], [data-rsp-opts]) > label:hover { border-color: #7aa2e3; background: #f3f7fe; }
+:is([data-rsp-optg], [data-rsp-opts]) > label:has(input:checked) { border-color: #1f5fbf; background: #e8f0fc; color: #123e7c; font-weight: 600; }
+:is([data-rsp-optg], [data-rsp-opts]) > label:has(input:disabled) { opacity: .5; cursor: not-allowed; }
+:is([data-rsp-optg], [data-rsp-opts]) > label input { flex-shrink: 0; margin: 0; accent-color: #1f5fbf; width: 15px; height: 15px; }
+
+/* the open side panel: every block a titled box, the run button's block at the bottom */
+[data-rsp="open"] { display: flex !important; flex-direction: column; gap: 10px; background: #eef2f7 !important; }
+[data-rsp="open"] > [data-rsp-part] {
+  margin: 0 !important; padding: 10px 12px !important; border: 1px solid #d5dde8; border-radius: 8px; background: #fff; flex-wrap: wrap;
+  box-shadow: 0 1px 2px rgba(15, 23, 42, .05);
+}
+[data-rsp="open"] > [data-rsp-part][data-rsp-title]::before {
+  content: attr(data-rsp-title); display: block; flex: 0 0 100%; grid-column: 1 / -1; margin: 0 0 8px; padding-bottom: 5px;
+  border-bottom: 1px solid #e2e8f0; font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: #1f5fbf;
+}
+[data-rsp="open"] > [data-rsp-part] [data-rsp-optg] { background: #f8fafc; }
+[data-rsp="open"] > [data-rsp-actions] {
+  order: 99; position: sticky; bottom: -16px; display: flex !important; flex-wrap: wrap; align-items: center; gap: 8px;
+  border-color: #b9cdee; box-shadow: 0 -4px 12px rgba(15, 23, 42, .08);
+}
+[data-rsp="open"] [data-rsp-run] { min-width: 160px; justify-content: center; font-weight: 700; }
+
+/* components/ReportSidePanel sections */
+.rsp-body { background: #eef2f7; }
+.rsp-box { border: 1px solid #d5dde8; border-radius: 8px; background: #fff; padding: 10px 12px; margin-bottom: 10px; box-shadow: 0 1px 2px rgba(15, 23, 42, .05); }
+.rsp-box-title { margin: 0 0 8px; padding-bottom: 5px; border-bottom: 1px solid #e2e8f0; font-size: 11px; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; color: #1f5fbf; }
+.rsp-box [data-rsp-opts] { margin: 0; }
+/* a tick-box row that is itself a field's value (Include: …, Show: …) stays light: no outer box */
+.erp-field > :is([data-rsp-optg], [data-rsp-opts]) { margin: 0; padding: 0; border: none; background: transparent; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }

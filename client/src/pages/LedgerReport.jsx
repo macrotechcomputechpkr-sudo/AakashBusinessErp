@@ -350,7 +350,8 @@ export default function LedgerReport() {
                 {/* options + filters live in the side panel; the report keeps the whole width */}
                 <ReportSidePanel open={optionsOpen || !result} onOpen={() => setOptionsOpen(true)} onClose={() => { if (result) setOptionsOpen(false); }}
                     onOk={() => runReport()} loading={loading} summary={`${config.date_from} → ${config.date_to}`}>
-                    <p className="rsp-sec">Period &amp; view</p>
+                    <div className="rsp-box">
+                    <p className="rsp-box-title">Period &amp; View</p>
                     <div className="erp-field"><label className="erp-label">Date From</label><input type="date" className="erp-input" value={config.date_from} onChange={e => set('date_from', e.target.value)} /></div>
                     <div className="erp-field"><label className="erp-label">Date To</label><input type="date" className="erp-input" value={config.date_to} onChange={e => set('date_to', e.target.value)} /></div>
                     <div className="erp-field">
@@ -370,20 +371,24 @@ export default function LedgerReport() {
                             <option value="closing">Closing Balance</option>
                         </select>
                     </div>
+                    </div>
 
-                    <p className="rsp-sec">Options</p>
-                    <div className="grid grid-cols-2 gap-x-3 gap-y-0.5 text-[13px]">
+                    <div className="rsp-box">
+                    <p className="rsp-box-title">Options</p>
+                    <div data-rsp-opts>
                         {OPTIONS.map(([k, label, only]) => {
                             const off = !!only && only !== config.mode;
                             return (
-                                <label key={k} className={`flex items-center gap-1.5 ${off ? 'text-gray-400' : ''}`} title={off ? `Only in ${only} view` : ''}>
+                                <label key={k} title={off ? `Only in ${only} view` : ''}>
                                     <input type="checkbox" checked={!!config[k]} disabled={off} onChange={e => set(k, e.target.checked)} /> {label}
                                 </label>
                             );
                         })}
                     </div>
+                    </div>
 
-                    <p className="rsp-sec">🔽 Filters{activeFilters ? ` (${activeFilters} on)` : ''}</p>
+                    <div className="rsp-box">
+                    <p className="rsp-box-title">🔽 Filters{activeFilters ? ` (${activeFilters} on)` : ''}</p>
                     {picker('ledger_id', masters.ledgers, i => i.account_name, 'Ledger', 'lr_ledger')}
                     {picker('account_group_id', masters.groups, i => i.group_name, 'Group (incl. sub-groups)', 'lr_group')}
                     {categorySetting.enabled && picker('ledger_category_id', masters.categories, i => i.category_name, categorySetting.label || 'Ledger Category', 'lr_category')}
@@ -402,16 +407,20 @@ export default function LedgerReport() {
                         </select>
                     </div>
                     <div className="erp-field"><label className="erp-label">Min balance</label><input type="number" className="erp-input" value={config.min_balance || ''} onChange={e => set('min_balance', e.target.value)} placeholder="0" /></div>
-                    <p className="text-[11px] font-semibold text-gray-500 uppercase mt-2">Document Type <span className="normal-case font-normal text-gray-400">(none ticked = all)</span></p>
-                    <div className="flex flex-wrap gap-x-3">
+                    </div>
+
+                    <div className="rsp-box">
+                    <p className="rsp-box-title">Document Type <span className="normal-case font-normal text-gray-400">(none ticked = all)</span></p>
+                    <div data-rsp-opts>
                         {meta.models.map(m => (
-                            <label key={m.key} className="flex items-center gap-1 text-sm font-medium"><input type="checkbox" checked={config.models.includes(m.key)} onChange={() => toggleInList('models', m.key)} /> {m.label}</label>
+                            <label key={m.key}><input type="checkbox" checked={config.models.includes(m.key)} onChange={() => toggleInList('models', m.key)} /> {m.label}</label>
                         ))}
                     </div>
-                    <div className="flex flex-wrap gap-x-3">
+                    {meta.document_types.length > 0 && <div data-rsp-opts>
                         {meta.document_types.filter(d => config.models.length === 0 || config.models.includes(d.model)).map(d => (
-                            <label key={d.key} className="flex items-center gap-1 text-xs text-gray-600"><input type="checkbox" checked={config.document_types.includes(d.key)} onChange={() => toggleInList('document_types', d.key)} /> {d.label}</label>
+                            <label key={d.key}><input type="checkbox" checked={config.document_types.includes(d.key)} onChange={() => toggleInList('document_types', d.key)} /> {d.label}</label>
                         ))}
+                    </div>}
                     </div>
                 </ReportSidePanel>
 
