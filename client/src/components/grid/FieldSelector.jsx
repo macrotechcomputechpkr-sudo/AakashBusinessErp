@@ -94,6 +94,7 @@ export default function FieldSelector({ columns, columnsConfig, onToggle, onReor
                             <input type="checkbox" checked={cfg.visible} onChange={() => onToggle(cfg.key)} />
                             <span className="flex-1 truncate" title={col.label}>{col.label}</span>
                             {col.type === 'number' && <span className="text-[10px] text-gray-400">123</span>}
+                            {col.dim && <span className="text-[10px] text-gray-400" title="From the product / party master">master</span>}
                             {where(cfg.key).map(w => <span key={w} className="text-[10px] px-1 rounded bg-blue-100 text-blue-800">{w}</span>)}
                         </div>
                     ))}
