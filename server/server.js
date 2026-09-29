@@ -8,16 +8,22 @@
 // =============================================
 
 require('dotenv').config();
+const path = require('path');
+const fs = require('fs');
 const express = require('express');
 const cors = require('cors');
 const app = express();
+// behind the cloud's load balancer / proxy: the real client IP and https
+app.set('trust proxy', true);
 
-const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:3000').split(',');
-app.use(cors({
-    origin: (origin, callback) => {
-        if (!origin || allowedOrigins.includes(origin)) return callback(null, true);
-        callback(new Error('Not allowed by CORS'));
-    }
+// CORS: the configured origins, plus the ERP's own domain (the React build
+// served by this server - docs/DEPLOY_YETI_CLOUD.md) whatever it is.
+const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:3000').split(',').map(s => s.trim()).filter(Boolean);
+const sameHost = (origin, req) => { try { return new URL(origin).host === req.get('host'); } catch { return false; } };
+app.use(cors((req, callback) => {
+    const origin = req.header('Origin');
+    if (!origin || allowedOrigins.includes(origin) || sameHost(origin, req)) return callback(null, { origin: true });
+    callback(new Error('Not allowed by CORS'));
 }));
 // Purchase Bill Import sends a whole bill's text - parsed here first, with its own limit.
 app.use('/api/purchase-bill-import', express.json({ limit: '5mb' }));
@@ -227,6 +233,18 @@ app.get('/api/health', (req, res) => {
 app.use('/api', (req, res) => {
     res.status(404).json({ success: false, error: 'Not found' });
 });
+
+// The React app (client/build, made by `npm run build` at the repo root) is
+// served from here too, so one cloud environment / one domain runs the whole
+// ERP. Any path that is not /api gets index.html (the app's own routes).
+const clientBuild = path.join(__dirname, '..', 'client', 'build');
+if (fs.existsSync(path.join(clientBuild, 'index.html'))) {
+    app.use(express.static(clientBuild, { index: false, maxAge: '7d', setHeaders: (res, file) => { if (file.endsWith('.html')) res.setHeader('Cache-Control', 'no-cache'); } }));
+    app.get(/^\/(?!api(\/|$)).*/, (req, res) => {
+        res.setHeader('Cache-Control', 'no-cache');
+        res.sendFile(path.join(clientBuild, 'index.html'));
+    });
+}
 
 // FIX: global error handler - previously an uncaught throw inside any route
 // (e.g. the missing `jwt` reference) resulted in an unhandled exception

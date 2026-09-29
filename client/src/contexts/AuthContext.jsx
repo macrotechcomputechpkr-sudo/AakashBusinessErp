@@ -20,7 +20,9 @@
 import React, { createContext, useContext, useState, useEffect, useCallback } from 'react';
 
 const AuthContext = createContext(null);
-const API_BASE = process.env.REACT_APP_API_URL || 'http://localhost:5000';
+// Production build without REACT_APP_API_URL: the API is on the same domain
+// (server.js serves the build), so calls go to /api on the ERP's own address.
+const API_BASE = process.env.REACT_APP_API_URL ?? (process.env.NODE_ENV === 'production' ? '' : 'http://localhost:5000');
 
 export const AuthProvider = ({ children }) => {
     const [user, setUser] = useState(null);
