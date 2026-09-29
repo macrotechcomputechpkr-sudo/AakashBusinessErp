@@ -139,14 +139,26 @@ export default function PurchaseAdditionalExpense() {
 
     const resetForm = () => { setForm(emptyForm); setEditingId(null); setAllocationPreview([]); };
     const addExpenseLine = () => setForm(f => ({ ...f, expense_lines: [...f.expense_lines, emptyExpenseLine()] }));
-    // TDS withheld from a party: a "−" line on the TDS payable ledger, never in costing,
-    // TDS % of the other "+" lines (of the same party when one is chosen)
+    // TDS withheld from a party: a "−" line on the TDS payable ledger (+ its TDS sub-ledger), never in costing.
+    // One line per party paid, on that party's TDS-applicable terms (Billing Terms > TDS Applicable);
+    // when no term is marked, on all its "+" lines. Pressing again rebuilds the TDS lines.
+    const tdsBase = (lines, party, vendor) => {
+        const own = lines.filter(l => !l.is_tds && l.entry_sign !== 'deduct' && (l.party_ledger_id || vendor) === party);
+        const marked = own.filter(l => termById(l.billing_term_id)?.tds_applicable);
+        const anyMarked = lines.some(l => termById(l.billing_term_id)?.tds_applicable);
+        return r2((anyMarked ? marked : own).reduce((s2, l) => s2 + (Number(l.amount) || 0), 0));
+    };
     const addTdsLine = () => setForm(f => {
         const pct = Number(sysCtl.default_tds_percent) || 1.5;
-        const base = f.expense_lines.reduce((s, l) => s + (l.entry_sign !== 'deduct' ? (Number(l.amount) || 0) : 0), 0);
-        const party = (f.expense_lines.find(l => l.entry_sign !== 'deduct' && l.party_ledger_id) || {}).party_ledger_id || '';
-        return { ...f, expense_lines: [...f.expense_lines, { ...emptyExpenseLine(), expense_ledger_id: sysCtl.tds_ledger_id || '', description: 'TDS', entry_sign: 'deduct', is_tds: true,
-            allocation_basis: 'none', bill_type: 'no_bill', party_ledger_id: party, rate_percent: pct, amount: Math.round(base * pct) / 100 }] };
+        const kept = f.expense_lines.filter(l => !l.is_tds);
+        const parties = [...new Set(kept.filter(l => l.entry_sign !== 'deduct' && Number(l.amount) > 0).map(l => l.party_ledger_id || f.vendor_ledger_id).filter(Boolean))];
+        const tds = parties.map(party => {
+            const base = tdsBase(kept, party, f.vendor_ledger_id);
+            return base > 0 ? { ...emptyExpenseLine(), expense_ledger_id: sysCtl.tds_ledger_id || '', expense_sub_ledger_id: sysCtl.tds_sub_ledger_id || '', description: 'TDS', entry_sign: 'deduct', is_tds: true,
+                allocation_basis: 'none', bill_type: 'no_bill', party_ledger_id: party === f.vendor_ledger_id ? '' : party, tds_base: base, rate_percent: pct, amount: r2(base * pct / 100) } : null;
+        }).filter(Boolean);
+        if (!tds.length) { showAlert('No amount for TDS - enter the terms first (TDS goes on terms marked "TDS Applicable")', 'danger'); return f; }
+        return { ...f, expense_lines: [...kept.filter(l => l.billing_term_id || l.expense_ledger_id || Number(l.amount)), ...tds] };
     });
     const removeExpenseLine = (idx) => setForm(f => ({ ...f, expense_lines: f.expense_lines.length > 1 ? f.expense_lines.filter((_, i) => i !== idx) : f.expense_lines }));
     const updateExpenseLine = (idx, patch) => setForm(f => ({ ...f, expense_lines: f.expense_lines.map((l, i) => {
@@ -165,7 +177,9 @@ export default function PurchaseAdditionalExpense() {
     // than always hand-typed.
     const autoCalcFromRate = (idx, ratePercent) => {
         setForm(f => {
-            const baseAmount = f.expense_lines.reduce((s, l, i) => i === idx ? s : s + (l.entry_sign !== 'deduct' ? (Number(l.amount) || 0) : 0), 0);
+            const me = f.expense_lines[idx];
+            const baseAmount = me?.is_tds ? tdsBase(f.expense_lines, me.party_ledger_id || f.vendor_ledger_id, f.vendor_ledger_id)
+                : f.expense_lines.reduce((s, l, i) => i === idx ? s : s + (l.entry_sign !== 'deduct' ? (Number(l.amount) || 0) : 0), 0);
             const computed = ratePercent === '' ? '' : Math.round(baseAmount * (Number(ratePercent) / 100) * 100) / 100;
             return { ...f, expense_lines: f.expense_lines.map((l, i) => i === idx ? { ...l, rate_percent: ratePercent, amount: computed } : l) };
         });
@@ -263,7 +277,7 @@ export default function PurchaseAdditionalExpense() {
         }
         if (!form.doc_date) return showAlert('Date is required', 'danger');
         if (!saveAsDraft) {
-            if (!form.source_order_id && !form.source_grn_id && !form.source_bill_id) return showAlert('Link this to at least one Order, GRN, or Bill', 'danger');
+            if (!form.source_bill_id && !form.source_order_id && !form.source_grn_id) return showAlert('Choose the Ref. Bill No. (the purchase bill the cost belongs to)', 'danger');
         }
         const validLines = form.expense_lines.filter(l => (l.expense_ledger_id || l.billing_term_id) && Number(l.amount) > 0);
         if (!saveAsDraft && validLines.length === 0) return showAlert('At least one complete expense line (Expense Type + Amount) is required', 'danger');
@@ -383,26 +397,27 @@ export default function PurchaseAdditionalExpense() {
                             <input disabled={efc.isReadonly('doc_date')} type="date" className="erp-input" value={form.doc_date} onChange={e => setForm({ ...form, doc_date: e.target.value })} required />
                         </div>
                         <div className="erp-field">
-                            <label className="erp-label">Link to Order</label>
-                            <select className="erp-select" value={form.source_order_id} onChange={e => linkDoc('source_order_id', openOrders, e.target.value)}>
-                                <option value="">— None —</option>
-                                {openOrders.map(o => <option key={o.id} value={o.id}>{o.doc_no}{o.vendor_name_snapshot ? ` · ${o.vendor_name_snapshot}` : ''}</option>)}
-                            </select>
-                        </div>
-                        <div className="erp-field">
-                            <label className="erp-label">Link to GRN</label>
-                            <select className="erp-select" value={form.source_grn_id} onChange={e => linkDoc('source_grn_id', openGrns, e.target.value)}>
-                                <option value="">— None —</option>
-                                {openGrns.map(g => <option key={g.id} value={g.id}>{g.doc_no}{g.vendor_name_snapshot ? ` · ${g.vendor_name_snapshot}` : ''}</option>)}
-                            </select>
-                        </div>
-                        <div className="erp-field">
-                            <label className="erp-label">Link to Bill</label>
+                            <label className="erp-label">Ref. Bill No. <span className="req">*</span></label>
                             <select className="erp-select" value={form.source_bill_id} onChange={e => linkDoc('source_bill_id', openBills, e.target.value)}>
-                                <option value="">— None —</option>
+                                <option value="">— Choose the purchase bill —</option>
                                 {openBills.map(b => <option key={b.id} value={b.id}>{b.doc_no}{b.vendor_name_snapshot ? ` · ${b.vendor_name_snapshot}` : ''}</option>)}
                             </select>
                         </div>
+                        {(() => {
+                            const b = openBills.find(x => x.id === form.source_bill_id);
+                            return (
+                                <div className="erp-field">
+                                    <label className="erp-label">Ref. Bill Date / Amount</label>
+                                    <div className="erp-input bg-gray-100 truncate">{b ? `${String(b.doc_date || '').slice(0, 10)} · ${Number(b.total_amount || 0).toFixed(2)}` : '—'}</div>
+                                </div>
+                            );
+                        })()}
+                        {(form.source_order_id || form.source_grn_id) && !form.source_bill_id && (
+                            <div className="erp-field">
+                                <label className="erp-label">Linked (older entry)</label>
+                                <div className="erp-input bg-gray-100 truncate" title="Entries made before Ref Bill only">{[openOrders.find(o => o.id === form.source_order_id)?.doc_no, openGrns.find(g => g.id === form.source_grn_id)?.doc_no].filter(Boolean).join(' · ') || 'Order / GRN'}</div>
+                            </div>
+                        )}
                         <div className="erp-field">
                             <label className="erp-label">Account Posting <span className="hint">(No: costing only)</span></label>
                             <select className="erp-select" value={form.account_posting === false ? 'no' : 'yes'} onChange={e => setForm({ ...form, account_posting: e.target.value === 'yes' })}>
@@ -710,7 +725,7 @@ export default function PurchaseAdditionalExpense() {
                         <div className="flex justify-between items-start mb-1">
                             <span className="flex gap-3">
                                 <button type="button" onClick={addExpenseLine} className="text-xs text-blue-600">➕ Add Line</button>
-                                <button type="button" onClick={addTdsLine} className="text-xs text-blue-600" title="TDS withheld from the supplier: Cr TDS payable, less paid to the supplier">➕ Add TDS Line</button>
+                                <button type="button" onClick={addTdsLine} className="text-xs text-blue-600" title="One TDS line per party paid, on its TDS-applicable terms: Cr TDS payable (sub-ledger), less paid to that party">➕ Add / Refresh TDS</button>
                             </span>
                             <span className="text-sm font-semibold">{vatTotal ? <span className="font-normal text-gray-600 mr-3">VAT {vatTotal.toFixed(2)}</span> : null}Net Payable: {netPayable.toFixed(2)}{fx.foreign ? ` ${fx.code} = ${(netPayable * fx.rate).toFixed(2)} ${fx.base}` : ''}</span>
                         </div>
@@ -748,6 +763,27 @@ export default function PurchaseAdditionalExpense() {
                                         ))}
                                     </tbody>
                                 </table>
+                                {(() => {
+                                    // product-wise (Prd.) and bill-wise (Gen.) additional / non-additional, as the costing splits them
+                                    const cost = l => !l.is_tds && l.allocation_basis !== 'none';
+                                    const parts = { prdAdd: 0, prdNon: 0, genAdd: 0, genNon: 0 };
+                                    form.expense_lines.forEach(l => {
+                                        const amt = (l.entry_sign === 'deduct' || l.is_tds ? -1 : 1) * (Number(l.amount) || 0);
+                                        const vat = l.bill_type === 'taxable' ? Number(l.vat_amount) || 0 : 0;
+                                        const k = l.target_detail_id ? 'prd' : 'gen';
+                                        parts[k + (cost(l) ? 'Add' : 'Non')] += amt;
+                                        parts[k + (l.vat_in_cost && cost(l) ? 'Add' : 'Non')] += vat;
+                                    });
+                                    const netAdd = parts.prdAdd + parts.genAdd, netNon = parts.prdNon + parts.genNon;
+                                    return (
+                                        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-8 gap-2 text-sm mt-2">
+                                            {[['Prd. Additional', parts.prdAdd], ['Prd. Non-Additional', parts.prdNon], ['Gen. Additional', parts.genAdd], ['Gen. Non-Additional', parts.genNon],
+                                              ['Net Additional (to cost)', netAdd], ['Net Non-Additional', netNon], ['Total (additional bill)', netAdd + netNon], ['Net Total (goods + all)', Number(refInfo?.totals?.net_basic || 0) + netAdd + netNon]].map(([l, v]) => (
+                                                <div key={l} className="border rounded px-2 py-1"><span className="text-xs text-gray-500 block">{l}</span><b>{Number(v || 0).toFixed(2)}</b></div>
+                                            ))}
+                                        </div>
+                                    );
+                                })()}
                                 {refInfo?.totals && (
                                     <div className="grid grid-cols-2 md:grid-cols-5 gap-2 text-sm mt-2">
                                         {[['Net Basic', refInfo.totals.net_basic], ['Additional (to cost)', refInfo.totals.additional], ['Non-Additional (VAT / not in cost)', refInfo.totals.non_additional],

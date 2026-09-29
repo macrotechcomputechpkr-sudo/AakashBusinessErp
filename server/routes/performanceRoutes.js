@@ -97,6 +97,8 @@ router.get('/agent-commission/register', ...reports, send((c, t, req) => AT.comm
 const DB = require('../utils/dayBook');
 router.get('/day-book', ...reports, send((c, t, req) => DB.dayBook(c, t, req.query)));
 router.get('/day-book/types', ...reports, send(async () => DB.TYPE_LIST));
+// one-page daily register (sales / purchase cash-credit, received, expenses, returns, cash summary, profit)
+router.get('/daily-register', ...reports, send((c, t, req) => require('../utils/dailyRegister').dailyRegister(c, t, req.query)));
 
 // ---------------- master / control reports (day book, cash book, masters, exceptions) ----------------
 router.get('/control-reports/:view', ...reports, send((c, t, req) => controlReport(c, t, req.params.view, req.query)));

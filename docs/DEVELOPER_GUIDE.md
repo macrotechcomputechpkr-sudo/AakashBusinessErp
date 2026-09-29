@@ -316,6 +316,7 @@ A term has:
 - `entry_input_mode`: which of %, rate x qty, and amount the user may type.
 - `manual_override`: whether the value may be changed in the entry.
 - `show_in_term_summary`.
+- `tds_applicable` (migration 151): on Purchase Additional the client's `tdsBase` takes only these terms' lines as the TDS base when any is present.
 
 ### 6.2 Evaluation
 
@@ -392,6 +393,8 @@ Per document type (and optionally per user):
 - **VAT / IRD**: `vatReportRoutes` -> `vatLedger`; `ird.js` for the materialized register and CBMS sync.
 - **Dimensions / budgets**: `dimensionReports`, `budgetReports`.
 - **Sales / purchase analysis**: `tradeAnalysis`, `tradeLines`, `salesman`, `agentTargets`.
+- **Daily Register** (`utils/dailyRegister.js`, `GET /api/daily-register`, `DailyRegister.jsx`): built on `dayBook` rows; A-J totals, cash check, fiscal-year-to-date sales / purchase and `financialEngine.profitAndLoss`. With a user / agent filter the ledger-based figures are null.
+- **Consignment costing** (`utils/consignmentCost.js`): `allocateAdditional(raw, addl)` spreads each Purchase Additional line to bill lines - product-wise target wholly to its line, else by basis (value net of VAT / qty / equal, last line takes rounding); non-costing lines (TDS, basis none) and claimable VAT go to `non_additional`. Purchase Additional links only to a Ref. Bill (`source_bill_id` required on post).
 - **Universal register**: `registerRoutes` with `documentCatalog.js`, the list of every document type and its table.
 
 ## 10. Industry modules

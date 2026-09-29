@@ -11,56 +11,56 @@
 {
 "file": "/help/User_Manual_Trading.pdf",
 "title": "User Manual - Trading",
-"subtitle": "109 screens used by a trading company",
+"subtitle": "110 screens used by a trading company",
 "audience": "all",
 "group": "Manuals by business nature"
 },
 {
 "file": "/help/User_Manual_Distribution.pdf",
 "title": "User Manual - Distribution",
-"subtitle": "109 screens used by a distribution company",
+"subtitle": "110 screens used by a distribution company",
 "audience": "all",
 "group": "Manuals by business nature"
 },
 {
 "file": "/help/User_Manual_Retail.pdf",
 "title": "User Manual - Retail",
-"subtitle": "109 screens used by a retail company",
+"subtitle": "110 screens used by a retail company",
 "audience": "all",
 "group": "Manuals by business nature"
 },
 {
 "file": "/help/User_Manual_Manufacturing.pdf",
 "title": "User Manual - Manufacturing",
-"subtitle": "112 screens used by a manufacturing company",
+"subtitle": "113 screens used by a manufacturing company",
 "audience": "all",
 "group": "Manuals by business nature"
 },
 {
 "file": "/help/User_Manual_Service.pdf",
 "title": "User Manual - Service",
-"subtitle": "109 screens used by a service company",
+"subtitle": "110 screens used by a service company",
 "audience": "all",
 "group": "Manuals by business nature"
 },
 {
 "file": "/help/User_Manual_Automobile.pdf",
 "title": "User Manual - Automobile Dealer & Workshop",
-"subtitle": "116 screens used by a automobile dealer & workshop company",
+"subtitle": "117 screens used by a automobile dealer & workshop company",
 "audience": "all",
 "group": "Manuals by business nature"
 },
 {
 "file": "/help/User_Manual_Construction.pdf",
 "title": "User Manual - Construction / Contractor",
-"subtitle": "113 screens used by a construction / contractor company",
+"subtitle": "114 screens used by a construction / contractor company",
 "audience": "all",
 "group": "Manuals by business nature"
 },
 {
 "file": "/help/User_Manual_Poultry.pdf",
 "title": "User Manual - Poultry & Hatchery",
-"subtitle": "117 screens used by a poultry & hatchery company",
+"subtitle": "118 screens used by a poultry & hatchery company",
 "audience": "all",
 "group": "Manuals by business nature"
 },
@@ -1623,6 +1623,22 @@
 "title": "Consignment Cost / Sales",
 "module": "Sales/Purchase",
 "pdf": "/help/menus/consignment-cost.pdf",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+]
+},
+{
+"path": "/daily-register",
+"title": "Daily Register (one-page day sheet)",
+"module": "Accounts Report",
+"pdf": "/help/menus/daily-register.pdf",
 "nature": [
 "trading",
 "distribution",

@@ -24,7 +24,7 @@ const si = (to: string, label: string, feature?: Feature): MenuItem => ({ ...i(t
 export const REPORT_GROUPS: ReportGroup[] = [
     { title: 'Accounts & Finance', items: [
         ['/ledger-report', 'Ledger Report (detail)'], ['/ledger-report?mode=summary', 'Ledger Summary (PDC separate option)'], ['/ledger-report?mode=monthly', 'Ledger Monthly Summary'],
-        ['/party-summary', 'Party Summary (PDC separate option)'], ['/day-book', 'Day Book (all-in-one: user / agent / voucher type)'], ['/control-reports?view=day_book', 'Day Book (ledger lines)'], ['/control-reports?view=cash_bank_book', 'Cash & Bank Book'],
+        ['/party-summary', 'Party Summary (PDC separate option)'], ['/day-book', 'Day Book (all-in-one: user / agent / voucher type)'], ['/daily-register', 'Daily Register (one-page day sheet)'], ['/control-reports?view=day_book', 'Day Book (ledger lines)'], ['/control-reports?view=cash_bank_book', 'Cash & Bank Book'],
         ['/financial-reports?tab=tb', 'Trial Balance'], ['/financial-reports?tab=pl', 'Profit & Loss'], ['/financial-reports?tab=bs', 'Balance Sheet'],
         ['/financial-reports?tab=notes', 'Schedules / Notes'], ['/financial-reports?tab=ratios', 'Ratio Analysis'], ['/financial-reports?tab=cash', 'Cash Flow'], ['/financial-reports?tab=funds', 'Funds Flow'],
         ['/financial-reports?tab=map', 'Group Mapping (P&L / BS)'], ['/funds-position', 'Net Position of Funds'], ['/bank-reconciliation?tab=brs', 'Bank Reconciliation Statement'],
@@ -55,7 +55,7 @@ export const REPORT_GROUPS: ReportGroup[] = [
     ] },
     { title: 'Purchase', items: [
         ['/purchase-register-report', 'Purchase Register (all)'], ['/grn-outstanding-report', 'GRN Outstanding'], ['/control-reports?view=supplier_master', 'Supplier Master List'],
-        ['/lc-register', 'LC Register'], ['/consignment-cost', 'Consignment Cost / Sales']
+        ['/lc-register', 'LC Register'], ['/consignment-cost', 'Consignment Cost / Sales'], ['/consignment-cost?view=costing', 'Consignment Costing (date-wise, additional terms)']
     ] },
     { title: 'Inventory & Production', items: [
         ['/stock-report', 'Stock Report'], ['/stock-movement', 'Stock Movement'], ['/stock-in-out', 'Stock In / Out (Qty)'], ['/stock-valuation', 'Stock Valuation'],

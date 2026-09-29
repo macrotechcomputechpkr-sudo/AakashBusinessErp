@@ -144,6 +144,7 @@ router.post('/billing-terms', requireAuth, loadUserPermissions, requirePermissio
                 suppress_if_zero: !!b.suppress_if_zero,
                 include_in_profitability: !!b.include_in_profitability,
                 include_in_costing: b.include_in_costing !== undefined ? !!b.include_in_costing : true,
+                tds_applicable: !!b.tds_applicable,
                 product_wise: !!b.product_wise,
                 show_product_term_summary: !!b.show_product_term_summary,
                 allow_summary: !!b.allow_summary,

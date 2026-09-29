@@ -1892,10 +1892,12 @@
 ],
 "purpose": "Freight, customs, clearing, insurance, labour ... on purchased goods - taxable or non-taxable bills of other parties, or no bill - allocated to the goods (landed cost).",
 "steps": [
-"Link to the Order, GRN and / or Bill the cost belongs to - the vendor of that document comes in as the vendor (change it when another party is paid).",
+"Ref. Bill No. (required): the posted purchase bill the cost belongs to - only the bill is linked (not the order / GRN); its vendor comes in as the vendor (change it when another party is paid). Older entries linked to an Order / GRN are shown as \"Linked (older entry)\".",
 "Product-wise Terms tab: the products of the linked document; Terms… on a product opens its terms (Billing Terms marked Purchase Additional + Product Wise) - rate % of that product's value or amount; the whole amount goes to that product's cost.",
 "Bill-wise Terms tab: a fixed form with one row per bill-level term - fill the amounts that apply; each is divided over the products by the term's basis (value / qty, changeable per row). Empty rows are left out.",
-"A term's ledger is fixed by the term - only its sub-ledger can be changed. \"Paid to\" (the counter ledger) and its sub-ledger are free; empty = the entry's vendor. Bill type (taxable / non-taxable / no bill), bill no and VAT per row; Add TDS Line for withholding.",
+"A term's ledger is fixed by the term - only its sub-ledger can be changed. \"Paid to\" (the counter ledger) and its sub-ledger are free; empty = the entry's vendor. Bill type (taxable / non-taxable / no bill), party bill no and VAT per row - so one entry can carry several taxable bills of different parties (each is its own bill in the VAT register).",
+"Add / Refresh TDS: one TDS line per party paid - base = that party's \"+\" lines (only the lines whose term is marked TDS Applicable, when any is), rate from System Control (default 1.5 %). TDS is a non-additional term (not in the stock cost).",
+"Totals: Prd. Additional / Non-Additional (product-wise terms), Gen. Additional / Non-Additional (bill-wise terms), Net Additional (goes to the stock cost), Net Non-Additional (VAT claimable, TDS, terms not in costing), Total and Net Total.",
 "Check the per-product preview (additional, cost / unit), then Save and post."
 ],
 "accounts": "Dr each term / expense ledger with its sub-ledger (Cr for \"-\" terms) / Dr VAT (claimable) / Cr the party of each line with its sub-ledger. TDS lines: Cr TDS payable.",
@@ -1906,18 +1908,6 @@
 [
 "Date",
 "Date of the document. Accounts, stock, VAT month and ageing all use this date. Type it (AD or BS - switch with the AD/BS button) or pick it. A date in a closed fiscal year cannot be posted."
-],
-[
-"Link to Order",
-"Order whose lines this additional expense is allocated to (landed cost)."
-],
-[
-"Link to GRN",
-"GRN whose lines this additional expense is allocated to (landed cost goes into the stock value)."
-],
-[
-"Link to Bill",
-"Purchase bill whose lines this additional expense is allocated to (landed cost)."
 ],
 [
 "Account Posting",
@@ -3387,7 +3377,7 @@
 "steps": [
 "New Billing Term: name, type (VAT / excise / discount / other), formula or rate, sign, basis (value / quantity), ledgers and sub-ledgers.",
 "Term Used For: Transaction term (Sales / Purchase / Production Entry - on the bill itself) or Additional term (Purchase / Sales Additional - a later bill such as freight, customs, insurance).",
-"Effect: Include In Costing (the amount goes into the cost of the goods / landed cost; off = an expense only) and Include In Profitability (counted in the profitability reports).",
+"Effect: Include In Costing (the amount goes into the cost of the goods / landed cost; off = an expense only), Include In Profitability (counted in the profitability reports) and TDS Applicable (the TDS of a Purchase Additional entry is worked out on these terms only).",
 "Product Wise: entered per product (popup per product); otherwise bill-wise, divided over the products by the basis."
 ],
 "accounts": "None.",
@@ -5504,9 +5494,12 @@
 "construction",
 "poultry"
 ],
-"purpose": "Cost and sales of a consignment (import lot) with its additional expenses.",
+"purpose": "Cost and sales of purchase bills with their additional bills; the first view is Consignment Costing (date-wise).",
 "steps": [
-"Choose the consignment."
+"Choose the dates (and supplier / product).",
+"Consignment Costing view: per bill a header row, its products and a \"Bill No Total\" row - Qty, Rate, Basic, Add / Less (bill terms), Net Basic, one column per additional term (costing), one per non-additional term (VAT claimable, TDS, not in costing), Total Additional, Total Non-Additional, Net Amount and Cost Rate (landed / qty).",
+"Product-wise additional terms go wholly to their product; bill-wise terms are divided by the term's basis (value net of VAT / qty / equal).",
+"Other views: bill-wise, product-wise, ledger summary and mismatches. Export CSV."
 ],
 "views": {},
 "tips": [],
@@ -5525,6 +5518,47 @@
 ],
 "slug": "consignment-cost",
 "pdf": "/help/menus/consignment-cost.pdf"
+},
+"/daily-register": {
+"path": "/daily-register",
+"title": "Daily Register (one-page day sheet)",
+"module": "Accounts Report",
+"kind": "report",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "The counter's paper day sheet filled from posted vouchers: Sales (cash A / credit B), Purchase (C / D), Received / Bank withdraw (E / F), Expenses / Bank deposit (G / H), Return / Exchange (I / J), cash summary, sales / purchase to date, stock and profit.",
+"steps": [
+"Choose the date (or a date range), optionally a user or salesman / agent.",
+"Cash summary: opening cash + A + E - C - G - refunds = expected closing; the books' closing and the difference (other cash entries such as JV).",
+"Sales / purchase: opening from the fiscal year start to the day before, today, less return, to date; opening / closing stock, gross and net profit of the day.",
+"Cash detail: count the notes (1000 ... 5, coin) - the difference with the books is shown; write the day's note. Count and note are kept on this computer per date.",
+"With a user / agent filter only their vouchers are listed; opening / closing cash, stock and profit are left out. Print for signature."
+],
+"views": {},
+"tips": [],
+"accounts": "None - read only.",
+"stock": "None - read only.",
+"vat": "None.",
+"fields": [
+[
+"Date",
+"Date of the document. Accounts, stock, VAT month and ageing all use this date. Type it (AD or BS - switch with the AD/BS button) or pick it. A date in a closed fiscal year cannot be posted."
+],
+[
+"To",
+"Last date of the report period."
+]
+],
+"slug": "daily-register",
+"pdf": "/help/menus/daily-register.pdf"
 },
 "/stock-report": {
 "path": "/stock-report",

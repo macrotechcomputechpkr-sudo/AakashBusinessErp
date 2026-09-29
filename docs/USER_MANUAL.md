@@ -405,13 +405,14 @@ The flow is Quotation → Order → GRN → Bill → Return, with the same pull 
 
 **Additional Expenses (Purchase Additional Bill)**
 
-- Freight, customs, insurance or labour linked to an Order, GRN or Bill. The vendor of the linked document comes in as the vendor; change it when someone else is paid.
-- Choose the reference bill(s) and see their product lines and totals.
+- Freight, customs, insurance or labour on goods already billed. Choose the **Ref. Bill No.** (required) - only the purchase bill is linked, not the order or GRN. The bill's vendor comes in as the vendor; change it when someone else is paid. Older entries linked to an Order / GRN show it as "Linked (older entry)".
+- The Ref. Bill date / amount and its product lines are shown.
 - **Product-wise Terms** tab (first): the products of the linked document; **Terms…** opens that product's terms (Billing Terms with Purchase Additional + Product Wise). Rate % is of that product's value. The whole amount goes to that product's cost.
 - **Bill-wise Terms** tab: a fixed form with one row per bill-level Purchase Additional term. Fill the amounts that apply. Each row is divided over the bill's products by the term's basis (value or qty; changeable per row). Empty rows are left out.
 - A term's **ledger is fixed** by the term; only its **sub-ledger** can be changed. **Paid to** (the other ledger) and its sub-ledger are chosen freely - empty means the entry's vendor.
-- Each row also has its bill type (taxable, non-taxable, no bill), bill no, VAT, add or deduct. A term not "Include In Costing" stays out of the cost.
-- **Add TDS Line** adds a TDS line: TDS Payable ledger (System Control), default TDS % of the other lines, never added to cost. It appears in the TDS Report.
+- Each row also has its bill type (taxable, non-taxable, no bill), party, party bill no, VAT, add or deduct. Because these are per row, **one entry can hold several taxable bills** (e.g. freight bill of transporter A with VAT, customs agent B's bill with VAT); each (party, bill no) is its own bill in the Purchase VAT register. A term not "Include In Costing" stays out of the cost; claimable VAT is never cost.
+- **Add / Refresh TDS** makes one TDS line per party paid: TDS Payable ledger and sub-ledger from System Control, TDS % from System Control (default 1.5). The base is that party's "+" lines; when any of them uses a term marked **TDS Applicable** (Billing Terms), only those lines count. TDS is non-additional - never added to cost. It appears in the TDS Report.
+- Totals as on the paper form: Prd. Additional / Prd. Non-Additional (product-wise terms), Gen. Additional / Gen. Non-Additional (bill-wise terms), Net Additional (to stock cost), Net Non-Additional (claimable VAT, TDS, terms not in costing), Total and Net Total.
 - Account Posting shows the resulting entry before saving.
 
 > **Accounts:** Dr term / expense ledger with its sub-ledger (+ VAT when VAT is part of cost), Dr VAT (claimable), Cr supplier/party with its sub-ledger; a deduct line credits the ledger and reduces the party. **Stock value:** the allocated amount is added to the cost of the linked purchase lines (landed cost).
@@ -650,6 +651,8 @@ For each transaction (and user, if needed):
 
 **Mobile Approvals**. Settings per salesman (Route Plan > Mobile): allow receipts / returns, the mobile cash ledger, off-route customers.
 - **Day Book (all-in-one)**: one day or a period, with filters for user, salesman / agent, voucher type (sales, returns, purchase, receipts, payments, PDC, journal, notes ...), party and drafts. It shows sales / purchase split into cash and credit, returns, receipts and payments split into cash and bank, PDC, the cash & bank book (opening and closing for the whole business), a party-wise credit summary with closing balances, totals per agent and per user, and every voucher. Without user / agent it is the overall day book.
+- **Daily Register (one-page day sheet)**: the counter's paper day sheet, filled from posted vouchers - Sales cash (A) / credit (B), Purchase cash (C) / credit (D), Received / bank withdraw cash (E) / bank (F), Expenses / bank deposit cash (G) / bank (H), customer (I) / supplier (J) returns; opening cash + A + E - C - G - refunds = expected closing against the books' closing; sales / purchase from the fiscal year start to date; opening / closing stock, gross and net profit; a note count (1000 ... coin) with the difference against books, and the day's note. User / agent filter; Print.
+- **Consignment Costing (date-wise)** (Consignment Cost first view): per bill, per product - Qty, Rate, Basic, Add / Less, Net Basic, one column per additional term and per non-additional term, Total Additional, Total Non-Additional, Net Amount and Cost Rate, with a Bill Total row and a Grand Total.
 - **Ledger + Sub-ledger Balance**: every sub-ledger's opening / debit / credit / closing with the ledger balance after them, and a Module filter (sales, purchase, cash / bank, journal, inventory, other).
 - **Stock Valuation**: batch / serial items follow System Control's batch / serial costing; batch-wise costing values each batch at its own cost, including the landed cost of Purchase Additional. Profitability costs a sale of a batch / serial the same way.
 - **Loading Sheet**: items to load with qty by UOM mode (fixed dual "5 Crt 2 Pcs · Total 62 Pcs", flexible "5 Crt = 10 Pcs"), and a Total row with the qty as entered per unit and the total in base unit. Print it together with the **Bill Summary** (and Bill x Item) on one sheet.

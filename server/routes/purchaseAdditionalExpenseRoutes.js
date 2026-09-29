@@ -1,7 +1,7 @@
 // =============================================
 // routes/purchaseAdditionalExpenseRoutes.js
-// Extra costs (freight, customs duty, insurance, etc.) linked to an
-// Order, GRN, and/or Bill, automatically allocated across that
+// Extra costs (freight, customs duty, insurance, etc.) linked to the
+// purchase bill (Ref. Bill No.; older entries may carry an Order / GRN), automatically allocated across that
 // document's product lines for landed cost - by Value share, Qty
 // share, or an Equal split. Once posted, the allocation is written into the
 // cost of those receipts' stock movements (purchaseStockCost.refreshLandedCost),
@@ -304,6 +304,8 @@ router.get('/purchase-additional-expenses/:id', requireAuth, loadUserPermissions
 router.post('/purchase-additional-expenses', requireAuth, loadUserPermissions, requirePermission('ledger', 'create'), async (req, res) => {
     try {
         const isDraft = req.body.status === 'draft' && req.body.save_as_draft === true;
+        // a new additional bill refers to the purchase bill (Ref. Bill No.) - Order / GRN links stay only on older entries
+        if (!isDraft && !req.body.source_bill_id) return res.status(400).json({ success: false, error: 'Choose the Ref. Bill No. - the purchase bill this additional cost belongs to' });
         const validationError = validateBody(req.body, isDraft);
         if (validationError) return res.status(400).json({ success: false, error: validationError });
         const fieldError = await checkCompulsoryFields(await getTenantClient(req.auth.tenantId), req.auth.tenantId, req.auth.userId, 'purchase_additional', req.body, isDraft);
