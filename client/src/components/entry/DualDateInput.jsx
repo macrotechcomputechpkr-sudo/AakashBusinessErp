@@ -40,6 +40,49 @@ function initialMode(defaultMode) {
     return defaultMode === 'nepali' ? 'bs' : 'ad';
 }
 
+/** the BS month calendar: a BS date box (type 2083-06-13) and the month grid; value / onPick in AD */
+export function BsCalendar({ value, onPick, onClose }) {
+    const cur = adToBs(value || new Date().toISOString().slice(0, 10)) || { year: 2083, month: 1, day: 1 };
+    const [view, setView] = useState({ year: cur.year, month: cur.month });
+    const [text, setText] = useState(bsText(value));
+    const [bad, setBad] = useState(false);
+    const step = n => setView(v => { let m = v.month + n, y = v.year; if (m < 1) { m = 12; y -= 1; } if (m > 12) { m = 1; y += 1; } return { year: y, month: m }; });
+    const typed = () => { const ad = parseBs(text); setBad(!ad); if (ad) onPick(ad); };
+    const first = bsToAd(view.year, view.month, 1);
+    const lead = first ? new Date(`${first}T00:00:00`).getDay() : 0;
+    const count = monthDays(view.year, view.month);
+    return (
+        <div className="bg-white border rounded shadow-lg p-2" style={{ width: 252 }}>
+            <div className="flex items-center gap-1 mb-1">
+                <input className={`erp-input ${bad ? 'border-red-500' : ''}`} style={{ minWidth: 0, flex: 1 }} value={text} placeholder="2083-06-13 (BS)" autoFocus
+                    onChange={e => setText(e.target.value)} onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); typed(); } if (e.key === 'Escape') onClose(); }} />
+                <button type="button" className="nav-btn small" onClick={typed}>OK</button>
+            </div>
+            <div className="flex items-center justify-between mb-1 text-sm">
+                <button type="button" className="nav-btn small" onClick={() => step(-1)}>‹</button>
+                <span className="font-semibold">{MONTHS[view.month - 1]} {view.year}</span>
+                <button type="button" className="nav-btn small" onClick={() => step(1)}>›</button>
+            </div>
+            <div className="grid grid-cols-7 gap-0.5 text-center text-xs">
+                {DAYS.map(d => <div key={d} className="text-gray-500 font-semibold">{d.slice(0, 2)}</div>)}
+                {Array.from({ length: lead }).map((_, i) => <div key={`b${i}`} />)}
+                {Array.from({ length: count }).map((_, i) => {
+                    const ad = first ? addDays(first, i) : null;
+                    const on = ad && ad === value;
+                    return (
+                        <button key={i} type="button" className={`py-1 rounded ${on ? 'bg-blue-600 text-white' : 'hover:bg-blue-100'}`}
+                            onClick={() => { if (ad) onPick(ad); }}>{i + 1}</button>
+                    );
+                })}
+            </div>
+            <div className="flex justify-between mt-1">
+                <button type="button" className="nav-btn small" onClick={() => onPick(new Date().toISOString().slice(0, 10))}>Today</button>
+                <button type="button" className="nav-btn small" onClick={onClose}>Close</button>
+            </div>
+        </div>
+    );
+}
+
 export default function DualDateInput({ value, onChange, disabled, required, defaultMode, className = '', title }) {
     const canBs = bsAvailable();
     const [mode, setMode] = useState(() => (canBs ? initialMode(defaultMode) : 'ad'));
@@ -54,8 +97,6 @@ export default function DualDateInput({ value, onChange, disabled, required, def
         document.addEventListener('mousedown', close);
         return () => document.removeEventListener('mousedown', close);
     }, [open]);
-    const cur = adToBs(value || new Date().toISOString().slice(0, 10)) || { year: 2083, month: 1, day: 1 };
-    const [view, setView] = useState({ year: cur.year, month: cur.month });
     const switchMode = () => {
         const next = mode === 'ad' ? 'bs' : 'ad';
         setMode(next);
@@ -67,8 +108,7 @@ export default function DualDateInput({ value, onChange, disabled, required, def
         setBad(!ad);
         if (ad && ad !== value) onChange(ad);
     };
-    const openCal = () => { setView({ year: cur.year, month: cur.month }); setOpen(o => !o); };
-    const step = n => setView(v => { let m = v.month + n, y = v.year; if (m < 1) { m = 12; y -= 1; } if (m > 12) { m = 1; y += 1; } return { year: y, month: m }; });
+    const openCal = () => setOpen(o => !o);
 
     const toggle = canBs && (
         <button type="button" tabIndex={-1} className="nav-btn small" disabled={disabled} onClick={switchMode}
@@ -79,7 +119,7 @@ export default function DualDateInput({ value, onChange, disabled, required, def
 
     if (mode === 'ad') {
         return (
-            <div className={`flex items-center gap-1 min-w-0 ${className}`} title={title || (canBs && value ? `${bsText(value)} BS` : undefined)}>
+            <div data-dual-date className={`flex items-center gap-1 min-w-0 ${className}`} title={title || (canBs && value ? `${bsText(value)} BS` : undefined)}>
                 <input type="date" className="erp-input" style={{ minWidth: 130 }} value={value || ''} disabled={disabled} required={required} onChange={e => onChange(e.target.value)} />
                 {toggle}
                 {canBs && value && <span className="text-xs text-gray-500 whitespace-nowrap overflow-hidden text-ellipsis min-w-0">{bsText(value)} BS</span>}
@@ -87,39 +127,16 @@ export default function DualDateInput({ value, onChange, disabled, required, def
         );
     }
 
-    const first = bsToAd(view.year, view.month, 1);
-    const lead = first ? new Date(`${first}T00:00:00`).getDay() : 0;
-    const count = monthDays(view.year, view.month);
     return (
-        <div ref={wrap} className={`relative flex items-center gap-1 min-w-0 ${className}`} title={title || (value ? `${value} AD` : undefined)}>
+        <div ref={wrap} data-dual-date className={`relative flex items-center gap-1 min-w-0 ${className}`} title={title || (value ? `${value} AD` : undefined)}>
             <input className={`erp-input ${bad ? 'border-red-500' : ''}`} style={{ minWidth: 110 }} value={text} disabled={disabled} required={required} placeholder="YYYY-MM-DD (BS)"
                 onChange={e => setText(e.target.value)} onBlur={commit} onKeyDown={e => { if (e.key === 'Enter') commit(); }} />
             <button type="button" tabIndex={-1} className="nav-btn small" disabled={disabled} onClick={openCal} title="Pick the Nepali date">📅</button>
             {toggle}
             <span className={`text-xs whitespace-nowrap overflow-hidden text-ellipsis min-w-0 ${bad ? 'text-red-600' : 'text-gray-500'}`}>{bad ? 'Not a BS date' : value ? `${value} AD` : ''}</span>
             {open && (
-                <div className="absolute z-50 top-full left-0 mt-1 bg-white border rounded shadow-lg p-2" style={{ width: 252 }}>
-                    <div className="flex items-center justify-between mb-1 text-sm">
-                        <button type="button" className="nav-btn small" onClick={() => step(-1)}>‹</button>
-                        <span className="font-semibold">{MONTHS[view.month - 1]} {view.year}</span>
-                        <button type="button" className="nav-btn small" onClick={() => step(1)}>›</button>
-                    </div>
-                    <div className="grid grid-cols-7 gap-0.5 text-center text-xs">
-                        {DAYS.map(d => <div key={d} className="text-gray-500 font-semibold">{d.slice(0, 2)}</div>)}
-                        {Array.from({ length: lead }).map((_, i) => <div key={`b${i}`} />)}
-                        {Array.from({ length: count }).map((_, i) => {
-                            const ad = first ? addDays(first, i) : null;
-                            const on = ad && ad === value;
-                            return (
-                                <button key={i} type="button" className={`py-1 rounded ${on ? 'bg-blue-600 text-white' : 'hover:bg-blue-100'}`}
-                                    onClick={() => { if (ad) { onChange(ad); setOpen(false); } }}>{i + 1}</button>
-                            );
-                        })}
-                    </div>
-                    <div className="flex justify-between mt-1">
-                        <button type="button" className="nav-btn small" onClick={() => { onChange(new Date().toISOString().slice(0, 10)); setOpen(false); }}>Today</button>
-                        <button type="button" className="nav-btn small" onClick={() => setOpen(false)}>Close</button>
-                    </div>
+                <div className="absolute z-50 top-full left-0 mt-1">
+                    <BsCalendar value={value} onPick={ad => { onChange(ad); setOpen(false); }} onClose={() => setOpen(false)} />
                 </div>
             )}
         </div>

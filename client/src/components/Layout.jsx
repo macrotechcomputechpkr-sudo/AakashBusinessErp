@@ -24,6 +24,7 @@ import useExcelTableFilters from '../hooks/useExcelTableFilters';
 import useSmartTables from '../hooks/useSmartTables';
 import useCompactFilters from '../hooks/useCompactFilters';
 import useReportSidePanel from '../hooks/useReportSidePanel';
+import useReportDates, { ReportDatePopup } from '../hooks/useReportDates';
 import ReportViews from './ReportViews';
 import useAppFeatures from '../hooks/useAppFeatures';
 import { useNotifications, BellButton, NotificationOverlay } from './NotificationCenter';
@@ -56,7 +57,7 @@ function useClock() {
 }
 
 export default function Layout({ children }) {
-    const { user, tenant, tenants, isSuperAdmin, logout, switchTenant, exitTenant, readOnly } = useAuth();
+    const { user, tenant, tenants, isSuperAdmin, logout, switchTenant, exitTenant, readOnly, authFetch } = useAuth();
     const navigate = useNavigate();
     const location = useLocation();
     const features = useAppFeatures();
@@ -77,6 +78,8 @@ export default function Layout({ children }) {
     useCompactFilters(contentRef, location.pathname);
     // once a report is shown its options / filters move to a side panel (⚙ tab on the left)
     useReportSidePanel(contentRef, location.pathname);
+    // every date box can be picked in Nepali (BS) too; dates shown as System Control > Date In Reports says
+    const [datePick, setDatePick] = useReportDates(contentRef, location.pathname, authFetch, tenant?.id);
     // field help: tooltip on every caption the glossary knows; ❓ Help panel of the screen (Shift+F1)
     useFieldTips(contentRef, [location.pathname]);
     const [helpOpen, setHelpOpen] = useState(false);
@@ -288,6 +291,7 @@ export default function Layout({ children }) {
                 </div>
             )}
 
+            <ReportDatePopup pick={datePick} onClose={() => setDatePick(null)} />
             <main className="nav-workspace" ref={contentRef}>
                 <div className={`nav-window nav-page ${maxed ? 'max' : ''}`}>
                     <div className="nav-titlebar nav-page-titlebar no-print">
