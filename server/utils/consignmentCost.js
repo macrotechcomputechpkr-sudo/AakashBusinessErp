@@ -6,8 +6,15 @@
 // Purchase (each Purchase Bill = a consignment; Purchase Returns optional):
 //   product level - qty, rate, basic, discount, line VAT, each line billing
 //                   term, the bill-level terms and linked Purchase Additional
-//                   Expenses (by Bill, or by the Bill's GRN) spread over the
-//                   lines by value, landed cost and landed rate per base unit
+//                   Expenses (by Bill, or by the Bill's GRN) - each additional
+//                   term in its own column, allocated as the entry does it:
+//                   a product-wise term to its own product, a bill-wise term
+//                   by its basis (value net of VAT / qty / equal). Terms in
+//                   costing = "Additional" (landed cost); VAT of a taxable
+//                   additional bill, TDS and terms kept out of costing =
+//                   "Non-additional" (shown, never in cost). Landed cost,
+//                   landed rate per base unit and cost rate per line unit
+//                   (Consignment Costing, date-wise).
 //   bill level    - basic, discount, each term, VAT, additional expenses,
 //                   bill total, landed cost
 //   goods account - the ledger each line posts to (product's Purchase
@@ -49,6 +56,37 @@ const byIds = (c, table, col, ids, cols = '*', extra = q => q) => inChunks([...n
     const { data, error } = await extra(c.from(table).select(cols).in(col, chunk));
     if (error) throw error; return data || [];
 });
+
+// Purchase Additional Expense lines of one bill over the bill's lines (raw
+// detail rows), as purchaseAdditionalExpenseRoutes allocates them:
+//   product-wise (target = the line, its GRN line or its Order line) - all
+//   of it on that line; otherwise by basis - value (net of VAT) / qty / equal.
+// Out of costing (TDS, basis 'none') and VAT of a taxable additional bill
+// (unless not claimable) go to the non-additional columns, spread by value.
+// -> { lineId: { add: { name: amt }, non: { name: amt } } }
+function allocateAdditional(raw, addl) {
+    const out = Object.fromEntries(raw.map(d => [d.id, { add: {}, non: {} }]));
+    if (!raw.length || !addl.length) return out;
+    const val = d => Math.max(0, (Number(d.amount) || 0) - (Number(d.tax_amount) || 0));
+    const weightOf = basis => (basis === 'qty_wise' ? d => Number(d.qty) || 0 : basis === 'equal' ? () => 1 : val);
+    const put = (bucket, name, amt, basis, target) => {
+        if (!amt) return;
+        const hit = target ? raw.find(d => d.id === target || d.source_grn_detail_id === target || d.source_order_detail_id === target) : null;
+        if (hit) { out[hit.id][bucket][name] = round2((out[hit.id][bucket][name] || 0) + amt); return; }
+        const w = weightOf(basis), tot = raw.reduce((s, d) => s + w(d), 0);
+        let given = 0;
+        raw.forEach((d, i) => {
+            const part = i === raw.length - 1 ? round2(amt - given) : round2(tot ? amt * w(d) / tot : amt / raw.length);
+            given = round2(given + part);
+            out[d.id][bucket][name] = round2((out[d.id][bucket][name] || 0) + part);
+        });
+    };
+    addl.forEach(x => {
+        put(x.costing ? 'add' : 'non', x.name, x.amount, x.costing ? x.basis : 'value_wise', x.target);
+        if (x.vat) put(x.vat_in_cost && x.costing ? 'add' : 'non', x.vat_in_cost ? `${x.name} VAT (to cost)` : 'VAT (additional)', x.vat, x.vat_in_cost && x.costing ? x.basis : 'value_wise', x.target);
+    });
+    return out;
+}
 
 const SIDES = {
     purchase: {
@@ -124,27 +162,32 @@ async function consignmentCost(c, t, q) {
             const exps = [...await byIds(c, 'purchase_additional_expenses', 'source_bill_id', billIds, 'id, doc_no, doc_date, source_bill_id, source_grn_id', x => x.eq('status', 'posted')),
                 ...await byIds(c, 'purchase_additional_expenses', 'source_grn_id', Object.keys(grnToBill), 'id, doc_no, doc_date, source_bill_id, source_grn_id', x => x.eq('status', 'posted'))];
             const uniq = Object.values(Object.fromEntries(exps.map(e => [e.id, e])));
-            const expLines = await byIds(c, 'purchase_additional_expense_lines', 'expense_id', uniq.map(e => e.id), 'expense_id, expense_ledger_id, description, entry_sign, amount');
+            const expLines = await byIds(c, 'purchase_additional_expense_lines', 'expense_id', uniq.map(e => e.id), 'expense_id, expense_ledger_id, billing_term_id, description, entry_sign, amount, allocation_basis, target_detail_id, is_tds, bill_type, vat_amount, vat_in_cost, display_order');
+            const addTermIds = [...new Set(expLines.map(x => x.billing_term_id).filter(Boolean))];
+            const addTermName = Object.fromEntries((await byIds(c, 'billing_terms', 'id', addTermIds, 'id, term_name')).map(x => [x.id, x.term_name]));
             uniq.forEach(e => {
                 const bill = e.source_bill_id && billIds.includes(e.source_bill_id) ? e.source_bill_id : grnToBill[e.source_grn_id];
                 if (!bill) return;
-                expLines.filter(x => x.expense_id === e.id).forEach(x => (additional[`purchase_bill:${bill}`] = additional[`purchase_bill:${bill}`] || []).push({
-                    doc_type: 'purchase_additional_expense', doc_id: e.id, doc_no: e.doc_no, ledger_id: x.expense_ledger_id, name: ledgerName[x.expense_ledger_id] || x.description || 'Additional expense',
-                    amount: round2((x.entry_sign === 'deduct' ? -1 : 1) * Number(x.amount || 0)) }));
+                expLines.filter(x => x.expense_id === e.id).sort((a, b) => (a.display_order || 0) - (b.display_order || 0)).forEach(x => (additional[`purchase_bill:${bill}`] = additional[`purchase_bill:${bill}`] || []).push({
+                    doc_type: 'purchase_additional_expense', doc_id: e.id, doc_no: e.doc_no, ledger_id: x.expense_ledger_id,
+                    name: addTermName[x.billing_term_id] || x.description || ledgerName[x.expense_ledger_id] || 'Additional expense',
+                    amount: round2((x.entry_sign === 'deduct' || x.is_tds ? -1 : 1) * Number(x.amount || 0)),
+                    vat: x.bill_type === 'taxable' ? round2(x.vat_amount) : 0, vat_in_cost: !!x.vat_in_cost,
+                    costing: !x.is_tds && (x.allocation_basis || 'value_wise') !== 'none', basis: x.allocation_basis || 'value_wise', target: x.target_detail_id || null }));
             });
         } else {
             const ents = await byIds(c, 'sales_additional_entries', 'source_bill_id', billIds, 'id, doc_no, doc_date, source_bill_id', x => x.eq('status', 'posted'));
             const entLines = await byIds(c, 'sales_additional_entry_lines', 'entry_id', ents.map(e => e.id), 'entry_id, income_ledger_id, description, entry_sign, amount');
             ents.forEach(e => entLines.filter(x => x.entry_id === e.id).forEach(x => (additional[`sales_bill:${e.source_bill_id}`] = additional[`sales_bill:${e.source_bill_id}`] || []).push({
                 doc_type: 'sales_additional', doc_id: e.id, doc_no: e.doc_no, ledger_id: x.income_ledger_id, name: ledgerName[x.income_ledger_id] || x.description || 'Additional entry',
-                amount: round2((x.entry_sign === 'deduct' ? -1 : 1) * Number(x.amount || 0)) })));
+                amount: round2((x.entry_sign === 'deduct' ? -1 : 1) * Number(x.amount || 0)), vat: 0, costing: true, basis: 'value_wise', target: null })));
         }
     }
 
     // ---- per document: terms, allocation, landed cost, expected posting ----
     const linesByDoc = {};
     lines.forEach(l => { if (S.docs[l.doc_type]) (linesByDoc[`${l.doc_type}:${l.doc_id}`] = linesByDoc[`${l.doc_type}:${l.doc_id}`] || []).push(l); });
-    const termNames = new Set();
+    const termNames = new Set(), addlNames = new Set(), nonAddlNames = new Set();
     const docs = Object.entries(linesByDoc).map(([key, shown]) => {
         const h = headers[key], cfg = S.docs[h._type], raw = rawLines[key] || [];
         const isReturn = cfg.kind !== 'main';
@@ -155,6 +198,8 @@ async function consignmentCost(c, t, q) {
         const addl = additional[key] || [];
         const nonVatDocTerms = dTerms.filter(x => !x.vat).reduce((s, x) => s + x.amount, 0);
         const addlTotal = addl.reduce((s, x) => s + x.amount, 0);
+        // each additional amount split over the bill's lines the way the entry allocates it
+        const splitOf = allocateAdditional(raw, addl);
         // VAT as the posting splits it out
         const lineTax = raw.reduce((s, d) => s + (Number(d.tax_amount) || 0), 0);
         const lineVatTerms = raw.flatMap(d => lineTerms[d.id] || []).filter(r => isVatTerm(r.billing_term_id)).reduce((s, r) => s + Number(r.computed_amount || 0), 0);
@@ -170,13 +215,18 @@ async function consignmentCost(c, t, q) {
             lt.filter(x => !x.vat).forEach(x => { terms[x.name] = round2((terms[x.name] || 0) + x.amount); termNames.add(x.name); });
             dTerms.filter(x => !x.vat).forEach(x => { terms[x.name] = round2((terms[x.name] || 0) + x.amount * share); termNames.add(x.name); });
             const lineVat = l.tax + lt.filter(x => x.vat).reduce((s, x) => s + x.amount, 0) + dTerms.filter(x => x.vat).reduce((s, x) => s + x.amount * share, 0);
-            const addlAlloc = round2(addlTotal * share);
+            const sp = splitOf[l.line_id] || { add: {}, non: {} };
+            const addlAlloc = round2(Object.values(sp.add).reduce((a, b) => a + b, 0));
+            const nonAddl = round2(Object.values(sp.non).reduce((a, b) => a + b, 0));
+            Object.keys(sp.add).forEach(n => addlNames.add(n)); Object.keys(sp.non).forEach(n => nonAddlNames.add(n));
             const landed = round2(l.net + lineTermsNonVat + nonVatDocTerms * share + addlAlloc);
             const acct = productAcct[l.product_id] || docAcct;
             return {
                 product_id: l.product_id, product_code: l.product_code, product_name: l.product_name, group_name: l.group_name, company_name: l.company_name,
                 qty: l.qty, unit: l.unit, alt_qty: l.alt_qty, alt_unit: l.alt_unit, base_qty: l.base_qty, base_unit: l.base_unit, free_qty: l.free_base_qty, rate: l.rate,
                 basic: l.gross, discount: l.discount, net: l.net, terms, vat: round2(lineVat), additional: addlAlloc, landed,
+                additional_terms: sp.add, non_additional_terms: sp.non, non_additional: nonAddl, net_amount: round2(landed + nonAddl),
+                cost_rate: l.qty ? round4(landed / l.qty) : 0,
                 landed_rate: l.base_qty ? round4(landed / l.base_qty) : 0, account_id: acct, account_name: ledgerName[acct] || '(no account)'
             };
         });
@@ -198,7 +248,9 @@ async function consignmentCost(c, t, q) {
             basic: round2(docLines.reduce((s, x) => s + x.basic, 0)), discount: round2(docLines.reduce((s, x) => s + x.discount, 0)),
             net: round2(docLines.reduce((s, x) => s + x.net, 0)), vat: round2(docLines.reduce((s, x) => s + x.vat, 0)),
             terms_total: round2(docLines.reduce((s, x) => s + Object.values(x.terms).reduce((a, b) => a + b, 0), 0)),
-            additional_total: round2(addlTotal), bill_total: round2(total), landed: round2(docLines.reduce((s, x) => s + x.landed, 0)),
+            additional_total: round2(docLines.reduce((s, x) => s + x.additional, 0)), non_additional_total: round2(docLines.reduce((s, x) => s + x.non_additional, 0)),
+            additional_bill_total: round2(addlTotal + addl.reduce((s, x) => s + x.vat, 0)),
+            bill_total: round2(total), landed: round2(docLines.reduce((s, x) => s + x.landed, 0)),
             partial: shown.length !== raw.length, expected, sign: cfg.sign
         };
     }).filter(d => !ledgerFilter.length || d.lines.some(l => ledgerFilter.includes(l.account_id)) || Object.keys(d.expected).some(id => ledgerFilter.includes(id)))
@@ -278,15 +330,20 @@ async function consignmentCost(c, t, q) {
     const prod = new Map();
     docs.forEach(d => d.lines.forEach(l => {
         if (!prod.has(l.product_id)) prod.set(l.product_id, { product_id: l.product_id, product_code: l.product_code, product_name: l.product_name, group_name: l.group_name,
-            company_name: l.company_name, base_unit: l.base_unit, base_qty: 0, free_qty: 0, basic: 0, discount: 0, net: 0, terms: {}, vat: 0, additional: 0, landed: 0, docs: new Set(), accounts: new Set() });
+            company_name: l.company_name, base_unit: l.base_unit, base_qty: 0, free_qty: 0, basic: 0, discount: 0, net: 0, terms: {}, vat: 0, additional: 0, non_additional: 0, landed: 0,
+            additional_terms: {}, non_additional_terms: {}, docs: new Set(), accounts: new Set() });
         const p = prod.get(l.product_id), sg = d.sign;
         p.base_qty += sg * l.base_qty; p.free_qty += sg * l.free_qty; p.basic += sg * l.basic; p.discount += sg * l.discount; p.net += sg * l.net;
-        p.vat += sg * l.vat; p.additional += sg * l.additional; p.landed += sg * l.landed; p.docs.add(d.doc_id); p.accounts.add(l.account_name);
+        p.vat += sg * l.vat; p.additional += sg * l.additional; p.non_additional += sg * l.non_additional; p.landed += sg * l.landed; p.docs.add(d.doc_id); p.accounts.add(l.account_name);
         Object.entries(l.terms).forEach(([n, a]) => { p.terms[n] = (p.terms[n] || 0) + sg * a; });
+        Object.entries(l.additional_terms).forEach(([n, a]) => { p.additional_terms[n] = (p.additional_terms[n] || 0) + sg * a; });
+        Object.entries(l.non_additional_terms).forEach(([n, a]) => { p.non_additional_terms[n] = (p.non_additional_terms[n] || 0) + sg * a; });
     }));
     const products = [...prod.values()].map(p => ({ ...p, base_qty: round4(p.base_qty), free_qty: round4(p.free_qty),
-        ...Object.fromEntries(['basic', 'discount', 'net', 'vat', 'additional', 'landed'].map(k => [k, round2(p[k])])),
+        ...Object.fromEntries(['basic', 'discount', 'net', 'vat', 'additional', 'non_additional', 'landed'].map(k => [k, round2(p[k])])),
         terms: Object.fromEntries(Object.entries(p.terms).map(([n, a]) => [n, round2(a)])),
+        additional_terms: Object.fromEntries(Object.entries(p.additional_terms).map(([n, a]) => [n, round2(a)])),
+        non_additional_terms: Object.fromEntries(Object.entries(p.non_additional_terms).map(([n, a]) => [n, round2(a)])),
         landed_rate: p.base_qty ? round4(p.landed / p.base_qty) : 0, docs: p.docs.size, accounts: [...p.accounts].join(', ') }))
         .sort((a, b) => a.product_name.localeCompare(b.product_name));
 
@@ -296,13 +353,14 @@ async function consignmentCost(c, t, q) {
     if (docs.some(d => d.partial)) warnings.push('Item filters are on - some bills show only part of their lines; the GL check always uses the whole bill.');
     if (side === 'purchase' && withReturns) warnings.push('Purchase Non-saleable Returns are written off / credited outside the purchase accounts, so they are not part of this report.');
     return {
-        side, from: f.from, to: f.to, with_returns: withReturns, term_names: [...termNames].sort(), docs, products, ledger_summary: ledgerSummary,
+        side, from: f.from, to: f.to, with_returns: withReturns, term_names: [...termNames].sort(),
+        additional_names: [...addlNames].sort(), non_additional_names: [...nonAddlNames].sort(), docs, products, ledger_summary: ledgerSummary,
         mismatches: mismatches.sort((a, b) => a.doc_date.localeCompare(b.doc_date)), other_gl: others.sort((a, b) => a.date.localeCompare(b.date)),
         totals: { docs: docs.length, basic: tot('basic'), discount: tot('discount'), net: tot('net'), terms_total: tot('terms_total'), vat: tot('vat'),
-            additional_total: tot('additional_total'), bill_total: tot('bill_total'), landed: tot('landed'), mismatches: mismatches.length,
+            additional_total: tot('additional_total'), non_additional_total: tot('non_additional_total'), bill_total: tot('bill_total'), landed: tot('landed'), mismatches: mismatches.length,
             difference: round2(ledgerSummary.reduce((s, l) => s + l.difference, 0)) },
         warnings, masters_ok: !!M
     };
 }
 
-module.exports = { consignmentCost };
+module.exports = { consignmentCost, allocateAdditional };

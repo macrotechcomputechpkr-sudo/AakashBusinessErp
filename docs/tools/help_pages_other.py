@@ -6,10 +6,17 @@ from help_pages_entry import ALL
 RO = dict(accounts='None - read only.', stock='None - read only.', vat='None.')
 
 
+# every report table has the grid (hooks/useSmartTables.jsx + components/ReportGrid.jsx)
+GRID_TIP = ('▦ Grid / 📄 Report above the table: Grid filters (▾ picks one or many values, AutoFilter, conditions), '
+            'groups (drag a header to ☰ Rows - sub-totals), pivots (drag to ⫼ Columns, Σ Values; 📋 Columns = Field Selector), '
+            'totals per column (Σ Footer), 📊 chart / pivot chart, data bars, added columns (running balance, % of total, formula), '
+            'CSV and print. 📁 Views keep it all.')
+
+
 def R(path, title, module, purpose, how, views=None, nature=None, tips=None):
     """a report page"""
     return dict(path=path, title=title, module=module, kind='report', nature=nature or ALL, purpose=purpose,
-                steps=how, views=views or {}, tips=tips or [], **RO)
+                steps=how, views=views or {}, tips=(tips or []) + [GRID_TIP], **RO)
 
 
 def M(path, title, module, purpose, steps, other='', nature=None, tips=None, accounts='None.', stock='None.', vat='None.'):
@@ -34,9 +41,19 @@ PAGES = [
       'VAT, excise, discounts, freight and other charges used on sales / purchase documents - formula, sign (+ / -), basis, ledger, return ledger, sub-ledger, which entries they apply to.',
       ['New Billing Term: name, type (VAT / excise / discount / other), formula or rate, sign, basis (value / quantity), ledgers and sub-ledgers.',
        'Term Used For: Transaction term (Sales / Purchase / Production Entry - on the bill itself) or Additional term (Purchase / Sales Additional - a later bill such as freight, customs, insurance).',
-       'Effect: Include In Costing (the amount goes into the cost of the goods / landed cost; off = an expense only) and Include In Profitability (counted in the profitability reports).',
+       'Effect: Include In Costing (the amount goes into the cost of the goods / landed cost; off = an expense only), Include In Profitability (counted in the profitability reports) and TDS Applicable + TDS % (the TDS of a Purchase Additional entry is worked out by itself on these terms at this rate; empty % = System Control default).',
        'Product Wise: entered per product (popup per product); otherwise bill-wise, divided over the products by the basis.'],
       other='Term Mapping in System Control decides which term is VAT, discount 1-5, bill discount. VAT terms decide which VAT ledger gets the VAT.'),
+    M('/admin', 'Admin Panel (Super Admin)', 'Admin', 'Where a Super Admin lands after login: every company (tenant) with users, last login and subscription. A company is opened VIEW ONLY - reports, lists and documents can be seen, no entry or change is allowed.',
+      ['Search / filter the companies (status, company not created).', 'Open (view only): the company opens with a VIEW ONLY badge; 🛡 Admin Panel on the title bar comes back here.',
+       'Subscription: status, plan, end date, maximum users, active; Suspend / Activate.', 'New Company: create a company (tenant) and its profile.']),
+    M('/firm-import', 'Import from another Firm', 'Tools', 'Copy masters and transactions from another firm (company) you can open into this one.',
+      ['Choose the firm to copy from and Show what can be imported: per master list the count there, already here (same code) and new; per document type the count, posted and imported before.',
+       'Tick masters (the masters they need come along - a ledger\'s group, a product\'s unit and group) and / or transactions (their ledgers, sub-ledgers, products and billing terms come along). Existing masters: keep, or update from the other firm. Opening balances / stock only when ticked.',
+       'Transactions come in as DRAFTS with this firm\'s masters; a number already used here gets "-<firm code>". Post imported drafts posts them in date order (ledger / stock by this firm\'s rules).',
+       'A record already imported is never imported twice; masters are matched again by code.']),
+    M('/customs-offices', 'Customs Offices (Bhansar)', 'Masters', 'Customs offices picked on import Purchase Bills and on the Customs (Bhansar) tab of Purchase Additional. Nepal\'s customs offices are created with a code the first time the list opens.',
+      ['Edit a code / name, add a new office, or deactivate one not used.']),
     M('/remarks-terms', 'Remarks & Terms', 'Masters', 'Saved remarks (narrations) and terms & conditions offered on documents.', ['Add remarks and terms; pick them on entries.']),
     M('/ledger-opening', 'Ledger Opening Balance', 'Masters', 'Opening balances of ledgers on the first day of the opening fiscal year (with bill-wise opening bills).',
       ['Enter Dr / Cr per ledger; party ledgers can have opening bills for bill-wise ageing.'], accounts='Opening balances of the Trial Balance (Dr must equal Cr overall).'),
@@ -138,7 +155,17 @@ PAGES = [
        'Print sections: Items, Bill Summary (bill no, customer, route, amounts, received / sign) and Bill x Item - print them together on one sheet.']),
     R('/purchase-register-report', 'Purchase Register (all)', 'Sales/Purchase', 'Lines of requisitions, quotations, orders, GRNs and bills with converted and outstanding qty / amount.', ['Choose the module and filters; Outstanding only.']),
     R('/grn-outstanding-report', 'GRN Outstanding', 'Sales/Purchase', 'GRN lines not yet billed.', ['Filter by vendor and dates.']),
-    R('/consignment-cost', 'Consignment Cost / Sales', 'Sales/Purchase', 'Cost and sales of a consignment (import lot) with its additional expenses.', ['Choose the consignment.']),
+    R('/consignment-cost', 'Consignment Cost / Sales', 'Sales/Purchase', 'Cost and sales of purchase bills with their additional bills; the first view is Consignment Costing (date-wise).',
+      ['Choose the dates (and supplier / product).',
+       'Consignment Costing view: per bill a header row, its products and a "Bill No Total" row - Qty, Rate, Basic, Add / Less (bill terms), Net Basic, one column per additional term (costing), one per non-additional term (VAT claimable, TDS, not in costing), Total Additional, Total Non-Additional, Net Amount and Cost Rate (landed / qty).',
+       'Product-wise additional terms go wholly to their product; bill-wise terms are divided by the term\'s basis (value net of VAT / qty / equal).',
+       'Other views: bill-wise, product-wise, ledger summary and mismatches. Export CSV.']),
+    R('/daily-register', 'Daily Register (one-page day sheet)', 'Accounts Report', 'The counter\'s paper day sheet filled from posted vouchers: Sales (cash A / credit B), Purchase (C / D), Received / Bank withdraw (E / F), Expenses / Bank deposit (G / H), Return / Exchange (I / J), cash summary, sales / purchase to date, stock and profit.',
+      ['Choose the date (or a date range), optionally a user or salesman / agent.',
+       'Cash summary: opening cash + A + E - C - G - refunds = expected closing; the books\' closing and the difference (other cash entries such as JV).',
+       'Sales / purchase: opening from the fiscal year start to the day before, today, less return, to date; opening / closing stock, gross and net profit of the day.',
+       'Cash detail: count the notes (1000 ... 5, coin) - the difference with the books is shown; write the day\'s note. Count and note are kept on this computer per date.',
+       'With a user / agent filter only their vouchers are listed; opening / closing cash, stock and profit are left out. Print for signature.']),
     R('/stock-report', 'Stock Report', 'Inventory', 'Stock quantity and value by item / warehouse / batch.', ['Choose the date, grouping and method.']),
     R('/stock-movement', 'Stock Movement', 'Inventory', 'Opening, in and out by module, closing - qty and value (the same engine as the financial statements\' closing stock).', ['Choose period, method, summary / detail.']),
     R('/stock-in-out', 'Stock In / Out (Qty)', 'Inventory', 'Quantity in and out per document.', ['Choose item and period.']),

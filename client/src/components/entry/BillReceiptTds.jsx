@@ -92,7 +92,7 @@ export default function BillReceiptTds({ side = 'sales', form, setForm, ledgers 
             {sales && (
                 <fieldset className="border rounded-lg p-3">
                     <legend className="px-1 text-xs font-semibold text-gray-600 uppercase">Received with this bill (cash / bank)</legend>
-                    <table className="erp-grid-table">
+                    <table data-no-smart className="erp-grid-table">
                         <thead><tr><th style={{ width: '38%' }}>Cash / Bank Ledger</th><th>Sub-Ledger</th><th>Cheque / Ref No.</th><th className="text-right">Amount</th><th /></tr></thead>
                         <tbody>
                             {receipts.map((r, i) => (

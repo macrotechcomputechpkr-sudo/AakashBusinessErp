@@ -59,7 +59,7 @@ export function PurchaseProductTermPopup({ title, lines, terms, previews, produc
                 {fx?.foreign && <div><small>In {fx.base} @ {Number(fx.rate).toFixed(4)}</small><b>{fmt((basic + net) * fx.rate)}</b></div>}
             </div>
             <div className="ent-charge-wrap">
-                <table className="erp-grid-table ent-charge-table">
+                <table data-no-smart className="erp-grid-table ent-charge-table">
                     <thead><tr><th style={{ width: 34 }}>#</th><th style={{ width: 44 }}>Use</th><th>Charge</th><th>Sub-ledger</th><th style={{ width: 90 }}>Worked as</th><th style={{ width: 56 }}>+/-</th>{KIND_COLS.map(([k, l]) => <th key={k} className="text-right" style={{ width: 80 }}>{l}</th>)}<th className="text-right">Amount</th>{fx?.foreign && <th className="text-right">Local ({fx.base})</th>}</tr></thead>
                     <tbody>
                         {(lineFields || []).map(fl => (
@@ -133,7 +133,7 @@ export function PurchaseOverallTermPopup({ title, summaryRows, overrides, onOver
     return (
         <EntryPopup title={title} onClose={onClose} width={900}>
             <div className="ent-section-title">Item charges (all lines)</div>
-            <table className="erp-grid-table">
+            <table data-no-smart className="erp-grid-table">
                 <thead><tr><th style={{ width: 34 }}>#</th><th>Charge</th><th style={{ width: 100 }}>Split by</th><th style={{ width: 56 }}>+/-</th><th className="text-right" style={{ width: 90 }}>Rate</th><th className="text-right" style={{ width: 160 }}>Amount{fx?.foreign ? ` (${fx.code})` : ''}</th>{fx?.foreign && <th className="text-right" style={{ width: 120 }}>Local ({fx.base})</th>}</tr></thead>
                 <tbody>
                     {summaryRows.map((r, i) => {
@@ -158,7 +158,7 @@ export function PurchaseOverallTermPopup({ title, summaryRows, overrides, onOver
             </table>
             <p className="ent-note mt-1 mb-3">An amount changed here is split over the lines that carry the charge, by value or by quantity as set on the charge (Billing Term).</p>
             <div className="ent-section-title">Bill charges (on the bill total)</div>
-            <table className="erp-grid-table">
+            <table data-no-smart className="erp-grid-table">
                 <thead><tr><th style={{ width: 34 }}>#</th><th style={{ width: 44 }}>Use</th><th>Charge</th><th>Sub-ledger</th><th style={{ width: 90 }}>Worked as</th><th style={{ width: 56 }}>+/-</th><th className="text-right" style={{ width: 80 }}>Rate</th><th className="text-right" style={{ width: 130 }}>Amount</th>{fx?.foreign && <th className="text-right" style={{ width: 120 }}>Local ({fx.base})</th>}</tr></thead>
                 <tbody>
                     {terms.map((t, i) => {

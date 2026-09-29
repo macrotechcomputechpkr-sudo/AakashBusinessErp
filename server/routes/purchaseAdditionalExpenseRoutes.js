@@ -1,7 +1,7 @@
 // =============================================
 // routes/purchaseAdditionalExpenseRoutes.js
-// Extra costs (freight, customs duty, insurance, etc.) linked to an
-// Order, GRN, and/or Bill, automatically allocated across that
+// Extra costs (freight, customs duty, insurance, etc.) linked to the
+// purchase bill (Ref. Bill No.; older entries may carry an Order / GRN), automatically allocated across that
 // document's product lines for landed cost - by Value share, Qty
 // share, or an Equal split. Once posted, the allocation is written into the
 // cost of those receipts' stock movements (purchaseStockCost.refreshLandedCost),
@@ -19,6 +19,16 @@ const { postAdditionalExpenseEntry, buildAdditionalExpenseGl, reverseBatch } = r
 const { refreshLandedCost } = require('../utils/purchaseStockCost');
 const { classifyLedgers, describe: describeLedger } = require('../utils/stockAccounting');
 
+// The bill type follows what was typed - no need to pick it: VAT on the line = taxable bill,
+// a supplier bill no without VAT = non-taxable (tax-free) bill, neither = no bill (wages, loading ...).
+// A TDS / "−" line never has a bill of its own. Lines of one party + bill no form one bill.
+function billTypeOf(l) {
+    if (l.is_tds || l.entry_sign === 'deduct') return 'no_bill';
+    if (Number(l.vat_amount) > 0) return 'taxable';
+    return String(l.party_bill_no || '').trim() ? 'non_taxable' : 'no_bill';
+}
+const withBillType = l => (l.bill_type ? l : { ...l, bill_type: billTypeOf(l) });
+
 function validateBody(b, isDraft) {
     if (!b.doc_date) return 'Date is required';
     if (isDraft) return null;
@@ -30,8 +40,8 @@ function validateBody(b, isDraft) {
         if (l.allocation_basis && !['value_wise', 'qty_wise', 'equal', 'none'].includes(l.allocation_basis)) return 'Invalid allocation basis on an expense line';
         if (l.entry_sign && !['add', 'deduct'].includes(l.entry_sign)) return 'Invalid sign on an expense line';
         const n = b.expense_lines.indexOf(l) + 1;
-        if (l.is_tds && (l.bill_type || 'no_bill') !== 'no_bill') return `Line ${n}: a TDS line has no bill of its own (bill type: No Bill)`;
-        const bt = l.bill_type || 'no_bill';
+        if (l.is_tds && (l.bill_type || billTypeOf(l)) !== 'no_bill') return `Line ${n}: a TDS line has no bill of its own (bill type: No Bill)`;
+        const bt = l.bill_type || billTypeOf(l);
         if (!['taxable', 'non_taxable', 'no_bill'].includes(bt)) return `Line ${n}: invalid bill type`;
         if (bt !== 'taxable' && Number(l.vat_amount) > 0) return `Line ${n}: VAT is only for a taxable bill`;
         if (Number(l.vat_amount) < 0) return `Line ${n}: VAT cannot be negative`;
@@ -166,7 +176,7 @@ function computeNetPayable(expenseLines) {
 async function syncExpenseLines(tenantClient, tenantId, expenseId, expenseLines) {
     await tenantClient.from('purchase_additional_expense_lines').delete().eq('expense_id', expenseId);
     if (!Array.isArray(expenseLines) || expenseLines.length === 0) return { netPayable: 0, lines: [] };
-    expenseLines = await applyTermRules(tenantClient, tenantId, expenseLines);
+    expenseLines = await applyTermRules(tenantClient, tenantId, expenseLines.map(withBillType));
     const partyIds = [...new Set(expenseLines.map(l => l.party_ledger_id).filter(Boolean))];
     const { data: parties } = partyIds.length ? await tenantClient.from('ledger_accounts').select('id, account_name, pan_number, vat_pan_number').in('id', partyIds) : { data: [] };
     const partyById = Object.fromEntries((parties || []).map(x => [x.id, x]));
@@ -180,6 +190,8 @@ async function syncExpenseLines(tenantClient, tenantId, expenseId, expenseLines)
             // a TDS line is a deduction from the party, credited to the TDS payable ledger, never costed
             allocation_basis: l.is_tds ? 'none' : l.allocation_basis || 'value_wise', entry_sign: l.is_tds ? 'deduct' : l.entry_sign || 'add', is_tds: !!l.is_tds,
             rate_percent: l.rate_percent || null, amount: Number(l.amount) || 0,
+            // TDS % this line is taxed at (from its term) / the base of a TDS line
+            tds_percent: !l.is_tds && Number(l.tds_percent) > 0 ? Number(l.tds_percent) : null, tds_base: l.is_tds && Number(l.tds_base) > 0 ? Math.round(Number(l.tds_base) * 100) / 100 : null,
             party_ledger_id: l.party_ledger_id || null, party_sub_ledger_id: l.party_sub_ledger_id || null,
             party_name_snapshot: party?.account_name || l.party_name_snapshot || null, party_pan: l.party_pan || party?.vat_pan_number || party?.pan_number || null,
             bill_type: bt, party_bill_no: bt === 'no_bill' ? (l.party_bill_no || null) : String(l.party_bill_no).trim(), party_bill_date: l.party_bill_date || null,
@@ -191,6 +203,47 @@ async function syncExpenseLines(tenantClient, tenantId, expenseId, expenseLines)
     const { error } = await tenantClient.from('purchase_additional_expense_lines').insert(rows);
     if (error) throw error;
     return { netPayable: computeNetPayable(rows), lines: rows };
+}
+
+// Customs (Bhansar) rows of an import - for the VAT report only (no ledger posting: the account
+// effect of customs duty / VAT comes from the bill-wise or product-wise terms). Bill-wise: one set
+// of values per pragyapan patra; item-wise: values per product of the Ref. Bill, summed on the row.
+const n2 = v => Math.round((Number(v) || 0) * 100) / 100;
+function normCustoms(r) {
+    const items = r.detail_mode === 'item_wise' ? (Array.isArray(r.item_details) ? r.item_details : []).map(x => ({
+        detail_id: x.detail_id || null, product_id: x.product_id || null, product_name: x.product_name || '', qty: Number(x.qty) || 0,
+        assessable_value: n2(x.assessable_value), taxable_amount: n2(x.taxable_amount), non_taxable_amount: n2(x.non_taxable_amount), vat_amount: n2(x.vat_amount)
+    })).filter(x => x.assessable_value || x.taxable_amount || x.non_taxable_amount || x.vat_amount) : [];
+    const sum = k => n2(items.reduce((s, x) => s + x[k], 0));
+    return r.detail_mode === 'item_wise'
+        ? { ...r, detail_mode: 'item_wise', item_details: items, assessable_value: sum('assessable_value'), taxable_amount: sum('taxable_amount'), non_taxable_amount: sum('non_taxable_amount'), vat_amount: sum('vat_amount') }
+        : { ...r, detail_mode: 'bill_wise', item_details: [] };
+}
+const cleanCustoms = rows => (Array.isArray(rows) ? rows : []).map(normCustoms).filter(r => r.vat_amount > 0 || Number(r.taxable_amount) > 0 || Number(r.assessable_value) > 0 || Number(r.non_taxable_amount) > 0);
+function validateCustoms(rows) {
+    for (const [i, r] of cleanCustoms(rows).entries()) {
+        if (!String(r.pragyapan_no || '').trim()) return `Customs row ${i + 1}: enter the Pragyapan Patra No`;
+        if (!r.customs_office_id && !r.customs_office) return `Customs row ${i + 1}: choose the Customs Office`;
+        if (Number(r.vat_amount) < 0) return `Customs row ${i + 1}: VAT cannot be negative`;
+        if (Number(r.vat_amount) > 0 && !(Number(r.taxable_amount) > 0)) return `Customs row ${i + 1}: enter the taxable (VAT-able) value`;
+    }
+    return null;
+}
+async function syncCustoms(tenantClient, tenantId, expenseId, rows) {
+    await tenantClient.from('purchase_additional_customs').delete().eq('expense_id', expenseId);
+    const list = cleanCustoms(rows);
+    if (!list.length) return [];
+    const offIds = [...new Set(list.map(r => r.customs_office_id).filter(Boolean))];
+    const { data: offs } = offIds.length ? await tenantClient.from('customs_offices').select('id, office_code, office_name').in('id', offIds) : { data: [] };
+    const offName = Object.fromEntries((offs || []).map(o => [o.id, o.office_name]));
+    const out = list.map((r, i) => ({ tenant_id: tenantId, expense_id: expenseId, display_order: i + 1, pragyapan_no: String(r.pragyapan_no || '').trim() || null, pragyapan_date: r.pragyapan_date || null,
+        customs_office_id: r.customs_office_id || null, customs_office: offName[r.customs_office_id] || r.customs_office || null,
+        detail_mode: r.detail_mode, item_details: r.item_details,
+        assessable_value: n2(r.assessable_value), taxable_amount: n2(r.taxable_amount), non_taxable_amount: n2(r.non_taxable_amount),
+        vat_percent: r.vat_percent === '' || r.vat_percent == null ? null : Number(r.vat_percent), vat_amount: n2(r.vat_amount) }));
+    const { error } = await tenantClient.from('purchase_additional_customs').insert(out);
+    if (error) throw error;
+    return out;
 }
 
 async function syncAllocations(tenantClient, tenantId, expenseId, b, expenseLines) {
@@ -252,7 +305,7 @@ router.post('/purchase-additional-expenses/allocation-preview', requireAuth, loa
         const { source_order_id, source_grn_id, source_bill_id, expense_lines } = req.body;
         const tenantClient = await getTenantClient(req.auth.tenantId);
         const sourceLines = await getSourceLines(tenantClient, { source_order_id, source_grn_id, source_bill_id });
-        const lines = await applyTermRules(tenantClient, req.auth.tenantId, Array.isArray(expense_lines) ? expense_lines : []);
+        const lines = await applyTermRules(tenantClient, req.auth.tenantId, (Array.isArray(expense_lines) ? expense_lines : []).filter(l => Number(l.amount) > 0).map(withBillType));
         const allocated = computeAllocations(sourceLines, lines);
         const netPayable = computeNetPayable(lines);
         // the reference document (party, number, date, amount) shown above the product lines
@@ -265,7 +318,19 @@ router.post('/purchase-additional-expenses/allocation-preview', requireAuth, loa
         // additional (goes to the cost of the goods) vs non-additional (VAT that can be claimed, lines kept out of costing)
         const additional = allocated.reduce((s, a) => s + a.allocated_amount, 0);
         const r2 = n => Math.round(n * 100) / 100;
-        res.json({ success: true, data: { allocations: allocated, net_payable: netPayable, reference,
+        // the ledger entry this will post (same builder as posting), with names, for the Account Posting tab
+        let gl = null, glError = null;
+        if (req.body.account_posting !== false && lines.length) {
+            try {
+                const glLines = await buildAdditionalExpenseGl(tenantClient, req.auth.tenantId, { vendor_ledger_id: req.body.vendor_ledger_id || null, vendor_sub_ledger_id: req.body.vendor_sub_ledger_id || null }, lines);
+                const ids = [...new Set(glLines.map(x => x.ledgerId))], subIds = [...new Set(glLines.map(x => x.subLedgerId).filter(Boolean))];
+                const { data: leds } = ids.length ? await tenantClient.from('ledger_accounts').select('id, account_name, account_code').in('id', ids) : { data: [] };
+                const { data: subs } = subIds.length ? await tenantClient.from('sub_ledgers').select('id, sub_ledger_name').in('id', subIds) : { data: [] };
+                const ln = Object.fromEntries((leds || []).map(x => [x.id, x.account_name])), sn = Object.fromEntries((subs || []).map(x => [x.id, x.sub_ledger_name]));
+                gl = glLines.map(x => ({ ledger_id: x.ledgerId, ledger_name: ln[x.ledgerId] || '', sub_ledger_name: x.subLedgerId ? sn[x.subLedgerId] || '' : '', debit: r2(x.debit || 0), credit: r2(x.credit || 0), narration: x.narration || '' }));
+            } catch (e) { glError = e.message; }
+        }
+        res.json({ success: true, data: { allocations: allocated, net_payable: netPayable, reference, gl, gl_error: glError,
             totals: { net_basic: r2(sourceLines.reduce((s, l) => s + l.value, 0)), additional: r2(additional), non_additional: r2(netPayable - additional),
                 qty: r2(sourceLines.reduce((s, l) => s + l.qty, 0)), alt_qty: r2(sourceLines.reduce((s, l) => s + (l.alt_qty || 0), 0)) } } });
     } catch (error) {
@@ -294,6 +359,8 @@ router.get('/purchase-additional-expenses/:id', requireAuth, loadUserPermissions
         const { data: lines } = await tenantClient.from('purchase_additional_expense_lines').select('*').eq('expense_id', req.params.id).order('display_order');
         const { data: allocations } = await tenantClient.from('purchase_expense_allocations').select('*').eq('expense_id', req.params.id);
         data.expense_lines = lines || [];
+        const { data: customs } = await tenantClient.from('purchase_additional_customs').select('*').eq('expense_id', req.params.id).order('display_order');
+        data.customs_entries = customs || [];
         data.allocations = allocations || [];
         res.json({ success: true, data });
     } catch (error) {
@@ -304,7 +371,9 @@ router.get('/purchase-additional-expenses/:id', requireAuth, loadUserPermissions
 router.post('/purchase-additional-expenses', requireAuth, loadUserPermissions, requirePermission('ledger', 'create'), async (req, res) => {
     try {
         const isDraft = req.body.status === 'draft' && req.body.save_as_draft === true;
-        const validationError = validateBody(req.body, isDraft);
+        // a new additional bill refers to the purchase bill (Ref. Bill No.) - Order / GRN links stay only on older entries
+        if (!isDraft && !req.body.source_bill_id) return res.status(400).json({ success: false, error: 'Choose the Ref. Bill No. - the purchase bill this additional cost belongs to' });
+        const validationError = validateBody(req.body, isDraft) || (isDraft ? null : validateCustoms(req.body.customs_entries));
         if (validationError) return res.status(400).json({ success: false, error: validationError });
         const fieldError = await checkCompulsoryFields(await getTenantClient(req.auth.tenantId), req.auth.tenantId, req.auth.userId, 'purchase_additional', req.body, isDraft);
         if (fieldError) return res.status(400).json({ success: false, error: fieldError });
@@ -348,6 +417,7 @@ router.post('/purchase-additional-expenses', requireAuth, loadUserPermissions, r
                 vendor_sub_ledger_id: b.vendor_sub_ledger_id || null,
                 product_company_id: b.product_company_id || null,
                 account_posting: b.account_posting !== false, // No: no ledger entry (landed cost still moves)
+                auto_tds: b.auto_tds !== false,
                 tenant_id: tenantId, branch_id: currentUser?.default_branch_id || null, branch_name_snapshot: branchNameSnapshot,
                 doc_no: docNo, doc_date: b.doc_date, fiscal_year_id: currentFy?.id || null,
                 source_order_id: b.source_order_id || null, source_grn_id: b.source_grn_id || null, source_bill_id: b.source_bill_id || null,
@@ -367,8 +437,10 @@ router.post('/purchase-additional-expenses', requireAuth, loadUserPermissions, r
             const linesToSave = Array.isArray(b.expense_lines) ? b.expense_lines : [];
             const { netPayable, lines } = await syncExpenseLines(tenantClient, tenantId, doc.id, linesToSave);
             await syncAllocations(tenantClient, tenantId, doc.id, b, lines);
+            await syncCustoms(tenantClient, tenantId, doc.id, b.customs_entries);
             await tenantClient.from('purchase_additional_expenses').update({ total_amount: netPayable }).eq('id', doc.id);
         } catch (syncErr) {
+            await tenantClient.from('purchase_additional_customs').delete().eq('expense_id', doc.id);
             await tenantClient.from('purchase_expense_allocations').delete().eq('expense_id', doc.id);
             await tenantClient.from('purchase_additional_expense_lines').delete().eq('expense_id', doc.id);
             await tenantClient.from('purchase_additional_expenses').delete().eq('id', doc.id);
@@ -403,7 +475,10 @@ router.put('/purchase-additional-expenses/:id', requireAuth, loadUserPermissions
         if (fieldError) return res.status(400).json({ success: false, error: fieldError });        const update = { ...b, ...snapshots, updated_by: req.auth.userId, updated_at: new Date().toISOString() };
         delete update.branch_id;
         delete update.expense_lines;
+        delete update.customs_entries;
         delete update.save_as_draft;
+        const customsError = (b.save_as_draft || b.status === 'draft') ? null : validateCustoms(b.customs_entries);
+        if (customsError) return res.status(400).json({ success: false, error: customsError });
 
         const { data, error } = await tenantClient.from('purchase_additional_expenses').update(update).eq('id', req.params.id).eq('tenant_id', tenantId).select().single();
         if (error) throw error;
@@ -411,6 +486,7 @@ router.put('/purchase-additional-expenses/:id', requireAuth, loadUserPermissions
         if (b.expense_lines) {
             const { netPayable, lines } = await syncExpenseLines(tenantClient, tenantId, req.params.id, b.expense_lines);
             await syncAllocations(tenantClient, tenantId, req.params.id, { ...existing, ...b }, lines);
+            await syncCustoms(tenantClient, tenantId, req.params.id, b.customs_entries);
             await tenantClient.from('purchase_additional_expenses').update({ total_amount: netPayable }).eq('id', req.params.id);
         }
 
@@ -499,4 +575,4 @@ router.get('/purchase-additional-expenses/:id/audit-trail', requireAuth, loadUse
 });
 
 module.exports = router;
-module.exports._internals = { computeAllocations, applyTermRules, computeNetPayable, costingWarnings, getSourceLines };
+module.exports._internals = { billTypeOf, computeAllocations, applyTermRules, computeNetPayable, costingWarnings, getSourceLines };

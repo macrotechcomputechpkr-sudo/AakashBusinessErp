@@ -129,6 +129,22 @@ async function loadCustomTaxDocs(tenantClient, tenantId, docType, cfg, { dateFro
             if (withLines) b.lines.push({ product_name: l.description || 'Expense', qty: null, uom: null, rate: null, taxable: l.bill_type === 'taxable' ? base : 0, exempt: l.bill_type === 'taxable' ? 0 : base, vat, amount: round2(base + vat) });
         });
         out.push(...bills.values());
+        // Customs (Bhansar) rows: each pragyapan patra is an import purchase - taxable = import taxable.
+        // VAT-report only (no posting of their own); item-wise rows list their products as the bill lines.
+        const customs = await inChunks(headers.map(h => h.id), 200, async chunk => (await tenantClient.from('purchase_additional_customs').select('*').in('expense_id', chunk)).data || []);
+        customs.forEach(cu => {
+            const h = byId[cu.expense_id];
+            const taxable = round2(cu.taxable_amount), exempt = round2(cu.non_taxable_amount), vat = round2(cu.vat_amount);
+            const items = cu.detail_mode === 'item_wise' && Array.isArray(cu.item_details) && cu.item_details.length ? cu.item_details : null;
+            out.push({ doc_type: docType, doc_label: `${cfg.label} (Import / Customs)`, side: cfg.side, sign: cfg.sign, id: `cu|${cu.id}`, document_id: h.id, doc_no: h.doc_no, doc_date: h.doc_date,
+                party_ledger_id: null, party_name: cu.customs_office ? `Customs - ${cu.customs_office}` : 'Customs (import)', party_pan: null,
+                party_bill_no: cu.pragyapan_no || null, party_bill_date: cu.pragyapan_date || null, invoice_type: h.invoice_type || null, is_import: true, detail_mode: cu.detail_mode || 'bill_wise',
+                taxable, exempt, vat, total: round2(taxable + exempt + vat), import_taxable: taxable,
+                vat_by_ledger: vat ? { [cu.vat_ledger_id || defaultLedger || 'unassigned']: vat } : {},
+                lines: withLines ? (items
+                    ? items.map(x => ({ product_name: x.product_name, qty: Number(x.qty) || null, uom: null, rate: null, assessable: round2(x.assessable_value), taxable: round2(x.taxable_amount), exempt: round2(x.non_taxable_amount), vat: round2(x.vat_amount), amount: round2(Number(x.taxable_amount || 0) + Number(x.non_taxable_amount || 0) + Number(x.vat_amount || 0)) }))
+                    : [{ product_name: `Import (assessable ${round2(cu.assessable_value)})`, qty: null, uom: null, rate: null, taxable, exempt, vat, amount: round2(taxable + exempt + vat) }]) : undefined });
+        });
     } else {
         const vatIds = new Set(await allVatLedgerIds(tenantClient, tenantId));
         const details = await inChunks(headers.map(h => h.id), 200, async chunk => (await tenantClient.from('journal_voucher_details').select('jv_id, ledger_id, ledger_name_snapshot, debit_amount, credit_amount, narration').in('jv_id', chunk)).data);
@@ -192,7 +208,7 @@ async function loadTaxDocs(tenantClient, tenantId, docType, { dateFrom, dateTo, 
     const vatLedgerSet = cfg.ledgerNote ? new Set(await allVatLedgerIds(tenantClient, tenantId)) : new Set();
 
     const partyIds = [...new Set(headers.map(h => h[cfg.party]).filter(Boolean))];
-    const parties = await inChunks(partyIds, 200, async chunk => (await tenantClient.from('ledger_accounts').select('id, account_name, pan_number, vat_pan_number').in('id', chunk)).data);
+    const parties = await inChunks(partyIds, 200, async chunk => (await tenantClient.from('ledger_accounts').select('id, account_code, account_name, pan_number, vat_pan_number').in('id', chunk)).data);
     const partyById = Object.fromEntries(parties.map(p => [p.id, p]));
 
     return headers.map(h => {
@@ -232,6 +248,10 @@ async function loadTaxDocs(tenantClient, tenantId, docType, { dateFrom, dateTo, 
             party_bill_no: h.party_bill_no || h.ref_doc_no || null,
             party_bill_date: h.party_bill_date || h.ref_doc_date || null,
             invoice_type: h.invoice_type || null,
+            // extra keys for the advanced VAT reports (Annex 13, monthly sales / purchase, register filters)
+            party_code: party?.account_code || '', party_sub_ledger_id: h.customer_sub_ledger_id || h.vendor_sub_ledger_id || h.party_sub_ledger_id || null,
+            product_company_id: h.product_company_id || null, currency: h.currency || 'NPR',
+            is_export: cfg.side === 'sales' && !!h.currency && h.currency !== 'NPR',
             taxable, exempt, vat, total, import_taxable: importTaxable,
             vat_by_ledger: vatByLedgerByDoc[h.id] || {},
             lines: withLines ? lineOut : undefined
@@ -344,8 +364,21 @@ router.get('/vat-reports/register', requireAuth, loadUserPermissions, requirePer
         const withLines = view === 'item' || q.include_items === 'true';
         let docs = [];
         for (const t of parseTypes(q)) docs.push(...await loadTaxDocs(tenantClient, tenantId, t, { dateFrom: q.date_from, dateTo: q.date_to, partyId: q.party_ledger_id, withLines }));
-        docs = applyDocFilters(docs, q).sort((a, b) => String(a.doc_date).localeCompare(String(b.doc_date)) || String(a.doc_no).localeCompare(String(b.doc_no)));
+        if (q.product_company_id) docs = docs.filter(d => d.product_company_id === q.product_company_id);
+        const sorters = {
+            date: (a, b) => String(a.doc_date).localeCompare(String(b.doc_date)) || String(a.doc_no).localeCompare(String(b.doc_no)),
+            doc_no: (a, b) => String(a.doc_no).localeCompare(String(b.doc_no), undefined, { numeric: true }),
+            party: (a, b) => String(a.party_name || '').localeCompare(String(b.party_name || '')) || String(a.doc_date).localeCompare(String(b.doc_date)),
+            amount: (a, b) => b.total - a.total
+        };
+        docs = applyDocFilters(docs, q).sort(sorters[q.sort_on] || sorters.date);
         docs.forEach(d => { d.bs_date = bsDateOf(d.doc_date, periods); });
+        if (q.show_sub_ledger === 'true') {
+            const subIds = [...new Set(docs.map(d => d.party_sub_ledger_id).filter(Boolean))];
+            const subs = await inChunks(subIds, 200, async ch => (await tenantClient.from('sub_ledgers').select('id, sub_ledger_name').in('id', ch)).data || []);
+            const sn = Object.fromEntries(subs.map(x => [x.id, x.sub_ledger_name]));
+            docs.forEach(d => { d.sub_ledger_name = d.party_sub_ledger_id ? sn[d.party_sub_ledger_id] || '' : ''; });
+        }
 
         let rows;
         if (view === 'bill') rows = docs;
@@ -429,6 +462,20 @@ router.get('/vat-reports/above-threshold', requireAuth, loadUserPermissions, req
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
     }
+});
+
+// ---------- Advanced: Annex 13, monthly sales / purchase, party-wise summary (utils/vatAnnex.js) ----------
+router.get('/vat-reports/annex13', requireAuth, loadUserPermissions, requirePermission('reports', 'view'), async (req, res) => {
+    try { res.json({ success: true, data: await require('../utils/vatAnnex').annex13(await getTenantClient(req.auth.tenantId), req.auth.tenantId, req.query) }); }
+    catch (error) { res.status(500).json({ success: false, error: error.message }); }
+});
+router.get('/vat-reports/monthly-sales-purchase', requireAuth, loadUserPermissions, requirePermission('reports', 'view'), async (req, res) => {
+    try { res.json({ success: true, data: await require('../utils/vatAnnex').monthlySalesPurchase(await getTenantClient(req.auth.tenantId), req.auth.tenantId, req.query) }); }
+    catch (error) { res.status(500).json({ success: false, error: error.message }); }
+});
+router.get('/vat-reports/party-summary', requireAuth, loadUserPermissions, requirePermission('reports', 'view'), async (req, res) => {
+    try { res.json({ success: true, data: await require('../utils/vatAnnex').partySummary(await getTenantClient(req.auth.tenantId), req.auth.tenantId, req.query) }); }
+    catch (error) { res.status(500).json({ success: false, error: error.message }); }
 });
 
 // ---------- Monthly VAT return figures ----------
@@ -619,4 +666,4 @@ router.get('/vat-reports/reconciliation', requireAuth, loadUserPermissions, requ
 });
 
 module.exports = router;
-module.exports._internals = { loadTaxDocs, bsDateOf, periodKeyOf, sumOf, applyDocFilters, VAT_DOCS };
+module.exports._internals = { loadTaxDocs, loadPeriods, bsDateOf, periodKeyOf, sumOf, applyDocFilters, VAT_DOCS, BS_MONTHS };

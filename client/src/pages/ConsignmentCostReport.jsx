@@ -21,7 +21,8 @@ import { useUdfColumns } from '../components/UdfColumns';
 const iso = d => d.toISOString().slice(0, 10);
 const fmt2 = n => (Number(n) ? Number(n).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) : '');
 const fmtQ = n => (Number(n) ? (Math.round(Number(n) * 10000) / 10000).toLocaleString('en-IN', { maximumFractionDigits: 4 }) : '');
-const VIEWS = [['bill', '🧾 Bill-wise'], ['product', '📦 Product-wise'], ['ledger', '📒 Ledger Summary'], ['mismatch', '⚠ Mismatches'], ['other', '📝 Other GL']];
+const round2c = n => Math.round((Number(n) || 0) * 100) / 100;
+const VIEWS = [['costing', '📋 Consignment Costing (date-wise)'], ['bill', '🧾 Bill-wise'], ['product', '📦 Product-wise'], ['ledger', '📒 Ledger Summary'], ['mismatch', '⚠ Mismatches'], ['other', '📝 Other GL']];
 
 const defaultConfig = () => {
     const d = new Date();
@@ -32,7 +33,7 @@ const defaultConfig = () => {
 export default function ConsignmentCostReport() {
     const { authFetch } = useAuth();
     const [config, setConfig] = useState(defaultConfig());
-    const [view, setView] = useState('bill');
+    const [view, setView] = useState(() => new URLSearchParams(window.location.search).get('view') || 'costing');
     const [meta, setMeta] = useState(null);
     const [ledgers, setLedgers] = useState([]);
     const [data, setData] = useState(null);
@@ -65,13 +66,19 @@ export default function ConsignmentCostReport() {
     const party = isPurchase ? 'Supplier' : 'Customer';
     const acctWord = isPurchase ? 'Goods / Purchase Account' : 'Sales Account';
     const termNames = data?.term_names || [];
+    const addlNames = data?.additional_names || [];
+    const nonAddlNames = data?.non_additional_names || [];
     const toggleOpen = k => setOpen(s => { const n = new Set(s); if (n.has(k)) n.delete(k); else n.add(k); return n; });
     const sg = d => (d.kind === 'main' ? '' : '-');
 
     const exportCsv = () => {
         if (!data) return;
         let head, rows;
-        if (view === 'bill') {
+        if (view === 'costing') {
+            head = ['Date', 'Bill No', 'Code', 'Supplier', 'Item', 'Unit', 'Qty', 'Rate', 'Basic', 'Add / Less', 'Net Basic', ...addlNames, ...nonAddlNames, 'Total Additional', 'Total Non-Additional', 'Net Amount', 'Cost Rate'];
+            rows = data.docs.flatMap(d => d.lines.map(l => { const nb = l.landed - l.additional; return [d.doc_date, d.doc_no, l.product_code, d.party_name, l.product_name, l.unit, l.qty, l.rate, l.basic, round2c(nb - l.basic), nb,
+                ...addlNames.map(n => l.additional_terms?.[n] || 0), ...nonAddlNames.map(n => l.non_additional_terms?.[n] || 0), l.additional, l.non_additional, l.net_amount, l.cost_rate]; }));
+        } else if (view === 'bill') {
             head = ['Date', 'Document', 'Doc No', 'Party Bill No', party, 'Account', 'Code', 'Item', 'Qty', 'Unit', 'Base Qty', 'Rate', 'Basic', 'Discount', 'Net', ...termNames, 'VAT', 'Additional', 'Landed', 'Landed Rate', 'Posted to'];
             rows = data.docs.flatMap(d => d.lines.map(l => [d.doc_date, d.doc_type, d.doc_no, d.party_bill_no || '', d.party_name, d.doc_account_name, l.product_code, l.product_name, l.qty, l.unit, l.base_qty, l.rate,
                 l.basic, l.discount, l.net, ...termNames.map(n => l.terms[n] || 0), l.vat, l.additional, l.landed, l.landed_rate, l.account_name]));
@@ -145,6 +152,59 @@ export default function ConsignmentCostReport() {
                             {isPurchase ? ' Landed cost ' : ' Net sales incl. terms '}{fmt2(data.totals.landed)} · <span className={data.mismatches.length ? 'text-red-600 font-semibold' : 'text-green-700'}>{data.mismatches.length ? `${data.mismatches.length} GL mismatch(es)` : 'GL matches'}</span>
                         </p>
                         <div className="overflow-x-auto text-sm">
+                            {view === 'costing' && (
+                                <table className="erp-grid-table w-full text-xs">
+                                    <thead><tr>
+                                        <th className="text-left">Date</th><th className="text-left">Bill No</th><th className="text-left">Code</th><th className="text-left">{party} / Item</th><th>Unit</th>
+                                        <th className="text-right">Qty</th><th className="text-right">Rate</th><th className="text-right">Basic</th><th className="text-right">Add / Less</th><th className="text-right">Net Basic</th>
+                                        {addlNames.map(n => <th key={`a${n}`} className="text-right bg-green-50">{n}</th>)}
+                                        {nonAddlNames.map(n => <th key={`n${n}`} className="text-right bg-amber-50">{n}</th>)}
+                                        <th className="text-right bg-green-100">Total Additional</th><th className="text-right bg-amber-100">Total Non-Additional</th><th className="text-right">Net Amount</th><th className="text-right bg-blue-50">Cost Rate</th>
+                                    </tr></thead>
+                                    <tbody>
+                                        {data.docs.filter(d => d.kind === 'main').map(d => {
+                                            const nb = l => round2c(l.landed - l.additional);
+                                            const sum = f => round2c(d.lines.reduce((s, l) => s + f(l), 0));
+                                            const qty = sum(l => l.qty);
+                                            return (
+                                                <React.Fragment key={d.key}>
+                                                    <tr className="bg-slate-50 font-semibold"><td>{d.doc_date}</td><td>{d.doc_no}</td><td /><td colSpan={7 + addlNames.length + nonAddlNames.length + 4}>{d.party_name}{d.party_bill_no ? ` · Bill ${d.party_bill_no}` : ''}</td></tr>
+                                                    {d.lines.map((l, i) => (
+                                                        <tr key={i}>
+                                                            <td /><td /><td>{l.product_code}</td><td>{l.product_name}</td><td>{l.unit}</td>
+                                                            <td className="text-right">{fmtQ(l.qty)}</td><td className="text-right">{fmt2(l.rate)}</td><td className="text-right">{fmt2(l.basic)}</td>
+                                                            <td className="text-right">{fmt2(nb(l) - l.basic)}</td><td className="text-right">{fmt2(nb(l))}</td>
+                                                            {addlNames.map(n => <td key={`a${n}`} className="text-right">{fmt2(l.additional_terms?.[n])}</td>)}
+                                                            {nonAddlNames.map(n => <td key={`n${n}`} className="text-right">{fmt2(l.non_additional_terms?.[n])}</td>)}
+                                                            <td className="text-right font-semibold">{fmt2(l.additional)}</td><td className="text-right">{fmt2(l.non_additional)}</td>
+                                                            <td className="text-right">{fmt2(l.net_amount)}</td><td className="text-right font-semibold bg-blue-50">{fmt2(l.cost_rate)}</td>
+                                                        </tr>
+                                                    ))}
+                                                    <tr className="text-[#7a1a3a] font-semibold border-b-2">
+                                                        <td colSpan={5} className="text-right">Bill No Total ⇒</td><td className="text-right">{fmtQ(qty)}</td><td className="text-right">{qty ? fmt2(sum(l => l.basic) / qty) : ''}</td>
+                                                        <td className="text-right">{fmt2(sum(l => l.basic))}</td><td className="text-right">{fmt2(sum(l => nb(l) - l.basic))}</td><td className="text-right">{fmt2(sum(nb))}</td>
+                                                        {addlNames.map(n => <td key={`a${n}`} className="text-right">{fmt2(sum(l => l.additional_terms?.[n] || 0))}</td>)}
+                                                        {nonAddlNames.map(n => <td key={`n${n}`} className="text-right">{fmt2(sum(l => l.non_additional_terms?.[n] || 0))}</td>)}
+                                                        <td className="text-right">{fmt2(sum(l => l.additional))}</td><td className="text-right">{fmt2(sum(l => l.non_additional))}</td><td className="text-right">{fmt2(sum(l => l.net_amount))}</td><td />
+                                                    </tr>
+                                                </React.Fragment>
+                                            );
+                                        })}
+                                        {data.docs.length === 0 && <tr><td colSpan={14} className="text-center text-gray-400 py-4">No posted bills.</td></tr>}
+                                    </tbody>
+                                    {data.docs.length > 0 && (() => {
+                                        const all = data.docs.filter(d => d.kind === 'main').flatMap(d => d.lines);
+                                        const sum = f => round2c(all.reduce((s, l) => s + f(l), 0));
+                                        return (
+                                            <tfoot><tr className="font-bold bg-blue-50"><td colSpan={5} className="text-right">Grand Total</td><td className="text-right">{fmtQ(sum(l => l.qty))}</td><td />
+                                                <td className="text-right">{fmt2(sum(l => l.basic))}</td><td className="text-right">{fmt2(sum(l => l.landed - l.additional - l.basic))}</td><td className="text-right">{fmt2(sum(l => l.landed - l.additional))}</td>
+                                                {addlNames.map(n => <td key={`a${n}`} className="text-right">{fmt2(sum(l => l.additional_terms?.[n] || 0))}</td>)}
+                                                {nonAddlNames.map(n => <td key={`n${n}`} className="text-right">{fmt2(sum(l => l.non_additional_terms?.[n] || 0))}</td>)}
+                                                <td className="text-right">{fmt2(sum(l => l.additional))}</td><td className="text-right">{fmt2(sum(l => l.non_additional))}</td><td className="text-right">{fmt2(sum(l => l.net_amount))}</td><td /></tr></tfoot>
+                                        );
+                                    })()}
+                                </table>
+                            )}
                             {view === 'bill' && (
                                 <table className="erp-grid-table w-full">
                                     <thead><tr>

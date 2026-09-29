@@ -10,6 +10,8 @@ import React from 'react';
 import { BrowserRouter as Router, Routes, Route, Navigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import LoginPage from './pages/LoginPage';
+import AdminPanel from './pages/AdminPanel';
+import FirmImport from './pages/FirmImport';
 import Dashboard from './pages/Dashboard';
 import CompanyCreation from './pages/CompanyCreation';
 import UserManagement from './pages/UserManagement';
@@ -65,6 +67,7 @@ import RoutePlan from './pages/RoutePlan';
 import OrderBilling from './pages/OrderBilling';
 import MobileApprovals from './pages/MobileApprovals';
 import DayBook from './pages/DayBook';
+import DailyRegister from './pages/DailyRegister';
 import BalanceWriteoff from './pages/BalanceWriteoff';
 import SalesmanReports from './pages/SalesmanReports';
 import IrdCompliance from './pages/IrdCompliance';
@@ -112,6 +115,7 @@ import ProductOfferRate from './pages/ProductOfferRate';
 import RemarksTermsManagement from './pages/RemarksTermsManagement';
 import UserDefinedFieldBuilder from './pages/UserDefinedFieldBuilder';
 import TransportManagement from './pages/TransportManagement';
+import CustomsOffices from './pages/CustomsOffices';
 import PurchaseRequisition from './pages/PurchaseRequisition';
 import PurchaseOrder from './pages/PurchaseOrder';
 import PurchaseQuotation from './pages/PurchaseQuotation';
@@ -149,6 +153,10 @@ const PrivateRoute = ({ children }) => {
     if (!(user || token)) return <Navigate to="/login" replace />;
     // a default / reset password must be replaced before anything else
     if (user?.must_change_password && location.pathname !== '/change-password') return <Navigate to="/change-password" replace />;
+    // a super admin without an opened company lives in the Admin Panel
+    const storedTenant = localStorage.getItem('auth_tenant');
+    const noTenant = !storedTenant || storedTenant === 'null';
+    if (user?.is_global_admin && noTenant && !['/admin', '/company-creation', '/change-password'].includes(location.pathname)) return <Navigate to="/admin" replace />;
     return children;
 };
 
@@ -175,6 +183,8 @@ function AppRoutes() {
             <Route path="/login" element={user || token ? <Navigate to="/dashboard" replace /> : <LoginPage />} />
             <Route path="/dashboard" element={<PrivateRoute><SalesmanHome><Dashboard /></SalesmanHome></PrivateRoute>} />
             <Route path="/company-creation" element={<PrivateRoute><CompanyCreation /></PrivateRoute>} />
+            <Route path="/admin" element={<PrivateRoute><AdminPanel /></PrivateRoute>} />
+            <Route path="/firm-import" element={<PrivateRoute><FirmImport /></PrivateRoute>} />
             <Route path="/users" element={<PrivateRoute><UserManagement /></PrivateRoute>} />
             <Route path="/fiscal-years" element={<PrivateRoute><FiscalYearManagement /></PrivateRoute>} />
             <Route path="/branches-warehouses" element={<PrivateRoute><BranchWarehouseManagement /></PrivateRoute>} />
@@ -230,6 +240,7 @@ function AppRoutes() {
             <Route path="/order-billing" element={<PrivateRoute><OrderBilling /></PrivateRoute>} />
             <Route path="/mobile-approvals" element={<PrivateRoute><MobileApprovals /></PrivateRoute>} />
             <Route path="/day-book" element={<PrivateRoute><DayBook /></PrivateRoute>} />
+            <Route path="/daily-register" element={<PrivateRoute><DailyRegister /></PrivateRoute>} />
             <Route path="/balance-writeoff" element={<PrivateRoute><BalanceWriteoff /></PrivateRoute>} />
             <Route path="/salesman-reports" element={<PrivateRoute><SalesmanReports /></PrivateRoute>} />
             <Route path="/ird" element={<PrivateRoute><IrdCompliance /></PrivateRoute>} />
@@ -277,6 +288,7 @@ function AppRoutes() {
             <Route path="/remarks-terms" element={<PrivateRoute><RemarksTermsManagement /></PrivateRoute>} />
             <Route path="/user-defined-fields" element={<PrivateRoute><UserDefinedFieldBuilder /></PrivateRoute>} />
             <Route path="/transport-master" element={<PrivateRoute><TransportManagement /></PrivateRoute>} />
+            <Route path="/customs-offices" element={<PrivateRoute><CustomsOffices /></PrivateRoute>} />
             {/* INACTIVE (per request): kept in code, route disabled for now. */}
             {/* <Route path="/purchase-requisition" element={<PrivateRoute><PurchaseRequisition /></PrivateRoute>} /> */}
             <Route path="/purchase-order" element={<PrivateRoute><PurchaseOrder /></PrivateRoute>} />

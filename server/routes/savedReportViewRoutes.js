@@ -42,7 +42,7 @@ router.post('/saved-report-views', requireAuth, async (req, res) => {
             config_json: config_json || {}, is_shared: !!is_shared, is_default: !!is_default
         }).select().single();
         if (error) {
-            if (String(error.message).includes('unique_saved_view_name')) return res.status(400).json({ success: false, error: `You already have a view named "${view_name.trim()}" - choose another name or use Save to overwrite it` });
+            if (/unique_saved(_report)?_view_name/.test(String(error.message))) return res.status(400).json({ success: false, error: `You already have a view named "${view_name.trim()}" - choose another name or use Save to overwrite it` });
             throw error;
         }
         res.json({ success: true, message: `Saved as "${data.view_name}"`, data });

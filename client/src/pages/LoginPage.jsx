@@ -38,6 +38,8 @@ const LoginPage = () => {
             const data = await login(email, password, tenantCode || undefined);
             if (data.must_change_password) {
                 navigate('/change-password');
+            } else if (data.user?.is_global_admin && !data.tenant) {
+                navigate('/admin');   // super admin: Admin Panel (companies list, open one view only)
             } else if (data.requires_company_creation) {
                 navigate('/company-creation');
             } else {

@@ -61,7 +61,7 @@ export default function BillWiseSettlementPanel({ ledgerId, outstandingNature, a
             <p className="text-sm font-medium text-amber-800 mb-2">
                 🔗 Bill-wise Settlement — this vendor has an outstanding {natureLabel} balance. FIFO suggestion below (oldest first) - edit amounts if needed.
             </p>
-            <table className="w-full text-sm">
+            <table data-no-smart className="w-full text-sm">
                 <thead>
                     <tr className="text-left text-xs text-gray-500 uppercase">
                         <th className="py-1">Voucher</th>

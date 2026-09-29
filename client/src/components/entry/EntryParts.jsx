@@ -120,7 +120,7 @@ export function TermPopup({ title, productName, basic, qty, unitName, rows, onIn
                 {fx?.foreign && <div><small>In {fx.base} @ {Number(fx.rate).toFixed(4)}</small><b>{fmt((Number(basic || 0) + net) * fx.rate)}</b></div>}
             </div>
             <div className="ent-charge-wrap">
-                <table className="erp-grid-table ent-charge-table">
+                <table data-no-smart className="erp-grid-table ent-charge-table">
                     <thead><tr><th style={{ width: 34 }}>#</th><th>Charge</th>{withSub && <th>Sub-ledger</th>}<th style={{ width: 56 }}>+/-</th>{KIND_COLS.map(([k, l]) => <th key={k} className="text-right" style={{ width: 84 }}>{l}</th>)}<th className="text-right">Base Amount</th><th className="text-right">Amount</th>{fx?.foreign && <th className="text-right">Local ({fx.base})</th>}</tr></thead>
                     <tbody>
                         {rows.map((r, i) => (
@@ -174,7 +174,7 @@ export function OverallTermPopup({ title, rows, onPercent, onAmount, onClose, no
     return (
         <EntryPopup title={title} onClose={onClose} footer={note ? <span className="ent-note">{note}</span> : null}>
             {extra}
-            <table className="erp-grid-table">
+            <table data-no-smart className="erp-grid-table">
                 <thead><tr><th style={{ width: 34 }}>#</th><th>Charge</th><th style={{ width: 110 }}>Split by</th><th style={{ width: 56 }}>+/-</th><th className="text-right" style={{ width: 110 }}>Rate %</th><th className="text-right" style={{ width: 150 }}>Amount{fx?.foreign ? ` (${fx.code})` : ''}</th>{fx?.foreign && <th className="text-right" style={{ width: 130 }}>Local ({fx.base})</th>}</tr></thead>
                 <tbody>
                     {rows.map((r, i) => (

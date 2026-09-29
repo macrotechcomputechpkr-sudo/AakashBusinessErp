@@ -99,4 +99,28 @@ router.put('/documents/:type/:id/party-info', requireAuth, loadUserPermissions, 
     } catch (e) { fail(res, e); }
 });
 
+// ---- Account Posting (JV) view of any saved transaction (components/entry/PostingView.jsx) ----
+// the ledger entry of a saved document: every batch posted for it (document ids are unique)
+router.get('/document-posting/:id', ...view, async (req, res) => {
+    try {
+        const t = req.auth.tenantId, c = await getTenantClient(t);
+        const { data: batches, error } = await c.from('ledger_transaction_batches').select('id, document_type, batch_date, narration, created_at').eq('tenant_id', t).eq('document_id', req.params.id).order('created_at');
+        if (error) throw error;
+        const ids = (batches || []).map(b => b.id);
+        const { data: lines } = ids.length ? await c.from('ledger_transaction_lines').select('batch_id, ledger_account_id, sub_ledger_id, debit_amount, credit_amount, narration').in('batch_id', ids) : { data: [] };
+        const ledIds = [...new Set((lines || []).map(l => l.ledger_account_id))], subIds = [...new Set((lines || []).map(l => l.sub_ledger_id).filter(Boolean))];
+        const { data: leds } = ledIds.length ? await c.from('ledger_accounts').select('id, account_code, account_name').in('id', ledIds) : { data: [] };
+        const { data: subs } = subIds.length ? await c.from('sub_ledgers').select('id, sub_ledger_name').in('id', subIds) : { data: [] };
+        const ln = Object.fromEntries((leds || []).map(x => [x.id, x])), sn = Object.fromEntries((subs || []).map(x => [x.id, x.sub_ledger_name]));
+        const r2 = n => Math.round((Number(n) || 0) * 100) / 100;
+        const out = (batches || []).map(b => {
+            const ls = (lines || []).filter(l => l.batch_id === b.id).map(l => ({ ledger_id: l.ledger_account_id, ledger_code: ln[l.ledger_account_id]?.account_code || '', ledger_name: ln[l.ledger_account_id]?.account_name || '', sub_ledger_name: l.sub_ledger_id ? sn[l.sub_ledger_id] || '' : '',
+                debit: r2(l.debit_amount), credit: r2(l.credit_amount), narration: l.narration || '' }))
+                .sort((a, z) => (z.debit > 0) - (a.debit > 0));
+            return { ...b, lines: ls, debit: r2(ls.reduce((s, x) => s + x.debit, 0)), credit: r2(ls.reduce((s, x) => s + x.credit, 0)) };
+        });
+        res.json({ success: true, data: { batches: out } });
+    } catch (e) { fail(res, e); }
+});
+
 module.exports = router;

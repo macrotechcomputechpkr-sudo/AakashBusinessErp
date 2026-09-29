@@ -6,6 +6,7 @@
 
 import ProductCompanyField from '../components/ProductCompanyField';
 import { useEntryFieldControls } from '../hooks/useEntryFieldControls';
+import PostingView from '../components/entry/PostingView';
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import SearchablePopupSelect from '../components/SearchablePopupSelect';
@@ -36,6 +37,7 @@ const emptyForm = {
 const EFC_RENDERED_KEYS = ['amount', 'bank_account_no', 'bank_branch', 'bank_name', 'beneficiary_name', 'cheque_date', 'cheque_no', 'doc_date', 'narration', 'party_ledger_id', 'ref_doc_no', 'voucher_type'];
 
 export default function PdcVoucher() {
+    const [jvRow, setJvRow] = useState(null);
     const { authFetch } = useAuth();
     const efc = useEntryFieldControls('pdc', EFC_RENDERED_KEYS);
     const [rows, setRows] = useState([]);
@@ -381,6 +383,7 @@ export default function PdcVoucher() {
                     <div className="flex gap-2 justify-center flex-wrap">
                         {row.status === 'pending' && <button onClick={() => handleEdit(row)} className="px-2 py-1 bg-blue-600 text-white rounded text-xs">Open</button>}
                         {['pending', 'posted'].includes(row.status) && <a href={`/print/pdc_voucher/${row.id}`} target="_blank" rel="noopener noreferrer" className="px-2 py-1 bg-purple-600 text-white rounded text-xs">🖨️ Print</a>}
+                        {row.status !== 'pending' && <button onClick={() => setJvRow(row)} className="px-2 py-1 bg-slate-600 text-white rounded text-xs" title="Account Posting (JV)">📒 JV</button>}
                         <button onClick={() => openAuditTrail(row)} className="px-2 py-1 bg-gray-500 text-white rounded text-xs">History</button>
                         <button onClick={() => setUdfDoc(row.id)} className="px-2 py-1 bg-indigo-500 text-white rounded text-xs" title="Custom fields (UDF)">UDF</button>{udfDoc === row.id && <UdfValuesModal docType="pdc_voucher" docId={row.id} onClose={() => setUdfDoc(null)} />}
                         {row.status === 'pending' && <button onClick={() => handlePost(row)} className="px-2 py-1 bg-green-600 text-white rounded text-xs">Post</button>}
@@ -394,6 +397,7 @@ export default function PdcVoucher() {
 
         {auditModal && <RecordHistory table="pdc_vouchers" id={auditModal.id} title={auditModal.doc_no} legacyUrl={`/api/pdc-vouchers/${auditModal.id}/audit-trail`} onClose={() => setAuditModal(null)} />}
         </div>
+        {jvRow && <PostingView docId={jvRow.id} docNo={jvRow.doc_no} status={jvRow.status} onClose={() => setJvRow(null)} />}
         </Layout>
     );
 }

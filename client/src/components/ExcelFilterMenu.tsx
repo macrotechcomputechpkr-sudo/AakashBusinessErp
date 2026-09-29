@@ -18,12 +18,14 @@ interface Props {
     selected: Set<string> | null;
     onApply: (allowed: Set<string> | null) => void;
     onSort?: (dir: 'asc' | 'desc') => void;
+    /** hide this column (report tables: shown again from 📁 Views > Columns) */
+    onHide?: () => void;
     onClose: () => void;
 }
 
 export const BLANK = '(Blanks)';
 
-export default function ExcelFilterMenu({ anchor, title, values, selected, onApply, onSort, onClose }: Props) {
+export default function ExcelFilterMenu({ anchor, title, values, selected, onApply, onSort, onHide, onClose }: Props) {
     const [search, setSearch] = useState('');
     const [ticked, setTicked] = useState<Set<string>>(() => new Set(selected ? Array.from(selected) : values.map(v => v.value)));
     const ref = useRef<HTMLDivElement>(null);
@@ -59,7 +61,7 @@ export default function ExcelFilterMenu({ anchor, title, values, selected, onApp
     const top = Math.min(anchor.bottom + 2, window.innerHeight - 380);
 
     return createPortal(
-        <div ref={ref} data-enter-nav="off" className="fixed z-[1000] bg-white border border-slate-300 rounded-lg shadow-xl text-sm normal-case font-normal text-gray-800"
+        <div ref={ref} data-enter-nav="off" data-rg-keep className="fixed z-[1000] bg-white border border-slate-300 rounded-lg shadow-xl text-sm normal-case font-normal text-gray-800"
             style={{ left, top: Math.max(8, top), width }} onClick={e => e.stopPropagation()}>
             {title && <div className="px-3 pt-2 text-xs font-semibold text-gray-500 truncate">{title}</div>}
             {onSort && (
@@ -68,6 +70,7 @@ export default function ExcelFilterMenu({ anchor, title, values, selected, onApp
                     <button type="button" className="w-full text-left px-3 py-1 hover:bg-slate-100" onClick={() => { onSort('desc'); onClose(); }}>↓ Sort Z → A / largest first</button>
                 </div>
             )}
+            {onHide && <div className="border-b py-1"><button type="button" className="w-full text-left px-3 py-1 hover:bg-slate-100" onClick={() => { onHide(); onClose(); }}>🙈 Hide this column</button></div>}
             <div className="p-2">
                 <input autoFocus className="w-full border rounded px-2 py-1 text-sm" placeholder="Search values…" value={search} onChange={e => setSearch(e.target.value)}
                     onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); apply(); } }} />

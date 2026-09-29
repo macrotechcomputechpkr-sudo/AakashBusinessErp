@@ -388,6 +388,10 @@
     .nav-pt-menu { position: fixed; left: 8px; right: 8px; top: auto; max-width: none; }
   }
   @media print {
+    /* ▦ Grid view (hooks/useSmartTables) is for the screen; the report prints as the report */
+    .sg-mount { display: none !important; }
+    table[data-sg-hidden] { display: table !important; }
+    div[data-sg-hidden] { display: block !important; }
     .nav-workspace { background: none; padding: 0; }
     .nav-page { border: none; box-shadow: none; min-height: 0; }
     .nav-page-body { padding: 0; background: #fff; }
@@ -520,6 +524,10 @@ label {
 /* the grid footer / group chips in NAV colours instead of black */
 .rg-footer, .rg-footer > td { background: #ece9d8 !important; color: #1a1a1a !important; border-top: 2px solid #aca899; }
 .rg-chip { background: #dde8f6 !important; color: #1a4a8a !important; border: 1px solid #8aaad5; }
+/* ReportGrid: the ▾ of a header shows faintly until the header is pointed at (or the column is filtered) */
+.rg-root th .rg-xf { opacity: .3; }
+.rg-root th:hover .rg-xf, .rg-root th .rg-xf.on { opacity: 1; }
+.rg-root table thead th { text-transform: none; letter-spacing: normal; }
 /* older master pages: page / form headings and the entry box in the NAV look
    (same as .erp-header-title and .nav-groupbox) */
 /* the module name is already in the window title bar - no second caption below it
