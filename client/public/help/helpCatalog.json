@@ -1023,14 +1023,14 @@
 ],
 "purpose": "Targets per salesman (month / quarter / year, all products or a product / group / company / category, qty and / or value) and commission rules; achievement and commission posting.",
 "steps": [
-"Targets tab: add targets.",
-"Achievement tab: compare with actual net sales.",
-"Commission: post the earned commission (once per target)."
+"Set Targets tab: add targets.",
+"Target Achievement tab (the target report): target vs actual net sales, balance, achievement %; tick and post the earned commission (once per target).",
+"Bill-wise Commission tab: posted bills of the salesman (value without VAT, less returns against the bill) with the salesman's commission %; change the % or amount per bill, tick one or all and post. A bill that already got commission moves to \"Commission already given\" and is never offered again; cancelling the posting frees its bills."
 ],
-"accounts": "Commission posting: Dr commission expense / Cr salesman commission payable (ledgers from the salesman master).",
+"accounts": "Commission posting: Dr commission expense / Cr salesman commission payable (ledgers from the salesman master, or chosen on posting).",
 "stock": "None.",
 "vat": "None.",
-"other": "Commission Register lists what was posted.",
+"other": "Commission Register lists every posting (target-wise and bill-wise) and cancels it (the GL entry is reversed).",
 "fields": [
 [
 "From",
@@ -1051,6 +1051,48 @@
 ],
 "slug": "agent-targets",
 "pdf": "/help/menus/agent-targets.pdf"
+},
+"/mobile-approvals": {
+"path": "/mobile-approvals",
+"title": "Mobile Approvals (receipts / returns)",
+"module": "Sales",
+"kind": "entry",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Cash receipts and sales returns the salesmen entered on the phone wait here as pending drafts until the office posts them.",
+"steps": [
+"Filter by type, status, salesman and dates.",
+"Tick one, several or all (tick box in the header) and Post ticked.",
+"Open screen opens Cash / Bank Entry or Sales Return to change an entry before posting."
+],
+"accounts": "On posting - receipt: Dr the mobile cash ledger, Cr the customer (bill-wise settled); return: as Sales Return. The salesman is the agent on both.",
+"stock": "Return: goods come back in on posting.",
+"vat": "Return: reduces output VAT on posting.",
+"other": "Pending entries have no effect at all. The salesman sees them as \"Pending approval\" on the phone.",
+"fields": [
+[
+"Status",
+"Document status: draft, posted, cancelled ..."
+],
+[
+"From",
+"First date of the report period."
+],
+[
+"To",
+"Last date of the report period."
+]
+],
+"slug": "mobile-approvals",
+"pdf": "/help/menus/mobile-approvals.pdf"
 },
 "/purchase-quotation": {
 "path": "/purchase-quotation",
@@ -5232,9 +5274,12 @@
 "construction",
 "poultry"
 ],
-"purpose": "Items to load per vehicle / route from orders or bills.",
+"purpose": "Items to load per vehicle / route from goods delivery and / or sales bills, with the bill summary on the same sheet.",
 "steps": [
-"Choose the date, route or vehicle."
+"Choose dates, sources, customer / salesman / area / route / vehicle filters.",
+"Qty views: By UOM mode - fixed dual \"5 Crt 2 Pcs · Total 62 Pcs\", flexible \"5 Crt = 10 Pcs\"; base unit; as entered; split into units; one unit.",
+"The Total row gives the qty as entered per unit and the total in base unit (per base unit when items differ), for fixed and flexible items alike.",
+"Print sections: Items, Bill Summary (bill no, customer, route, amounts, received / sign) and Bill x Item - print them together on one sheet."
 ],
 "views": {},
 "tips": [],
@@ -5916,14 +5961,17 @@
 "construction",
 "poultry"
 ],
-"purpose": "Mobile screen for salesmen: route plan, customers, stock, orders, visits.",
+"purpose": "Mobile screen for salesmen: the routes planned for them on the day, customers in visiting sequence, orders, cash receipts, sales returns, stock, visits.",
 "steps": [
-"Log in as the salesman user; take orders on the route."
+"Today: only the route(s) planned for this salesman on this date (a date-range plan shows on each date of the range). Open a route: its customers in sequence, with search.",
+"Per customer: Order, Receipt (cash / cheque / online), No order (reason), Details.",
+"Return tab: choose area and route (any), the customer, items and qty, reason - saved as a pending Sales Return.",
+"Entries tab: own orders, and receipts / returns with their approval state."
 ],
 "accounts": "None.",
 "stock": "None.",
 "vat": "None.",
-"other": "Orders reach Sales Order with source \"mobile\".",
+"other": "Orders reach Sales Order with source \"mobile\". Receipts and returns are drafts tagged with the salesman as agent; the office posts them in Mobile Approvals. Settings per salesman in Route Plan > Mobile: allow receipts / returns, mobile cash ledger, off-route.",
 "tips": [],
 "fields": [],
 "slug": "mobile",

@@ -3,6 +3,8 @@
 //   /api/mobile/...            the salesman's mobile app: day sheet (planned
 //                              route customers), order entry, visits, party
 //                              list / detail, stock
+//   /api/mobile/receipts, /returns, /entries   cash receipt / sales return from the phone
+//   /api/mobile-entries/...    office: pending mobile receipts / returns, post (tick one / all)
 //   /api/route-plans/...       route plan by date / weekday per salesman
 //   /api/salesman-agents/:id/login   create / reset the salesman's login
 //   /api/order-billing/...     pending orders -> sales bills (single or many)
@@ -74,15 +76,15 @@ router.get('/mobile/me', ...mobileGuard, async (req, res) => {
         const c = await getTenantClient(req.auth.tenantId);
         const { agent, isSalesman } = await S.resolveAgent(c, req.auth.tenantId, req.auth.userId, null);
         const { data: agents } = isSalesman ? { data: [] } : await c.from('salesman_agents').select('id, agent_name, agent_code').eq('tenant_id', req.auth.tenantId).eq('is_active', true).order('agent_name');
-        res.json({ success: true, data: { is_salesman: isSalesman, agent: agent ? { id: agent.id, agent_name: agent.agent_name, agent_code: agent.agent_code, allow_rate_change: !!agent.allow_rate_change_on_mobile_order } : null,
+        res.json({ success: true, data: { is_salesman: isSalesman, agent: agent ? { id: agent.id, agent_name: agent.agent_name, agent_code: agent.agent_code, allow_rate_change: !!agent.allow_rate_change_on_mobile_order, allow_receipt: agent.allow_mobile_receipt !== false, allow_return: agent.allow_mobile_return !== false } : null,
             agents: agents || [], today: new Date().toISOString().slice(0, 10) } });
     } catch (error) { res.status(error.status || 500).json({ success: false, error: error.message }); }
 });
 router.get('/mobile/day', ...mobileGuard, mobile(({ c, t, agent, isSalesman }, req) => S.daySheet(c, t, agent, isSalesman ? new Date().toISOString().slice(0, 10) : (req.query.date || new Date().toISOString().slice(0, 10)))));
-router.get('/mobile/parties', ...mobileGuard, mobile(({ c, t, agent }, req) => S.agentParties(c, t, agent, req.query)));
+router.get('/mobile/parties', ...mobileGuard, mobile(({ c, t, agent, isSalesman }, req) => S.agentParties(c, t, agent, { ...req.query, date: isSalesman ? undefined : req.query.date })));
 router.get('/mobile/parties/:id', ...mobileGuard, mobile(async ({ c, t, agent }, req) => {
-    const mine = await S.agentParties(c, t, agent, {});
-    if (!mine.some(p => p.id === req.params.id)) throw httpError('This party is not on your routes', 403);
+    const mine = await S.agentParties(c, t, agent, { date: req.query.date });
+    if (!mine.some(p => p.id === req.params.id)) throw httpError('This party is not on your route for today', 403);
     return S.partyDetail(c, t, req.params.id);
 }));
 router.get('/mobile/products', ...mobileGuard, mobile(({ c, t, agent }, req) => S.mobileProducts(c, t, agent, req.query)));
@@ -128,6 +130,21 @@ router.post('/mobile/orders', ...mobileGuard, async (req, res) => {
             data: { id: saved[0].id, doc_no: saved.map(o => o.doc_no).join(', '), orders: saved } });
     } catch (error) { res.status(error.status || 500).json({ success: false, error: error.message }); }
 });
+// cash receipt (customer of today's route) and sales return (customer of any area / route):
+// drafts tagged with the salesman, posted from Mobile Approvals (utils/mobileEntries.js)
+const ME = require('../utils/mobileEntries');
+router.get('/mobile/areas-routes', ...mobileGuard, mobile(({ c, t }) => S.areasRoutes(c, t)));
+router.get('/mobile/route-customers', ...mobileGuard, mobile(({ c, t }, req) => S.anyRouteCustomers(c, t, req.query)));
+router.post('/mobile/receipts', ...mobileGuard, mobile(({ c, t, agent, isSalesman }, req) => ME.createMobileReceipt(c, t, req, agent, isSalesman, req.body || {}, S)));
+router.post('/mobile/returns', ...mobileGuard, mobile(({ c, t, agent, isSalesman }, req) => ME.createMobileReturn(c, t, req, agent, isSalesman, req.body || {}, S)));
+router.get('/mobile/entries', ...mobileGuard, mobile(({ c, t, agent }, req) => ME.myEntries(c, t, agent, req.query)));
+// office: pending mobile receipts / returns, tick one or all and post
+router.get('/mobile-entries/pending', ...view, send((c, t, req) => ME.pendingEntries(c, t, req.query)));
+router.post('/mobile-entries/post', ...edit, send(async (c, t, req) => {
+    const out = await ME.postEntries(c, t, req, req.body?.items);
+    await logAudit(t, req.auth.userId, 'post_mobile_entries', 'mobile_entries', null, { posted: out.posted, failed: out.failed });
+    return out;
+}));
 router.post('/mobile/visits', ...mobileGuard, mobile(({ c, t, agent }, req) => S.recordVisit(c, t, req.auth.userId, agent, req.body || {})));
 
 // ---------------- route plan ----------------
@@ -201,9 +218,9 @@ router.post('/salesman-agents/:id/login', requireAuth, loadUserPermissions, requ
 router.put('/salesman-agents/:id/mobile-settings', ...edit, send(async (c, t, req) => {
     const b = req.body || {};
     const upd = {};
-    ['allow_rate_change_on_mobile_order', 'allow_off_route_orders'].forEach(k => { if (b[k] !== undefined) upd[k] = !!b[k]; });
+    ['allow_rate_change_on_mobile_order', 'allow_off_route_orders', 'allow_mobile_receipt', 'allow_mobile_return'].forEach(k => { if (b[k] !== undefined) upd[k] = !!b[k]; });
     if (b.mobile_order_status !== undefined) upd.mobile_order_status = b.mobile_order_status === 'confirmed' ? 'confirmed' : 'draft';
-    ['default_warehouse_id', 'commission_expense_ledger_id', 'commission_payable_ledger_id', 'linked_user_id'].forEach(k => { if (b[k] !== undefined) upd[k] = b[k] || null; });
+    ['default_warehouse_id', 'commission_expense_ledger_id', 'commission_payable_ledger_id', 'linked_user_id', 'mobile_cash_ledger_id'].forEach(k => { if (b[k] !== undefined) upd[k] = b[k] || null; });
     const { data, error } = await c.from('salesman_agents').update({ ...upd, updated_by: req.auth.userId, updated_at: new Date().toISOString() }).eq('id', req.params.id).eq('tenant_id', t).select().single();
     if (error) throw error; return data;
 }));

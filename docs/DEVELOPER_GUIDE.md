@@ -135,6 +135,14 @@ Other billing terms post to the ledger set on the term (Billing Terms master), w
 - Purchase bill: the same supplier bill no cannot be entered twice for one supplier (`duplicatePartyBill`, on save and on posting).
 - `authFetch` keeps the server's extra error fields (`warnings`, `credit_blocked`), so "Post anyway?" and the credit override work.
 
+### 3.3e Salesman mobile collection / returns, bill-wise commission (migration 149)
+
+- `utils/mobileEntries.js`: `createMobileReceipt` (customer must be on a route planned for the salesman that day unless `allow_off_route_orders`; cash ledger = `salesman_agents.mobile_cash_ledger_id` or System Control `default_cash_ledger_id`) and `createMobileReturn` (customer of any route). Both run the screens' own create handlers (`handlerOf(router, method, path)` + `invoke`), stay `draft`, and are marked `entry_source = 'mobile'` with `agent_id` = the salesman.
+- `pendingEntries` / `postEntries` (`/api/mobile-entries/pending`, `/post`): the office ticks and posts; posting runs the status handlers (GL, stock, bill-wise, IRD as usual).
+- `utils/salesman.agentParties`: only customers of the routes planned for the day (`routeIdsFor`), ordered by route then `sequence_order`; off-route salesmen also get their other routes. `areasRoutes`, `anyRouteCustomers` for returns.
+- `utils/agentBillCommission.js`: `commissionBills` (posted bills with an agent: value excl. VAT less posted returns against the bill, agent %, paid state) and `postBillCommission` (one posting per agent, `basis = 'bill'`, rows in `agent_commission_bills`; unique index `ux_commission_bill_live` keeps a bill in one live posting). `agentTargets.cancelPosting` sets the bills inactive so they can be paid again.
+- `utils/loadingSheet.js`: `qty_totals` per block - base qty per base unit, entered qty per unit, free.
+
 ### 3.3d Additional-bill terms (round 17, migration 148)
 
 - `billing_terms.applicable_sales_additional` + `applicable_additional_expense` = "Additional term"; `applicable_sales_entry / purchase_entry / production_entry` = "Transaction term". `include_in_costing` (default true) next to `include_in_profitability`.

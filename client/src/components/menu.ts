@@ -50,7 +50,7 @@ export const REPORT_GROUPS: ReportGroup[] = [
         ['/salesman-reports?view=plan_vs_visit', 'Route Plan vs Visit (productive calls)'], ['/salesman-reports?view=not_visited', 'Planned but Not Visited'], ['/salesman-reports?view=visits', 'Visit Log / No-order Reasons'],
         ['/salesman-reports?view=order_register', 'Order Register (desk + mobile)'], ['/salesman-reports?view=pending_orders', 'Pending Orders (ageing)'], ['/salesman-reports?view=fill_rate', 'Order Fill Rate'],
         ['/salesman-reports?view=order_products', 'Product-wise Orders'], ['/agent-targets?tab=ach', 'Target vs Achievement'], ['/agent-targets?tab=perf', 'Salesman Performance (month / qtr / year)'],
-        ['/agent-targets?tab=reg', 'Commission Register'], ['/control-reports?view=customer_master', 'Customer Master List'], ['/control-reports?view=route_customers', 'Route-wise Customer List'],
+        ['/agent-targets?tab=bills', 'Bill-wise Agent Commission'], ['/agent-targets?tab=reg', 'Commission Register'], ['/control-reports?view=customer_master', 'Customer Master List'], ['/control-reports?view=route_customers', 'Route-wise Customer List'],
         ['/control-reports?view=credit_exceed', 'Credit Limit Exceeded / Overdue'], ['/control-reports?view=inactive_customers', 'Inactive Customers'], ['/loading-sheet', 'Loading Sheet']
     ] },
     { title: 'Purchase', items: [
@@ -135,7 +135,7 @@ export const TOP_MENUS: TopMenu[] = [
             i('/confirmation-letters', '✉ Account Confirmation Letters')
         ] },
         { title: 'Sales Transaction', sep: true, items: [
-            i('/sales-quotation', '📝 Sales Quotation'), i('/sales-order', '🧾 Sales Order'), i('/order-billing', '⚡ Order → Bill (single / multiple)'),
+            i('/sales-quotation', '📝 Sales Quotation'), i('/sales-order', '🧾 Sales Order'), i('/order-billing', '⚡ Order → Bill (single / multiple)'), i('/mobile-approvals', '📲 Mobile Approvals (receipts / returns)'),
             si('/sales-delivery', '🚚 Sales Delivery / Challan'), i('/sales-bill', '💵 Sales Bill / Invoice'), si('/sales-return', '↩️ Sales Return'),
             i('/sales-nonsaleable-return', '🗑️ Sales Non-saleable Return'), si('/sales-additional-entry', '➕ Sales Additional Entry'), i('/agent-targets?tab=targets', '🎯 Salesman Targets & Commission')
         ] },

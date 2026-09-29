@@ -341,7 +341,17 @@ Only quantities still pending are offered. The source document shows as partiall
 
 **Salesman Targets & Commission**
 
-- Set targets per salesman or period, see achievement, and post commission.
+- Set targets per salesman or period, see achievement (the target report), and post commission once per target.
+- **Bill-wise Commission**: the salesman's posted bills (value without VAT, less returns against the bill) with the salesman's commission %. Change the % or amount per bill, tick one or all, and post. A bill that got commission is never offered again; cancelling the posting in the Commission Register frees its bills.
+
+> **Accounts:** Dr commission expense / Cr commission payable (salesman's ledgers, or chosen on posting).
+
+**Mobile Approvals**
+
+- Cash receipts and sales returns entered on the salesman's phone wait here as pending (no effect).
+- Tick one, several or all and **Post ticked**. The salesman is already the agent on each entry.
+
+> **Accounts:** receipt - Dr mobile cash ledger, Cr customer; return - as Sales Return. **Stock:** returns come in on posting.
 
 ### 3.3 Purchase Transaction
 
@@ -622,7 +632,8 @@ For each transaction (and user, if needed):
 - **Manual Document Printing**: print or reprint documents in bulk.
 - **Messaging**: send documents or statements; see the message log.
 - **IRD Compliance / CBMS**: the IRD register, sync status and resend.
-- **Salesman Mobile App**: the mobile screen for salesmen to see their route, take orders (which appear as Sales Orders), see party balances and stock.
+- **Salesman Mobile App**: the salesman sees only the route(s) planned for them on the day (a date-range plan shows on each date of the range). Opening a route lists its customers in visiting sequence, with search. Per customer: **Order** (becomes a Sales Order), **Receipt** (cash / cheque / online) and **No order**. The **Return** tab takes a sales return from a customer of any area / route. Receipts and returns are tagged with the salesman and wait for the office in **Mobile Approvals**. Settings per salesman (Route Plan > Mobile): allow receipts / returns, the mobile cash ledger, off-route customers.
+- **Loading Sheet**: items to load with qty by UOM mode (fixed dual "5 Crt 2 Pcs · Total 62 Pcs", flexible "5 Crt = 10 Pcs"), and a Total row with the qty as entered per unit and the total in base unit. Print it together with the **Bill Summary** (and Bill x Item) on one sheet.
 - **Office**: work dashboard, tasks, Darta/Chalani, notification settings, and their reports.
 
 ## 9. How the numbers fit together

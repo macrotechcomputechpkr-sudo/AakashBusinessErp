@@ -63,6 +63,7 @@ import LcRegister from './pages/LcRegister';
 import MobileApp from './pages/MobileApp';
 import RoutePlan from './pages/RoutePlan';
 import OrderBilling from './pages/OrderBilling';
+import MobileApprovals from './pages/MobileApprovals';
 import SalesmanReports from './pages/SalesmanReports';
 import IrdCompliance from './pages/IrdCompliance';
 import AgentTargets from './pages/AgentTargets';
@@ -225,6 +226,7 @@ function AppRoutes() {
             <Route path="/mobile" element={<PrivateRoute><MobileApp /></PrivateRoute>} />
             <Route path="/route-plan" element={<PrivateRoute><RoutePlan /></PrivateRoute>} />
             <Route path="/order-billing" element={<PrivateRoute><OrderBilling /></PrivateRoute>} />
+            <Route path="/mobile-approvals" element={<PrivateRoute><MobileApprovals /></PrivateRoute>} />
             <Route path="/salesman-reports" element={<PrivateRoute><SalesmanReports /></PrivateRoute>} />
             <Route path="/ird" element={<PrivateRoute><IrdCompliance /></PrivateRoute>} />
             <Route path="/agent-targets" element={<PrivateRoute><AgentTargets /></PrivateRoute>} />

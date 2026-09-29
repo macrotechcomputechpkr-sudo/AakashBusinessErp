@@ -11,6 +11,10 @@
 //                 payable) - targets already posted are skipped
 //   Performance   month / quarter / year sales per salesman / product /
 //                 group / company, with or without targets
+//   Bill-wise     commission on chosen bills: posted bills of the salesman
+//                 (value net of VAT less returns), agent's % (changeable per
+//                 bill), tick and post; a bill that already got commission is
+//                 left out, so it is never paid twice (cancel frees it)
 //   Register      posted commissions; cancel reverses the GL entry
 // =============================================
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
@@ -38,6 +42,10 @@ export default function AgentTargets() {
     const [perf, setPerf] = useState(null);
     const [perfCfg, setPerfCfg] = useState({ group_by: 'agent', period_type: 'month', measure: 'value' });
     const [reg, setReg] = useState(null);
+    const [bills, setBills] = useState(null);
+    const [billShow, setBillShow] = useState('pending');
+    const [billPick, setBillPick] = useState(() => new Set());
+    const [billEdit, setBillEdit] = useState({});
     const [error, setError] = useState('');
     const [msg, setMsg] = useState('');
     const [busy, setBusy] = useState(false);
@@ -68,7 +76,30 @@ export default function AgentTargets() {
     const loadReg = useCallback(async () => {
         try { setReg((await authFetch(`/api/agent-commission/register?${qs({ period_type: '', dimension: '' })}`)).data); } catch (e) { setError(e.message); }
     }, [authFetch, qs]);
-    useEffect(() => { if (tab === 'ach' || tab === 'targets') loadAch(); if (tab === 'perf') loadPerf(); if (tab === 'reg') loadReg(); }, [tab, loadAch, loadPerf, loadReg]);
+    const loadBills = useCallback(async () => {
+        setBusy(true); setError('');
+        try { setBills((await authFetch(`/api/agent-commission/bills?${qs({ show: billShow, period_type: '', dimension: '' })}`)).data); setBillPick(new Set()); setBillEdit({}); }
+        catch (e) { setError(e.message); }
+        setBusy(false);
+    }, [authFetch, qs, billShow]);
+    useEffect(() => { if (tab === 'ach' || tab === 'targets') loadAch(); if (tab === 'perf') loadPerf(); if (tab === 'reg') loadReg(); if (tab === 'bills') loadBills(); }, [tab, loadAch, loadPerf, loadReg, loadBills]);
+    const billRate = r => (billEdit[r.id]?.rate ?? r.commission_rate);
+    const billAmt = r => (billEdit[r.id]?.amount !== undefined && billEdit[r.id]?.amount !== '' ? Number(billEdit[r.id].amount) : Math.round(r.commission_base * Number(billRate(r) || 0)) / 100);
+    const postBills = async () => {
+        const rows = (bills?.rows || []).filter(r => billPick.has(r.id));
+        if (!rows.length) return setError('Tick the bills');
+        const total = rows.reduce((s, r) => s + billAmt(r), 0);
+        if (!window.confirm(`Post commission ${fmt(total)} on ${rows.length} bill(s)?`)) return;
+        setBusy(true); setError('');
+        try {
+            const rates = {}, amounts = {};
+            rows.forEach(r => { if (billEdit[r.id]?.rate !== undefined) rates[r.id] = billEdit[r.id].rate; if (billEdit[r.id]?.amount !== undefined) amounts[r.id] = billEdit[r.id].amount; });
+            const r = (await authFetch('/api/agent-commission/bills/post', { method: 'POST', body: JSON.stringify({ ...post, bill_ids: rows.map(x => x.id), rates, amounts }) })).data;
+            setMsg(`Posted ${r.postings.join(', ') || '-'}: ${r.posted} bill(s), ${fmt(r.total)}${r.skipped ? `; skipped ${r.skipped}: ${r.results.filter(x => x.skipped).map(x => `${x.doc_no || ''} ${x.reason}`).join('; ')}` : ''}`);
+            loadBills();
+        } catch (e) { setError(e.message); }
+        setBusy(false);
+    };
 
     const generate = async single => {
         setError(''); setMsg('');
@@ -123,7 +154,7 @@ export default function AgentTargets() {
                 <div className="erp-card">
                     <div className="erp-header"><span className="erp-header-title">🎯 Salesman Targets & Commission</span></div>
                     <div className="erp-tab-content">
-                        <div className="flex flex-wrap gap-2 mb-3 no-print">{[['ach', 'Achievement & Commission'], ['targets', 'Set Targets'], ['perf', 'Performance (month / qtr / year)'], ['reg', 'Commission Register']].map(([k, l]) => <button key={k} className={`erp-btn ${tab === k ? 'primary' : ''}`} onClick={() => setTab(k)}>{l}</button>)}</div>
+                        <div className="flex flex-wrap gap-2 mb-3 no-print">{[['ach', 'Target Achievement & Commission'], ['bills', 'Bill-wise Commission'], ['targets', 'Set Targets'], ['perf', 'Performance (month / qtr / year)'], ['reg', 'Commission Register']].map(([k, l]) => <button key={k} className={`erp-btn ${tab === k ? 'primary' : ''}`} onClick={() => setTab(k)}>{l}</button>)}</div>
                         {filterBar}
                         {error && <p className="text-sm text-red-600 mb-2">{error}</p>}
                         {msg && <p className="text-sm text-green-700 mb-2">{msg}</p>}
@@ -195,6 +226,43 @@ export default function AgentTargets() {
                             )}
                         </>)}
 
+                        {tab === 'bills' && (<>
+                            <div className="flex flex-wrap gap-2 items-end mb-2 no-print">
+                                <div className="erp-field"><label className="erp-label">Show</label><select className="erp-select" value={billShow} onChange={e => setBillShow(e.target.value)}><option value="pending">Bills without commission</option><option value="paid">Commission already given</option><option value="all">All bills</option></select></div>
+                                <button className="erp-btn" onClick={loadBills}>↻ Refresh</button>
+                            </div>
+                            {bills && <div className="overflow-x-auto"><table className="erp-grid-table text-sm">
+                                <thead><tr>
+                                    <th><input type="checkbox" title="Tick all" checked={bills.rows.some(r => !r.paid) && bills.rows.filter(r => !r.paid).every(r => billPick.has(r.id))} onChange={e => setBillPick(e.target.checked ? new Set(bills.rows.filter(r => !r.paid).map(r => r.id)) : new Set())} /></th>
+                                    <th>Bill No</th><th>Date</th><th>Salesman</th><th>Customer</th><th className="text-right">Bill Value (excl. VAT)</th><th className="text-right">Returns</th><th className="text-right">Commission On</th><th className="text-right">Rate %</th><th className="text-right">Commission</th><th>Given in</th>
+                                </tr></thead>
+                                <tbody>{bills.rows.map(r => (
+                                    <tr key={r.id} className={r.paid ? 'text-gray-500' : ''}>
+                                        <td><input type="checkbox" disabled={r.paid} checked={billPick.has(r.id)} onChange={e => setBillPick(s => { const n = new Set(s); if (e.target.checked) n.add(r.id); else n.delete(r.id); return n; })} /></td>
+                                        <td>{r.doc_no}</td><td>{r.doc_date}</td><td>{r.agent_name}</td><td>{r.customer}</td>
+                                        <td className="text-right">{fmt(r.bill_value)}</td><td className="text-right">{r.return_value ? fmt(r.return_value) : ''}</td><td className="text-right">{fmt(r.commission_base)}</td>
+                                        <td className="text-right">{r.paid ? r.commission_rate : <input type="number" step="0.01" className="erp-input w-20 text-right" value={billRate(r)} onChange={e => setBillEdit(x => ({ ...x, [r.id]: { rate: e.target.value } }))} />}</td>
+                                        <td className="text-right">{r.paid ? fmt(r.commission) : <input type="number" step="0.01" className="erp-input w-28 text-right" value={billEdit[r.id]?.amount ?? billAmt(r).toFixed(2)} onChange={e => setBillEdit(x => ({ ...x, [r.id]: { ...(x[r.id] || {}), amount: e.target.value } }))} />}</td>
+                                        <td className="text-xs">{r.paid ? `${r.posting_no} · ${r.posting_date}` : ''}</td>
+                                    </tr>
+                                ))}
+                                {bills.rows.length === 0 && <tr><td colSpan={11} className="text-center text-gray-400 py-4">No bills.</td></tr>}
+                                <tr className="font-semibold bg-slate-50"><td colSpan={5}>Total ({bills.totals.bills})</td><td className="text-right">{fmt(bills.totals.bill_value)}</td><td className="text-right">{fmt(bills.totals.return_value)}</td><td className="text-right">{fmt(bills.totals.commission_base)}</td><td /><td className="text-right">{fmt(bills.totals.commission)}</td><td /></tr>
+                                </tbody></table></div>}
+                            {billShow !== 'paid' && (
+                                <div className="border rounded-lg p-3 mt-3 grid grid-cols-1 md:grid-cols-5 gap-3 items-end">
+                                    <div className="erp-field"><label className="erp-label">Posting date</label><input type="date" className="erp-input" value={post.posting_date} onChange={e => setPost({ ...post, posting_date: e.target.value })} /></div>
+                                    <div className="erp-field"><label className="erp-label">Commission expense ledger</label>
+                                        <select className="erp-select" value={post.expense_ledger_id} onChange={e => setPost({ ...post, expense_ledger_id: e.target.value })}><option value="">Salesman's default</option>{m.ledgers.map(l => <option key={l.id} value={l.id}>{l.account_name}</option>)}</select></div>
+                                    <div className="erp-field"><label className="erp-label">Commission payable ledger</label>
+                                        <select className="erp-select" value={post.payable_ledger_id} onChange={e => setPost({ ...post, payable_ledger_id: e.target.value })}><option value="">Salesman's default</option>{m.ledgers.map(l => <option key={l.id} value={l.id}>{l.account_name}</option>)}</select></div>
+                                    <p className="text-sm">{billPick.size} bill(s) · <b>{fmt((bills?.rows || []).filter(r => billPick.has(r.id)).reduce((s, r) => s + billAmt(r), 0))}</b></p>
+                                    <button className="erp-btn primary" disabled={busy || !billPick.size} onClick={postBills}>✔ Post commission</button>
+                                </div>
+                            )}
+                            <p className="text-xs text-gray-500 mt-1">A bill gets commission once: after posting it moves to "Commission already given". Cancelling the posting in the Commission Register makes its bills available again.</p>
+                        </>)}
+
                         {tab === 'perf' && (<>
                             <div className="flex flex-wrap gap-3 mb-3 items-end no-print">
                                 <div className="erp-field"><label className="erp-label">Rows</label><select className="erp-select" value={perfCfg.group_by} onChange={e => setPerfCfg({ ...perfCfg, group_by: e.target.value })}><option value="agent">Salesman</option><option value="product">Salesman × Product</option><option value="product_group">Salesman × Product Group</option><option value="product_company">Salesman × Product Company</option></select></div>
@@ -210,7 +278,7 @@ export default function AgentTargets() {
                         {tab === 'reg' && reg && (
                             <table className="erp-grid-table text-sm"><thead><tr><th>No</th><th>Date</th><th>Salesman</th><th>Period</th><th>Target on</th><th className="text-right">Target</th><th className="text-right">Achieved</th><th className="text-right">Ach. %</th><th className="text-right">Commission</th><th>Expense / Payable</th><th>Status</th><th /></tr></thead>
                                 <tbody>{reg.map(r => <tr key={r.id} className={r.status === 'cancelled' ? 'text-gray-400 line-through' : ''}><td>{r.doc_no}</td><td>{String(r.posting_date).slice(0, 10)}</td><td>{r.agent_name}</td><td className="text-xs">{r.period_label}</td><td className="text-xs">{r.dimension_name}</td>
-                                    <td className="text-right">{fmt(r.target_value)}</td><td className="text-right">{fmt(r.achieved_value)}</td><td className="text-right">{r.achievement_pct}%</td><td className="text-right">{fmt(r.commission_amount)}</td><td className="text-xs">{r.expense_ledger} / {r.payable_ledger}</td><td>{r.status}</td>
+                                    <td className="text-right">{fmt(r.target_value)}</td><td className="text-right">{fmt(r.achieved_value)}</td><td className="text-right">{r.achievement_pct != null ? `${r.achievement_pct}%` : ''}</td><td className="text-right">{fmt(r.commission_amount)}</td><td className="text-xs">{r.expense_ledger} / {r.payable_ledger}</td><td>{r.status}</td>
                                     <td>{r.status === 'posted' && <button className="text-xs text-red-600" onClick={() => cancel(r.id)}>Cancel</button>}</td></tr>)}</tbody></table>
                         )}
                     </div>
