@@ -18,7 +18,7 @@ const COLS = [
 const today = () => new Date().toISOString().slice(0, 10);
 const defaultConfig = () => ({
     date_from: `${new Date().getFullYear()}-01-01`, date_to: today(), party_scope: 'all', account_group_id: '', party_ledger_id: '',
-    area_id: '', agent_id: '', route_id: '', ledger_category_id: '', product_company_id: '', hide_zero: true, balance_side: '', pdc_separate: false
+    area_id: '', agent_id: '', doc_agent_id: '', route_id: '', ledger_category_id: '', product_company_id: '', hide_zero: true, balance_side: '', pdc_separate: false
 });
 const fmt = n => Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const drcr = n => Math.abs(n) < 0.005 ? '0.00' : `${fmt(Math.abs(n))} ${n > 0 ? 'Dr' : 'Cr'}`;
@@ -92,7 +92,8 @@ export default function PartySummaryReport() {
                     {picker('party_ledger_id', masters.parties, 'Single Party', l => l.account_name)}
                     {picker('ledger_category_id', masters.categories, 'Ledger Category', c => c.category_name)}
                     {picker('area_id', masters.areas, 'Area', a => a.area_name)}
-                    {picker('agent_id', masters.agents, 'Agent', a => a.agent_name)}
+                    {picker('agent_id', masters.agents, 'Agent (party master)', a => a.agent_name)}
+                    {picker('doc_agent_id', masters.agents, 'Doc. Agent (on the voucher)', a => a.agent_name)}
                     {picker('route_id', masters.routes, 'Route', r => r.route_name)}
                     {picker('product_company_id', masters.companies, 'Product Company', c => c.company_name)}
                     <div className="erp-field"><label className="erp-label">Closing balance</label>

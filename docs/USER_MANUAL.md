@@ -497,7 +497,7 @@ The flow is Quotation → Order → GRN → Bill → Return, with the same pull 
 
 | Report | What it shows |
 |---|---|
-| Ledger Report (detail / summary / monthly) | Every entry of a ledger with running balance; summary per ledger; month-wise totals. PDC can be shown separately. |
+| Ledger Report (detail / summary / monthly) | Every entry of a ledger with running balance; summary per ledger; month-wise totals. A small options panel holds only dates, view, sort and ticks (Remarks, Product Details, Billing Terms product-wise / bill-wise, Doc. Agent, Ledger Details, Page Break, PDC Balance, PDC Separate in Summary, LC / BG / PDC, Pending Bills); the filters are under 🔽 Filters. After Show the panel folds to one line: ⚙ Options / 🔽 Filters / 🔄 Reload. |
 | Party Summary | Per party: opening, sales, returns, receipts, payments, notes, closing. |
 | Day Book | All entries of a day or period. |
 | Cash & Bank Book | Cash and bank ledgers with daily balances. |
@@ -674,7 +674,8 @@ For each transaction (and user, if needed):
 - **Consignment Costing (date-wise)** (Consignment Cost first view): per bill, per product - Qty, Rate, Basic, Add / Less, Net Basic, one column per additional term and per non-additional term, Total Additional, Total Non-Additional, Net Amount and Cost Rate, with a Bill Total row and a Grand Total.
 - **Ledger + Sub-ledger Balance**: every sub-ledger's opening / debit / credit / closing with the ledger balance after them, and a Module filter (sales, purchase, cash / bank, journal, inventory, other).
 - **Stock Valuation**: batch / serial items follow System Control's batch / serial costing; batch-wise costing values each batch at its own cost, including the landed cost of Purchase Additional. Profitability costs a sale of a batch / serial the same way.
-- **Loading Sheet**: items to load with qty by UOM mode (fixed dual "5 Crt 2 Pcs · Total 62 Pcs", flexible "5 Crt = 10 Pcs"), and a Total row with the qty as entered per unit and the total in base unit. Print it together with the **Bill Summary** (and Bill x Item) on one sheet.
+- **Loading Sheet**: items to load with qty by UOM mode (fixed dual "5 Crt 2 Pcs · Total 62 Pcs", flexible "5 Crt = 10 Pcs"), and a Total row with the qty as entered per unit and the total in base unit. Print it together with the **Bill Summary** (and Bill x Item) on one sheet. **Bill summary order**: by bill no, by the customers' **route sequence** (Route master order), or by customer name.
+- **Agent filters in every report**: *Agent (party master)* = the agent set on the customer / supplier ledger; *Doc. Agent* = the agent chosen on the bill / voucher. Ledger Report, Party Summary, Ageing, Day Book, Daily Register, Outstanding, Registers, Sales / Purchase Analysis, Loading Sheet and Manual Printing offer both. (Confirmation letters go by the master agent.)
 - **Office**: work dashboard, tasks, Darta/Chalani, notification settings, and their reports.
 
 ## 9. How the numbers fit together

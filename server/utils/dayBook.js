@@ -91,12 +91,13 @@ async function loadDocs(c, t, f) {
 }
 
 async function dayBook(c, t, q) {
-    const f = { from: q.date_from, to: q.date_to || q.date_from, userIds: csv(q.user_ids), agentIds: csv(q.agent_ids), types: csv(q.voucher_types).filter(k => TYPES[k]),
+    // agent_ids / doc_agent_ids = the agent chosen on the voucher; party_agent_ids = the party's master agent
+    const f = { from: q.date_from, to: q.date_to || q.date_from, userIds: csv(q.user_ids), agentIds: [...new Set([...csv(q.agent_ids), ...csv(q.doc_agent_ids)])], partyAgentIds: csv(q.party_agent_ids), types: csv(q.voucher_types).filter(k => TYPES[k]),
         partyIds: csv(q.party_ids), includeDraft: q.include_draft === 'true' };
     if (!f.from) throw httpError('Choose the date');
     if (f.to < f.from) throw httpError('To date must be on or after From date');
     const D = await loadDocs(c, t, f);
-    const L = Object.fromEntries((await fetchAll(() => c.from('ledger_accounts').select('id, account_name, account_code, category_type, opening_balance, opening_balance_type').eq('tenant_id', t).order('id'))).map(l => [l.id, l]));
+    const L = Object.fromEntries((await fetchAll(() => c.from('ledger_accounts').select('id, account_name, account_code, category_type, opening_balance, opening_balance_type, agent_id').eq('tenant_id', t).order('id'))).map(l => [l.id, l]));
     const cashOrBank = id => (L[id]?.category_type === 'bank' ? 'bank' : 'cash');
 
     // one row per voucher (a multi-line cash / bank entry: one row per party line)
@@ -148,6 +149,7 @@ async function dayBook(c, t, q) {
     let shown = rows;
     if (f.userIds.length) shown = shown.filter(r => f.userIds.includes(r.user_id));
     if (f.agentIds.length) shown = shown.filter(r => f.agentIds.includes(r.agent_id));
+    if (f.partyAgentIds.length) shown = shown.filter(r => f.partyAgentIds.includes(L[r.party_id]?.agent_id));
     if (f.partyIds.length) shown = shown.filter(r => f.partyIds.includes(r.party_id));
 
     const [users, agents] = await Promise.all([
@@ -155,7 +157,7 @@ async function dayBook(c, t, q) {
         fetchAll(() => c.from('salesman_agents').select('id, agent_name').eq('tenant_id', t).order('id')).catch(() => [])
     ]);
     const U = Object.fromEntries(users.map(u => [u.id, u.full_name || u.email])), A = Object.fromEntries(agents.map(a => [a.id, a.agent_name]));
-    shown.forEach(r => { r.user_name = U[r.user_id] || ''; r.agent_name = A[r.agent_id] || ''; });
+    shown.forEach(r => { r.user_name = U[r.user_id] || ''; r.agent_name = A[r.agent_id] || ''; r.party_agent_name = A[L[r.party_id]?.agent_id] || ''; });
     shown.sort((a, b) => a.date.localeCompare(b.date) || a.group.localeCompare(b.group) || String(a.doc_no).localeCompare(String(b.doc_no)));
 
     // ---- summary per voucher type ----
@@ -166,7 +168,7 @@ async function dayBook(c, t, q) {
     }).filter(s => s.count);
 
     // ---- cash / bank: postings of the shown vouchers on cash / bank ledgers ----
-    const narrowed = f.userIds.length || f.agentIds.length || f.types.length || f.partyIds.length;
+    const narrowed = f.userIds.length || f.agentIds.length || f.partyAgentIds.length || f.types.length || f.partyIds.length;
     const cbIds = Object.values(L).filter(l => ['cash', 'bank'].includes(l.category_type)).map(l => l.id);
     let cashBank = [];
     if (cbIds.length) {

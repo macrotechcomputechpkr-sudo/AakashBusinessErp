@@ -21,6 +21,7 @@
 // =============================================
 
 const express = require('express');
+const { agentOfDocs } = require('../utils/docAgent');
 const router = express.Router();
 const { getTenantClient, loadUserPermissions } = require('../utils/dbHelpers');
 const { requireAuth, requirePermission } = require('../middleware/auth');
@@ -118,7 +119,7 @@ router.get('/party-summary', requireAuth, loadUserPermissions, requirePermission
         }
         if (q.party_ledger_id) ledgers = ledgers.filter(l => l.id === q.party_ledger_id);
         if (q.area_id) ledgers = ledgers.filter(l => l.area_id === q.area_id);
-        if (q.agent_id) ledgers = ledgers.filter(l => l.agent_id === q.agent_id);
+        if (q.agent_id) ledgers = ledgers.filter(l => l.agent_id === q.agent_id);   // the party's master agent
         if (q.route_id) ledgers = ledgers.filter(l => l.route_id === q.route_id);
         if (q.ledger_category_id) {
             const links = await fetchAll(() => tenantClient.from('ledger_account_categories').select('ledger_account_id').eq('ledger_category_id', q.ledger_category_id));
@@ -140,12 +141,18 @@ router.get('/party-summary', requireAuth, loadUserPermissions, requirePermission
             });
             before.forEach(l => { openingMove[l.ledger_account_id] += Number(l.debit_amount || 0) - Number(l.credit_amount || 0); });
             const period = await fetchAll(() => {
-                let x = tenantClient.from('ledger_transaction_lines').select('ledger_account_id, debit_amount, credit_amount, batch:batch_id!inner(batch_date, document_type)')
+                let x = tenantClient.from('ledger_transaction_lines').select('ledger_account_id, debit_amount, credit_amount, batch:batch_id!inner(batch_date, document_type, document_id)')
                     .eq('tenant_id', tenantId).in('ledger_account_id', part).gte('batch.batch_date', q.date_from).lte('batch.batch_date', q.date_to);
                 if (q.product_company_id) x = x.eq('product_company_id', q.product_company_id);
                 return x;
             });
-            period.forEach(l => {
+            // Doc. Agent: only the movement of documents that agent made
+            let moved = period;
+            if (q.doc_agent_id) {
+                const agentOf = await agentOfDocs(tenantClient, period.map(l => l.batch));
+                moved = period.filter(l => agentOf[`${l.batch.document_type}:${l.batch.document_id}`] === q.doc_agent_id);
+            }
+            moved.forEach(l => {
                 classify(l, acc[l.ledger_account_id], q.pdc_separate === 'true');
                 drcr[l.ledger_account_id].dr += Number(l.debit_amount || 0);
                 drcr[l.ledger_account_id].cr += Number(l.credit_amount || 0);
@@ -181,6 +188,7 @@ router.get('/party-summary', requireAuth, loadUserPermissions, requirePermission
                 has_movement: COLUMNS.some(c => Math.abs(a[c]) > 0.005)
             };
         });
+        if (q.doc_agent_id) rows = rows.filter(r => r.has_movement);
         if (q.hide_zero === 'true') rows = rows.filter(r => r.has_movement || Math.abs(r.opening) > 0.005 || Math.abs(r.closing) > 0.005);
         if (q.balance_side === 'dr') rows = rows.filter(r => r.closing > 0.005);
         if (q.balance_side === 'cr') rows = rows.filter(r => r.closing < -0.005);

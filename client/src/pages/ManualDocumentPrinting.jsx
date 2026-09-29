@@ -21,7 +21,7 @@ const STATUSES = [{ id: 'posted', name: 'Posted' }, { id: 'draft', name: 'Draft'
     { id: 'pending', name: 'Pending' }, { id: 'in_transit', name: 'In transit' }, { id: 'received', name: 'Received' }, { id: 'cancelled', name: 'Cancelled' }];
 const defaultConfig = () => {
     const d = new Date();
-    return { document_type: 'sales_bill', from_date: iso(d), to_date: iso(d), party_ids: [], agent_ids: [], area_ids: [], route_ids: [], branch_ids: [],
+    return { document_type: 'sales_bill', from_date: iso(d), to_date: iso(d), party_ids: [], agent_ids: [], doc_agent_ids: [], party_agent_ids: [], area_ids: [], route_ids: [], branch_ids: [],
         statuses: ['posted'], doc_no_from: '', doc_no_to: '', printed: 'all', search: '' };
 };
 
@@ -68,7 +68,7 @@ export default function ManualDocumentPrinting() {
         try {
             const p = new URLSearchParams({ document_type: cfg.document_type, printed: cfg.printed });
             ['from_date', 'to_date', 'doc_no_from', 'doc_no_to', 'search'].forEach(k => { if (cfg[k]) p.set(k, cfg[k]); });
-            ['party_ids', 'agent_ids', 'area_ids', 'route_ids', 'branch_ids', 'statuses'].forEach(k => { if (cfg[k].length) p.set(k, cfg[k].join(',')); });
+            ['party_ids', 'agent_ids', 'doc_agent_ids', 'party_agent_ids', 'area_ids', 'route_ids', 'branch_ids', 'statuses'].forEach(k => { if ((cfg[k] || []).length) p.set(k, cfg[k].join(',')); });
             const res = await authFetch(`/api/document-print/list?${p}`);
             setData(res.data); setTagged(new Set());
             setRange({ from: res.data.summary.doc_no_from, to: res.data.summary.doc_no_to });
@@ -121,7 +121,9 @@ export default function ManualDocumentPrinting() {
                     <div className="erp-field"><label className="erp-label">From Date</label><input type="date" className="erp-input" value={config.from_date} onChange={e => set('from_date', e.target.value)} /></div>
                     <div className="erp-field"><label className="erp-label">To Date</label><input type="date" className="erp-input" value={config.to_date} onChange={e => set('to_date', e.target.value)} /></div>
                     {typeInfo?.has_party !== false && <MultiPick label={partyWord} items={masters.parties} value={config.party_ids} onChange={v => set('party_ids', v)} />}
-                    <MultiPick label="Agent" items={masters.agents} value={config.agent_ids} onChange={v => set('agent_ids', v)} />
+                    <MultiPick label="Agent (bill, else party)" items={masters.agents} value={config.agent_ids} onChange={v => set('agent_ids', v)} />
+                    <MultiPick label="Doc. Agent (on the document)" items={masters.agents} value={config.doc_agent_ids || []} onChange={v => set('doc_agent_ids', v)} />
+                    <MultiPick label="Agent (party master)" items={masters.agents} value={config.party_agent_ids || []} onChange={v => set('party_agent_ids', v)} />
                     <MultiPick label="Area" items={masters.areas} value={config.area_ids} onChange={v => set('area_ids', v)} />
                     <MultiPick label="Route" items={masters.routes} value={config.route_ids} onChange={v => set('route_ids', v)} />
                     <MultiPick label="Branch" items={masters.branches} value={config.branch_ids} onChange={v => set('branch_ids', v)} />

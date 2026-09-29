@@ -91,7 +91,7 @@ router.get('/ledger-report', requireAuth, loadUserPermissions, requirePermission
         // ---------- 1. Which ledgers ----------
         let ledgerQuery = () => {
             let lq = tenantClient.from('ledger_accounts')
-                .select('id, account_code, account_name, account_group_id, group_name, opening_balance, opening_balance_type, area_id, agent_id, route_id, credit_limit, credit_days, lc_number, lc_bank_name, lc_amount, lc_issue_date, lc_expiry_date, bg_number, bg_bank_name, bg_amount, bg_issue_date, bg_expiry_date')
+                .select('*')
                 .eq('tenant_id', tenantId);
             if (q.area_id) lq = lq.eq('area_id', q.area_id);
             if (q.agent_id) lq = lq.eq('agent_id', q.agent_id);
@@ -176,15 +176,28 @@ router.get('/ledger-report', requireAuth, loadUserPermissions, requirePermission
         // in every line of a mixed-company document).
         if (q.product_company_id) periodLines = periodLines.filter(l => l.product_company_id === q.product_company_id);
 
-        // ---------- 4. Doc numbers + contra ledgers ----------
-        const docNoByKey = {};
+        // ---------- 4. Doc numbers, the document's agent / remarks + contra ledgers ----------
+        const docNoByKey = {}, docAgentByKey = {}, remarksByKey = {};
         for (const [type, idSet] of Object.entries(docsByType)) {
             const cfg = GL_DOC_TYPES[type];
             if (!cfg) continue;
             for (const ids of chunk([...idSet], 150)) {
-                const { data } = await tenantClient.from(cfg.headerTable).select('id, doc_no').in('id', ids);
-                (data || []).forEach(h => { docNoByKey[`${type}:${h.id}`] = h.doc_no; });
+                const { data } = await tenantClient.from(cfg.headerTable).select('*').in('id', ids);
+                (data || []).forEach(h => {
+                    const key = `${type}:${h.id}`;
+                    docNoByKey[key] = h.doc_no;
+                    docAgentByKey[key] = h.agent_id || h.salesman_agent_id || null;
+                    remarksByKey[key] = h.remarks || h.remark || h.narration || null;
+                });
             }
+        }
+        // Doc. Agent: the agent chosen on the transaction (the Agent filter above is the party's master agent)
+        if (q.doc_agent_id) periodLines = periodLines.filter(l => docAgentByKey[`${l.batch.document_type}:${l.batch.document_id}`] === q.doc_agent_id);
+        const agentNames = {};
+        const agentIds = [...new Set(Object.values(docAgentByKey).concat(ledgers.map(l => l.agent_id)).filter(Boolean))];
+        for (const ids of chunk(agentIds, 150)) {
+            const { data } = await tenantClient.from('salesman_agents').select('id, agent_name').in('id', ids);
+            (data || []).forEach(a => { agentNames[a.id] = a.agent_name; });
         }
         const batchIds = [...new Set(periodLines.map(l => l.batch_id))];
         const linesByBatch = {};
@@ -325,6 +338,7 @@ router.get('/ledger-report', requireAuth, loadUserPermissions, requirePermission
                     document_label: GL_DOC_TYPES[line.batch.document_type]?.label || line.batch.document_type,
                     document_id: line.batch.document_id, doc_no: docNoByKey[key] || null,
                     particulars: contraFor(line), narration: line.narration || line.batch.narration || null,
+                    remarks: remarksByKey[key] || null, doc_agent: agentNames[docAgentByKey[key]] || null,
                     debit: round2(dr), credit: round2(cr), balance: round2(running),
                     items: itemsByDoc[key] || undefined, terms: termsByDoc[key] || undefined
                 };
@@ -351,8 +365,10 @@ router.get('/ledger-report', requireAuth, loadUserPermissions, requirePermission
                     closing_after_pending: round2(closing - pend.received + pend.issued) };
             }
             return {
-                ledger_id: l.id, account_code: l.account_code, account_name: l.account_name,
+                ledger_id: l.id, account_code: l.account_code, account_name: l.account_name, short_name: l.short_name || null,
                 group_id: l.account_group_id, group_name: l.group_name,
+                details: { pan: l.pan_number || l.vat_pan_number || null, phone: [l.phone_office, l.contact_person_mobile || l.contact_person_phone].filter(Boolean).join(', ') || null,
+                    address: l.billing_address || [l.street, l.city].filter(Boolean).join(', ') || null, agent: agentNames[l.agent_id] || null, credit_days: l.credit_days || null },
                 opening, total_debit: round2(totalDr), total_credit: round2(totalCr), closing,
                 credit_limit: creditLimit || null,
                 credit_limit_used_percent: creditLimit > 0 && closing > 0 ? round2((closing / creditLimit) * 100) : null,
@@ -380,7 +396,7 @@ router.get('/ledger-report', requireAuth, loadUserPermissions, requirePermission
         if (q.min_balance && Number(q.min_balance) > 0) outLedgers = outLedgers.filter(l => Math.abs(l.closing) >= Number(q.min_balance));
         // If a document filter is active, ledgers with no matching
         // movement are noise - show only those that moved.
-        if (allowedTypes || q.product_company_id || q.narration) outLedgers = outLedgers.filter(l => l.entry_count > 0);
+        if (allowedTypes || q.product_company_id || q.narration || q.doc_agent_id) outLedgers = outLedgers.filter(l => l.entry_count > 0);
 
         // Group-wise subtotals (always computed; the UI decides whether to show).
         const groups = {};

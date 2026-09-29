@@ -395,6 +395,9 @@
     .nav-workspace { background: none; padding: 0; }
     .nav-page { border: none; box-shadow: none; min-height: 0; }
     .nav-page-body { padding: 0; background: #fff; }
+    /* Ledger Report: "Page Break (each ledger)" */
+    .lr-page-break { break-after: page; page-break-after: always; }
+    .lr-page-break:last-child { break-after: auto; page-break-after: auto; }
   }
 }
 

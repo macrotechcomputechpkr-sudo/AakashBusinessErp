@@ -41,7 +41,7 @@ function Section({ cols, rows, render, totals, empty = 3 }) {
 export default function DailyRegister() {
     const { authFetch, tenant } = useAuth();
     const [m, setM] = useState({ users: [], agents: [] });
-    const [f, setF] = useState({ date_from: iso(new Date()), date_to: iso(new Date()), user_ids: [], agent_ids: [] });
+    const [f, setF] = useState({ date_from: iso(new Date()), date_to: iso(new Date()), user_ids: [], agent_ids: [], party_agent_ids: [] });
     const [data, setData] = useState(null);
     const [busy, setBusy] = useState(false);
     const [error, setError] = useState('');
@@ -62,6 +62,7 @@ export default function DailyRegister() {
         const p = new URLSearchParams({ date_from: f.date_from, date_to: f.date_to });
         if (f.user_ids.length) p.set('user_ids', f.user_ids.join(','));
         if (f.agent_ids.length) p.set('agent_ids', f.agent_ids.join(','));
+        if ((f.party_agent_ids || []).length) p.set('party_agent_ids', f.party_agent_ids.join(','));
         try { const d = (await authFetch(`/api/daily-register?${p}`)).data; if (!d || !d.totals) throw new Error('No data returned'); setData(d); } catch (e) { setError(e.message); setData(null); }
         setBusy(false);
     }, [authFetch, f]);
@@ -103,7 +104,8 @@ export default function DailyRegister() {
                             <div className="erp-field"><label className="erp-label">Date</label><input type="date" className="erp-input" value={f.date_from} onChange={e => setF({ ...f, date_from: e.target.value, date_to: e.target.value > f.date_to ? e.target.value : f.date_to })} /></div>
                             <div className="erp-field"><label className="erp-label">To</label><input type="date" className="erp-input" value={f.date_to} onChange={e => setF({ ...f, date_to: e.target.value })} /></div>
                             <MultiPick label="User" items={m.users} value={f.user_ids} onChange={v => setF({ ...f, user_ids: v })} allLabel="All users" />
-                            <MultiPick label="Salesman / Agent" items={m.agents} value={f.agent_ids} onChange={v => setF({ ...f, agent_ids: v })} allLabel="All agents" />
+                            <MultiPick label="Doc. Agent (on the voucher)" items={m.agents} value={f.agent_ids} onChange={v => setF({ ...f, agent_ids: v })} allLabel="All agents" />
+                            <MultiPick label="Agent (party master)" items={m.agents} value={f.party_agent_ids || []} onChange={v => setF({ ...f, party_agent_ids: v })} allLabel="All agents" />
                             <button className="erp-btn primary" onClick={run} disabled={busy}>{busy ? '…' : '▶ Show'}</button>
                             {data && <button className="erp-btn" onClick={() => window.print()}>🖨 Print</button>}
                         </div>

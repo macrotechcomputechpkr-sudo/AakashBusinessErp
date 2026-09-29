@@ -52,7 +52,7 @@ const REGISTER_CONFIG = {
 function availableFilters(config) {
     const filters = ['date_range'];
     if (config.partyField) filters.push('party');
-    if (config.side === 'sales' || config.side === 'purchase') filters.push('area', 'route', 'agent');
+    if (config.side === 'sales' || config.side === 'purchase') filters.push('area', 'route', 'agent', 'party_agent');
     // noProductLines: Sales Additional Entry / Purchase Additional
     // Expense have line tables, but those lines are LEDGER lines with no
     // product_id - product filters/grouping would query a missing column.
@@ -115,7 +115,11 @@ router.get('/registers/:documentType/search', requireAuth, loadUserPermissions, 
         if (party_ledger_id && config.partyField) query = query.eq(config.partyField, party_ledger_id);
         if (area_id) query = query.eq('area_id', area_id);
         if (route_id) query = query.eq('route_id', route_id);
-        if (agent_id) query = query.eq('agent_id', agent_id);
+        if (agent_id) query = query.eq('agent_id', agent_id);             // Doc. Agent: chosen on the document
+        if (req.query.party_agent_id && config.partyField) {                // Agent: the party's master agent
+            const { data: pl } = await tenantClient.from('ledger_accounts').select('id').eq('tenant_id', tenantId).eq('agent_id', req.query.party_agent_id);
+            query = query.in(config.partyField, (pl || []).map(l => l.id).slice(0, 1000).concat(['00000000-0000-0000-0000-000000000000']));
+        }
 
         // FEATURE: product-side filters (Product / Product Company /
         // Product Group / Product Category) all resolve down to a set

@@ -47,7 +47,7 @@ export default function useCompactFilters(ref, path) {
             let n = 0;
             root.querySelectorAll('.erp-field').forEach(f => {
                 const label = txt(f.querySelector('.erp-label, label'));
-                const fold = !!btn && !entry && !f.closest('table, form, .sg-mount, [data-no-view], .fixed, [role="dialog"]')
+                const fold = !!btn && !entry && !f.closest('table, form, .sg-mount, [data-no-view], [data-no-fold], .fixed, [role="dialog"]')
                     && DIM_RE.test(label) && !KEEP_RE.test(label) && isEmpty(f);
                 if (fold) { n += 1; if (!f.hasAttribute('data-sg-dim')) f.setAttribute('data-sg-dim', '1'); }
                 else if (f.hasAttribute('data-sg-dim')) f.removeAttribute('data-sg-dim');

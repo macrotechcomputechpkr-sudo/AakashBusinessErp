@@ -28,8 +28,8 @@ const dayBefore = d => new Date(Date.parse(`${d}T00:00:00Z`) - 86400000).toISOSt
 async function dailyRegister(c, t, q) {
     const from = q.date_from || q.date, to = q.date_to || from;
     if (!from) throw httpError('Choose the date');
-    const filt = { user_ids: q.user_ids, agent_ids: q.agent_ids };
-    const narrowed = !!(q.user_ids || q.agent_ids);
+    const filt = { user_ids: q.user_ids, agent_ids: q.agent_ids, doc_agent_ids: q.doc_agent_ids, party_agent_ids: q.party_agent_ids };
+    const narrowed = !!(q.user_ids || q.agent_ids || q.doc_agent_ids || q.party_agent_ids);
     const book = await dayBook(c, t, { date_from: from, date_to: to, ...filt });
     const { data: leds } = await c.from('ledger_accounts').select('id, category_type').eq('tenant_id', t);
     const isBank = id => (leds || []).some(l => l.id === id && l.category_type === 'bank');

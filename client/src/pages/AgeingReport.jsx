@@ -40,7 +40,7 @@ const KIND_LABEL = { bill: 'Bill', opening: 'Opening', on_account: 'On Account',
 
 const defaultConfig = type => ({
     type, view: 'party', as_on: iso(new Date()), method: 'auto', age_basis: 'doc_date', buckets: '30,60,90,120', company_wise: 'auto',
-    include_challans: false, include_orders: false, party_ids: [], party_group_ids: [], area_ids: [], route_ids: [], agent_ids: [], product_company_ids: [],
+    include_challans: false, include_orders: false, party_ids: [], party_group_ids: [], area_ids: [], route_ids: [], agent_ids: [], doc_agent_ids: [], product_company_ids: [],
     search: '', min_amount: '', only_overdue: false, hide_zero: true, sort_by: 'name',
     cols: ['area_name', 'credit_days', 'oldest_days'], amounts: ['bills_total', 'on_account', 'unallocated', 'challan_total', 'order_total', 'overdue']
 });
@@ -68,7 +68,7 @@ export default function AgeingReport() {
             const p = new URLSearchParams({ side: ty.side, as_on: cfg.as_on, method: cfg.method, age_basis: cfg.age_basis, buckets: cfg.buckets,
                 company_wise: cfg.company_wise === 'auto' ? '' : cfg.company_wise, kinds: kinds.join(','), sort_by: cfg.sort_by,
                 hide_zero: String(cfg.hide_zero), only_overdue: String(cfg.only_overdue) });
-            ['party_ids', 'party_group_ids', 'area_ids', 'route_ids', 'agent_ids', 'product_company_ids'].forEach(k => { if (cfg[k].length) p.set(k, cfg[k].join(',')); });
+            ['party_ids', 'party_group_ids', 'area_ids', 'route_ids', 'agent_ids', 'doc_agent_ids', 'product_company_ids'].forEach(k => { if ((cfg[k] || []).length) p.set(k, cfg[k].join(',')); });
             if (cfg.search) p.set('search', cfg.search);
             if (cfg.min_amount) p.set('min_amount', cfg.min_amount);
             setData((await authFetch(`/api/reports/ageing?${p}`)).data); setOpen(new Set());
@@ -166,7 +166,8 @@ export default function AgeingReport() {
                             <MultiPick label={`${partyWord} Group`} items={type.side === 'payable' ? meta.supplier_groups : meta.customer_groups} value={config.party_group_ids} onChange={v => set('party_group_ids', v)} />
                             <MultiPick label="Area (+ sub)" items={meta.areas} value={config.area_ids} onChange={v => set('area_ids', v)} />
                             <MultiPick label="Route" items={meta.routes} value={config.route_ids} onChange={v => set('route_ids', v)} />
-                            <MultiPick label="Salesman / Agent" items={meta.agents} value={config.agent_ids} onChange={v => set('agent_ids', v)} />
+                            <MultiPick label="Agent (party master)" items={meta.agents} value={config.agent_ids} onChange={v => set('agent_ids', v)} />
+                            <MultiPick label="Doc. Agent (on the bill)" items={meta.agents} value={config.doc_agent_ids || []} onChange={v => set('doc_agent_ids', v)} />
                             <MultiPick label="Product Company" items={meta.companies} value={config.product_company_ids} onChange={v => set('product_company_ids', v)} />
                             <div className="erp-field"><label className="erp-label">Search {partyWord.toLowerCase()} / code</label>
                                 <input className="erp-input" value={config.search} onChange={e => set('search', e.target.value)} onKeyDown={e => { if (e.key === 'Enter') run(); }} /></div>

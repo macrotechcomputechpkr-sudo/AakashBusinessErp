@@ -148,7 +148,8 @@ Other billing terms post to the ledger set on the term (Billing Terms master), w
 - `pendingEntries` / `postEntries` (`/api/mobile-entries/pending`, `/post`): the office ticks and posts; posting runs the status handlers (GL, stock, bill-wise, IRD as usual).
 - `utils/salesman.agentParties`: only customers of the routes planned for the day (`routeIdsFor`), ordered by route then `sequence_order`; off-route salesmen also get their other routes. `areasRoutes`, `anyRouteCustomers` for returns.
 - `utils/agentBillCommission.js`: `commissionBills` (posted bills with an agent: value excl. VAT less posted returns against the bill, agent %, paid state) and `postBillCommission` (one posting per agent, `basis = 'bill'`, rows in `agent_commission_bills`; unique index `ux_commission_bill_live` keeps a bill in one live posting). `agentTargets.cancelPosting` sets the bills inactive so they can be paid again.
-- `utils/loadingSheet.js`: `qty_totals` per block - base qty per base unit, entered qty per unit, free.
+- `utils/loadingSheet.js`: `qty_totals` per block - base qty per base unit, entered qty per unit, free. `bill_order` = `bill_no` (default) | `route_seq` (`route_customers.sequence_order`) | `customer`.
+- Agent filters: `party_agent_id(s)` = the party ledger's master `agent_id`; `doc_agent_id(s)` = the header `agent_id` of the document. GL-based reports (ledger report, party summary) map batches to header tables with `utils/docAgent.js` `agentOfDocs()`. In registers / outstanding / day book `agent_id(s)` stays the document agent; in ageing / ledger report / party summary `agent_id` is the master agent.
 
 ### 3.3d Additional-bill terms (round 17, migration 148)
 
