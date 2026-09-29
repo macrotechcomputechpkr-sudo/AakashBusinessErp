@@ -9,9 +9,10 @@
 //     beside it, kept inside the window at the screen edges.
 //   * menu finder (type part of a screen / report name)
 //   * every screen sits in a NAV window: title bar with the screen name and
-//     minimise / maximise / close, ribbon (Home, Related screens of the same
-//     menu group, Reports for that area) and a tool bar
-//   * ❓ Help on every tool bar: the screen's help panel (components/help);
+//     minimise / maximise / close and, on the same bar, the page tools
+//     (Back, Refresh, Print, Dashboard, Report Center, Related ▾ screens of
+//     the same menu group, Reports ▾ for that area) - no rows above the form
+//   * ❓ Help on every title bar: the screen's help panel (components/help);
 //     every field caption gets a tooltip from the help glossary
 //   * status bar (ready, user, company, date / time)
 // Phones and tablets get the same menus in a slide-in drawer.
@@ -97,15 +98,17 @@ export default function Layout({ children }) {
     const barRef = useRef(null);
     const panelRef = useRef(null);
     // page window: ribbon tab, minimised body, maximised (full width) or a centred window
-    const [ribbon, setRibbon] = useState('home');
+    // page tools on the title bar; Related / Reports open as drop-downs (no extra rows above the form)
+    const [ribbon, setRibbon] = useState(null);
+    const dropRef = useRef(null);
     const [collapsed, setCollapsed] = useState(false);
     const [maxed, setMaxed] = useState(() => { try { return localStorage.getItem('nav_window_max') !== '0'; } catch { return true; } });
     const toggleMax = () => setMaxed(v => { try { localStorage.setItem('nav_window_max', v ? '0' : '1'); } catch { /* private mode */ } return !v; });
 
-    useEffect(() => { setOpenMenu(null); setDrawer(false); setSearch(''); setRibbon('home'); setCollapsed(false); }, [location.pathname, location.search]);
+    useEffect(() => { setOpenMenu(null); setDrawer(false); setSearch(''); setRibbon(null); setCollapsed(false); }, [location.pathname, location.search]);
     useEffect(() => {
         const inside = t => (barRef.current && barRef.current.contains(t)) || (panelRef.current && panelRef.current.contains(t));
-        const close = e => { if (!inside(e.target)) { setOpenMenu(null); setSearch(''); } };
+        const close = e => { if (!inside(e.target)) { setOpenMenu(null); setSearch(''); } if (!(dropRef.current && dropRef.current.contains(e.target))) setRibbon(null); };
         const esc = e => { if (e.key === 'Escape') { setOpenMenu(null); setSearch(''); setDrawer(false); } };
         const shut = () => setOpenMenu(null);
         document.addEventListener('mousedown', close);
@@ -280,6 +283,24 @@ export default function Layout({ children }) {
                             <div className="nav-titlebar-icon">{screenIcon}</div>
                             <span>{screenTitle}</span>
                         </div>
+                        <div className="nav-page-tools">
+                            <button type="button" className="nav-pt-btn" title="Back" onClick={() => navigate(-1)}>◀</button>
+                            <button type="button" className="nav-pt-btn" title="Refresh" onClick={() => window.location.reload()}>🔄</button>
+                            <button type="button" className="nav-pt-btn hide-sm" title="Print" onClick={() => window.print()}>🖨</button>
+                            <Link to="/dashboard" className="nav-pt-btn hide-sm" title="Dashboard">🏠</Link>
+                            <Link to="/reports" className="nav-pt-btn hide-sm" title="Report Center">📚</Link>
+                            {[['related', 'Related', related], ['reports', 'Reports', reports]].map(([k, l, list]) => list.length > 0 && (
+                                <div key={k} className="nav-pt-drop" ref={ribbon === k ? dropRef : undefined}>
+                                    <button type="button" className={`nav-pt-btn text ${ribbon === k ? 'active' : ''}`} title={k === 'related' ? `Other screens of ${hereGroup?.group.title || 'this group'}` : 'Reports of this screen'} onClick={() => setRibbon(r => (r === k ? null : k))}>{k === 'related' ? '🔗' : '📊'}<span className="pt-label"> {l}</span> ▾</button>
+                                    {ribbon === k && (
+                                        <div className="nav-pt-menu" onClick={() => setRibbon(null)}>
+                                            {list.map(it => <MenuLink key={it.to} item={it} className="nav-pt-item" />)}
+                                        </div>
+                                    )}
+                                </div>
+                            ))}
+                            <button type="button" className={`nav-pt-btn text ${helpOpen ? 'active' : ''}`} title="Help of this screen (Shift+F1)" onClick={() => setHelpOpen(o => !o)}>❓<span className="pt-label"> Help</span></button>
+                        </div>
                         <div className="nav-window-controls">
                             <button type="button" className="nav-wc-btn" title={collapsed ? 'Restore' : 'Minimise'} onClick={() => setCollapsed(v => !v)}>—</button>
                             <button type="button" className="nav-wc-btn" title={maxed ? 'Window' : 'Maximise'} onClick={toggleMax}>{maxed ? '❐' : '□'}</button>
@@ -288,30 +309,6 @@ export default function Layout({ children }) {
                     </div>
                     {!collapsed && (
                         <>
-                            <div className="nav-ribbon no-print">
-                                {[['home', 'Home'], ['related', 'Related'], ['reports', 'Reports']].map(([k, l]) => (
-                                    (k === 'home' || (k === 'related' ? related.length : reports.length) > 0) && (
-                                        <button type="button" key={k} className={`nav-ribbon-tab ${ribbon === k ? 'active' : ''}`} onClick={() => setRibbon(k)}>{l}</button>
-                                    )
-                                ))}
-                                {hereGroup && <span className="nav-ribbon-path">{hereGroup.menu.title} › {hereGroup.group.title}</span>}
-                            </div>
-                            <div className="nav-toolbar nav-page-toolbar no-print">
-                                {ribbon === 'home' && (
-                                    <>
-                                        <button type="button" className="nav-tool-btn" onClick={() => navigate(-1)}>◀ Back</button>
-                                        <button type="button" className="nav-tool-btn" onClick={() => window.location.reload()}>🔄 Refresh</button>
-                                        <button type="button" className="nav-tool-btn" onClick={() => window.print()}>🖨 Print</button>
-                                        <span className="nav-tool-sep" />
-                                        <Link to="/dashboard" className="nav-tool-btn">🏠 Dashboard</Link>
-                                        <Link to="/reports" className="nav-tool-btn">📚 Report Center</Link>
-                                        <span className="nav-tool-sep" />
-                                        <button type="button" className={`nav-tool-btn ${helpOpen ? 'active' : ''}`} title="Help of this screen (Shift+F1)" onClick={() => setHelpOpen(o => !o)}>❓ Help</button>
-                                    </>
-                                )}
-                                {ribbon === 'related' && related.map(it => <MenuLink key={it.to} item={it} className="nav-tool-btn" />)}
-                                {ribbon === 'reports' && reports.map(it => <MenuLink key={it.to} item={it} className="nav-tool-btn" />)}
-                            </div>
                             <div className={`nav-page-body ${helpOpen ? 'with-help' : ''}`}>{children}</div>
                             {helpOpen && <HelpPanel pathname={location.pathname} isSuperAdmin={isSuperAdmin} onClose={() => setHelpOpen(false)} />}
                         </>

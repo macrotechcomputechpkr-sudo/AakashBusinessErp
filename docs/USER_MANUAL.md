@@ -8,7 +8,7 @@ The effect of each transaction is shown in a box like this:
 
 
 > **Help inside the system**
-> - Every screen: **❓ Help** on the tool bar (or Shift+F1) - what the screen is for, how to use it, its effect on accounts, stock and VAT, and every field on it.
+> - Every screen: **❓ Help** on the title bar (or Shift+F1) - what the screen is for, how to use it, its effect on accounts, stock and VAT, and every field on it.
 > - Every field caption with a dotted underline shows its help when you point at it.
 > - **Tools > Help Center**: this manual, a manual for each Business Nature, the IRD Billing architecture and user manual (everyone); the Developer Guide and the PDF of every menu screen (super admin).
 
@@ -44,12 +44,14 @@ The effect of each transaction is shown in a box like this:
 | **Reverse** | Shown instead of Cancel on Sales Bill and Sales Return when Computerized Billing (IRD) is on. The bill is reversed by a return, as IRD requires. | Reversed through the return |
 | **Print** | Prints with the design from Document Designer. | None |
 
-**Fill bar** (at the top of every entry):
+**Fill bar** (one line at the top of every entry: the actions above, then **📄 Template ▾**):
 
-- **Template**: fill from a saved template.
-- **Previous Entry**: copy an earlier entry with a new number and today's date.
-- **Draft**: open a saved draft. When you save it as a real entry, the draft is deleted automatically.
+- **Fill from Template**: fill from a saved template.
+- **Fill from Previous Entry**: copy an earlier entry with a new number and today's date.
+- **Open a Draft**: open a saved draft. When you save it as a real entry, the draft is deleted automatically.
 - **Save as Template**: store the current entry as a template, for yourself only or for everyone.
+
+**Window title bar**: Back, Refresh, Print, Dashboard, Report Center, **🔗 Related ▾** (other screens of the same menu group), **📊 Reports ▾** and **❓ Help** sit on the screen's title bar, so the form starts right below it. On a phone the title bar keeps Back, Refresh, Related, Reports and Help as icons; forms become one column and the fill bar scrolls sideways.
 
 **Approval**: when a module is ticked under System Control > Approval Needed For, Save keeps the entry as **Awaiting approval** with no effect. Only a user whose Security Group has the approval right for that document can approve it. Approving posts it, and only then do accounts and stock move.
 
@@ -95,6 +97,9 @@ The effect of each transaction is shown in a box like this:
   - **Entry input**: which of %, rate and amount the user may type.
   - **Manual override**: whether the value can be changed in the entry.
   - **Show in summary**.
+  - **Term Used For**: *Transaction term* (Sales / Purchase / Production Entry - charged on the bill itself) or *Additional term* (Purchase Additional / Sales Additional - a later bill such as freight, customs, insurance).
+  - **Effect**: **Include In Costing** (the amount goes into the cost of the goods / landed cost; off = an expense only) and **Include In Profitability** (counted in the profitability reports).
+  - **Product Wise**: entered per product in a pop-up; otherwise bill-wise, divided over the products by the Basis.
 
 > **Accounts:** each term amount posts to the term's ledger when a bill is posted (VAT to the VAT ledger).
 
@@ -382,13 +387,16 @@ The flow is Quotation → Order → GRN → Bill → Return, with the same pull 
 
 **Additional Expenses (Purchase Additional Bill)**
 
-- Freight, customs, insurance or labour linked to an Order, GRN or Bill.
+- Freight, customs, insurance or labour linked to an Order, GRN or Bill. The vendor of the linked document comes in as the vendor; change it when someone else is paid.
 - Choose the reference bill(s) and see their product lines and totals.
-- Each expense line has its ledger, party, bill type (taxable, non-taxable, no bill), add or deduct, and allocation (by value, qty, equal, or none).
+- **Product-wise Terms** tab (first): the products of the linked document; **Terms…** opens that product's terms (Billing Terms with Purchase Additional + Product Wise). Rate % is of that product's value. The whole amount goes to that product's cost.
+- **Bill-wise Terms** tab: a fixed form with one row per bill-level Purchase Additional term. Fill the amounts that apply. Each row is divided over the bill's products by the term's basis (value or qty; changeable per row). Empty rows are left out.
+- A term's **ledger is fixed** by the term; only its **sub-ledger** can be changed. **Paid to** (the other ledger) and its sub-ledger are chosen freely - empty means the entry's vendor.
+- Each row also has its bill type (taxable, non-taxable, no bill), bill no, VAT, add or deduct. A term not "Include In Costing" stays out of the cost.
 - **Add TDS Line** adds a TDS line: TDS Payable ledger (System Control), default TDS % of the other lines, never added to cost. It appears in the TDS Report.
 - Account Posting shows the resulting entry before saving.
 
-> **Accounts:** Dr expense ledger (+ VAT when VAT is part of cost), Dr VAT (claimable), Cr supplier/party; a deduct line credits the ledger and reduces the party. **Stock value:** the allocated amount is added to the cost of the linked purchase lines (landed cost).
+> **Accounts:** Dr term / expense ledger with its sub-ledger (+ VAT when VAT is part of cost), Dr VAT (claimable), Cr supplier/party with its sub-ledger; a deduct line credits the ledger and reduces the party. **Stock value:** the allocated amount is added to the cost of the linked purchase lines (landed cost).
 
 **Purchase Return**
 

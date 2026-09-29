@@ -11,6 +11,15 @@ Aliases map other spellings of the same caption to one text.
 
 FIELDS = {
     # ---------- document header (all entries) ----------
+    'Link to Order': 'The purchase order the additional cost belongs to. Its vendor comes in as the vendor (changeable); its products are listed for the product-wise terms.',
+    'Link to GRN': 'The GRN the additional cost belongs to (the stock receipt whose cost is raised). Its vendor comes in as the vendor (changeable).',
+    'Link to Bill': 'The purchase bill the additional cost belongs to. Its vendor comes in as the vendor (changeable); its products are listed for the product-wise terms.',
+    'Term': 'The billing term of the row. Its ledger is fixed (only the sub-ledger changes); its basis, sign and costing flag come with it.',
+    'Ledger / Sub-Ledger': 'Ledger of the term (fixed by the billing term) and its sub-ledger (changeable). Debited with the amount (credited for a "-" term).',
+    'Paid to': 'Who is paid for this row - the counter ledger (supplier, transporter, cash / labour ledger) and its sub-ledger. Empty = the entry\'s vendor. Credited with the row total.',
+    'Term Used For': 'Transaction term = charged on the bill itself (Sales / Purchase / Production Entry). Additional term = a later bill on those goods (Purchase / Sales Additional: freight, customs, insurance ...).',
+    'Include In Costing': 'On: the amount goes into the cost of the goods (stock value / landed cost, and so COGS). Off: it stays an expense of the period.',
+    'Include In Profitability': 'On: the amount is counted in the profitability reports (product / bill / party profit).',
     'Date': 'Date of the document. Accounts, stock, VAT month and ageing all use this date. Type it (AD or BS - switch with the AD/BS button) or pick it. A date in a closed fiscal year cannot be posted.',
     'Voucher No.': 'Number of the document. Given automatically on save from Document Numbering (series per fiscal year); shown as "System series" until then. Manual numbering only if the series allows it.',
     'Doc No': 'Number of the document. Given automatically on save from Document Numbering (series per fiscal year).',

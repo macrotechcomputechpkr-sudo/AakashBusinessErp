@@ -135,6 +135,16 @@ Other billing terms post to the ledger set on the term (Billing Terms master), w
 - Purchase bill: the same supplier bill no cannot be entered twice for one supplier (`duplicatePartyBill`, on save and on posting).
 - `authFetch` keeps the server's extra error fields (`warnings`, `credit_blocked`), so "Post anyway?" and the credit override work.
 
+### 3.3d Additional-bill terms (round 17, migration 148)
+
+- `billing_terms.applicable_sales_additional` + `applicable_additional_expense` = "Additional term"; `applicable_sales_entry / purchase_entry / production_entry` = "Transaction term". `include_in_costing` (default true) next to `include_in_profitability`.
+- `purchase_additional_expense_lines`: `billing_term_id`, `expense_sub_ledger_id`, `target_detail_id`, `include_in_profitability`.
+- `purchaseAdditionalExpenseRoutes.applyTermRules` (save and preview): the term's ledger replaces the line ledger; sub-ledger not sent = the term's default; a term with `include_in_costing = false` gets basis `none`.
+- `computeAllocations`: a line with `target_detail_id` (product-wise term) puts its whole amount on that Order / GRN / Bill line; other lines are split by their basis. An unknown target falls back to the basis.
+- `grnAccounting.buildAdditionalExpenseGl`: Dr / Cr the term ledger with `expense_sub_ledger_id`; the party side uses the line party + `party_sub_ledger_id` (or the entry vendor + its sub-ledger).
+- Client (`PurchaseAdditionalExpense.jsx`): tab Product-wise (popup per product) and tab Bill-wise (one row per bill-level term, pre-filled on a new entry). Linking a Bill / GRN / Order fills its vendor.
+- Page shell (`Layout.jsx`): the page tools sit on the window title bar (Related / Reports are drop-downs); `EntryFillBar` is one line with a "📄 Template ▾" menu.
+
 ### 3.3b Reconciliation of registers and books (`utils/taxReconciliation.js`)
 
 `GET /api/vat-reports/reconciliation?section=vat|sales|purchase|tds|all&date_from&date_to&ledger_ids=` (page `TaxReconciliation.jsx`, `/tax-reconciliation`).

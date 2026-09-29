@@ -142,7 +142,7 @@ endobj
 endobj
 18 0 obj
 <<
-/Author (Aakash Business ERP) /CreationDate (D:20260928221941+00'00') /Creator (\(unspecified\)) /Keywords () /ModDate (D:20260928221941+00'00') /Producer (ReportLab PDF Library - \(opensource\)) 
+/Author (Aakash Business ERP) /CreationDate (D:20260929015557+00'00') /Creator (\(unspecified\)) /Keywords () /ModDate (D:20260929015557+00'00') /Producer (ReportLab PDF Library - \(opensource\)) 
   /Subject (\(unspecified\)) /Title (Aakash Business ERP - IRD Billing - System Architecture) /Trapped /False
 >>
 endobj
@@ -154,10 +154,10 @@ endobj
 endobj
 20 0 obj
 <<
-/Filter [ /ASCII85Decode /FlateDecode ] /Length 474
+/Filter [ /ASCII85Decode /FlateDecode ] /Length 475
 >>
 stream
-Gatn!gJ3Ad'LgpV(&Ljf*BA2]\"Y`7d6oQNJF2!`'J.TJs5'HG'tc@e#RQjNZY.iQB*a('C%IiIJLJOk'nJ@(-]hjOnI<M.?o;U4_c.k7mC477FpY.8:f7R<cEo<:&2/#[8m[ZqJS8>c\Z73=+7:i$otr)M1s=<pmf+X&<UH(hQ.&0*]4nr2h(do%`$\p#:g>eS_Y1IK9BH`6ESPor]nKW>h0?L(.=]_I\^OU^`^<=._8PL,Delm[.-Fm+!3uXh'MLGs+fcJ^U%3Llqlp2aemX'n#5q%O(!;0u8p0(pj_:QHelHho-B4:B^;9+e4GO1\Gd2rM`eBMcL&Z4hL4/*5.,=f#SW.#XRm$%*Z$\-DQe0b:AkAQO.4a8`T8uS*0J2k,/@#US5/Tg24$f=eDI+Z4>3,PtrC%78+F^O>1(=0J3#Q16@!9S)4A-XOF)[%oHhI>^F<u1Iok,e$N]$tD+.e/KM?~>endstream
+Gatn!gJ3Ad'LgpV(&Ljf*BA2]\"Y`7d6oQNJF2!`'J.TJs5'HG'tc@e#RQjNZY.iQB*a('C%IiIJLJOk'nJ@(-]hjOnI<M.?o;U4_c.k7mC477FpY.8:f7R<cEo<:&2/#[8m[ZqJS8>c\Z73=+7:i$otr)M1s=<pmf+X&<UH(hQ.&0*]4nr2h(do%`$\p#:g>eS_Y1IK9BH`6ESPor]nKW>h0?L(.=]_I\^OU^`^<=._8PL,Delm[.-Fm+!3uXh'MLGs+fcJ^U%3Llqlp2aemX'n#5q%O(!;0u8p0(pj_:QHelHho-B4:B^;9+e4GO1\Gd2rM`eBMcL&Z4hL4/*5.,=f#SW.#XRm$%*Z$\-DQe0b:AkAQO.4a8`T8uS*0J2k,/@#US5/Tg24$f=eDI+Z4>3,PtrC%78+F^O>1(=0J3#Q16@!9S)4A-XOF79_SpZhYGkXt>pld&W(*,Plg4oh1]kDK~>endstream
 endobj
 21 0 obj
 <<
@@ -252,20 +252,20 @@ xref
 0000002893 00000 n 
 0000003222 00000 n 
 0000003353 00000 n 
-0000003918 00000 n 
-0000004655 00000 n 
-0000005881 00000 n 
-0000008147 00000 n 
-0000009888 00000 n 
-0000011386 00000 n 
-0000013158 00000 n 
-0000014722 00000 n 
-0000015525 00000 n 
-0000016415 00000 n 
+0000003919 00000 n 
+0000004656 00000 n 
+0000005882 00000 n 
+0000008148 00000 n 
+0000009889 00000 n 
+0000011387 00000 n 
+0000013159 00000 n 
+0000014723 00000 n 
+0000015526 00000 n 
+0000016416 00000 n 
 trailer
 <<
 /ID 
-[<1d1e4f08a40f096b4d2da9182a941872><1d1e4f08a40f096b4d2da9182a941872>]
+[<1f73a3c36df781bf40e9d0ab402b113a><1f73a3c36df781bf40e9d0ab402b113a>]
 % ReportLab generated PDF document -- digest (opensource)
 
 /Info 18 0 R
@@ -273,5 +273,5 @@ trailer
 /Size 31
 >>
 startxref
-17337
+17338
 %%EOF

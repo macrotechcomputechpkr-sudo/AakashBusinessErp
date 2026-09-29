@@ -1850,13 +1850,14 @@
 ],
 "purpose": "Freight, customs, clearing, insurance, labour ... on purchased goods - taxable or non-taxable bills of other parties, or no bill - allocated to the goods (landed cost).",
 "steps": [
-"Link to the Order, GRN and / or Bill the cost belongs to.",
-"Add expense lines: ledger, amount, bill type (taxable / non-taxable / no bill), party and party bill no, VAT, allocation basis (value / qty / equal / none), VAT in cost.",
-"Check the allocation preview.",
-"Save and post."
+"Link to the Order, GRN and / or Bill the cost belongs to - the vendor of that document comes in as the vendor (change it when another party is paid).",
+"Product-wise Terms tab: the products of the linked document; Terms… on a product opens its terms (Billing Terms marked Purchase Additional + Product Wise) - rate % of that product's value or amount; the whole amount goes to that product's cost.",
+"Bill-wise Terms tab: a fixed form with one row per bill-level term - fill the amounts that apply; each is divided over the products by the term's basis (value / qty, changeable per row). Empty rows are left out.",
+"A term's ledger is fixed by the term - only its sub-ledger can be changed. \"Paid to\" (the counter ledger) and its sub-ledger are free; empty = the entry's vendor. Bill type (taxable / non-taxable / no bill), bill no and VAT per row; Add TDS Line for withholding.",
+"Check the per-product preview (additional, cost / unit), then Save and post."
 ],
-"accounts": "Dr each expense ledger (Cr for deduct lines) / Dr VAT (claimable) / Cr the party of each line. TDS lines: Cr TDS payable.",
-"stock": "Posted: the allocated amount is added to the cost of the stock receipt of each linked line (landed cost); cancelled: taken out again.",
+"accounts": "Dr each term / expense ledger with its sub-ledger (Cr for \"-\" terms) / Dr VAT (claimable) / Cr the party of each line with its sub-ledger. TDS lines: Cr TDS payable.",
+"stock": "Posted: the allocated amount is added to the cost of the stock receipt of each linked line (landed cost); cancelled: taken out again. Terms not \"Include In Costing\" stay out of the stock cost.",
 "vat": "Taxable lines go to the Purchase VAT register as \"Purchase Additional Bill\".",
 "other": "Purchase Account and Purchase vs Stock reconciliation show it separately; TDS register; bills can later be taken in a TDS journal.",
 "fields": [
@@ -3308,7 +3309,10 @@
 ],
 "purpose": "VAT, excise, discounts, freight and other charges used on sales / purchase documents - formula, sign (+ / -), basis, ledger, return ledger, sub-ledger, which entries they apply to.",
 "steps": [
-"New Billing Term: name, type (VAT / excise / discount / other), formula or rate, sign, ledgers, applicable to sales / purchase, product-wise or document-level."
+"New Billing Term: name, type (VAT / excise / discount / other), formula or rate, sign, basis (value / quantity), ledgers and sub-ledgers.",
+"Term Used For: Transaction term (Sales / Purchase / Production Entry - on the bill itself) or Additional term (Purchase / Sales Additional - a later bill such as freight, customs, insurance).",
+"Effect: Include In Costing (the amount goes into the cost of the goods / landed cost; off = an expense only) and Include In Profitability (counted in the profitability reports).",
+"Product Wise: entered per product (popup per product); otherwise bill-wise, divided over the products by the basis."
 ],
 "accounts": "None.",
 "stock": "None.",
@@ -6273,6 +6277,15 @@
 }
 },
 "fields": {
+"Link to Order": "Order whose lines this additional expense is allocated to (landed cost).",
+"Link to GRN": "GRN whose lines this additional expense is allocated to (landed cost goes into the stock value).",
+"Link to Bill": "Purchase bill whose lines this additional expense is allocated to (landed cost).",
+"Term": "The billing term of the row. Its ledger is fixed (only the sub-ledger changes); its basis, sign and costing flag come with it.",
+"Ledger / Sub-Ledger": "Ledger of the term (fixed by the billing term) and its sub-ledger (changeable). Debited with the amount (credited for a \"-\" term).",
+"Paid to": "Who is paid for this row - the counter ledger (supplier, transporter, cash / labour ledger) and its sub-ledger. Empty = the entry's vendor. Credited with the row total.",
+"Term Used For": "Transaction term = charged on the bill itself (Sales / Purchase / Production Entry). Additional term = a later bill on those goods (Purchase / Sales Additional: freight, customs, insurance ...).",
+"Include In Costing": "On: the amount goes into the cost of the goods (stock value / landed cost, and so COGS). Off: it stays an expense of the period.",
+"Include In Profitability": "On: the amount is counted in the profitability reports (product / bill / party profit).",
 "Date": "Date of the document. Accounts, stock, VAT month and ageing all use this date. Type it (AD or BS - switch with the AD/BS button) or pick it. A date in a closed fiscal year cannot be posted.",
 "Voucher No.": "Number of the document. Given automatically on save from Document Numbering (series per fiscal year); shown as \"System series\" until then. Manual numbering only if the series allows it.",
 "Doc No": "Number of the document. Given automatically on save from Document Numbering (series per fiscal year).",
@@ -6323,9 +6336,6 @@
 "Import Taxable Amount (whole bill)": "Taxable import value for the VAT register (Annex).",
 "Import Tax-Free Amount (whole bill)": "Tax-free import value for the VAT register.",
 "PAN Number": "PAN / VAT number of the party printed on the bill and used in VAT registers / IRD. Can update the master.",
-"Link to Order": "Order whose lines this additional expense is allocated to (landed cost).",
-"Link to GRN": "GRN whose lines this additional expense is allocated to (landed cost goes into the stock value).",
-"Link to Bill": "Purchase bill whose lines this additional expense is allocated to (landed cost).",
 "Account Posting": "Yes: the expense is posted to the ledgers. No: only the landed cost moves (e.g. already booked elsewhere).",
 "Item Code": "Product code or barcode - type or scan; Enter moves on. F1 shows this customer's / supplier's rate history.",
 "Item Name": "The product. Its units, rates, accounts, VAT, batch / serial and item type come from the Product Master.",

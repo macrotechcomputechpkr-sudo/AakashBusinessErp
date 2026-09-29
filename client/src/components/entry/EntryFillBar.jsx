@@ -1,6 +1,7 @@
 // =============================================
 // components/entry/EntryFillBar.jsx
-// The fill bar at the top of every transaction form:
+// The fill bar at the top of every transaction form - ONE line: the actions,
+// then one "📄 Template ▾" drop-down with:
 //   From Template     - a saved template fills the new entry
 //   Save as Template  - what is typed now, saved under a name (for everyone,
 //                       or only for me)
@@ -48,6 +49,7 @@ export default function EntryFillBar({ voucherType, api, form, onFill, onCopy, e
     const [rows, setRows] = useState([]);
     const [q, setQ] = useState('');
     const [msg, setMsg] = useState('');
+    const [fillMenu, setFillMenu] = useState(false);
 
     const loadTemplates = useCallback(async () => {
         try { const r = await authFetch(`/api/entry-templates?voucher_type=${voucherType}`); setTemplates(r.data || []); } catch { setTemplates([]); }
@@ -151,16 +153,22 @@ export default function EntryFillBar({ voucherType, api, form, onFill, onCopy, e
                 <button type="button" className="nav-tool-btn" onClick={() => pick('cancel')} title="Cancel a posted entry (its accounts / stock effect is reversed)">⊘ Cancel</button>
                 <button type="button" className="nav-tool-btn" onClick={() => (docId ? removeCurrent() : pick('remove'))} title={docId ? 'Remove this draft' : 'Remove an entry'}>🗑 Remove</button>
                 <button type="button" className="nav-tool-btn" onClick={() => (docId ? window.open(printUrl(docId), '_blank', 'noopener') : pick('print'))} title={docId ? 'Print this entry' : 'Print an entry'}>🖨 Print</button>
-                <button type="button" className="nav-tool-btn" onClick={saveDraft} title="Keep what is typed as a draft">📝 Save as Draft</button>
+                <button type="button" className="nav-tool-btn" onClick={saveDraft} title="Keep what is typed as a draft">📝 Draft</button>
                 <button type="button" className="nav-tool-btn ent-action-save" onClick={save} title="Save (and post) this entry">💾 Save</button>
             </span>
             <span className="ent-fillbar-sep" />
-            <span className="ent-fillbar-cap">Fill from</span>
-            <button type="button" className="nav-btn small" disabled={editing} onClick={() => show('template')} title="Fill this entry from a saved template">📄 Template{templates.length ? ` (${templates.length})` : ''}</button>
-            <button type="button" className="nav-btn small" disabled={editing} onClick={() => show('previous')} title="Copy a previous entry into this one">⟲ Previous Entry</button>
-            <button type="button" className="nav-btn small" disabled={editing} onClick={() => show('draft')} title="Finish a saved draft (the draft becomes this entry)">📝 Draft{drafts.length ? ` (${drafts.length})` : ''}</button>
-            <span className="ent-fillbar-sep" />
-            <button type="button" className="nav-btn small" onClick={saveTemplate} title="Save what is typed now as a template">💾 Save as Template</button>
+            <span className="ent-fill-drop">
+                <button type="button" className={`nav-tool-btn ${fillMenu ? 'active' : ''}`} onClick={() => setFillMenu(v => !v)} title="Fill this entry from a template, a previous entry or a draft - or save it as a template">📄 Template ▾</button>
+                {fillMenu && (
+                    <span className="ent-fill-menu" onMouseLeave={() => setFillMenu(false)}>
+                        <button type="button" disabled={editing} onClick={() => { setFillMenu(false); show('template'); }}>📄 Fill from Template{templates.length ? ` (${templates.length})` : ''}</button>
+                        <button type="button" disabled={editing} onClick={() => { setFillMenu(false); show('previous'); }}>⟲ Fill from Previous Entry</button>
+                        <button type="button" disabled={editing} onClick={() => { setFillMenu(false); show('draft'); }}>📝 Open a Draft{drafts.length ? ` (${drafts.length})` : ''}</button>
+                        <span className="ent-fill-menu-sep" />
+                        <button type="button" onClick={() => { setFillMenu(false); saveTemplate(); }}>💾 Save as Template</button>
+                    </span>
+                )}
+            </span>
             {msg && <span className="ent-note">{msg}</span>}
             {open === 'template' && (
                 <EntryPopup title="Fill from Template" onClose={() => setOpen(null)} width={640}>

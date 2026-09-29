@@ -40,8 +40,8 @@ function validateTermBody(body) {
         return 'Base Reference Term is required when Base Reference is "Specific Term"';
     }
     const salesOk = body.applicable_sales_entry !== undefined ? body.applicable_sales_entry : true;
-    if (!salesOk && !body.applicable_purchase_entry && !body.applicable_additional_expense && !body.applicable_production_entry) {
-        return 'Select at least one: Sales Entry, Purchase Entry, Additional Expense, or Production Entry';
+    if (!salesOk && !body.applicable_purchase_entry && !body.applicable_additional_expense && !body.applicable_sales_additional && !body.applicable_production_entry) {
+        return 'Select at least one "Term used for": Sales / Purchase / Production Entry, or Purchase / Sales Additional';
     }
     return null;
 }
@@ -143,12 +143,14 @@ router.post('/billing-terms', requireAuth, loadUserPermissions, requirePermissio
                 show_in_term_summary: b.show_in_term_summary !== undefined ? !!b.show_in_term_summary : true,
                 suppress_if_zero: !!b.suppress_if_zero,
                 include_in_profitability: !!b.include_in_profitability,
+                include_in_costing: b.include_in_costing !== undefined ? !!b.include_in_costing : true,
                 product_wise: !!b.product_wise,
                 show_product_term_summary: !!b.show_product_term_summary,
                 allow_summary: !!b.allow_summary,
                 applicable_sales_entry: b.applicable_sales_entry !== undefined ? !!b.applicable_sales_entry : true,
                 applicable_purchase_entry: !!b.applicable_purchase_entry,
                 applicable_additional_expense: !!b.applicable_additional_expense,
+                applicable_sales_additional: !!b.applicable_sales_additional,
                 applicable_production_entry: !!b.applicable_production_entry,
                 is_enabled: b.is_enabled !== undefined ? !!b.is_enabled : true,
                 credit_days: b.credit_days || 0,

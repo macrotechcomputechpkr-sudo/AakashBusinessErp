@@ -134,6 +134,15 @@
   .nav-ribbon-tab.active { background: #ece9d8; border-color: #aca899; margin-bottom: -1px; font-weight: 700; color: #1a4a8a; }
   .nav-ribbon-path { margin-left: auto; padding: 4px; font-size: 11px; color: #5a5a5a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .nav-page-toolbar { min-height: 30px; }
+  /* page tools on the window title bar (Layout.jsx) */
+  .nav-page-titlebar { min-height: 28px; padding-top: 2px; padding-bottom: 2px; }
+  .nav-page-tools { display: flex; align-items: center; gap: 2px; margin-left: auto; flex-shrink: 0; }
+  .nav-pt-btn { height: 21px; min-width: 24px; padding: 0 5px; display: inline-flex; align-items: center; justify-content: center; background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.28); border-radius: 2px; color: #fff; font-size: 11px; font-weight: 600; text-shadow: none; cursor: pointer; text-decoration: none; white-space: nowrap; }
+  .nav-pt-btn:hover, .nav-pt-btn.active { background: rgba(255,255,255,.3); }
+  .nav-pt-drop { position: relative; }
+  .nav-pt-menu { position: absolute; right: 0; top: 100%; margin-top: 2px; z-index: 60; min-width: 220px; max-width: 320px; max-height: 60vh; overflow-y: auto; background: #fff; border: 1px solid #7a96b8; box-shadow: 2px 3px 8px rgba(0,0,0,.25); padding: 2px 0; text-shadow: none; }
+  .nav-pt-item { display: block; padding: 4px 12px; font-size: 12px; font-weight: 400; color: #1a1a1a; text-decoration: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .nav-pt-item:hover { background: #dce8f5; color: #1a4a8a; }
   a.nav-tool-btn { text-decoration: none; }
   .nav-page-body { flex: 1; min-width: 0; background: #f0f0f0; padding: 4px 8px 12px; }
 
@@ -369,7 +378,14 @@
     .nav-statusbar { position: static; }
     .nav-workspace { padding: 0; }
     .nav-page { min-height: 0; border: none; box-shadow: none; }
-    .nav-page .nav-ribbon, .nav-page .nav-page-toolbar, .nav-page .nav-window-controls { display: none; }
+    .nav-page .nav-ribbon, .nav-page .nav-page-toolbar, .nav-page .nav-window-controls, .nav-page-tools .hide-sm { display: none; }
+    .nav-pt-btn { height: 30px; min-width: 32px; font-size: 13px; }
+    .nav-page-tools .pt-label { display: none; }
+    .nav-page-titlebar .nav-titlebar-left { flex: 1 1 auto; }
+    /* entry forms: the card's own buttons (Close, Copy From) get their own row above the one-line fill bar */
+    .nav-page .erp-card:has(> form > .ent-fillbar:first-child) > .erp-header { position: static; padding: 0 4px; background: #ece9d8; border-bottom: 1px solid #aca899; }
+    .nav-page .erp-card:has(> form) > form > .ent-fillbar:first-child { padding-right: 8px; }
+    .nav-pt-menu { position: fixed; left: 8px; right: 8px; top: auto; max-width: none; }
   }
   @media print {
     .nav-workspace { background: none; padding: 0; }
@@ -470,10 +486,18 @@ label {
 .ent-actions { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 1px; }
 .ent-actions .nav-tool-btn { padding: 0 6px; line-height: 20px; }
 .ent-actions .ent-action-save { font-weight: 700; color: #1a4a8a; }
-.ent-fillbar { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 2px 8px; margin-bottom: 0; border: 1px dashed var(--nav-border, #c9cfd8); border-radius: 4px; background: rgba(120, 140, 170, 0.06); font-size: 12px; }
+.ent-fillbar { display: flex; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin; align-items: center; gap: 4px; padding: 2px 8px; margin-bottom: 0; border: 1px dashed var(--nav-border, #c9cfd8); border-radius: 4px; background: rgba(120, 140, 170, 0.06); font-size: 12px; }
 .ent-fillbar-cap { font-weight: 600; color: #55607a; margin-right: 2px; }
 .ent-fillbar-sep { width: 1px; height: 18px; background: #c9cfd8; margin: 0 4px; }
 .ent-fillbar .nav-btn:disabled { opacity: .45; cursor: not-allowed; }
+.ent-fillbar .ent-actions { flex-wrap: nowrap; white-space: nowrap; }
+.ent-fill-drop { position: relative; flex-shrink: 0; }
+.ent-fill-drop .nav-tool-btn { padding: 0 6px; line-height: 20px; white-space: nowrap; }
+.ent-fill-menu { position: fixed; z-index: 70; display: flex; flex-direction: column; min-width: 210px; margin-top: 2px; background: #fff; border: 1px solid #7a96b8; box-shadow: 2px 3px 8px rgba(0,0,0,.25); padding: 2px 0; }
+.ent-fill-menu button { text-align: left; padding: 4px 12px; font-size: 12px; background: none; border: 0; cursor: pointer; white-space: nowrap; }
+.ent-fill-menu button:hover:not(:disabled) { background: #dce8f5; color: #1a4a8a; }
+.ent-fill-menu button:disabled { opacity: .45; cursor: not-allowed; }
+.ent-fill-menu-sep { height: 1px; background: #d4d0c8; margin: 2px 0; }
 
 /* ---- NAV template for older pages: coloured Tailwind buttons become the
    standard NAV buttons (blue/green/indigo = primary; yellow/orange/red/grey row
