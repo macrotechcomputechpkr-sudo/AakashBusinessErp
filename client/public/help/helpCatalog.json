@@ -1896,6 +1896,8 @@
 "Product-wise Terms tab: the products of the linked document; Terms… on a product opens its terms (Billing Terms marked Purchase Additional + Product Wise) - rate % of that product's value or amount; the whole amount goes to that product's cost.",
 "Bill-wise Terms tab: a fixed form with one row per bill-level term - fill the amounts that apply; each is divided over the products by the term's basis (value / qty, changeable per row). Empty rows are left out.",
 "A term's ledger is fixed by the term - only its sub-ledger can be changed. \"Paid to\" (the counter ledger) and its sub-ledger are free; empty = the entry's vendor. One row per term: Paid to, Supplier Bill No, Bill Date, VAT % / VAT. The bill type is not chosen - VAT on the row = taxable bill, a bill no without VAT = tax-free bill, neither = no bill. Rows of one party with the same bill no are one bill (taxable + tax-free parts), credited to that party; several bills of several parties fit in one entry.",
+"The header shows the vendor of the Ref. Bill (read only) - there is no cash / credit choice: each line and customs row has its own Credit A/c (vendor, cash, bank, customs agent or any balance-sheet ledger; empty = the Ref. Bill vendor). The basis of a term comes from Billing Terms; the term ledger's Sub-Ledger is picked on the line.",
+"Customs (Bhansar) tab: one row per Pragyapan Patra - date, customs office, Credit A/c (who paid), Assessable Value, Taxable Value, Non-taxable Value, VAT % and VAT. Posting: Dr VAT / Cr the Credit A/c. The Purchase VAT register lists it as an Import purchase (import taxable).",
 "Below: Goods Details (products of the Ref. Bill with additional, net amount, cost / unit), Party Bills / VAT (per party and bill: taxable, VAT, tax-free, less TDS, credited to the party) and Account Posting (the ledger entry that will be posted, Dr = Cr); the Totals panel shows the Net Payable, checked against the party credit of the posting.",
 "Add / Refresh TDS: one TDS line per party paid - base = that party's \"+\" lines (only the lines whose term is marked TDS Applicable, when any is), rate from System Control (default 1.5 %). TDS is a non-additional term (not in the stock cost).",
 "Totals: Prd. Additional / Non-Additional (product-wise terms), Gen. Additional / Non-Additional (bill-wise terms), Net Additional (goes to the stock cost), Net Non-Additional (VAT claimable, TDS, terms not in costing), Total and Net Total.",
@@ -1903,7 +1905,7 @@
 ],
 "accounts": "Dr each term / expense ledger with its sub-ledger (Cr for \"-\" terms) / Dr VAT (claimable) / Cr the party of each line with its sub-ledger. TDS lines: Cr TDS payable.",
 "stock": "Posted: the allocated amount is added to the cost of the stock receipt of each linked line (landed cost); cancelled: taken out again. Terms not \"Include In Costing\" stay out of the stock cost.",
-"vat": "Taxable lines go to the Purchase VAT register as \"Purchase Additional Bill\".",
+"vat": "Taxable / tax-free bills go to the Purchase VAT register as \"Purchase Additional Bill\"; Customs rows as \"Purchase Additional Bill (Import / Customs)\" with import taxable.",
 "other": "Purchase Account and Purchase vs Stock reconciliation show it separately; TDS register; bills can later be taken in a TDS journal.",
 "fields": [
 [
@@ -1915,8 +1917,8 @@
 "Yes: the expense is posted to the ledgers. No: only the landed cost moves (e.g. already booked elsewhere)."
 ],
 [
-"Invoice Type",
-"Cash or credit, as Cash / Credit: decides whether the document leaves an outstanding against the party."
+"Vendor",
+"The supplier (ledger in Sundry Creditors). Credited with the bill total (debited on a return / debit note). PAN, address and credit days come from the vendor master."
 ],
 [
 "Vendor Sub-Ledger",

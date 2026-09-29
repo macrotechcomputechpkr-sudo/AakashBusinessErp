@@ -395,6 +395,7 @@ Per document type (and optionally per user):
 - **Sales / purchase analysis**: `tradeAnalysis`, `tradeLines`, `salesman`, `agentTargets`.
 - **Daily Register** (`utils/dailyRegister.js`, `GET /api/daily-register`, `DailyRegister.jsx`): built on `dayBook` rows; A-J totals, cash check, fiscal-year-to-date sales / purchase and `financialEngine.profitAndLoss`. With a user / agent filter the ledger-based figures are null.
 - **Consignment costing** (`utils/consignmentCost.js`): `allocateAdditional(raw, addl)` spreads each Purchase Additional line to bill lines - product-wise target wholly to its line, else by basis (value net of VAT / qty / equal, last line takes rounding); non-costing lines (TDS, basis none) and claimable VAT go to `non_additional`. Purchase Additional links only to a Ref. Bill (`source_bill_id` required on post).
+- **Purchase Additional customs** (migration 152, `purchase_additional_customs`): rows saved by `syncCustoms`; `buildAdditionalExpenseGl` reads `exp.customs_entries` (Dr VAT / Cr paid ledger); `vatReportRoutes.loadCustomTaxDocs` adds each row as an import bill (`is_import`, `import_taxable`). Bill type of a line is derived by `billTypeOf` (VAT = taxable, bill no = non-taxable, else no bill).
 - **Universal register**: `registerRoutes` with `documentCatalog.js`, the list of every document type and its table.
 
 ## 10. Industry modules

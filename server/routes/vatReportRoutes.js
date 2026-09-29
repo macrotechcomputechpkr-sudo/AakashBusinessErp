@@ -129,6 +129,19 @@ async function loadCustomTaxDocs(tenantClient, tenantId, docType, cfg, { dateFro
             if (withLines) b.lines.push({ product_name: l.description || 'Expense', qty: null, uom: null, rate: null, taxable: l.bill_type === 'taxable' ? base : 0, exempt: l.bill_type === 'taxable' ? 0 : base, vat, amount: round2(base + vat) });
         });
         out.push(...bills.values());
+        // Customs (Bhansar) rows: each pragyapan patra is an import purchase - taxable = import taxable
+        const customs = await inChunks(headers.map(h => h.id), 200, async chunk => (await tenantClient.from('purchase_additional_customs').select('*').in('expense_id', chunk)).data || []);
+        customs.forEach(cu => {
+            const h = byId[cu.expense_id], pid = cu.paid_ledger_id || h.vendor_ledger_id || null;
+            if (partyId && pid !== partyId) return;
+            const taxable = round2(cu.taxable_amount), exempt = round2(cu.non_taxable_amount), vat = round2(cu.vat_amount);
+            out.push({ doc_type: docType, doc_label: `${cfg.label} (Import / Customs)`, side: cfg.side, sign: cfg.sign, id: `cu|${cu.id}`, document_id: h.id, doc_no: h.doc_no, doc_date: h.doc_date,
+                party_ledger_id: pid, party_name: cu.customs_office ? `Customs - ${cu.customs_office}` : 'Customs (import)', party_pan: null,
+                party_bill_no: cu.pragyapan_no || null, party_bill_date: cu.pragyapan_date || null, invoice_type: h.invoice_type || null, is_import: true,
+                taxable, exempt, vat, total: round2(taxable + exempt + vat), import_taxable: taxable,
+                vat_by_ledger: vat ? { [cu.vat_ledger_id || defaultLedger || 'unassigned']: vat } : {},
+                lines: withLines ? [{ product_name: `Import (assessable ${round2(cu.assessable_value)})`, qty: null, uom: null, rate: null, taxable, exempt, vat, amount: round2(taxable + exempt + vat) }] : undefined });
+        });
     } else {
         const vatIds = new Set(await allVatLedgerIds(tenantClient, tenantId));
         const details = await inChunks(headers.map(h => h.id), 200, async chunk => (await tenantClient.from('journal_voucher_details').select('jv_id, ledger_id, ledger_name_snapshot, debit_amount, credit_amount, narration').in('jv_id', chunk)).data);
