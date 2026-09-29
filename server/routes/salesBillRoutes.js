@@ -4,9 +4,15 @@
 // Payable, creates a 'dr' bill-wise reference for the customer, credit-
 // checked like Sales Order, and writes an OUT stock movement ONLY for
 // lines with no source delivery (a direct/cash bill).
+// In the same voucher: TDS the customer withheld (Dr TDS receivable, Cr
+// Customer) and money received with the bill in cash and / or banks (Dr
+// each cash / bank, Cr Customer) - a cash bill in full, a credit bill in
+// part (utils/billExtras.js).
 // =============================================
 
 const express = require('express');
+const { checkNegativeStock } = require('../utils/negativeStock');
+const { stockLines } = require('../utils/stockItems');
 const { cleanLineTerms, exciseOf } = require('../utils/lineTerms');
 const { disposeOnSale, undoSaleDisposals } = require('../utils/fixedAssets');
 const { checkAccountPurposes } = require('../utils/ledgerPurpose');
@@ -25,6 +31,7 @@ const { checkCustomerCredit } = require('../utils/creditControl');
 const { toBaseUnitQty } = require('../utils/unitConversion');
 const { toBaseQtyFromDual, computeDualAmount, getDualUomMode, rateBasisFor } = require('../utils/dualUomCalculation');
 const { isBillWiseTrackingEnabled, createReferenceAndSettle, reverseReferenceAndSettlements } = require('../utils/billWiseSettlement');
+const billExtras = require('../utils/billExtras');
 
 function validateBody(b, isDraft) {
     if (!b.doc_date) return 'Date is required';
@@ -163,6 +170,7 @@ async function updateOrderProgressFromBill(tenantClient, details, delta) {
 }
 
 async function postBillStockMovements(tenantClient, tenantId, bill, details) {
+    details = await stockLines(tenantClient, details);   // only stock items move stock (utils/stockItems)
     const rows = [];
     for (const d of details) {
         if (d.source_delivery_detail_id) continue;
@@ -250,6 +258,8 @@ async function postBillToLedger(tenantClient, tenantId, bill, userId) {
         rows.push({ tenant_id: tenantId, batch_id: batch.id, ledger_account_id: sysControl.vat_ledger_id, debit_amount: 0, credit_amount: bill.total_tax_amount });
     }
     if (exciseLedgerId) rows.push({ tenant_id: tenantId, batch_id: batch.id, ledger_account_id: exciseLedgerId, debit_amount: 0, credit_amount: Number(bill.total_excise_amount) });
+    // TDS withheld by the customer and cash / bank received with the bill
+    billExtras.glLines('sales', bill).forEach(l => rows.push({ tenant_id: tenantId, batch_id: batch.id, ledger_account_id: l.ledgerId, sub_ledger_id: l.subLedgerId || null, debit_amount: l.debit, credit_amount: l.credit, narration: l.narration || null }));
     // Every line of this document belongs to its Product Company (company-wise
     // party ledger / ageing read it from the GL).
     rows.forEach(r => { if (r.product_company_id === undefined) r.product_company_id = bill.product_company_id || null; });
@@ -360,6 +370,7 @@ async function createSalesBill(req, res) {
                 area_id: b.area_id || null, route_id: b.route_id || null,
                 credit_check_result: isDraft ? null : creditCheck.result, credit_check_message: creditCheck.message,
                 pending_bill_wise_settlements: b.bill_wise_settlements ? JSON.stringify(b.bill_wise_settlements) : null,
+                ...billExtras.extraFields(b, 'sales'),
                 ...snapshots,
                 // posting (GL, stock, IRD register) happens only through the status route
                 status: 'draft', created_by: req.auth.userId, updated_by: req.auth.userId
@@ -420,6 +431,8 @@ router.put('/sales-bills/:id', requireAuth, loadUserPermissions, requirePermissi
         delete update.save_as_draft;
         delete update.override_credit_block;
         delete update.bill_wise_settlements;
+        delete update.receipts;
+        Object.assign(update, billExtras.extraFields(b, 'sales'));
         if (b.bill_wise_settlements) update.pending_bill_wise_settlements = JSON.stringify(b.bill_wise_settlements);
 
         const { data, error } = await tenantClient.from('sales_bills').update(update).eq('id', req.params.id).eq('tenant_id', tenantId).select().single();
@@ -463,6 +476,15 @@ async function changeSalesBillStatus(req, res) {
         if (status === 'posted' && existing.status !== 'posted') {
             const blocker = await postingPreflight(tenantClient, tenantId, existing);
             if (blocker) return res.status(400).json({ success: false, error: blocker });
+            // System Control > Negative Stock also for a direct bill (lines from a delivery already went out)
+            const { data: outLines } = await tenantClient.from('sales_bill_details').select('*').eq('bill_id', req.params.id);
+            const stockCheck = await checkNegativeStock(tenantClient, tenantId, existing, (outLines || []).filter(d => !d.source_delivery_detail_id));
+            if (stockCheck.blocked && !req.body.override_negative_stock_warning) {
+                return res.status(400).json({ success: false, error: 'Insufficient stock to post this bill', warnings: stockCheck.warnings });
+            }
+            // TDS ledger / cash receipt resolved and checked before anything posts
+            try { Object.assign(update, await billExtras.prepareExtras(tenantClient, tenantId, 'sales', existing)); }
+            catch (e) { return res.status(e.status || 500).json({ success: false, error: e.message }); }
         }
         const { data, error } = await tenantClient.from('sales_bills').update(update).eq('id', req.params.id).eq('tenant_id', tenantId).select().single();
         if (error) throw error;
@@ -487,8 +509,10 @@ async function changeSalesBillStatus(req, res) {
                         settlements: req.body.bill_wise_settlements || data.pending_bill_wise_settlements || []
                     });
                 }
+                await billExtras.settleOnBill(tenantClient, tenantId, 'sales', data);
             }
         } else if (status === 'cancelled' && existing.status === 'posted') {
+            await billExtras.unsettleOnBill(tenantClient, 'sales', req.params.id);
             await reverseReferenceAndSettlements(tenantClient, 'sales_bill', req.params.id);
             await reverseBillGlBatch(tenantClient, req.params.id);
             await reverseBillStockMovements(tenantClient, req.params.id);

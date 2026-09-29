@@ -275,10 +275,17 @@ export default function LoadingSheet() {
                                         ))}
                                         {data.items.length === 0 && <tr><td colSpan={4 + blocks.length * qtyCols.length} className="text-center text-gray-400 py-4">Nothing to load for these filters.</td></tr>}
                                     </tbody>
-                                    {data.items.length > 0 && qtyCols.some(c => c.num) && (
+                                    {data.items.length > 0 && (
                                         <tfoot><tr className="font-bold bg-blue-50">
                                             <td colSpan={3} className="text-right">Total</td>
                                             {blocks.map(([k]) => qtyCols.map(c => {
+                                                // qty: total in base unit (fixed and flexible dual alike), and as entered per unit
+                                                const qt = data.qty_totals?.[k];
+                                                if (!c.num && qt && ['uom', 'base', 'in_unit', 'breakdown', 'dual'].includes(c.key)) {
+                                                    return <td key={`${k}${c.key}`} className="whitespace-nowrap">{c.key === 'uom' && qt.entered.length ? `${parts(qt.entered)} · ` : ''}Total {parts(qt.base)}</td>;
+                                                }
+                                                if (!c.num && qt && c.key === 'entered') return <td key={`${k}${c.key}`} className="whitespace-nowrap">{parts(qt.entered)}</td>;
+                                                if (!c.num && qt && c.key === 'free') return <td key={`${k}${c.key}`} className="whitespace-nowrap">{parts(qt.free)}</td>;
                                                 if (!c.num) return <td key={`${k}${c.key}`} />;
                                                 const field = c.key.startsWith('o:') ? null : c.key;
                                                 const v = data.items.reduce((s, r) => s + (Number(field ? r[k]?.[field] : r[k]?.other?.[c.key.slice(2)]) || 0), 0);

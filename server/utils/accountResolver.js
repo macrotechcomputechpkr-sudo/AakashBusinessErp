@@ -6,7 +6,8 @@
 //                                   + its sales_/purchase_sub_ledger_id;
 //                                   a return uses the product's Return Account,
 //                                   a non-saleable return its Non-saleable
-//                                   Return Account, when set)
+//                                   Return Account, when set - each with
+//                                   its own sub-ledger)
 //   2. the document's account      (sales_account_ledger_id / goods_account_ledger_id
 //                                   + sales_sub_ledger_id / goods_sub_ledger_id)
 //   3. System Control default      (sales_[return_]account_ledger_id /
@@ -19,8 +20,8 @@
 const round2 = n => Math.round((Number(n) || 0) * 100) / 100;
 
 const SIDE = {
-    sales:    { productReturn: 'sales_return_account_ledger_id', productNonSaleable: 'sales_nonsaleable_return_account_ledger_id', productAcct: 'sales_account_ledger_id',    productSub: 'sales_sub_ledger_id',    docAcct: 'sales_account_ledger_id', docSub: 'sales_sub_ledger_id', sys: ['sales_account_ledger_id'],    sysReturn: ['sales_return_account_ledger_id', 'sales_account_ledger_id'] },
-    purchase: { productReturn: 'purchase_return_account_ledger_id', productNonSaleable: 'purchase_nonsaleable_return_account_ledger_id', productAcct: 'purchase_account_ledger_id', productSub: 'purchase_sub_ledger_id', docAcct: 'goods_account_ledger_id', docSub: 'goods_sub_ledger_id', sys: ['purchase_account_ledger_id'], sysReturn: ['purchase_return_account_ledger_id', 'purchase_account_ledger_id'] }
+    sales:    { productReturnSub: 'sales_return_sub_ledger_id', productNonSaleableSub: 'sales_nonsaleable_return_sub_ledger_id', productReturn: 'sales_return_account_ledger_id', productNonSaleable: 'sales_nonsaleable_return_account_ledger_id', productAcct: 'sales_account_ledger_id',    productSub: 'sales_sub_ledger_id',    docAcct: 'sales_account_ledger_id', docSub: 'sales_sub_ledger_id', sys: ['sales_account_ledger_id'],    sysReturn: ['sales_return_account_ledger_id', 'sales_account_ledger_id'] },
+    purchase: { productReturnSub: 'purchase_return_sub_ledger_id', productNonSaleableSub: 'purchase_nonsaleable_return_sub_ledger_id', productReturn: 'purchase_return_account_ledger_id', productNonSaleable: 'purchase_nonsaleable_return_account_ledger_id', productAcct: 'purchase_account_ledger_id', productSub: 'purchase_sub_ledger_id', docAcct: 'goods_account_ledger_id', docSub: 'goods_sub_ledger_id', sys: ['purchase_account_ledger_id'], sysReturn: ['purchase_return_account_ledger_id', 'purchase_account_ledger_id'] }
 };
 
 async function systemDefault(tenantClient, tenantId, side, isReturn) {
@@ -49,9 +50,11 @@ async function splitByAccount(tenantClient, tenantId, side, doc, lines, netTotal
     const docAcct = await documentAccount(tenantClient, tenantId, side, doc, opts);
     const productIds = [...new Set(lines.map(l => l.product_id).filter(Boolean))];
     const extra = opts.nonSaleable ? `, ${cfg.productNonSaleable}, ${cfg.productReturn}` : opts.isReturn ? `, ${cfg.productReturn}` : '';
+    const extraSub = opts.nonSaleable ? `, ${cfg.productNonSaleableSub}, ${cfg.productReturnSub}` : opts.isReturn ? `, ${cfg.productReturnSub}` : '';
     let { data: products, error } = productIds.length
-        ? await tenantClient.from('products').select(`id, ${cfg.productAcct}, ${cfg.productSub}${extra}`).in('id', productIds)
+        ? await tenantClient.from('products').select(`id, ${cfg.productAcct}, ${cfg.productSub}${extra}${extraSub}`).in('id', productIds)
         : { data: [] };
+    if (error && extraSub) ({ data: products, error } = await tenantClient.from('products').select(`id, ${cfg.productAcct}, ${cfg.productSub}${extra}`).in('id', productIds));   // migration 142 not run yet
     if (error && extra) ({ data: products } = await tenantClient.from('products').select(`id, ${cfg.productAcct}, ${cfg.productSub}`).in('id', productIds));   // migration 127 not run yet
     const productById = Object.fromEntries((products || []).map(p => [p.id, p]));
 
@@ -65,9 +68,15 @@ async function splitByAccount(tenantClient, tenantId, side, doc, lines, netTotal
         const base = round2(Number(l.amount || 0) - Number(l.tax_amount || 0));
         linesTotal = round2(linesTotal + base);
         const p = productById[l.product_id];
-        const special = p && ((opts.nonSaleable && p[cfg.productNonSaleable]) || ((opts.isReturn || opts.nonSaleable) && p[cfg.productReturn]));
-        const acct = special ? { ledgerId: special, subLedgerId: null }
-            : p?.[cfg.productAcct] ? { ledgerId: p[cfg.productAcct], subLedgerId: p[cfg.productSub] || null } : docAcct;
+        // a return goes to the product's (non-saleable) return account with that account's
+        // sub-ledger; with no return account it uses the main account, and the return
+        // sub-ledger when one is set (else the main sub-ledger)
+        const nsAcct = opts.nonSaleable && p?.[cfg.productNonSaleable];
+        const retAcct = (opts.isReturn || opts.nonSaleable) && p?.[cfg.productReturn];
+        const retSub = p && ((opts.nonSaleable && p[cfg.productNonSaleableSub]) || ((opts.isReturn || opts.nonSaleable) && p[cfg.productReturnSub])) || null;
+        const acct = nsAcct ? { ledgerId: nsAcct, subLedgerId: p[cfg.productNonSaleableSub] || null }
+            : retAcct ? { ledgerId: retAcct, subLedgerId: p[cfg.productReturnSub] || null }
+            : p?.[cfg.productAcct] ? { ledgerId: p[cfg.productAcct], subLedgerId: retSub || p[cfg.productSub] || null } : docAcct;
         add(acct, base);
     }
     const remainder = round2(Number(netTotal) - linesTotal);

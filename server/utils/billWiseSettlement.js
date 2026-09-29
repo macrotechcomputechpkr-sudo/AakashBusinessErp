@@ -118,9 +118,14 @@ async function checkCanCancelIfSettled(tenantClient, tenantId, sourceType, sourc
     if (sysControl?.block_cancel_if_settled === false) return null;
     const { data: ref } = await tenantClient.from('bill_wise_references').select('id').eq('source_type', sourceType).eq('source_id', sourceId).maybeSingle();
     if (!ref) return null;
-    const { data: dependentSettlements } = await tenantClient.from('bill_wise_settlements').select('id, new_reference_id').eq('against_reference_id', ref.id).limit(1);
-    if (!dependentSettlements || dependentSettlements.length === 0) return null;
-    const { data: dependentRef } = await tenantClient.from('bill_wise_references').select('source_doc_no').eq('id', dependentSettlements[0].new_reference_id).maybeSingle();
+    const { data: dependentSettlements } = await tenantClient.from('bill_wise_settlements').select('id, new_reference_id').eq('against_reference_id', ref.id);
+    // what the document settled on itself (TDS / money received with the bill) goes with it
+    let dependentRef = null;
+    for (const s of (dependentSettlements || [])) {
+        const { data: r } = await tenantClient.from('bill_wise_references').select('source_doc_no, source_id').eq('id', s.new_reference_id).maybeSingle();
+        if (r && r.source_id !== sourceId) { dependentRef = r; break; }
+    }
+    if (!dependentRef) return null;
     return `Voucher ${dependentRef?.source_doc_no || ''} has already settled against this document - cancel that first, or turn off "Block Cancel if Settled" in System Control.`;
 }
 

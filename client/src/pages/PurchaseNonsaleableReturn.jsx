@@ -30,6 +30,7 @@ import useEntrySettings, { showsProductTerms } from '../components/entry/useEntr
 import { PurchaseProductTermPopup, PurchaseOverallTermPopup } from '../components/entry/PurchaseTermPopups';
 import { productTermIds, withTermValue } from '../components/entry/lineCalc';
 import AmountCell, { patchFromGross } from '../components/entry/AmountCell';
+import PendingDocsPanel, { mergePulled } from '../components/entry/PendingDocsPanel';
 
 const RETURN_REASONS = [
     { value: 'damaged', label: 'Damaged' },
@@ -87,7 +88,7 @@ export default function PurchaseNonsaleableReturn() {
     const [showDraftsOnly, setShowDraftsOnly] = useState(false);
     const [showCopyModal, setShowCopyModal] = useState(false);
     const [auditModal, setAuditModal] = useState(null);
-    const [pullBillId, setPullBillId] = useState('');
+    const [pulledDocs, setPulledDocs] = useState([]);
     const [billingTerms, setBillingTerms] = useState([]);
     const [billingPreview, setBillingPreview] = useState(null);
     const [productTermModalIndexes, setProductTermModalIndexes] = useState(null);
@@ -104,7 +105,7 @@ export default function PurchaseNonsaleableReturn() {
     const [businessUnits, setBusinessUnits] = useState([]);
     const [products, setProducts] = useState([]);
     const [units, setUnits] = useState([]);
-    const [openBills, setOpenBills] = useState([]);
+    const [, setOpenBills] = useState([]);
 
     const formRef = useRef(null);
     useEnterKeyNavigation(formRef, { onLastField: () => { addDetailRow(); return true; } });
@@ -148,7 +149,7 @@ export default function PurchaseNonsaleableReturn() {
     }, [authFetch]);
     useEffect(() => { load(); }, [load]);
 
-    const resetForm = () => { setForm(emptyForm); setEditingId(null); setPullBillId(''); setSummaryOverrides({}); setSelectedRowIndexes([]); };
+    const resetForm = () => { setForm(emptyForm); setEditingId(null); setPulledDocs([]); setSummaryOverrides({}); setSelectedRowIndexes([]); };
     const addDetailRow = () => setForm(f => ({ ...f, details: [...f.details, emptyDetailRow()] }));
     const removeDetailRow = (idx) => {
         setForm(f => ({ ...f, details: f.details.length > 1 ? f.details.filter((_, i) => i !== idx) : f.details }));
@@ -288,29 +289,6 @@ export default function PurchaseNonsaleableReturn() {
     const footVendor = vendors.find(v => v.id === form.vendor_ledger_id);
     useEntryHotkeys(showForm, { F7: () => { const last = latestOf(rows); if (last) handleCopyFrom(last.id); } });
 
-    // FEATURE: "whichever module comes after should be able to fill from
-    // FEATURE: Return links to Bill only - a return is a Credit Note
-    // against what was actually billed. Only offering
-    // what's still genuinely returnable (the backend enforces the same
-    // limit as a hard check on save, this is just the convenient offer).
-    const handlePullForward = async () => {
-        if (!pullBillId) return showAlert('Pick a Bill to pull from', 'danger');
-        try {
-            const params = new URLSearchParams();
-            if (pullBillId) params.set('bill_id', pullBillId);
-            const res = await authFetch(`/api/purchase-nonsaleable-returns/pull-forward?${params}`);
-            const { master, details } = res.data;
-            setForm(f => ({
-                ...f, ...master,
-                source_bill_id: pullBillId || '',
-                details: (details && details.length > 0) ? details.map(d => ({ ...emptyDetailRow(), ...d })) : f.details
-            }));
-            showAlert('Pulled forward - review and adjust before saving', 'success');
-        } catch (err) {
-            showAlert(err.message, 'danger');
-        }
-    };
-
     const handleSubmit = async (e, saveAsDraft = false) => {
 
         // Save as Draft (new entry): kept apart as a temporary draft - no number, no accounts / stock effect
@@ -441,22 +419,7 @@ export default function PurchaseNonsaleableReturn() {
 
             {showForm && (
                 <form onSubmit={handleSubmit} ref={formRef} className="ent-entry">
-                    <EntryFillBar voucherType="purchase_nonsalable_return" api="purchase-nonsaleable-returns" form={form} editing={!!editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={r => handleCopyFrom(r.id)} />
-                    {!editingId && (
-                        <div className="erp-topbar grid-cols-1 md:grid-cols-3" style={{ background: '#eff6ff' }}>
-                            <div className="erp-field md:col-span-2">
-                                <label className="erp-label">Pull From Bill</label>
-                                <select className="erp-select" value={pullBillId} onChange={e => setPullBillId(e.target.value)}>
-                                    <option value="">— None —</option>
-                                    {openBills.map(b => <option key={b.id} value={b.id}>{b.doc_no}</option>)}
-                                </select>
-                            </div>
-                            <div className="erp-field justify-end">
-                                <button type="button" onClick={handlePullForward} className="erp-btn primary">⬇ Pull Forward</button>
-                            </div>
-                            <p className="text-xs text-gray-400 md:col-span-3">Only what's still genuinely returnable (qty minus already-returned) gets offered - and the server rejects anything beyond that even if typed in manually.</p>
-                        </div>
-                    )}
+                    <EntryFillBar voucherType="purchase_nonsalable_return" api="purchase-nonsaleable-returns" form={form} editing={!!editingId} docId={editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={r => handleCopyFrom(r.id)} />
 
                     <div className="erp-topbar grid-cols-1 md:grid-cols-4">
                         <DocNumberField docDate={form.doc_date || form.voucher_date} voucherType="purchase_nonsalable_return" categoryId={form.numbering_category_id} docNo={editingId ? form.doc_no : ''} value={form.doc_no} onChange={v => setForm({ ...form, doc_no: v })} label="Doc No" />
@@ -487,6 +450,8 @@ export default function PurchaseNonsaleableReturn() {
                                 />
                             )}
                         </div>
+                        {/* Bill No. - the source's master part, remarks and terms come along */}
+                        <PendingDocsPanel target="purchase_nonsalable_return" partyId={form.vendor_ledger_id} efc={efc} disabled={!!editingId} pulled={pulledDocs} onPull={data => { setForm(f => mergePulled(f, data, emptyDetailRow)); setPulledDocs(p => [...p, ...data.documents.map(x => x.id)]); showAlert(`Pulled ${data.lines.length} line(s) from ${data.documents.map(x => x.doc_no).join(', ')}`, 'success'); }} />
                         <div className="erp-field">
                             <label className="erp-label">Vendor Sub-Ledger</label>
                             <SearchablePopupSelect
@@ -628,13 +593,12 @@ export default function PurchaseNonsaleableReturn() {
                                         <th className={`w-24 ${efc.isVisible('rate', 'detail') ? '' : 'hidden'}`}>Rate</th>
                                         <th className={`w-20 ${(!chargesInPopup && efc.isVisible('tax_percent', 'detail')) ? '' : 'hidden'}`}>Tax %</th>
                                         <th className="r">Gross</th>
-                                        <th className="r">Charges ±</th>
+                                        <th className="r">Add / Less</th>
                                         <th className="r">Net Amount</th>
                                         <th className={`w-40 ${efc.isVisible('warehouse_id', 'detail') ? '' : 'hidden'}`}>Details Warehouse</th>
                                         <th className={`w-28 ${(batchOn && efc.isVisible('batch_no', 'detail')) ? '' : 'hidden'}`}>Batch No</th>
                                         <th className="w-32">Ref No</th>
                                         <th className={`w-40 ${efc.isVisible('line_reason', 'detail') ? '' : 'hidden'}`}>Line Reason</th>
-                                        <th className="w-20">Item Charges</th>
                                         <th></th>
                                     </tr>
                                 </thead>
@@ -711,7 +675,7 @@ export default function PurchaseNonsaleableReturn() {
                                             </td>
                                             <td className={(!chargesInPopup && efc.isVisible('tax_percent', 'detail')) ? '' : 'hidden'}><input disabled={efc.isReadonly('tax_percent', 'detail')} type="number" step="0.01" className="erp-input" value={d.tax_percent} onChange={e => updateDetailRow(idx, { tax_percent: e.target.value })} /></td>
                                             <td className="px-1 py-1 r">{d.product_id ? <AmountCell value={grossOf(d)} title="Type the amount: the rate (or the quantity) is worked out" onChange={g => typeGross(idx, g)} /> : ''}</td>
-                                            <td className="px-1 py-1 r">{d.product_id ? (lineNet(d, idx) - grossOf(d)).toFixed(2) : ''}</td>
+                                            <td className="px-1 py-1 r">{d.product_id ? (itemCharges ? <button type="button" tabIndex={-1} className="ent-term-btn" onClick={() => setProductTermModalIndexes([idx])} title="Add / Less of this line - opens its Item Charges">{(lineNet(d, idx) - grossOf(d)).toFixed(2)}</button> : (lineNet(d, idx) - grossOf(d)).toFixed(2)) : ''}</td>
                                             <td className="px-1 py-1 r">{d.product_id ? <AmountCell bold value={lineNet(d, idx)} title="Type the net amount: taken back through the charges" onChange={n => typeNet(idx, n)} /> : ''}</td>
                                             <td className={efc.isVisible('warehouse_id', 'detail') ? '' : 'hidden'}>
                                                 <select disabled={efc.isReadonly('warehouse_id', 'detail')} className="erp-select" value={d.warehouse_id} onChange={e => updateDetailRow(idx, { warehouse_id: e.target.value })}>
@@ -726,9 +690,6 @@ export default function PurchaseNonsaleableReturn() {
                                             </td>
                                             <td className="text-xs text-gray-500">{d.source_doc_no || (d.source_bill_detail_id ? '…' : '—')}</td>
                                             <td className={efc.isVisible('line_reason', 'detail') ? '' : 'hidden'}><input disabled={efc.isReadonly('line_reason', 'detail')} className="erp-input" value={d.line_reason} onChange={e => updateDetailRow(idx, { line_reason: e.target.value })} /></td>
-                                            <td><button type="button" tabIndex={-1} onClick={() => itemCharges && setProductTermModalIndexes([idx])} className="ent-term-btn" title="Charges of this line">
-                                                {lineTermPreviews[idx]?.total !== undefined ? (lineTermPreviews[idx].total - (Number(d.qty) || 0) * (Number(d.rate) || 0)).toFixed(2) : '…'}
-                                            </button></td>
                                             <td><button type="button" tabIndex={-1} onClick={() => removeDetailRow(idx)} className="text-red-500 text-xs">✕</button></td>
                                         </tr>
                                     ))}
@@ -741,7 +702,7 @@ export default function PurchaseNonsaleableReturn() {
                         </div>
                         <div className="flex items-center gap-2 mt-1 text-xs text-gray-600">
                             <button type="button" className="nav-btn small" onClick={addDetailRow}>➕ Add line</button>
-                            <span>Enter on the last field adds a line · Charges ±: this line's charges · tick lines (#) and use Item Charges to set them together</span>
+                            <span>Enter on the last field adds a line · Add / Less: this line's item charges (click to open them) · tick lines (#) and use Item Charges to set them together</span>
                         </div>
                     </div>
 

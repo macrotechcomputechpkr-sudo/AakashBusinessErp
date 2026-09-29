@@ -46,6 +46,7 @@ import { dualHelpers } from '../components/entry/dualHelpers';
 import DocActions, { asNewCopy, finalizeEntry } from '../components/entry/DocActions';
 import EntryFillBar from '../components/entry/EntryFillBar';
 import { saveEntryDraft, finishEntryDraft } from '../components/entry/entryDrafts';
+import BillReceiptTds, { receiptSummary } from '../components/entry/BillReceiptTds';
 
 const emptyDetailRow = () => ({ product_id: '', qty: '', uom_id: '', alt_qty: '', alt_unit_id: '', rate: '', rate_basis: 'primary', discount_percent: '', tax_percent: '', free_qty: '', free_alt_qty: '', free_uom_id: '', warehouse_id: '', batch_no: '', serial_no: '', line_terms: null, source_delivery_detail_id: '', source_order_detail_id: '', source_quotation_detail_id: '' });
 
@@ -54,6 +55,7 @@ const emptyForm = {
     customer_ledger_id: '', customer_sub_ledger_id: '', sales_account_ledger_id: '', sales_sub_ledger_id: '', agent_id: '', invoice_type: 'credit', currency: 'NPR', exchange_rate: 1,
     due_date: '', warehouse_id: '', numbering_category_id: '', remarks_text: '', narration: '', rate_type: 'exclusive',
     cost_center_id: '', business_unit_id: '', area_id: '', route_id: '',
+    tds_percent: '', tds_base_amount: '', tds_amount: '', tds_ledger_id: '', tds_sub_ledger_id: '', receipts: [],
     details: [emptyDetailRow()]
 };
 
@@ -96,6 +98,7 @@ export default function SalesBill() {
     const [remarks, setRemarks] = useState([]);
     const [selectedRowIndexes, setSelectedRowIndexes] = useState([]);
     const [dualUomEntryMode, setDualUomEntryMode] = useState({ mode: 'fixed', reverseEnabled: false });
+    const [sysCtl, setSysCtl] = useState({});
 
     const formRef = useRef(null);
     useEnterKeyNavigation(formRef, { onLastField: () => { addDetailRow(); return true; } });
@@ -132,6 +135,7 @@ export default function SalesBill() {
             setRoutes(rt.data || []);
             setRemarks(rmk.data || []);
             setDualUomEntryMode(resolveDualUomEntryMode(sysCtrl.data));
+            setSysCtl(sysCtrl.data || {});
         } catch (err) {
             showAlert(err.message, 'danger');
         }
@@ -284,7 +288,13 @@ export default function SalesBill() {
             if (!cancellationReason || !cancellationReason.trim()) return;
         }
         try {
-            await authFetch(`/api/sales-bills/${row.id}/status`, { method: 'PUT', body: JSON.stringify({ status, cancellation_reason: cancellationReason }) });
+            try {
+                await authFetch(`/api/sales-bills/${row.id}/status`, { method: 'PUT', body: JSON.stringify({ status, cancellation_reason: cancellationReason }) });
+            } catch (e) {
+                // not enough stock (System Control > Negative Stock = block): post only if the user insists
+                if (!(e.warnings?.length > 0) || !window.confirm(`${e.message}\n\n${e.warnings.join('\n')}\n\nPost anyway?`)) throw e;
+                await authFetch(`/api/sales-bills/${row.id}/status`, { method: 'PUT', body: JSON.stringify({ status, cancellation_reason: cancellationReason, override_negative_stock_warning: true }) });
+            }
             showAlert(`Marked as ${status}`, 'success');
             load();
         } catch (err) {
@@ -341,7 +351,7 @@ export default function SalesBill() {
 
             {showForm && (
                 <form onSubmit={handleSubmit} ref={formRef} className="ent-entry">
-                    <EntryFillBar voucherType="sales_bill" api="sales-bills" form={form} editing={!!editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={copyAsNew} />
+                    <EntryFillBar voucherType="sales_bill" api="sales-bills" form={form} editing={!!editingId} docId={editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={copyAsNew} />
                     <div className="erp-topbar grid-cols-1 md:grid-cols-4">
                         <DocNumberField docDate={form.doc_date || form.voucher_date} voucherType="sales_bill" categoryId={form.numbering_category_id} docNo={editingId ? form.doc_no : ''} value={form.doc_no} onChange={v => setForm({ ...form, doc_no: v })} />
                         <div className={efc.isVisible('doc_date') ? 'erp-field' : 'erp-field hidden'}>
@@ -359,6 +369,8 @@ export default function SalesBill() {
                             <label className="erp-label">Customer <span className="req">*</span></label>
                             {picker('customer_picker', customers, 'id', 'account_code', 'account_name', form.customer_ledger_id, id => setForm({ ...form, customer_ledger_id: id, customer_sub_ledger_id: '' }), 'Select Customer')}
                         </div>
+                        {/* Quotation / Order / Challan No. - the source's master part, remarks and terms come along */}
+                        <PendingDocsPanel target="sales_bill" partyId={form.customer_ledger_id} efc={efc} disabled={!!editingId} onPull={handlePull} pulled={pulledDocs} />
                         <RateTypeField rt={rateType} onChanged={onRateTypeChanged} />
                         <div className="erp-field">
                             <label className="erp-label">Customer Sub-Ledger</label>
@@ -400,8 +412,6 @@ export default function SalesBill() {
                         )}
                     </div>
 
-                    <PendingDocsPanel target="sales_bill" partyId={form.customer_ledger_id} efc={efc} disabled={!!editingId} onPull={handlePull} pulled={pulledDocs} />
-
                     <div className="erp-tab-content ent-lines">
                         <SalesLineGrid fx={fx} itemCharges={itemCharges}
                             listKey="sb" title="Sales Bill" ctl={lineCtl} details={form.details} onRow={updateDetailRow} onRemove={removeDetailRow} onAdd={addDetailRow}
@@ -420,6 +430,7 @@ export default function SalesBill() {
                         remarks={{ value: form.remarks_text, onChange: v => setForm(f => ({ ...f, remarks_text: v })), options: remarks.map(r => r.remark_text) }}
                         onProductTerm={itemCharges ? lineCtl.openTerms : null} onBillTerm={lineCtl.openOverall}
                         panels={[
+                            { key: 'receipt', label: '💰 Receipt / TDS', content: <BillReceiptTds side="sales" form={form} setForm={setForm} ledgers={customers} subLedgers={subLedgers} billTotal={grandTotal} tax={totals.tax} sysCtl={sysCtl} lp={lp} /> },
                             { key: 'other', label: 'More Info', content: (
                                 <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
                                     <div className="erp-field">
@@ -447,6 +458,9 @@ export default function SalesBill() {
                             { key: 'billing', label: 'Party & Tax Info', content: <PartyDetailsPanel partyId={form.customer_ledger_id} partyLabel="Customer" info={partyInfo} onChange={setPartyInfo} /> }
                         ]}
                         actions={<>
+                            {(() => { const rs = receiptSummary(form, grandTotal); return (
+                                <span className="ent-note" title="Receipt / TDS">{form.invoice_type === 'cash' ? 'Cash bill' : 'Credit bill'} · Received {rs.received.toFixed(2)}{rs.tds ? ` · TDS ${rs.tds.toFixed(2)}` : ''} · Balance {(form.invoice_type === 'cash' && !(form.receipts || []).some(r => r.ledger_id) ? 0 : rs.balance).toFixed(2)}</span>
+                            ); })()}
                             <button type="button" onClick={e => handleSubmit(e, true)} className="erp-btn">💾 Save as Draft</button>
                             <button type="submit" className="erp-btn primary">💾 {editingId ? 'Update' : 'Save'}</button>
                             <button type="button" onClick={() => { resetForm(); setShowForm(false); }} className="erp-btn">Cancel</button>

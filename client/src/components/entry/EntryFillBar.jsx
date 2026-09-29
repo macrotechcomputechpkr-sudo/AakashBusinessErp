@@ -1,6 +1,7 @@
 // =============================================
 // components/entry/EntryFillBar.jsx
-// The fill bar at the top of every transaction form:
+// The fill bar at the top of every transaction form - ONE line: the actions,
+// then one "📄 Template ▾" drop-down with:
 //   From Template     - a saved template fills the new entry
 //   Save as Template  - what is typed now, saved under a name (for everyone,
 //                       or only for me)
@@ -10,8 +11,14 @@
 //                       fills the entry; saving the entry deletes the draft
 // Templates: /api/entry-templates (documentActionRoutes.js). Previous entries
 // and drafts come from the screen's own list (GET /api/<api>).
+// Action bar in front (every entry form, NAV "Home" actions):
+//   New · Save · Save as Draft - the form's own buttons
+//   Modify · Cancel · Remove  - pick an entry of this screen; the entry's own
+//                               list action runs (same checks, IRD reverse ...)
+//   Print                     - this entry when saved, else pick one
+//   an open saved draft: Remove / Print act on it directly (docId)
 // =============================================
-import React, { useCallback, useEffect, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useAuth } from '../../contexts/AuthContext';
 import { EntryPopup } from './EntryParts';
 import { asNewCopy } from './DocActions';
@@ -27,14 +34,22 @@ const dateOf = r => String(r.doc_date || r.voucher_date || r.created_at || '').s
  * form: what is typed now; onFill(payload): fill the new entry; onCopy(row): the screen's own copy of a
  * previous entry; editing: an entry is open for edit
  */
-export default function EntryFillBar({ voucherType, api, form, onFill, onCopy, editing }) {
+// list endpoint -> print layout type (/print/<type>/<id>)
+const PRINT_TYPE = { 'journal-vouchers': 'journal_voucher', 'pdc-vouchers': 'pdc_voucher', 'production-orders': 'production_order', 'purchase-additional-expenses': 'purchase_additional_expense',
+    'purchase-nonsaleable-returns': 'purchase_nonsaleable_return', 'sales-additional-entries': 'sales_additional_entry', 'sales-nonsaleable-returns': 'sales_nonsaleable_return' };
+const ACTION = { modify: ['Modify', 'Modify'], cancel: ['Cancel', 'Cancel'], remove: ['Remove', 'Remove'], print: ['Print', 'Print'] };
+const textOf = el => (el.textContent || '').replace(/\s+/g, ' ').trim();
+
+export default function EntryFillBar({ voucherType, api, form, onFill, onCopy, editing, docId }) {
     const { authFetch } = useAuth();
-    const [open, setOpen] = useState(null); // 'template' | 'previous' | 'draft'
+    const barRef = useRef(null);
+    const [open, setOpen] = useState(null); // 'template' | 'previous' | 'draft' | 'pick:<action>'
     const [templates, setTemplates] = useState([]);
     const [drafts, setDrafts] = useState([]);
     const [rows, setRows] = useState([]);
     const [q, setQ] = useState('');
     const [msg, setMsg] = useState('');
+    const [fillMenu, setFillMenu] = useState(false);
 
     const loadTemplates = useCallback(async () => {
         try { const r = await authFetch(`/api/entry-templates?voucher_type=${voucherType}`); setTemplates(r.data || []); } catch { setTemplates([]); }
@@ -75,6 +90,40 @@ export default function EntryFillBar({ voucherType, api, form, onFill, onCopy, e
         if (!window.confirm('Discard this draft?')) return;
         try { await authFetch(`/api/entry-drafts/${d.id}`, { method: 'DELETE' }); loadDrafts(); } catch (e) { window.alert(e.message); }
     };
+    // ---- action bar: the form's own buttons, or the picked entry's list actions ----
+    const formEl = () => barRef.current && barRef.current.closest('form');
+    const card = () => barRef.current && barRef.current.closest('.erp-card');
+    const buttonIn = (root, test) => root && [...root.querySelectorAll('button')].find(b => !barRef.current.contains(b) && test(textOf(b)));
+    const newEntry = () => {
+        // this bar goes away with the form: keep the card, close the form, then open a fresh one
+        const c = card();
+        const header = c && c.querySelector('.erp-header');
+        const find = re => header && [...header.querySelectorAll('button')].find(b => re.test(textOf(b)));
+        const close = find(/close/i);
+        if (close) close.click();
+        setTimeout(() => { const nb = find(/new/i); if (nb) nb.click(); }, 80);
+    };
+    const save = () => { const f = formEl(); if (f) f.requestSubmit(); };
+    const saveDraft = () => { const b = buttonIn(formEl(), t => /save as draft/i.test(t)); if (b) b.click(); };
+    const printUrl = id => `/print/${PRINT_TYPE[api] || voucherType}/${id}`;
+    const runOn = (action, r) => {
+        setOpen(null);
+        if (action === 'print') { window.open(printUrl(r.id), '_blank', 'noopener'); return; }
+        // the entry's own action button in the list below (DocActions: same checks and messages)
+        const row = [...document.querySelectorAll('tr')].find(tr => !barRef.current.contains(tr) && [...tr.children].some(td => textOf(td) === String(r.doc_no || '')));
+        const words = action === 'cancel' ? /^(⊘ )?cancel$|reverse/i : new RegExp(ACTION[action][1], 'i');
+        const btn = row && [...row.querySelectorAll('button')].find(b => words.test(textOf(b).replace(/^[^A-Za-z]+/, '')));
+        if (btn) btn.click();
+        else window.alert(`${ACTION[action][0]} is not available for ${r.doc_no || 'this entry'} (${r.status || ''}).`);
+    };
+    const removeCurrent = async () => {
+        if (!window.confirm('Remove this draft entry completely? This cannot be undone.')) return;
+        try { await authFetch(`/api/${api}/${docId}`, { method: 'DELETE' }); window.location.reload(); } catch (e) { window.alert(e.message); }
+    };
+    const pick = action => { setQ(''); loadRows(); setOpen(`pick:${action}`); };
+    const actionRows = action => rows.filter(r => r.status !== 'cancelled' && (action !== 'cancel' || r.status !== 'draft'))
+        .sort((a, b) => String(dateOf(b)).localeCompare(dateOf(a)) || String(b.doc_no || '').localeCompare(String(a.doc_no || '')));
+
     const show = what => { setQ(''); setOpen(what); if (what === 'template') loadTemplates(); else if (what === 'draft') loadDrafts(); else loadRows(); };
 
     const list = (items, onPick, empty) => (
@@ -97,13 +146,29 @@ export default function EntryFillBar({ voucherType, api, form, onFill, onCopy, e
     );
 
     return (
-        <div className="ent-fillbar" data-enter-nav="off">
-            <span className="ent-fillbar-cap">Fill from</span>
-            <button type="button" className="nav-btn small" disabled={editing} onClick={() => show('template')} title="Fill this entry from a saved template">📄 Template{templates.length ? ` (${templates.length})` : ''}</button>
-            <button type="button" className="nav-btn small" disabled={editing} onClick={() => show('previous')} title="Copy a previous entry into this one">⟲ Previous Entry</button>
-            <button type="button" className="nav-btn small" disabled={editing} onClick={() => show('draft')} title="Finish a saved draft (the draft becomes this entry)">📝 Draft{drafts.length ? ` (${drafts.length})` : ''}</button>
+        <div className="ent-fillbar" data-enter-nav="off" ref={barRef}>
+            <span className="ent-actions">
+                <button type="button" className="nav-tool-btn" onClick={newEntry} title="Start a new entry">➕ New</button>
+                <button type="button" className="nav-tool-btn" onClick={() => pick('modify')} title="Open an entry of this screen to change it">✏️ Modify</button>
+                <button type="button" className="nav-tool-btn" onClick={() => pick('cancel')} title="Cancel a posted entry (its accounts / stock effect is reversed)">⊘ Cancel</button>
+                <button type="button" className="nav-tool-btn" onClick={() => (docId ? removeCurrent() : pick('remove'))} title={docId ? 'Remove this draft' : 'Remove an entry'}>🗑 Remove</button>
+                <button type="button" className="nav-tool-btn" onClick={() => (docId ? window.open(printUrl(docId), '_blank', 'noopener') : pick('print'))} title={docId ? 'Print this entry' : 'Print an entry'}>🖨 Print</button>
+                <button type="button" className="nav-tool-btn" onClick={saveDraft} title="Keep what is typed as a draft">📝 Draft</button>
+                <button type="button" className="nav-tool-btn ent-action-save" onClick={save} title="Save (and post) this entry">💾 Save</button>
+            </span>
             <span className="ent-fillbar-sep" />
-            <button type="button" className="nav-btn small" onClick={saveTemplate} title="Save what is typed now as a template">💾 Save as Template</button>
+            <span className="ent-fill-drop">
+                <button type="button" className={`nav-tool-btn ${fillMenu ? 'active' : ''}`} onClick={() => setFillMenu(v => !v)} title="Fill this entry from a template, a previous entry or a draft - or save it as a template">📄 Template ▾</button>
+                {fillMenu && (
+                    <span className="ent-fill-menu" onMouseLeave={() => setFillMenu(false)}>
+                        <button type="button" disabled={editing} onClick={() => { setFillMenu(false); show('template'); }}>📄 Fill from Template{templates.length ? ` (${templates.length})` : ''}</button>
+                        <button type="button" disabled={editing} onClick={() => { setFillMenu(false); show('previous'); }}>⟲ Fill from Previous Entry</button>
+                        <button type="button" disabled={editing} onClick={() => { setFillMenu(false); show('draft'); }}>📝 Open a Draft{drafts.length ? ` (${drafts.length})` : ''}</button>
+                        <span className="ent-fill-menu-sep" />
+                        <button type="button" onClick={() => { setFillMenu(false); saveTemplate(); }}>💾 Save as Template</button>
+                    </span>
+                )}
+            </span>
             {msg && <span className="ent-note">{msg}</span>}
             {open === 'template' && (
                 <EntryPopup title="Fill from Template" onClose={() => setOpen(null)} width={640}>
@@ -130,6 +195,15 @@ export default function EntryFillBar({ voucherType, api, form, onFill, onCopy, e
                     <p className="ent-note mt-2">The entry is copied with a new number and today's date; change what is needed and save.</p>
                 </EntryPopup>
             )}
+            {String(open || '').startsWith('pick:') && (() => {
+                const action = open.slice(5);
+                return (
+                    <EntryPopup title={`${ACTION[action][0]} - choose the entry`} onClose={() => setOpen(null)} width={760}>
+                        {list(actionRows(action), r => runOn(action, r), 'No entries.')}
+                        <p className="ent-note mt-2">{action === 'modify' ? 'A posted entry is reversed and reopened as a draft with the same number.' : action === 'cancel' ? 'Cancelling keeps the entry, marked cancelled; its accounts and stock effect is reversed.' : action === 'remove' ? 'Removing deletes the entry (a posted one is reversed first).' : 'Opens the print preview.'}</p>
+                    </EntryPopup>
+                );
+            })()}
             {open === 'draft' && (
                 <EntryPopup title="Open a Draft" onClose={() => setOpen(null)} width={720}>
                     <table className="erp-grid-table">

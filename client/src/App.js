@@ -29,6 +29,8 @@ import UniversalRegister from './pages/UniversalRegister';
 import CategoryManagement from './pages/CategoryManagement';
 import OutstandingReport from './pages/OutstandingReport';
 import VatReports from './pages/VatReports';
+import TaxReconciliation from './pages/TaxReconciliation';
+import HelpCenter from './pages/HelpCenter';
 import PartySummaryReport from './pages/PartySummaryReport';
 import FinancialReports from './pages/FinancialReports';
 import StockMovementReport from './pages/StockMovementReport';
@@ -61,6 +63,9 @@ import LcRegister from './pages/LcRegister';
 import MobileApp from './pages/MobileApp';
 import RoutePlan from './pages/RoutePlan';
 import OrderBilling from './pages/OrderBilling';
+import MobileApprovals from './pages/MobileApprovals';
+import DayBook from './pages/DayBook';
+import BalanceWriteoff from './pages/BalanceWriteoff';
 import SalesmanReports from './pages/SalesmanReports';
 import IrdCompliance from './pages/IrdCompliance';
 import AgentTargets from './pages/AgentTargets';
@@ -187,6 +192,8 @@ function AppRoutes() {
             <Route path="/categories" element={<PrivateRoute><CategoryManagement /></PrivateRoute>} />
             <Route path="/outstanding-report" element={<PrivateRoute><OutstandingReport /></PrivateRoute>} />
             <Route path="/vat-reports" element={<PrivateRoute><VatReports /></PrivateRoute>} />
+            <Route path="/tax-reconciliation" element={<PrivateRoute><TaxReconciliation /></PrivateRoute>} />
+            <Route path="/help-center" element={<PrivateRoute><HelpCenter /></PrivateRoute>} />
             <Route path="/party-summary" element={<PrivateRoute><PartySummaryReport /></PrivateRoute>} />
             <Route path="/financial-reports" element={<PrivateRoute><FinancialReports /></PrivateRoute>} />
             <Route path="/stock-movement" element={<PrivateRoute><StockMovementReport /></PrivateRoute>} />
@@ -221,6 +228,9 @@ function AppRoutes() {
             <Route path="/mobile" element={<PrivateRoute><MobileApp /></PrivateRoute>} />
             <Route path="/route-plan" element={<PrivateRoute><RoutePlan /></PrivateRoute>} />
             <Route path="/order-billing" element={<PrivateRoute><OrderBilling /></PrivateRoute>} />
+            <Route path="/mobile-approvals" element={<PrivateRoute><MobileApprovals /></PrivateRoute>} />
+            <Route path="/day-book" element={<PrivateRoute><DayBook /></PrivateRoute>} />
+            <Route path="/balance-writeoff" element={<PrivateRoute><BalanceWriteoff /></PrivateRoute>} />
             <Route path="/salesman-reports" element={<PrivateRoute><SalesmanReports /></PrivateRoute>} />
             <Route path="/ird" element={<PrivateRoute><IrdCompliance /></PrivateRoute>} />
             <Route path="/agent-targets" element={<PrivateRoute><AgentTargets /></PrivateRoute>} />

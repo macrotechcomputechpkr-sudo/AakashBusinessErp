@@ -23,7 +23,7 @@ const fmt2 = n => (n === null || n === undefined || n === 0 ? '' : Number(n).toL
 const iso = d => d.toISOString().slice(0, 10);
 const fyStart = () => { const d = new Date(); const y = d.getMonth() >= 6 ? d.getFullYear() : d.getFullYear() - 1; return `${y}-07-17`; };
 const PRESETS = [
-    ['sub_summary', 'Sub-ledger Summary', { view: 'pivot', rows: ['ledger', 'sub_ledger'], columns: '', statement: '' }],
+    ['sub_summary', 'Ledger + Sub-ledger Balance (summary)', { view: 'pivot', rows: ['ledger', 'sub_ledger'], columns: '', statement: '' }],
     ['statement', 'Statement (ledger / sub-ledger / cost center …)', { view: 'statement', dimension: 'sub_ledger' }],
     ['pl_cc', 'P&L by Cost Center', { view: 'pl', dimension: 'cost_center' }],
     ['pl_unit', 'P&L by Unit', { view: 'pl', dimension: 'business_unit' }],
@@ -35,7 +35,7 @@ const PRESETS = [
     ['doc_class', 'Doc Class Register (gaps)', { view: 'doc_class' }],
     ['exceptions', 'Missing Dimensions', { view: 'exceptions' }]
 ];
-const FILTERS = [['ledger_ids', 'Ledger', 'ledgers'], ['group_ids', 'Group', 'groups'], ['sub_ledger_ids', 'Sub-ledger', 'sub_ledgers'], ['cost_center_ids', 'Cost center', 'cost_centers'],
+const FILTERS = [['modules', 'Module', 'modules'], ['ledger_ids', 'Ledger', 'ledgers'], ['group_ids', 'Group', 'groups'], ['sub_ledger_ids', 'Sub-ledger', 'sub_ledgers'], ['cost_center_ids', 'Cost center', 'cost_centers'],
     ['business_unit_ids', 'Unit', 'business_units'], ['branch_ids', 'Branch', 'branches'], ['doc_types', 'Document type', 'doc_types'], ['doc_class_ids', 'Doc class', 'doc_classes'], ['product_company_ids', 'Product company', 'product_companies']];
 const VALUE_LIST = { ledger: 'ledgers', sub_ledger: 'sub_ledgers', cost_center: 'cost_centers', business_unit: 'business_units', branch: 'branches', doc_class: 'doc_classes', product_company: 'product_companies', group: 'groups' };
 
@@ -130,19 +130,28 @@ export default function DimensionReports() {
                             <thead><tr>{data.rows_dims.map(d => <th key={d.key} className="text-left">{d.label}</th>)}<th className="text-right">Opening</th>
                                 {data.column_dim ? data.columns.map(c => <th key={c.key} className="text-right whitespace-nowrap">{c.label}</th>) : <><th className="text-right">Debit</th><th className="text-right">Credit</th></>}<th className="text-right">Net</th><th className="text-right">Closing</th></tr></thead>
                             <tbody>{data.rows.map((r, i) => {
-                                const prev = data.rows[i - 1];
+                                const prev = data.rows[i - 1], next = data.rows[i + 1];
+                                // ledger balance row after the last sub-ledger of each ledger
+                                const st = data.subtotals && (!next || next.ids.ledger !== r.ids.ledger) ? data.subtotals[r.ids.ledger || '__none__'] : null;
                                 return (
-                                    <tr key={r.key}>{data.rows_dims.map((d, j) => <td key={d.key} className={j === 0 && prev && prev.labels[d.key] === r.labels[d.key] ? 'text-gray-300' : ''}>{r.labels[d.key]}</td>)}
+                                    <React.Fragment key={r.key}>
+                                    <tr>{data.rows_dims.map((d, j) => <td key={d.key} className={j === 0 && prev && prev.labels[d.key] === r.labels[d.key] ? 'text-gray-300' : ''}>{r.labels[d.key]}</td>)}
                                         <td className="text-right tabular-nums">{fmt2(r.opening)}</td>
                                         {data.column_dim ? data.columns.map(c => <td key={c.key} className="text-right tabular-nums">{fmt2(r.cols[c.key])}</td>) : <><td className="text-right tabular-nums">{fmt2(r.dr)}</td><td className="text-right tabular-nums">{fmt2(r.cr)}</td></>}
                                         <td className="text-right tabular-nums">{fmt2(r.net)}</td><td className="text-right tabular-nums font-semibold">{fmt2(r.closing)}</td></tr>
+                                    {st && (
+                                        <tr className="bg-slate-100 font-semibold"><td colSpan={data.rows_dims.length}>Ledger balance - {st.ledger}</td><td className="text-right tabular-nums">{fmt2(st.opening)}</td>
+                                            {data.column_dim ? data.columns.map(c => <td key={c.key} className="text-right tabular-nums">{fmt2(st.cols[c.key])}</td>) : <><td className="text-right tabular-nums">{fmt2(st.dr)}</td><td className="text-right tabular-nums">{fmt2(st.cr)}</td></>}
+                                            <td className="text-right tabular-nums">{fmt2(st.net)}</td><td className="text-right tabular-nums">{fmt2(st.closing)}</td></tr>
+                                    )}
+                                    </React.Fragment>
                                 );
                             })}</tbody>
                             <tfoot><tr className="font-bold bg-blue-50"><td colSpan={data.rows_dims.length}>Total</td><td className="text-right tabular-nums">{fmt2(data.totals.opening)}</td>
                                 {data.column_dim ? data.columns.map(c => <td key={c.key} className="text-right tabular-nums">{fmt2(data.totals.cols[c.key])}</td>) : <><td className="text-right tabular-nums">{fmt2(data.totals.dr)}</td><td className="text-right tabular-nums">{fmt2(data.totals.cr)}</td></>}
                                 <td className="text-right tabular-nums">{fmt2(data.totals.dr - data.totals.cr)}</td><td className="text-right tabular-nums">{fmt2(data.totals.closing)}</td></tr></tfoot>
                         </table>
-                        <p className="text-xs text-gray-500 mt-1">Debit positive, credit negative in Net / Closing.</p>
+                        <p className="text-xs text-gray-500 mt-1">Debit positive, credit negative in Net / Closing.{data.subtotals ? ' "Ledger balance" rows = the ledger with all its sub-ledgers (its master opening included).' : ''}{data.modules?.length ? ` Module: ${data.modules.join(', ')} only.` : ''}</p>
                     </div>
                 )}
                 {data?.view === 'pl' && (

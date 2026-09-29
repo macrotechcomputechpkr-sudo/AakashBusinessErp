@@ -102,10 +102,8 @@ export default function PurchaseOrder() {
     const [auditModal, setAuditModal] = useState(null); // { doc_no, entries }
     // FEATURE: "pulls forward from Requisition and/or Quotation" - the
     // Order-specific capability Requisition doesn't have.
-    const [pullRequisitionId, setPullRequisitionId] = useState('');
-    const [pullQuotationId, setPullQuotationId] = useState('');
-    const [openRequisitions, setOpenRequisitions] = useState([]);
-    const [openQuotations, setOpenQuotations] = useState([]);
+    const [, setOpenRequisitions] = useState([]);
+    const [, setOpenQuotations] = useState([]);
     // FEATURE: Master reorganized into tabs (not all fields flat) plus a
     // bottom bar for narration-style fields, matching the "own concept,
     // NAV style" desktop-form pattern.
@@ -204,29 +202,7 @@ export default function PurchaseOrder() {
     }, [authFetch]);
     useEffect(() => { load(); }, [load]);
 
-    const resetForm = () => { setForm(emptyForm); setEditingId(null); setPullRequisitionId(''); setPullQuotationId(''); setPartyInfo(emptyPartyInfo()); setPulledDocs([]); };
-
-    // FEATURE: fetches the shared pull-forward endpoint and populates the
-    // Master + Details with whatever it returns - user can still edit
-    // everything afterward, this is a starting point, not a lock-in.
-    const handlePullForward = async () => {
-        if (!pullRequisitionId && !pullQuotationId) return showAlert('Pick a Requisition and/or Quotation to pull from', 'danger');
-        try {
-            const params = new URLSearchParams();
-            if (pullRequisitionId) params.set('requisition_id', pullRequisitionId);
-            if (pullQuotationId) params.set('quotation_id', pullQuotationId);
-            const res = await authFetch(`/api/purchase-orders/pull-forward?${params}`);
-            const { master, details } = res.data;
-            setForm(f => ({
-                ...f, ...master,
-                source_requisition_id: pullRequisitionId || '', source_quotation_id: pullQuotationId || '',
-                details: (details && details.length > 0) ? details.map(d => ({ ...emptyDetailRow(), ...d })) : f.details
-            }));
-            showAlert('Pulled forward - review and adjust before saving', 'success');
-        } catch (err) {
-            showAlert(err.message, 'danger');
-        }
-    };
+    const resetForm = () => { setForm(emptyForm); setEditingId(null); setPartyInfo(emptyPartyInfo()); setPulledDocs([]); };
 
     // FEATURE: Entry Field Control - resolved per-field mode drives
     // visibility/required/readonly across the whole form. Section
@@ -635,35 +611,7 @@ export default function PurchaseOrder() {
 
             {showForm && (
                 <form onSubmit={handleSubmit} ref={formRef} className="ent-entry">
-                    <EntryFillBar voucherType="purchase_order" api="purchase-orders" form={form} editing={!!editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={r => handleCopyFrom(r.id)} />
-                    {/* ==================== PULL FORWARD (Order-only) ==================== */}
-                    {!editingId && (
-                        <details className="mx-3 mt-2 text-xs"><summary className="cursor-pointer text-[#1a4a8a]">Pull from any earlier document (any party)</summary>
-                        <div className="erp-topbar grid-cols-1 md:grid-cols-4" style={{ background: '#eff6ff' }}>
-                            <div className="erp-field">
-                                <label className="erp-label">Pull From Requisition</label>
-                                <select className="erp-select" value={pullRequisitionId} onChange={e => setPullRequisitionId(e.target.value)}>
-                                    <option value="">— None —</option>
-                                    {openRequisitions.map(r => <option key={r.id} value={r.id}>{r.doc_no} — {r.vendor_display_name || 'No vendor yet'}</option>)}
-                                </select>
-                            </div>
-                            <div className="erp-field">
-                                <label className="erp-label">Pull From Quotation</label>
-                                <select className="erp-select" value={pullQuotationId} onChange={e => setPullQuotationId(e.target.value)}>
-                                    <option value="">— None —</option>
-                                    {openQuotations.map(q => <option key={q.id} value={q.id}>{q.doc_no}</option>)}
-                                </select>
-                            </div>
-                            <div className="erp-field justify-end">
-                                <button type="button" onClick={handlePullForward} className="erp-btn primary">⬇ Pull Forward</button>
-                            </div>
-                            <div className="erp-field">
-                                <label className="erp-label">Quotation No <span className="hint">(external reference)</span></label>
-                                <input className="erp-input" value={form.quotation_no} onChange={e => setForm({ ...form, quotation_no: e.target.value })} />
-                            </div>
-                        </div>
-                        </details>
-                    )}
+                    <EntryFillBar voucherType="purchase_order" api="purchase-orders" form={form} editing={!!editingId} docId={editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={r => handleCopyFrom(r.id)} />
 
                     {/* ==================== TOP BAR (identity fields, Cash/Credit up front) ==================== */}
                     <div className="erp-topbar grid-cols-1 md:grid-cols-6">
@@ -712,6 +660,8 @@ export default function PurchaseOrder() {
                                 </div>
                             )}
                         </div>
+                        {/* Quotation / Order / Challan No. - the source's master part, remarks and terms come along */}
+                        <PendingDocsPanel target="purchase_order" partyId={form.vendor_ledger_id} efc={efc} disabled={!!editingId} pulled={pulledDocs} onPull={data => { setForm(f => mergePulled(f, data, emptyDetailRow)); setPulledDocs(p => [...p, ...data.documents.map(x => x.id)]); showAlert(`Pulled ${data.lines.length} line(s) from ${data.documents.map(x => x.doc_no).join(', ')}`, 'success'); }} />
                         <div className="erp-field">
                             <label className="erp-label">Vendor Sub-Ledger</label>
                             <SearchablePopupSelect
@@ -733,7 +683,6 @@ export default function PurchaseOrder() {
                             </select>
                         </div>
                     </div>
-                    <PendingDocsPanel target="purchase_order" partyId={form.vendor_ledger_id} efc={efc} disabled={!!editingId} pulled={pulledDocs} onPull={data => { setForm(f => mergePulled(f, data, emptyDetailRow)); setPulledDocs(p => [...p, ...data.documents.map(x => x.id)]); showAlert(`Pulled ${data.lines.length} line(s) from ${data.documents.map(x => x.doc_no).join(', ')}`, 'success'); }} />
 
 
                     <div className="px-4">
@@ -761,11 +710,10 @@ export default function PurchaseOrder() {
                                         <th className={`text-left px-1 py-1 w-20 ${(!chargesInPopup && isVisible('discount_percent', 'detail')) ? '' : 'hidden'}`}>Disc %</th>
                                         <th className={`text-left px-1 py-1 w-20 ${(!chargesInPopup && isVisible('tax_percent', 'detail')) ? '' : 'hidden'}`}>Tax %</th>
                                         <th className="r">Gross</th>
-                                        <th className="r">Charges ±</th>
+                                        <th className="r">Add / Less</th>
                                         <th className="r">Net Amount</th>
                                         <th className={`text-left px-1 py-1 w-28 ${isVisible('barcode', 'detail') ? '' : 'hidden'}`}>Barcode</th>
                                         <th className="text-left px-1 py-1 w-32">Ref No <span className="text-gray-400 normal-case">(source doc)</span></th>
-                                        {inlineTerms ? termCols.map(c => <th key={c.key} className="text-left px-1 py-1">{c.label}</th>) : <th className="text-left px-1 py-1 w-20">Item Charges</th>}
                                         <th></th>
                                     </tr>
                                 </thead>
@@ -885,13 +833,10 @@ export default function PurchaseOrder() {
                                             <td className={`px-1 py-1 ${(!chargesInPopup && isVisible('discount_percent', 'detail')) ? '' : 'hidden'}`}><input disabled={efc.isReadonly('discount_percent', 'detail')} type="number" step="0.01" className="w-full border rounded px-1.5 py-1" value={d.discount_percent} onChange={e => updateDetailRow(idx, { discount_percent: e.target.value })} /></td>
                                             <td className={`px-1 py-1 ${(!chargesInPopup && isVisible('tax_percent', 'detail')) ? '' : 'hidden'}`}><input disabled={efc.isReadonly('tax_percent', 'detail')} type="number" step="0.01" className="w-full border rounded px-1.5 py-1" value={d.tax_percent} onChange={e => updateDetailRow(idx, { tax_percent: e.target.value })} /></td>
                                             <td className="px-1 py-1 r">{d.product_id ? <AmountCell value={lineGross(d)} title="Type the amount: the rate (or the quantity) is worked out" onChange={g => typeGross(idx, g)} /> : ''}</td>
-                                            <td className="px-1 py-1 r">{d.product_id ? (lineNet(d, idx) - lineGross(d)).toFixed(2) : ''}</td>
+                                            <td className="px-1 py-1 r">{d.product_id ? (itemCharges ? <button type="button" tabIndex={-1} className="ent-term-btn" onClick={() => setProductTermModalIndexes([idx])} title="Add / Less of this line - opens its Item Charges">{(lineNet(d, idx) - lineGross(d)).toFixed(2)}</button> : (lineNet(d, idx) - lineGross(d)).toFixed(2)) : ''}</td>
                                             <td className="px-1 py-1 r">{d.product_id ? <AmountCell bold value={lineNet(d, idx)} title="Type the net amount: taken back through the charges" onChange={n => typeNet(idx, n)} /> : ''}</td>
                                             <td className={`px-1 py-1 ${isVisible('barcode', 'detail') ? '' : 'hidden'}`}><input disabled={efc.isReadonly('barcode', 'detail')} className="w-full border rounded px-1.5 py-1" value={d.barcode} onChange={e => updateDetailRow(idx, { barcode: e.target.value })} /></td>
                                             <td className="px-1 py-1 text-xs text-gray-500">{d.source_doc_no || (d.source_requisition_detail_id || d.source_quotation_detail_id ? '…' : '—')}</td>
-                                            {inlineTerms ? termCols.map(c => { const on = (d.billing_term_ids || []).includes(c.term_id); const pos = (d.billing_term_ids || []).indexOf(c.term_id); const amt = on ? lineTermPreviews[idx]?.lines?.[pos]?.amount : null; return (<td key={c.key} className="px-1 py-1 whitespace-nowrap"><input type="checkbox" checked={on} onChange={() => updateDetailRow(idx, { billing_term_ids: on ? d.billing_term_ids.filter(x => x !== c.term_id) : [...(d.billing_term_ids || []), c.term_id] })} /> <span className="text-xs">{amt !== null && amt !== undefined ? Number(amt).toFixed(2) : ''}</span></td>); }) : (<td className="px-1 py-1"><button type="button" tabIndex={-1} onClick={() => itemCharges && setProductTermModalIndexes([idx])} className="ent-term-btn" title="Charges of this line">
-{lineTermPreviews[idx]?.total !== undefined ? (lineTermPreviews[idx].total - (Number(d.qty) || 0) * (Number(d.rate) || 0)).toFixed(2) : '…'}
-</button></td>)}
                                             <td className="px-1 py-1"><button type="button" tabIndex={-1} onClick={() => removeDetailRow(idx)} className="text-red-500 text-xs">✕</button></td>
                                         </tr>
                                     ))}
@@ -904,7 +849,7 @@ export default function PurchaseOrder() {
                         </div>
                         <div className="flex items-center gap-2 mt-1 text-xs text-gray-600">
                             <button type="button" className="nav-btn small" onClick={addDetailRow}>➕ Add line</button>
-                            <span>Enter on the last field adds a line · Charges ±: this line's charges · tick lines (#) and use Item Charges to set them together</span>
+                            <span>Enter on the last field adds a line · Add / Less: this line's item charges (click to open them) · tick lines (#) and use Item Charges to set them together</span>
                         </div>
                     </div>
 

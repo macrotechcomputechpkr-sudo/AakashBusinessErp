@@ -29,7 +29,8 @@
 //              taxable value (the last line takes the rounding)
 //   term     = -discount + vat + other
 //   net      = basic + term  (= bill total + its additional entries)
-// Output: items (optional group headings), bill summary, bill x item detail.
+// Output: items (optional group headings) with qty totals per base unit and per
+// entered unit, bill summary, bill x item detail.
 // =============================================
 const { parseTradeQuery, loadTradeLines, inChunks, fetchAll, csv, round2, round4 } = require('./tradeLines');
 
@@ -235,6 +236,19 @@ async function loadingSheet(c, t, q) {
         term: round2(-agg.discount + agg.vat + agg.other_total), net_amount: round2(agg.net_amount)
     })).sort((a, b) => (isLoad(a) === isLoad(b) ? 0 : isLoad(a) ? -1 : 1) || a.doc_date.localeCompare(b.doc_date) || String(a.doc_no).localeCompare(String(b.doc_no)));
 
+    // qty totals of the items table: base unit (fixed dual "Total 62 Pcs" and flexible "= 10 Pcs"
+    // both add up here), as entered per unit, and the dual primary unit
+    const qtyTotals = key => {
+        const base = {}, entered = {}, free = {};
+        itemRows.forEach(r => {
+            const q = r[key]; if (!q) return;
+            base[q.base_unit] = round4((base[q.base_unit] || 0) + q.base_qty);
+            if (q.free) free[q.base_unit] = round4((free[q.base_unit] || 0) + q.free);
+            (q.entered || []).forEach(e => { entered[e.unit] = round4((entered[e.unit] || 0) + e.qty); });
+        });
+        const list = o => Object.entries(o).filter(([, v]) => Math.abs(v) > 1e-9).map(([unit, qty]) => ({ unit, qty }));
+        return { base: list(base), entered: list(entered), free: list(free) };
+    };
     const loads = billRows.filter(isLoad), rets = billRows.filter(b => !isLoad(b));
     const sum = (rows, k) => round2(rows.reduce((s, r) => s + r[k], 0));
     const totalsOf = rows => ({ basic: sum(rows, 'basic'), discount: sum(rows, 'discount'), vat: sum(rows, 'vat'), other_total: sum(rows, 'other_total'),
@@ -249,6 +263,7 @@ async function loadingSheet(c, t, q) {
         from: q.date_from, to: q.date_to, sources: src, with_returns: withReturns, free: opts.freeInLoad ? 'add' : 'separate',
         group_by: groupKey ? q.group_by : 'none', breakdown_units: opts.breakdownUnits.map(id => M.unitName(id)), display_unit: opts.displayUnitId ? M.unitName(opts.displayUnitId) : null,
         term_names: termNames, items: itemRows, bills: billRows,
+        qty_totals: { load: qtyTotals('load'), ...(withReturns ? { returned: qtyTotals('returned'), net: qtyTotals('net') } : {}) },
         totals: { bills: loads.length, returns: rets.length, customers: new Set(loads.map(b => b.party_name)).size, items: itemRows.length,
             load: totalsOf(loads), returned: totalsOf(rets),
             net_amount: round2(sum(loads, 'net_amount') - (withReturns ? sum(rets, 'net_amount') : 0)) },

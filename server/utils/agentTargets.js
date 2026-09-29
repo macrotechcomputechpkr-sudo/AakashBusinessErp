@@ -10,6 +10,7 @@
 //                nothing below the minimum achievement %
 //   posting      Dr commission expense / Cr commission payable, one posting
 //                per target; a target already posted is skipped next time
+//                (bill-wise commission: utils/agentBillCommission.js)
 // =============================================
 const round2 = n => Math.round((Number(n) || 0) * 100) / 100;
 const round4 = n => Math.round((Number(n) || 0) * 10000) / 10000;
@@ -307,6 +308,8 @@ async function cancelPosting(c, t, userId, id, reason) {
     for (const b of batches || []) { await c.from('ledger_transaction_lines').delete().eq('batch_id', b.id); await c.from('ledger_transaction_batches').delete().eq('id', b.id); }
     const { error } = await c.from('agent_commission_postings').update({ status: 'cancelled', cancelled_at: new Date().toISOString(), cancel_reason: reason }).eq('id', id);
     if (error) throw error;
+    // a bill-wise posting: its bills can be given commission again
+    await c.from('agent_commission_bills').update({ is_active: false }).eq('posting_id', id);
     return { ok: true };
 }
 async function commissionRegister(c, t, q) {
@@ -321,11 +324,14 @@ async function commissionRegister(c, t, q) {
     const N = await names(c, t);
     const led = [...new Set(rows.flatMap(r => [r.expense_ledger_id, r.payable_ledger_id]).filter(Boolean))];
     const L = Object.fromEntries((await inChunks(led, async ch => (await c.from('ledger_accounts').select('id, account_name').in('id', ch)).data || [])).map(l => [l.id, l.account_name]));
-    const tg = await inChunks([...new Set(rows.map(r => r.target_id))], async ch => (await c.from('agent_targets').select('id, period_label, dimension, dimension_id').in('id', ch)).data || []);
+    const tg = await inChunks([...new Set(rows.map(r => r.target_id).filter(Boolean))], async ch => (await c.from('agent_targets').select('id, period_label, dimension, dimension_id').in('id', ch)).data || []);
     const T = Object.fromEntries(tg.map(x => [x.id, x]));
+    const billCounts = {};
+    (await inChunks(rows.filter(r => r.basis === 'bill').map(r => r.id), async ch => (await c.from('agent_commission_bills').select('posting_id').in('posting_id', ch)).data || []))
+        .forEach(x => { billCounts[x.posting_id] = (billCounts[x.posting_id] || 0) + 1; });
     return rows.map(r => ({ ...r, agent_name: N.agents[r.agent_id]?.agent_name || '', expense_ledger: L[r.expense_ledger_id] || '', payable_ledger: L[r.payable_ledger_id] || '',
         period_label: T[r.target_id]?.period_label || `${String(r.period_from).slice(0, 10)} - ${String(r.period_to).slice(0, 10)}`,
-        dimension_name: T[r.target_id] ? (T[r.target_id].dimension === 'all' ? 'All products' : N[T[r.target_id].dimension]?.[T[r.target_id].dimension_id] || '?') : '' }));
+        dimension_name: r.basis === 'bill' ? `Bill-wise (${billCounts[r.id] || 0} bills)` : T[r.target_id] ? (T[r.target_id].dimension === 'all' ? 'All products' : N[T[r.target_id].dimension]?.[T[r.target_id].dimension_id] || '?') : '' }));
 }
 
-module.exports = { saveTarget, generateTargets, achievement, agentPerformance, postCommission, cancelPosting, commissionRegister, periodsFor, commissionOf, DIM_LABEL };
+module.exports = { nextNo, saveTarget, generateTargets, achievement, agentPerformance, postCommission, cancelPosting, commissionRegister, periodsFor, commissionOf, DIM_LABEL };

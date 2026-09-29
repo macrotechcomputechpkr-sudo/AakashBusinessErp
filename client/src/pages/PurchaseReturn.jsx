@@ -91,7 +91,6 @@ export default function PurchaseReturn() {
     const [showDraftsOnly, setShowDraftsOnly] = useState(false);
     const [showCopyModal, setShowCopyModal] = useState(false);
     const [auditModal, setAuditModal] = useState(null);
-    const [pullBillId, setPullBillId] = useState('');
     // FEATURE: "Return haru maa pani term...jastai hunu parxa" - the
     // SAME document-level + per-line Billing Term system Purchase Bill/
     // GRN/Order/Quotation already have, brought to Purchase Return too.
@@ -131,7 +130,7 @@ export default function PurchaseReturn() {
     const [businessUnits, setBusinessUnits] = useState([]);
     const [products, setProducts] = useState([]);
     const [units, setUnits] = useState([]);
-    const [openBills, setOpenBills] = useState([]);
+    const [, setOpenBills] = useState([]);
 
     const formRef = useRef(null);
     useEnterKeyNavigation(formRef, { onLastField: () => { addDetailRow(); return true; } });
@@ -175,7 +174,7 @@ export default function PurchaseReturn() {
     }, [authFetch]);
     useEffect(() => { load(); }, [load]);
 
-    const resetForm = () => { setForm(emptyForm); setEditingId(null); setPullBillId(''); setSummaryOverrides({}); setSelectedRowIndexes([]); setPartyInfo(emptyPartyInfo()); setPulledDocs([]); };
+    const resetForm = () => { setForm(emptyForm); setEditingId(null); setSummaryOverrides({}); setSelectedRowIndexes([]); setPartyInfo(emptyPartyInfo()); setPulledDocs([]); };
     const addDetailRow = () => setForm(f => ({ ...f, details: [...f.details, emptyDetailRow()] }));
     // barcode counter mode (System Control > Barcode System): the same item again adds one to its line
     const posPick = (idx, pid, uid) => {
@@ -330,29 +329,6 @@ export default function PurchaseReturn() {
     const footVendor = vendors.find(v => v.id === form.vendor_ledger_id);
     useEntryHotkeys(showForm, { F7: () => { const last = latestOf(rows); if (last) handleCopyFrom(last.id); } });
 
-    // FEATURE: "whichever module comes after should be able to fill from
-    // FEATURE: Return links to Bill only - a return is a Credit Note
-    // against what was actually billed. Only offering
-    // what's still genuinely returnable (the backend enforces the same
-    // limit as a hard check on save, this is just the convenient offer).
-    const handlePullForward = async () => {
-        if (!pullBillId) return showAlert('Pick a Bill to pull from', 'danger');
-        try {
-            const params = new URLSearchParams();
-            if (pullBillId) params.set('bill_id', pullBillId);
-            const res = await authFetch(`/api/purchase-returns/pull-forward?${params}`);
-            const { master, details } = res.data;
-            setForm(f => ({
-                ...f, ...master,
-                source_bill_id: pullBillId || '',
-                details: (details && details.length > 0) ? details.map(d => ({ ...emptyDetailRow(), ...d })) : f.details
-            }));
-            showAlert('Pulled forward - review and adjust before saving', 'success');
-        } catch (err) {
-            showAlert(err.message, 'danger');
-        }
-    };
-
     const handleSubmit = async (e, saveAsDraft = false) => {
 
         // Save as Draft (new entry): kept apart as a temporary draft - no number, no accounts / stock effect
@@ -447,7 +423,13 @@ export default function PurchaseReturn() {
             if (!cancellationReason || !cancellationReason.trim()) return;
         }
         try {
-            await authFetch(`/api/purchase-returns/${row.id}/status`, { method: 'PUT', body: JSON.stringify({ status, cancellation_reason: cancellationReason }) });
+            try {
+                await authFetch(`/api/purchase-returns/${row.id}/status`, { method: 'PUT', body: JSON.stringify({ status, cancellation_reason: cancellationReason }) });
+            } catch (e) {
+                // not enough stock (System Control > Negative Stock = block): post only if the user insists
+                if (!(e.warnings?.length > 0) || !window.confirm(`${e.message}\n\n${e.warnings.join('\n')}\n\nPost anyway?`)) throw e;
+                await authFetch(`/api/purchase-returns/${row.id}/status`, { method: 'PUT', body: JSON.stringify({ status, cancellation_reason: cancellationReason, override_negative_stock_warning: true }) });
+            }
             showAlert(`Marked as ${status}`, 'success');
             load();
         } catch (err) {
@@ -493,24 +475,7 @@ export default function PurchaseReturn() {
 
             {showForm && (
                 <form onSubmit={handleSubmit} ref={formRef} className="ent-entry">
-                    <EntryFillBar voucherType="purchase_return" api="purchase-returns" form={form} editing={!!editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={r => handleCopyFrom(r.id)} />
-                    {!editingId && (
-                        <details className="mx-3 mt-2 text-xs"><summary className="cursor-pointer text-[#1a4a8a]">Pull from any earlier document (any party)</summary>
-                        <div className="erp-topbar grid-cols-1 md:grid-cols-3" style={{ background: '#eff6ff' }}>
-                            <div className="erp-field md:col-span-2">
-                                <label className="erp-label">Pull From Bill</label>
-                                <select className="erp-select" value={pullBillId} onChange={e => setPullBillId(e.target.value)}>
-                                    <option value="">— None —</option>
-                                    {openBills.map(b => <option key={b.id} value={b.id}>{b.doc_no}</option>)}
-                                </select>
-                            </div>
-                            <div className="erp-field justify-end">
-                                <button type="button" onClick={handlePullForward} className="erp-btn primary">⬇ Pull Forward</button>
-                            </div>
-                            <p className="text-xs text-gray-400 md:col-span-3">Only what's still genuinely returnable (qty minus already-returned) gets offered - and the server rejects anything beyond that even if typed in manually.</p>
-                        </div>
-                        </details>
-                    )}
+                    <EntryFillBar voucherType="purchase_return" api="purchase-returns" form={form} editing={!!editingId} docId={editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={r => handleCopyFrom(r.id)} />
 
                     <div className="erp-topbar grid-cols-1 md:grid-cols-4">
                         <DocNumberField docDate={form.doc_date || form.voucher_date} voucherType="purchase_return" categoryId={form.numbering_category_id} docNo={editingId ? form.doc_no : ''} value={form.doc_no} onChange={v => setForm({ ...form, doc_no: v })} label="Doc No" />
@@ -541,12 +506,25 @@ export default function PurchaseReturn() {
                                 />
                             )}
                         </div>
+                        {/* Quotation / Order / Challan No. - the source's master part, remarks and terms come along */}
+                        <PendingDocsPanel target="purchase_return" partyId={form.vendor_ledger_id} efc={efc} disabled={!!editingId} pulled={pulledDocs} onPull={data => { setForm(f => mergePulled(f, data, emptyDetailRow)); setPulledDocs(p => [...p, ...data.documents.map(x => x.id)]); showAlert(`Pulled ${data.lines.length} line(s) from ${data.documents.map(x => x.doc_no).join(', ')}`, 'success'); }} />
+                        {/* the vendor's sub-ledger, next to the vendor */}
+                        <div className="erp-field">
+                            <label className="erp-label">Vendor Sub-Ledger</label>
+                            <SearchablePopupSelect
+                                listKey="purchase_return_vendor_subledger_picker"
+                                columns={[{ key: 'code', label: 'Code' }, { key: 'name', label: 'Name' }]}
+                                defaultVisibleKeys={['name']}
+                                items={subLedgers.filter(x => x.main_ledger_id === form.vendor_ledger_id).map(x => ({ id: x.id, code: x.sub_ledger_code, name: x.sub_ledger_name }))} getId={x => x.id} getLabel={x => x.name}
+                                searchKeys={['name', 'code']}
+                                value={form.vendor_sub_ledger_id} onChange={id => setForm({ ...form, vendor_sub_ledger_id: id })} placeholder={form.vendor_ledger_id ? 'None' : 'Choose the vendor first'}
+                            />
+                        </div>
                         <ProductCompanyField side="purchase" form={form} setForm={setForm} products={products} emptyRow={emptyDetailRow} />
                         {!editingId && (
                             <NumberingCategorySelector voucherType="purchase_return" value={form.numbering_category_id} onChange={id => setForm({ ...form, numbering_category_id: id })} />
                         )}
                     </div>
-                    <PendingDocsPanel target="purchase_return" partyId={form.vendor_ledger_id} efc={efc} disabled={!!editingId} pulled={pulledDocs} onPull={data => { setForm(f => mergePulled(f, data, emptyDetailRow)); setPulledDocs(p => [...p, ...data.documents.map(x => x.id)]); showAlert(`Pulled ${data.lines.length} line(s) from ${data.documents.map(x => x.doc_no).join(', ')}`, 'success'); }} />
 
                     <div className="erp-tab-content">
                         <div className="grid grid-cols-1 md:grid-cols-4 gap-3 mb-4">
@@ -581,17 +559,6 @@ export default function PurchaseReturn() {
                             <div className={efc.isVisible('currency') ? 'erp-field' : 'erp-field hidden'}>
                                 <label className="erp-label">Currency {efc.isRequired('currency') && <span className="req">*</span>}</label>
                                 <CurrencyField bare disabled={efc.isReadonly('currency')} value={form.currency} rate={form.exchange_rate} onChange={v => setForm(f => ({ ...f, ...v }))} />
-                            </div>
-                            <div className="erp-field">
-                                <label className="erp-label">Vendor Sub-Ledger</label>
-                                <SearchablePopupSelect
-                                    listKey="purchase_return_vendor_subledger_picker"
-                                    columns={[{ key: 'code', label: 'Code' }, { key: 'name', label: 'Name' }]}
-                                    defaultVisibleKeys={['name']}
-                                    items={subLedgers.filter(x => x.main_ledger_id === form.vendor_ledger_id).map(x => ({ id: x.id, code: x.sub_ledger_code, name: x.sub_ledger_name }))} getId={x => x.id} getLabel={x => x.name}
-                                    searchKeys={['name', 'code']}
-                                    value={form.vendor_sub_ledger_id} onChange={id => setForm({ ...form, vendor_sub_ledger_id: id })} placeholder="None"
-                                />
                             </div>
                             <div className={efc.isVisible('goods_account_ledger_id') ? 'erp-field' : 'erp-field hidden'}>
                                 <label className="erp-label">Goods Account {efc.isRequired('goods_account_ledger_id') && <span className="req">*</span>}</label>
@@ -680,11 +647,10 @@ export default function PurchaseReturn() {
                                         <th className={`w-24 ${efc.isVisible('rate', 'detail') ? '' : 'hidden'}`}>Rate</th>
                                         <th className={`w-20 ${(!chargesInPopup && efc.isVisible('tax_percent', 'detail')) ? '' : 'hidden'}`}>Tax %</th>
                                         <th className="r">Gross</th>
-                                        <th className="r">Charges ±</th>
+                                        <th className="r">Add / Less</th>
                                         <th className="r">Net Amount</th>
                                         <th className="w-32">Ref No</th>
                                         <th className={`w-40 ${efc.isVisible('line_reason', 'detail') ? '' : 'hidden'}`}>Line Reason</th>
-                                        {inlineTerms ? termCols.map(c => <th key={c.key} className="text-left px-1 py-1">{c.label}</th>) : <th className="w-20">Item Charges</th>}
                                         <th></th>
                                     </tr>
                                 </thead>
@@ -779,13 +745,10 @@ export default function PurchaseReturn() {
                                             </td>
                                             <td className={(!chargesInPopup && efc.isVisible('tax_percent', 'detail')) ? '' : 'hidden'}><input disabled={efc.isReadonly('tax_percent', 'detail')} type="number" step="0.01" className="erp-input" value={d.tax_percent} onChange={e => updateDetailRow(idx, { tax_percent: e.target.value })} /></td>
                                             <td className="px-1 py-1 r">{d.product_id ? <AmountCell value={grossOf(d)} title="Type the amount: the rate (or the quantity) is worked out" onChange={g => typeGross(idx, g)} /> : ''}</td>
-                                            <td className="px-1 py-1 r">{d.product_id ? (lineNet(d, idx) - grossOf(d)).toFixed(2) : ''}</td>
+                                            <td className="px-1 py-1 r">{d.product_id ? (itemCharges ? <button type="button" tabIndex={-1} className="ent-term-btn" onClick={() => setProductTermModalIndexes([idx])} title="Add / Less of this line - opens its Item Charges">{(lineNet(d, idx) - grossOf(d)).toFixed(2)}</button> : (lineNet(d, idx) - grossOf(d)).toFixed(2)) : ''}</td>
                                             <td className="px-1 py-1 r">{d.product_id ? <AmountCell bold value={lineNet(d, idx)} title="Type the net amount: taken back through the charges" onChange={n => typeNet(idx, n)} /> : ''}</td>
                                             <td className="text-xs text-gray-500">{d.source_doc_no || (d.source_bill_detail_id ? '…' : '—')}</td>
                                             <td className={efc.isVisible('line_reason', 'detail') ? '' : 'hidden'}><input disabled={efc.isReadonly('line_reason', 'detail')} className="erp-input" value={d.line_reason} onChange={e => updateDetailRow(idx, { line_reason: e.target.value })} /></td>
-                                            {inlineTerms ? termCols.map(c => { const on = (d.billing_term_ids || []).includes(c.term_id); const pos = (d.billing_term_ids || []).indexOf(c.term_id); const amt = on ? lineTermPreviews[idx]?.lines?.[pos]?.amount : null; return (<td key={c.key} className="px-1 py-1 whitespace-nowrap"><input type="checkbox" checked={on} onChange={() => updateDetailRow(idx, { billing_term_ids: on ? d.billing_term_ids.filter(x => x !== c.term_id) : [...(d.billing_term_ids || []), c.term_id] })} /> <span className="text-xs">{amt !== null && amt !== undefined ? Number(amt).toFixed(2) : ''}</span></td>); }) : (<td><button type="button" tabIndex={-1} onClick={() => itemCharges && setProductTermModalIndexes([idx])} className="ent-term-btn" title="Charges of this line">
-{lineTermPreviews[idx]?.total !== undefined ? (lineTermPreviews[idx].total - (Number(d.qty) || 0) * (Number(d.rate) || 0)).toFixed(2) : '…'}
-</button></td>)}
                                             <td><button type="button" tabIndex={-1} onClick={() => removeDetailRow(idx)} className="text-red-500 text-xs">✕</button></td>
                                         </tr>
                                     ))}
@@ -798,7 +761,7 @@ export default function PurchaseReturn() {
                         </div>
                         <div className="flex items-center gap-2 mt-1 text-xs text-gray-600">
                             <button type="button" className="nav-btn small" onClick={addDetailRow}>➕ Add line</button>
-                            <span>Enter on the last field adds a line · Charges ±: this line's charges · tick lines (#) and use Item Charges to set them together</span>
+                            <span>Enter on the last field adds a line · Add / Less: this line's item charges (click to open them) · tick lines (#) and use Item Charges to set them together</span>
                         </div>
                     </div>
 

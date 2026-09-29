@@ -4,6 +4,17 @@
 // GRN, and/or Bill, split across that document's product lines for
 // landed cost - by Value share, Qty share, or an Equal split, with a
 // live preview of the split before saving.
+// Billing terms (Billing Terms > Term Used For: Purchase Additional):
+//   tab 1 Product-wise - a popup per product of the linked document (like the
+//         product term popup of a purchase); the whole amount goes to the
+//         cost of THAT product (line.target_detail_id)
+//   tab 2 Bill-wise    - a fixed form with one row per bill-level term; the
+//         amount is divided over the document's products by the term's
+//         basis (value / qty), changeable per row
+//   a term's ledger is fixed (only its sub-ledger changes); the party paid
+//   and its sub-ledger are chosen freely. A term not "Include In Costing"
+//   stays out of landed cost. The vendor of the linked Bill / GRN / Order
+//   is filled in as the vendor (changeable).
 // =============================================
 
 import ProductCompanyField from '../components/ProductCompanyField';
@@ -22,12 +33,22 @@ import useLedgerPurposes from '../components/useLedgerPurposes';
 import RecordHistory from '../components/RecordHistory';
 import DocActions, { finalizeEntry } from '../components/entry/DocActions';
 import EntryFillBar from '../components/entry/EntryFillBar';
+import { EntryPopup } from '../components/entry/EntryParts';
 import { saveEntryDraft, finishEntryDraft } from '../components/entry/entryDrafts';
 
 const emptyExpenseLine = () => ({ expense_ledger_id: '', description: '', allocation_basis: 'value_wise', entry_sign: 'add', rate_percent: '', amount: '',
     party_ledger_id: '', bill_type: 'no_bill', party_bill_no: '', party_bill_date: '', vat_percent: '', vat_amount: '', vat_in_cost: false });
 const BILL_TYPES = [['taxable', 'Taxable bill (VAT)'], ['non_taxable', 'Non-taxable bill'], ['no_bill', 'No bill (wages, loading ...)']];
 const r2 = n => Math.round((Number(n) || 0) * 100) / 100;
+// the Order / GRN / Bill line a product-wise term belongs to (same as the server)
+const detailIdOf = a => a.source_grn_detail_id || a.source_bill_detail_id || a.source_order_detail_id || null;
+const signed = l => (l.entry_sign === 'deduct' ? -1 : 1) * (Number(l.amount) || 0);
+// a new line for a billing term: ledger + sub-ledger, basis, sign from the term
+const termLine = (t, extra = {}) => ({
+    ...emptyExpenseLine(), billing_term_id: t.id, expense_ledger_id: t.billing_ledger_id || '', expense_sub_ledger_id: t.sub_ledger_id || '',
+    description: t.term_name, allocation_basis: t.include_in_costing === false ? 'none' : (t.basis === 'quantity' ? 'qty_wise' : 'value_wise'),
+    entry_sign: t.sign === '-' ? 'deduct' : 'add', ...extra
+});
 
 const emptyForm = {
     vendor_sub_ledger_id: '', product_company_id: '', doc_date: new Date().toISOString().slice(0, 10),
@@ -77,6 +98,10 @@ export default function PurchaseAdditionalExpense() {
 
     const showAlert = (message, type = 'info') => { setAlert({ message, type }); setTimeout(() => setAlert(null), 6000); };
 
+    const [sysCtl, setSysCtl] = useState({});
+    const [terms, setTerms] = useState([]);           // billing terms used for Purchase Additional
+    const [termTab, setTermTab] = useState('product'); // 'product' | 'bill'
+    const [productPopup, setProductPopup] = useState(null); // source line whose product terms are open
     const load = useCallback(async () => {
         try {
             const [req, v1, v2, ag, ldg, rmk, cc, bu, pords, pgrns, pbills, subl] = await Promise.all([
@@ -94,6 +119,8 @@ export default function PurchaseAdditionalExpense() {
                 authFetch('/api/sub-ledgers')
             ]);
             setSubLedgers(subl.data || []);
+            try { setSysCtl((await authFetch('/api/system-control')).data || {}); } catch { /* TDS line then needs its ledger picked */ }
+            try { setTerms(((await authFetch('/api/billing-terms')).data || []).filter(t => t.applicable_additional_expense && t.is_enabled !== false)); } catch { setTerms([]); }
             setRows(req.data || []);
             setVendors([...(v1.data || []), ...(v2.data || [])]);
             setAgents(ag.data || []);
@@ -112,6 +139,15 @@ export default function PurchaseAdditionalExpense() {
 
     const resetForm = () => { setForm(emptyForm); setEditingId(null); setAllocationPreview([]); };
     const addExpenseLine = () => setForm(f => ({ ...f, expense_lines: [...f.expense_lines, emptyExpenseLine()] }));
+    // TDS withheld from a party: a "−" line on the TDS payable ledger, never in costing,
+    // TDS % of the other "+" lines (of the same party when one is chosen)
+    const addTdsLine = () => setForm(f => {
+        const pct = Number(sysCtl.default_tds_percent) || 1.5;
+        const base = f.expense_lines.reduce((s, l) => s + (l.entry_sign !== 'deduct' ? (Number(l.amount) || 0) : 0), 0);
+        const party = (f.expense_lines.find(l => l.entry_sign !== 'deduct' && l.party_ledger_id) || {}).party_ledger_id || '';
+        return { ...f, expense_lines: [...f.expense_lines, { ...emptyExpenseLine(), expense_ledger_id: sysCtl.tds_ledger_id || '', description: 'TDS', entry_sign: 'deduct', is_tds: true,
+            allocation_basis: 'none', bill_type: 'no_bill', party_ledger_id: party, rate_percent: pct, amount: Math.round(base * pct) / 100 }] };
+    });
     const removeExpenseLine = (idx) => setForm(f => ({ ...f, expense_lines: f.expense_lines.length > 1 ? f.expense_lines.filter((_, i) => i !== idx) : f.expense_lines }));
     const updateExpenseLine = (idx, patch) => setForm(f => ({ ...f, expense_lines: f.expense_lines.map((l, i) => {
         if (i !== idx) return l;
@@ -134,6 +170,58 @@ export default function PurchaseAdditionalExpense() {
             return { ...f, expense_lines: f.expense_lines.map((l, i) => i === idx ? { ...l, rate_percent: ratePercent, amount: computed } : l) };
         });
     };
+
+    // ---- billing terms ----
+    const billTerms = terms.filter(t => !t.product_wise);
+    const productTerms = terms.filter(t => t.product_wise);
+    const termById = id => terms.find(t => t.id === id);
+    const ledgerName = id => (ledgers.find(x => x.id === id) || {}).account_name || '';
+    const subLedgersOf = ledgerId => subLedgers.filter(x => x.main_ledger_id === ledgerId);
+    // Bill-wise tab = a fixed form: a new entry starts with one row per bill-level term
+    useEffect(() => {
+        if (!showForm || editingId || !billTerms.length) return;
+        setForm(f => {
+            const blank = f.expense_lines.length === 1 && !f.expense_lines[0].billing_term_id && !f.expense_lines[0].expense_ledger_id && !Number(f.expense_lines[0].amount);
+            return blank ? { ...f, expense_lines: billTerms.map(t => termLine(t)) } : f;
+        });
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [showForm, editingId, terms]);
+    const goodsValue = Number(allocationPreview.reduce((s2, a) => s2 + (Number(a.value) || 0), 0)) || 0;
+    // a term row's Rate % is a % of the goods value (a product-wise term: of that product)
+    const termRate = (idx, rate) => setForm(f => ({ ...f, expense_lines: f.expense_lines.map((l, i) => {
+        if (i !== idx) return l;
+        const src = l.target_detail_id ? allocationPreview.find(a => detailIdOf(a) === l.target_detail_id) : null;
+        const base = src ? Number(src.value) || 0 : goodsValue;
+        const amount = rate === '' ? '' : r2(base * Number(rate) / 100);
+        const n = { ...l, rate_percent: rate, amount };
+        if (n.bill_type === 'taxable' && n.vat_percent !== '') n.vat_amount = r2((Number(amount) || 0) * (Number(n.vat_percent) || 0) / 100);
+        return n;
+    }) }));
+    const setTermOfLine = (idx, termId) => setForm(f => ({ ...f, expense_lines: f.expense_lines.map((l, i) => {
+        if (i !== idx) return l;
+        const t = termById(termId);
+        return t ? termLine(t, { amount: l.amount, party_ledger_id: l.party_ledger_id, party_sub_ledger_id: l.party_sub_ledger_id, bill_type: l.bill_type, party_bill_no: l.party_bill_no, party_bill_date: l.party_bill_date, vat_percent: l.vat_percent, vat_amount: l.vat_amount, vat_in_cost: l.vat_in_cost })
+            : { ...l, billing_term_id: '', expense_sub_ledger_id: '' };
+    }) }));
+    // product-wise: the line of a term for one product (created on first input)
+    const productTermIdx = (detailId, termId) => form.expense_lines.findIndex(l => l.target_detail_id === detailId && l.billing_term_id === termId);
+    const updateProductTerm = (detailId, t, patch) => {
+        const idx = productTermIdx(detailId, t.id);
+        const byRate = 'rate_percent' in patch && !('amount' in patch);
+        if (idx >= 0) { if (byRate) termRate(idx, patch.rate_percent); else updateExpenseLine(idx, patch); return; }
+        const src = allocationPreview.find(a => detailIdOf(a) === detailId);
+        const line = termLine(t, { target_detail_id: detailId, ...patch });
+        if (byRate) line.amount = patch.rate_percent === '' ? '' : r2((Number(src?.value) || 0) * Number(patch.rate_percent) / 100);
+        setForm(f => ({ ...f, expense_lines: [...f.expense_lines.filter(l => l.billing_term_id || l.expense_ledger_id || Number(l.amount)), line] }));
+    };
+    const productTermTotal = detailId => r2(form.expense_lines.filter(l => l.target_detail_id === detailId).reduce((s2, l) => s2 + signed(l), 0));
+    // the vendor of the linked Bill / GRN / Order comes in as the vendor (changeable)
+    const linkDoc = (key, list, id) => setForm(f => {
+        const d = list.find(x => x.id === id);
+        const n = { ...f, [key]: id };
+        if (d && d.vendor_ledger_id) { n.vendor_ledger_id = d.vendor_ledger_id; n.vendor_sub_ledger_id = d.vendor_sub_ledger_id || ''; n.cash_vendor_name = ''; if (n.invoice_type === 'cash') n.invoice_type = 'credit'; }
+        return n;
+    });
 
     // FEATURE: "Net Payable" to the expense provider - every '+' line
     // adds, every '-' line (a TDS/withholding deduction, the standard
@@ -177,7 +265,7 @@ export default function PurchaseAdditionalExpense() {
         if (!saveAsDraft) {
             if (!form.source_order_id && !form.source_grn_id && !form.source_bill_id) return showAlert('Link this to at least one Order, GRN, or Bill', 'danger');
         }
-        const validLines = form.expense_lines.filter(l => l.expense_ledger_id && Number(l.amount) > 0);
+        const validLines = form.expense_lines.filter(l => (l.expense_ledger_id || l.billing_term_id) && Number(l.amount) > 0);
         if (!saveAsDraft && validLines.length === 0) return showAlert('At least one complete expense line (Expense Type + Amount) is required', 'danger');
         try {
             const payload = { ...form, expense_lines: validLines, ...(saveAsDraft ? { status: 'draft', save_as_draft: true } : {}) };
@@ -288,7 +376,7 @@ export default function PurchaseAdditionalExpense() {
 
             {showForm && (
                 <form onSubmit={handleSubmit} ref={formRef}>
-                    <EntryFillBar voucherType="purchase_additional" api="purchase-additional-expenses" form={form} editing={!!editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={r => handleCopyFrom(r.id)} />
+                    <EntryFillBar voucherType="purchase_additional" api="purchase-additional-expenses" form={form} editing={!!editingId} docId={editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={r => handleCopyFrom(r.id)} />
                     <div className="erp-topbar grid-cols-1 md:grid-cols-4">
                         <div className={efc.isVisible('doc_date') ? 'erp-field' : 'erp-field hidden'}>
                             <label className="erp-label">Date <span className="req">*</span> {form.doc_date && <span className="hint">({formatDateForDisplay(form.doc_date, 'nepali')} BS)</span>} {efc.isRequired('doc_date') && <span className="req">*</span>}</label>
@@ -296,23 +384,23 @@ export default function PurchaseAdditionalExpense() {
                         </div>
                         <div className="erp-field">
                             <label className="erp-label">Link to Order</label>
-                            <select className="erp-select" value={form.source_order_id} onChange={e => setForm({ ...form, source_order_id: e.target.value })}>
+                            <select className="erp-select" value={form.source_order_id} onChange={e => linkDoc('source_order_id', openOrders, e.target.value)}>
                                 <option value="">— None —</option>
-                                {openOrders.map(o => <option key={o.id} value={o.id}>{o.doc_no}</option>)}
+                                {openOrders.map(o => <option key={o.id} value={o.id}>{o.doc_no}{o.vendor_name_snapshot ? ` · ${o.vendor_name_snapshot}` : ''}</option>)}
                             </select>
                         </div>
                         <div className="erp-field">
                             <label className="erp-label">Link to GRN</label>
-                            <select className="erp-select" value={form.source_grn_id} onChange={e => setForm({ ...form, source_grn_id: e.target.value })}>
+                            <select className="erp-select" value={form.source_grn_id} onChange={e => linkDoc('source_grn_id', openGrns, e.target.value)}>
                                 <option value="">— None —</option>
-                                {openGrns.map(g => <option key={g.id} value={g.id}>{g.doc_no}</option>)}
+                                {openGrns.map(g => <option key={g.id} value={g.id}>{g.doc_no}{g.vendor_name_snapshot ? ` · ${g.vendor_name_snapshot}` : ''}</option>)}
                             </select>
                         </div>
                         <div className="erp-field">
                             <label className="erp-label">Link to Bill</label>
-                            <select className="erp-select" value={form.source_bill_id} onChange={e => setForm({ ...form, source_bill_id: e.target.value })}>
+                            <select className="erp-select" value={form.source_bill_id} onChange={e => linkDoc('source_bill_id', openBills, e.target.value)}>
                                 <option value="">— None —</option>
-                                {openBills.map(b => <option key={b.id} value={b.id}>{b.doc_no}</option>)}
+                                {openBills.map(b => <option key={b.id} value={b.id}>{b.doc_no}{b.vendor_name_snapshot ? ` · ${b.vendor_name_snapshot}` : ''}</option>)}
                             </select>
                         </div>
                         <div className="erp-field">
@@ -426,13 +514,87 @@ export default function PurchaseAdditionalExpense() {
                             </div>
                         </div>
 
-                        <h2 className="font-semibold text-sm text-gray-500 uppercase mb-2">Expense Lines</h2>
+                        <div className="erp-tabs mb-1">
+                            <button type="button" className={`erp-tab ${termTab === 'product' ? 'active' : ''}`} onClick={() => setTermTab('product')}>Product-wise Terms{form.expense_lines.some(l => l.target_detail_id && Number(l.amount)) ? ' •' : ''}</button>
+                            <button type="button" className={`erp-tab ${termTab === 'bill' ? 'active' : ''}`} onClick={() => setTermTab('bill')}>Bill-wise Terms</button>
+                        </div>
+                        {termTab === 'product' && (
+                            <div className="mb-3">
+                                {allocationPreview.length === 0 ? (
+                                    <p className="text-sm text-gray-500 py-2">Link an Order, GRN or Bill above - its products are listed here; open a product to enter its terms.</p>
+                                ) : (
+                                    <div className="overflow-x-auto">
+                                        <table className="erp-grid-table">
+                                            <thead><tr><th>#</th><th>Product</th><th className="text-right">Qty</th><th className="text-right">Value</th><th className="text-right">Product Terms</th><th className="text-right">Cost Total</th><th /></tr></thead>
+                                            <tbody>
+                                                {allocationPreview.map((a, i) => {
+                                                    const did = detailIdOf(a);
+                                                    return (
+                                                        <tr key={did || i} className="cursor-pointer" onDoubleClick={() => did && setProductPopup(a)}>
+                                                            <td>{i + 1}</td><td>{a.product_name_snapshot}</td><td className="text-right">{a.qty}</td><td className="text-right">{Number(a.value || 0).toFixed(2)}</td>
+                                                            <td className="text-right font-semibold">{productTermTotal(did) ? productTermTotal(did).toFixed(2) : ''}</td>
+                                                            <td className="text-right">{(Number(a.value || 0) + Number(a.allocated_amount || 0)).toFixed(2)}</td>
+                                                            <td className="text-right"><button type="button" className="nav-btn small" disabled={!did || !productTerms.length} onClick={() => setProductPopup(a)} title={productTerms.length ? 'Terms of this product' : 'No product-wise term for Purchase Additional in Billing Terms'}>Terms…</button></td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                        {!productTerms.length && <p className="text-xs text-gray-500 mt-1">No product-wise term yet - in Billing Terms tick "Purchase Additional" and "Product Wise".</p>}
+                                    </div>
+                                )}
+                            </div>
+                        )}
+                        {productPopup && (() => {
+                            const did = detailIdOf(productPopup);
+                            return (
+                                <EntryPopup title={`Product terms - ${productPopup.product_name_snapshot} (Qty ${productPopup.qty} · Value ${Number(productPopup.value || 0).toFixed(2)})`} onClose={() => setProductPopup(null)} width={980}
+                                    footer={<span className="text-sm">Total <b>{productTermTotal(did).toFixed(2)}</b> - goes to the cost of this product only (terms kept out of costing excepted)</span>}>
+                                    <div className="overflow-x-auto">
+                                        <table className="erp-grid-table min-w-[860px]">
+                                            <thead><tr><th>Term</th><th>Ledger</th><th>Sub-Ledger</th><th className="text-right">Rate %</th><th className="text-right">Amount</th><th>Paid to</th><th>Bill</th><th>Bill No</th><th className="text-right">VAT</th></tr></thead>
+                                            <tbody>
+                                                {productTerms.map(t => {
+                                                    const idx = productTermIdx(did, t.id);
+                                                    const l = idx >= 0 ? form.expense_lines[idx] : termLine(t);
+                                                    const set = patch => updateProductTerm(did, t, patch);
+                                                    return (
+                                                        <tr key={t.id}>
+                                                            <td className="font-semibold whitespace-nowrap">{t.term_name}{t.sign === '-' ? ' (−)' : ''}{t.include_in_costing === false && <span className="text-xs text-gray-500"> · not in cost</span>}</td>
+                                                            <td className="whitespace-nowrap" title="Term ledger - fixed">{ledgerName(l.expense_ledger_id) || '—'}</td>
+                                                            <td><select className="erp-select" value={l.expense_sub_ledger_id || ''} disabled={!subLedgersOf(l.expense_ledger_id).length} onChange={e => set({ expense_sub_ledger_id: e.target.value })}>
+                                                                <option value="">None</option>{subLedgersOf(l.expense_ledger_id).map(x => <option key={x.id} value={x.id}>{x.sub_ledger_name}</option>)}</select></td>
+                                                            <td><input type="number" step="0.001" className="erp-input w-20 text-right" value={l.rate_percent ?? ''} onChange={e => set({ rate_percent: e.target.value })} /></td>
+                                                            <td><input type="number" step="0.01" className="erp-input w-28 text-right" value={l.amount ?? ''} onChange={e => set({ amount: e.target.value, rate_percent: '' })} /></td>
+                                                            <td className="w-48"><SearchablePopupSelect listKey="expense_party_picker" columns={[{ key: 'account_code', label: 'Code' }, { key: 'account_name', label: 'Name' }]} defaultVisibleKeys={['account_name']}
+                                                                items={lp.filter(ledgers, 'supplier', l.party_ledger_id)} getId={x => x.id} getLabel={x => x.account_name} searchKeys={['account_name', 'account_code']}
+                                                                value={l.party_ledger_id} onChange={id => set({ party_ledger_id: id, party_sub_ledger_id: '' })} placeholder="Entry vendor" />
+                                                                {l.party_ledger_id && subLedgersOf(l.party_ledger_id).length > 0 && (
+                                                                    <select className="erp-select mt-0.5" value={l.party_sub_ledger_id || ''} onChange={e => set({ party_sub_ledger_id: e.target.value })}>
+                                                                        <option value="">Sub-ledger: none</option>{subLedgersOf(l.party_ledger_id).map(x => <option key={x.id} value={x.id}>{x.sub_ledger_name}</option>)}</select>
+                                                                )}</td>
+                                                            <td><select className="erp-select min-w-[130px]" value={l.bill_type} disabled={l.entry_sign === 'deduct'} onChange={e => set({ bill_type: e.target.value })}>{BILL_TYPES.map(([k, x]) => <option key={k} value={k}>{x}</option>)}</select></td>
+                                                            <td><input className="erp-input w-24" disabled={l.bill_type === 'no_bill'} value={l.party_bill_no || ''} onChange={e => set({ party_bill_no: e.target.value })} /></td>
+                                                            <td><input type="number" step="0.01" className="erp-input w-24 text-right" disabled={l.bill_type !== 'taxable'} value={l.vat_amount ?? ''} onChange={e => set({ vat_amount: e.target.value })} /></td>
+                                                        </tr>
+                                                    );
+                                                })}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                    <p className="ent-note mt-2">Rate % is of this product's value. The term ledger is fixed by the term (only its sub-ledger changes); "Paid to" and its sub-ledger are free - empty = the entry's vendor.</p>
+                                </EntryPopup>
+                            );
+                        })()}
+                        {termTab === 'bill' && (
+                        <>
                         <div className="overflow-x-auto">
                             <table className="erp-grid-table mb-2 min-w-[900px]">
                                 <thead>
                                     <tr>
-                                        <th className="w-48">Ledger</th>
-                                        <th className={`w-40 ${efc.isVisible('description', 'detail') ? '' : 'hidden'}`}>Term <span className="text-gray-400 normal-case">(description)</span></th>
+                                        <th className="w-40">Term</th>
+                                        <th className="w-48">Ledger / Sub-Ledger</th>
+                                        <th className={`w-40 ${efc.isVisible('description', 'detail') ? '' : 'hidden'}`}>Description</th>
                                         <th className={`w-32 ${efc.isVisible('allocation_basis', 'detail') ? '' : 'hidden'}`}>Basis</th>
                                         <th className={`w-20 ${efc.isVisible('entry_sign', 'detail') ? '' : 'hidden'}`}>Sign</th>
                                         <th className={`w-24 ${efc.isVisible('rate_percent', 'detail') ? '' : 'hidden'}`}>Rate %</th>
@@ -441,22 +603,40 @@ export default function PurchaseAdditionalExpense() {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {form.expense_lines.map((l, idx) => (
+                                    {form.expense_lines.map((l, idx) => l.target_detail_id ? null : (
                                         <React.Fragment key={idx}>
                                         <tr>
                                             <td>
+                                                <select className="erp-select" value={l.billing_term_id || ''} disabled={l.is_tds} onChange={e => setTermOfLine(idx, e.target.value)}>
+                                                    <option value="">{l.is_tds ? 'TDS' : '— no term (ledger) —'}</option>
+                                                    {billTerms.map(t => <option key={t.id} value={t.id}>{t.term_name}{t.include_in_costing === false ? ' (not in cost)' : ''}</option>)}
+                                                    {l.billing_term_id && !billTerms.some(t => t.id === l.billing_term_id) && <option value={l.billing_term_id}>{(termById(l.billing_term_id) || {}).term_name || l.description || 'Term'}</option>}
+                                                </select>
+                                            </td>
+                                            <td>
+                                                {l.billing_term_id && termById(l.billing_term_id)?.billing_ledger_id ? (
+                                                    <div className="erp-input bg-gray-100 truncate" title="Term ledger - fixed by the billing term">{ledgerName(l.expense_ledger_id) || 'Term ledger'}</div>
+                                                ) : (
                                                 <SearchablePopupSelect
                                                     listKey="expense_ledger_picker"
                                                     columns={[{ key: 'account_code', label: 'Code' }, { key: 'account_name', label: 'Name' }]}
                                                     defaultVisibleKeys={['account_name']}
                                                     items={lp.filter(ledgers, 'expense', l.expense_ledger_id)} getId={x => x.id} getLabel={x => x.account_name}
                                                     searchKeys={['account_name', 'account_code']}
-                                                    value={l.expense_ledger_id} onChange={id => updateExpenseLine(idx, { expense_ledger_id: id })} placeholder="e.g. Freight, Wages, TDS"
+                                                    value={l.expense_ledger_id} onChange={id => updateExpenseLine(idx, { expense_ledger_id: id })} placeholder={l.is_tds ? 'TDS payable ledger' : 'e.g. Freight, Wages, TDS'}
                                                 />
+                                                )}
+                                                {l.expense_ledger_id && subLedgersOf(l.expense_ledger_id).length > 0 && (
+                                                    <select className="erp-select mt-0.5" value={l.expense_sub_ledger_id || ''} onChange={e => updateExpenseLine(idx, { expense_sub_ledger_id: e.target.value })} title="Sub-ledger of the term ledger (changeable)">
+                                                        <option value="">Sub-ledger: none</option>
+                                                        {subLedgersOf(l.expense_ledger_id).map(x => <option key={x.id} value={x.id}>{x.sub_ledger_name}</option>)}
+                                                    </select>
+                                                )}
+                                                {l.is_tds && <span className="text-xs font-semibold text-amber-700" title="TDS withheld: Cr this ledger, Dr the party; not in costing">TDS line</span>}
                                             </td>
                                             <td className={efc.isVisible('description', 'detail') ? '' : 'hidden'}><input disabled={efc.isReadonly('description', 'detail')} className="erp-input" value={l.description} onChange={e => updateExpenseLine(idx, { description: e.target.value })} placeholder="e.g. Transportation" /></td>
                                             <td className={efc.isVisible('allocation_basis', 'detail') ? '' : 'hidden'}>
-                                                <select disabled={efc.isReadonly('allocation_basis', 'detail')} className="erp-select" value={l.allocation_basis} onChange={e => updateExpenseLine(idx, { allocation_basis: e.target.value })}>
+                                                <select disabled={efc.isReadonly('allocation_basis', 'detail') || l.is_tds || termById(l.billing_term_id)?.include_in_costing === false} className="erp-select" value={l.allocation_basis} onChange={e => updateExpenseLine(idx, { allocation_basis: e.target.value })}>
                                                     <option value="value_wise">In cost · Value-wise</option>
                                                     <option value="qty_wise">In cost · Qty-wise</option>
                                                     <option value="equal">In cost · Equal Split</option>
@@ -469,12 +649,12 @@ export default function PurchaseAdditionalExpense() {
                                                     <option value="deduct">−</option>
                                                 </select>
                                             </td>
-                                            <td className={efc.isVisible('rate_percent', 'detail') ? '' : 'hidden'}><input disabled={efc.isReadonly('rate_percent', 'detail')} type="number" step="0.001" className="erp-input" value={l.rate_percent} onChange={e => autoCalcFromRate(idx, e.target.value)} placeholder={l.entry_sign === 'deduct' ? 'TDS %' : ''} /></td>
+                                            <td className={efc.isVisible('rate_percent', 'detail') ? '' : 'hidden'}><input disabled={efc.isReadonly('rate_percent', 'detail')} type="number" step="0.001" className="erp-input" value={l.rate_percent} onChange={e => (l.billing_term_id ? termRate(idx, e.target.value) : autoCalcFromRate(idx, e.target.value))} placeholder={l.entry_sign === 'deduct' ? 'TDS %' : ''} /></td>
                                             <td className={efc.isVisible('amount', 'detail') ? '' : 'hidden'}><input disabled={efc.isReadonly('amount', 'detail')} type="number" step="0.01" className="erp-input" value={l.amount} onChange={e => updateExpenseLine(idx, { amount: e.target.value, rate_percent: '' })} /></td>
                                             <td><button type="button" tabIndex={-1} onClick={() => removeExpenseLine(idx)} className="text-red-500 text-xs">✕</button></td>
                                         </tr>
                                         <tr className="bg-gray-50">
-                                            <td colSpan={7} className="pb-2">
+                                            <td colSpan={8} className="pb-2">
                                                 <div className="flex flex-wrap gap-2 items-end text-xs">
                                                     <div className="w-56"><span className="text-gray-500">Paid to (supplier / cash / labour)</span>
                                                         <SearchablePopupSelect
@@ -483,9 +663,16 @@ export default function PurchaseAdditionalExpense() {
                                                             defaultVisibleKeys={['account_name']}
                                                             items={lp.filter(ledgers, 'supplier', l.party_ledger_id)} getId={x => x.id} getLabel={x => x.account_name}
                                                             searchKeys={['account_name', 'account_code']}
-                                                            value={l.party_ledger_id} onChange={id => updateExpenseLine(idx, { party_ledger_id: id })} placeholder={form.vendor_ledger_id ? 'Same as entry vendor' : 'Choose'}
+                                                            value={l.party_ledger_id} onChange={id => updateExpenseLine(idx, { party_ledger_id: id, party_sub_ledger_id: '' })} placeholder={form.vendor_ledger_id ? 'Same as entry vendor' : 'Choose'}
                                                         />
                                                     </div>
+                                                    {l.party_ledger_id && subLedgersOf(l.party_ledger_id).length > 0 && (
+                                                        <label className="flex flex-col"><span className="text-gray-500">Party sub-ledger</span>
+                                                            <select className="erp-select" value={l.party_sub_ledger_id || ''} onChange={e => updateExpenseLine(idx, { party_sub_ledger_id: e.target.value })}>
+                                                                <option value="">None</option>
+                                                                {subLedgersOf(l.party_ledger_id).map(x => <option key={x.id} value={x.id}>{x.sub_ledger_name}</option>)}
+                                                            </select></label>
+                                                    )}
                                                     {l.entry_sign !== 'deduct' && (
                                                         <>
                                                             <label className="flex flex-col"><span className="text-gray-500">Bill</span>
@@ -517,8 +704,14 @@ export default function PurchaseAdditionalExpense() {
                             </table>
                         </div>
                         <p className="text-xs text-gray-400 mb-2">Each line can be a separate bill: its own supplier (or the cash / labour ledger for wages, loading / unloading with no bill), bill no and VAT. Taxable and non-taxable bills appear in the VAT purchase register and VAT return; "No bill" lines do not. "Not in costing" keeps a line out of landed cost; VAT is left out of cost unless it is marked not claimable. A "−" line with Rate % (e.g. 1.5% TDS) is shown in the TDS report.</p>
+                        <p className="text-xs text-gray-400 mb-2">One row per bill-level term (Billing Terms: Purchase Additional, not Product Wise) - fill the amounts that apply; empty rows are left out. Each row is divided over the products of the linked document by its Basis (value / qty / equal). A term's ledger is fixed; its sub-ledger, the party paid and the party's sub-ledger can be changed.</p>
+                        </>
+                        )}
                         <div className="flex justify-between items-start mb-1">
-                            <button type="button" onClick={addExpenseLine} className="text-xs text-blue-600">➕ Add Line</button>
+                            <span className="flex gap-3">
+                                <button type="button" onClick={addExpenseLine} className="text-xs text-blue-600">➕ Add Line</button>
+                                <button type="button" onClick={addTdsLine} className="text-xs text-blue-600" title="TDS withheld from the supplier: Cr TDS payable, less paid to the supplier">➕ Add TDS Line</button>
+                            </span>
                             <span className="text-sm font-semibold">{vatTotal ? <span className="font-normal text-gray-600 mr-3">VAT {vatTotal.toFixed(2)}</span> : null}Net Payable: {netPayable.toFixed(2)}{fx.foreign ? ` ${fx.code} = ${(netPayable * fx.rate).toFixed(2)} ${fx.base}` : ''}</span>
                         </div>
                         {netPayable !== 0 && (

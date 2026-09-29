@@ -225,8 +225,8 @@ export default function FinancialReports() {
         <div className="erp-shell px-4">
         <div className="erp-card">
             <div className="erp-header"><span className="erp-header-title">📊 Financial Reports</span></div>
-            <div className="flex flex-wrap gap-1 px-4 pt-3 border-b no-print">
-                {TABS.map(([k, l]) => <button key={k} onClick={() => { setTab(k); setData(null); }} className={`px-3 py-2 text-sm border-b-2 ${tab === k ? 'border-blue-600 text-blue-600 font-semibold' : 'border-transparent text-gray-500'}`}>{l}</button>)}
+            <div className="erp-tabs">
+                {TABS.map(([k, l]) => <button key={k} onClick={() => { setTab(k); setData(null); }} className={`erp-tab ${tab === k ? 'active' : ''}`}>{l}</button>)}
             </div>
             <div className="erp-tab-content">
                 <div className="no-print"><SavedViewsBar reportKey={`financial:${tab}`} getConfig={() => config} onApply={cfg => { const m = { ...defaultConfig(), ...cfg }; setConfig(m); run(m); }} onReset={() => { setConfig(applyPreset('this_fy', defaultConfig())); setData(null); }} /></div>

@@ -1,0 +1,6601 @@
+{
+"pages": {
+"/sales-quotation": {
+"path": "/sales-quotation",
+"title": "Sales Quotation",
+"module": "Sales",
+"kind": "entry",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Price offer to a customer. Pending quotation lines can be pulled into a Sales Order, Challan or Bill.",
+"steps": [
+"Choose the date (AD / BS), Cash or Credit, then the customer. Quotation / Order / Challan No. boxes right after the customer pull pending documents of that customer (Enter opens the list).",
+"Add lines: item code or barcode, qty, unit, rate (from the customer's rate type), discount; Add / Less opens the product-wise terms when Item Charges is on.",
+"Check the footer: gross, terms (VAT, discount, freight), net amount; party address / PAN tab can update the master.",
+"Save (or Save as Draft). The action bar also has New, Modify, Cancel, Remove and Print."
+],
+"accounts": "None - a quotation posts nothing.",
+"stock": "None.",
+"vat": "None.",
+"other": "Its qty is \"pending\" until pulled forward; the Order / Challan / Bill made from it reduces the pending qty.",
+"tips": [
+"Use Copy on a posted quotation to make a similar one.",
+"Quotation Register (Universal Register) lists them with status."
+],
+"fields": [
+[
+"Date",
+"Date of the document. Accounts, stock, VAT month and ageing all use this date. Type it (AD or BS - switch with the AD/BS button) or pick it. A date in a closed fiscal year cannot be posted."
+],
+[
+"Customer",
+"The customer (ledger in Sundry Debtors). Debited with the bill total (credited on a return). PAN, address, credit limit, rate category, agent and area come from the customer master."
+],
+[
+"Warehouse",
+"Warehouse the stock goes out of / comes into (only with Multi Warehouse on). A line can have its own warehouse."
+],
+[
+"Salesman/Agent",
+"Salesman / agent: agent-wise reports, targets and commission."
+],
+[
+"Customer Sub-Ledger",
+"Sub-ledger (e.g. branch or project of the customer) under the customer ledger. The party posting carries it, so sub-ledger statements and ageing show it."
+],
+[
+"Area",
+"Area of the party / sale - area-wise reports and data access."
+],
+[
+"Route",
+"Delivery / sales route - route-wise sales, loading sheet and route plan."
+],
+[
+"Cost Center",
+"Cost center (department, project, site, shed ...) every posting of this document carries: P&L by cost center, budgets."
+],
+[
+"Unit",
+"Business unit (division / brand) every posting carries: P&L by unit, budgets."
+],
+[
+"Priority",
+"Urgency of the document (normal / high / urgent) - for follow-up lists only."
+],
+[
+"Rate Type",
+"Which selling rate (Sr1 - Sr5) the lines use. Defaults from the customer's rate category; changing it re-rates the lines after asking."
+],
+[
+"Narration",
+"One line description printed on the voucher and shown in the ledger. Pick a saved remark or type."
+],
+[
+"Item Code",
+"Product code or barcode - type or scan; Enter moves on. F1 shows this customer's / supplier's rate history."
+],
+[
+"Item Name",
+"The product. Its units, rates, accounts, VAT, batch / serial and item type come from the Product Master."
+],
+[
+"Qty",
+"Quantity in the selected unit. Stock moves in the product's base unit (converted automatically)."
+],
+[
+"Free Qty",
+"Free (scheme) quantity: moves stock, no value."
+],
+[
+"UOM",
+"Unit of the line (box, pcs, kg ...). Conversion to the base unit comes from Product Units / the product."
+],
+[
+"Alt Qty",
+"Quantity in the second unit of a dual-unit product (e.g. pcs with cartons)."
+],
+[
+"Rate",
+"Rate per unit (per the rate basis). Sales: from the rate type / rate category / offer rate; purchase: last purchase rate."
+],
+[
+"Rate Basis",
+"Whether the rate is per the primary or the secondary unit of a dual-unit product."
+],
+[
+"Gross",
+"Qty x rate before discounts and terms."
+],
+[
+"Add / Less",
+"Product-wise charges and discounts of the line (from its billing terms popup when Item Charges is on); the popup total shows here."
+],
+[
+"Net Amount",
+"Gross +/- the line terms: the value of the line."
+],
+[
+"Batch",
+"Batch / lot number (Batch System on). Stock and batch-wise costing follow it."
+],
+[
+"Serial No",
+"Serial number of the piece (Serial Number on) - vehicles, electronics."
+],
+[
+"Exp Date",
+"Expiry date of the batch - near-expiry alerts and stock ageing."
+],
+[
+"Ref No (source doc)",
+"The document this line was pulled from (quotation / order / challan / GRN / bill)."
+]
+],
+"slug": "sales-quotation",
+"pdf": "/help/menus/sales-quotation.pdf"
+},
+"/sales-order": {
+"path": "/sales-order",
+"title": "Sales Order",
+"module": "Sales",
+"kind": "entry",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Customer's confirmed order. Checks the credit limit; can be billed later (single or many orders at once in Order -> Bill).",
+"steps": [
+"Choose the date (AD / BS), Cash or Credit, then the customer. Quotation / Order / Challan No. boxes right after the customer pull pending documents of that customer (Enter opens the list).",
+"Add lines: item code or barcode, qty, unit, rate (from the customer's rate type), discount; Add / Less opens the product-wise terms when Item Charges is on.",
+"Check the footer: gross, terms (VAT, discount, freight), net amount; party address / PAN tab can update the master.",
+"Save (or Save as Draft). The action bar also has New, Modify, Cancel, Remove and Print.",
+"Pull from a quotation with Quotation No. if one was given."
+],
+"accounts": "None.",
+"stock": "None (only reserved in order reports).",
+"vat": "None.",
+"other": "Pending order qty feeds Pending Orders, Order Fill Rate and the salesman order register. Credit limit control warns / blocks per the customer.",
+"fields": [
+[
+"Date",
+"Date of the document. Accounts, stock, VAT month and ageing all use this date. Type it (AD or BS - switch with the AD/BS button) or pick it. A date in a closed fiscal year cannot be posted."
+],
+[
+"Cash / Credit",
+"Cash: paid / received now - the party field becomes a name (or a cash ledger) and no outstanding is created. Credit: the amount stays outstanding against the party (bill-wise, ageing, credit limit)."
+],
+[
+"Customer",
+"The customer (ledger in Sundry Debtors). Debited with the bill total (credited on a return). PAN, address, credit limit, rate category, agent and area come from the customer master."
+],
+[
+"Warehouse",
+"Warehouse the stock goes out of / comes into (only with Multi Warehouse on). A line can have its own warehouse."
+],
+[
+"Salesman/Agent",
+"Salesman / agent: agent-wise reports, targets and commission."
+],
+[
+"Customer Sub-Ledger",
+"Sub-ledger (e.g. branch or project of the customer) under the customer ledger. The party posting carries it, so sub-ledger statements and ageing show it."
+],
+[
+"Due Date",
+"Payment due date (Date + credit days). Ageing, overdue interest and reminders use it."
+],
+[
+"Area",
+"Area of the party / sale - area-wise reports and data access."
+],
+[
+"Route",
+"Delivery / sales route - route-wise sales, loading sheet and route plan."
+],
+[
+"Cost Center",
+"Cost center (department, project, site, shed ...) every posting of this document carries: P&L by cost center, budgets."
+],
+[
+"Unit",
+"Business unit (division / brand) every posting carries: P&L by unit, budgets."
+],
+[
+"Priority",
+"Urgency of the document (normal / high / urgent) - for follow-up lists only."
+],
+[
+"Rate Type",
+"Which selling rate (Sr1 - Sr5) the lines use. Defaults from the customer's rate category; changing it re-rates the lines after asking."
+],
+[
+"Narration",
+"One line description printed on the voucher and shown in the ledger. Pick a saved remark or type."
+],
+[
+"Quotation No.",
+"Pull from a pending quotation of this party: its lines (pending qty only), master part (company, agent, sub-ledger ...), remarks and billing terms come into this entry. Enter on the box opens the list."
+],
+[
+"Item Code",
+"Product code or barcode - type or scan; Enter moves on. F1 shows this customer's / supplier's rate history."
+],
+[
+"Item Name",
+"The product. Its units, rates, accounts, VAT, batch / serial and item type come from the Product Master."
+],
+[
+"Qty",
+"Quantity in the selected unit. Stock moves in the product's base unit (converted automatically)."
+],
+[
+"Free Qty",
+"Free (scheme) quantity: moves stock, no value."
+],
+[
+"UOM",
+"Unit of the line (box, pcs, kg ...). Conversion to the base unit comes from Product Units / the product."
+],
+[
+"Alt Qty",
+"Quantity in the second unit of a dual-unit product (e.g. pcs with cartons)."
+],
+[
+"Rate",
+"Rate per unit (per the rate basis). Sales: from the rate type / rate category / offer rate; purchase: last purchase rate."
+],
+[
+"Rate Basis",
+"Whether the rate is per the primary or the secondary unit of a dual-unit product."
+],
+[
+"Gross",
+"Qty x rate before discounts and terms."
+],
+[
+"Add / Less",
+"Product-wise charges and discounts of the line (from its billing terms popup when Item Charges is on); the popup total shows here."
+],
+[
+"Net Amount",
+"Gross +/- the line terms: the value of the line."
+],
+[
+"Batch",
+"Batch / lot number (Batch System on). Stock and batch-wise costing follow it."
+],
+[
+"Serial No",
+"Serial number of the piece (Serial Number on) - vehicles, electronics."
+],
+[
+"Exp Date",
+"Expiry date of the batch - near-expiry alerts and stock ageing."
+],
+[
+"Ref No (source doc)",
+"The document this line was pulled from (quotation / order / challan / GRN / bill)."
+]
+],
+"slug": "sales-order",
+"pdf": "/help/menus/sales-order.pdf"
+},
+"/order-billing": {
+"path": "/order-billing",
+"title": "Order -> Bill (single / multiple)",
+"module": "Sales",
+"kind": "entry",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Turn one or many pending sales orders into sales bills in one go, with qty / rate changes.",
+"steps": [
+"Filter orders (date, customer, agent, route).",
+"Tick the orders; adjust qty / rate per line.",
+"Make bills: one bill per customer."
+],
+"accounts": "Each bill made posts like a Sales Bill.",
+"stock": "Stock goes out with each bill.",
+"vat": "Output VAT on each bill.",
+"other": "The orders' billed qty moves; fully billed orders close.",
+"fields": [],
+"slug": "order-billing",
+"pdf": "/help/menus/order-billing.pdf"
+},
+"/sales-delivery": {
+"path": "/sales-delivery",
+"title": "Sales Delivery / Challan",
+"module": "Sales",
+"kind": "entry",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Goods sent to the customer before the bill (delivery note / challan).",
+"steps": [
+"Choose the date (AD / BS), Cash or Credit, then the customer. Quotation / Order / Challan No. boxes right after the customer pull pending documents of that customer (Enter opens the list).",
+"Add lines: item code or barcode, qty, unit, rate (from the customer's rate type), discount; Add / Less opens the product-wise terms when Item Charges is on.",
+"Check the footer: gross, terms (VAT, discount, freight), net amount; party address / PAN tab can update the master.",
+"Save (or Save as Draft). The action bar also has New, Modify, Cancel, Remove and Print.",
+"Vehicle, driver and transport can be recorded for the challan print."
+],
+"accounts": "None - the bill made from it posts the sale.",
+"stock": "Stock goes OUT on posting (warehouse / batch / serial of each line). Negative Stock control applies.",
+"vat": "None (VAT is on the bill).",
+"other": "Challan No. on the Sales Bill pulls it; those bill lines do not move stock again.",
+"fields": [
+[
+"Date",
+"Date of the document. Accounts, stock, VAT month and ageing all use this date. Type it (AD or BS - switch with the AD/BS button) or pick it. A date in a closed fiscal year cannot be posted."
+],
+[
+"Customer",
+"The customer (ledger in Sundry Debtors). Debited with the bill total (credited on a return). PAN, address, credit limit, rate category, agent and area come from the customer master."
+],
+[
+"Warehouse",
+"Warehouse the stock goes out of / comes into (only with Multi Warehouse on). A line can have its own warehouse."
+],
+[
+"Vehicle No",
+"Vehicle carrying the goods - printed on the challan / transfer."
+],
+[
+"Salesman/Agent",
+"Salesman / agent: agent-wise reports, targets and commission."
+],
+[
+"Customer Sub-Ledger",
+"Sub-ledger (e.g. branch or project of the customer) under the customer ledger. The party posting carries it, so sub-ledger statements and ageing show it."
+],
+[
+"Driver Name",
+"Driver of the vehicle."
+],
+[
+"Transport",
+"Transporter (Transport Master)."
+],
+[
+"Area",
+"Area of the party / sale - area-wise reports and data access."
+],
+[
+"Route",
+"Delivery / sales route - route-wise sales, loading sheet and route plan."
+],
+[
+"Cost Center",
+"Cost center (department, project, site, shed ...) every posting of this document carries: P&L by cost center, budgets."
+],
+[
+"Unit",
+"Business unit (division / brand) every posting carries: P&L by unit, budgets."
+],
+[
+"Narration",
+"One line description printed on the voucher and shown in the ledger. Pick a saved remark or type."
+],
+[
+"Quotation No.",
+"Pull from a pending quotation of this party: its lines (pending qty only), master part (company, agent, sub-ledger ...), remarks and billing terms come into this entry. Enter on the box opens the list."
+],
+[
+"Order No.",
+"Pull from a pending order of this party (pending qty only). Master part, remarks and billing terms come along. The order's delivered / billed qty moves when this entry posts."
+],
+[
+"Item Code",
+"Product code or barcode - type or scan; Enter moves on. F1 shows this customer's / supplier's rate history."
+],
+[
+"Item Name",
+"The product. Its units, rates, accounts, VAT, batch / serial and item type come from the Product Master."
+],
+[
+"Qty",
+"Quantity in the selected unit. Stock moves in the product's base unit (converted automatically)."
+],
+[
+"Free Qty",
+"Free (scheme) quantity: moves stock, no value."
+],
+[
+"UOM",
+"Unit of the line (box, pcs, kg ...). Conversion to the base unit comes from Product Units / the product."
+],
+[
+"Alt Qty",
+"Quantity in the second unit of a dual-unit product (e.g. pcs with cartons)."
+],
+[
+"Rate",
+"Rate per unit (per the rate basis). Sales: from the rate type / rate category / offer rate; purchase: last purchase rate."
+],
+[
+"Rate Basis",
+"Whether the rate is per the primary or the secondary unit of a dual-unit product."
+],
+[
+"Gross",
+"Qty x rate before discounts and terms."
+],
+[
+"Add / Less",
+"Product-wise charges and discounts of the line (from its billing terms popup when Item Charges is on); the popup total shows here."
+],
+[
+"Net Amount",
+"Gross +/- the line terms: the value of the line."
+],
+[
+"Batch",
+"Batch / lot number (Batch System on). Stock and batch-wise costing follow it."
+],
+[
+"Serial No",
+"Serial number of the piece (Serial Number on) - vehicles, electronics."
+],
+[
+"Exp Date",
+"Expiry date of the batch - near-expiry alerts and stock ageing."
+],
+[
+"Ref No (source doc)",
+"The document this line was pulled from (quotation / order / challan / GRN / bill)."
+]
+],
+"slug": "sales-delivery",
+"pdf": "/help/menus/sales-delivery.pdf"
+},
+"/sales-bill": {
+"path": "/sales-bill",
+"title": "Sales Bill / Invoice",
+"module": "Sales",
+"kind": "entry",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Tax invoice to the customer. Posts the sale, the VAT and (for a direct bill) takes the stock out.",
+"steps": [
+"Choose the date (AD / BS), Cash or Credit, then the customer. Quotation / Order / Challan No. boxes right after the customer pull pending documents of that customer (Enter opens the list).",
+"Add lines: item code or barcode, qty, unit, rate (from the customer's rate type), discount; Add / Less opens the product-wise terms when Item Charges is on.",
+"Check the footer: gross, terms (VAT, discount, freight), net amount; party address / PAN tab can update the master.",
+"Save (or Save as Draft). The action bar also has New, Modify, Cancel, Remove and Print.",
+"Receipt / TDS tab: record money received now - cash and / or several banks, one line each - (cash bill: all of it; credit bill: part payment allowed) and TDS the customer withholds.",
+"With IRD Billing on, a posted bill cannot be modified or removed - only cancelled."
+],
+"accounts": "Dr Customer (bill total) / Cr Sales account per line (product account > document Sales Account > System Control) / Cr VAT ledger / terms to their ledgers. Receipt lines: Dr cash / bank, Cr customer. TDS: Dr TDS receivable, Cr customer.",
+"stock": "Direct lines (not from a challan) go OUT of stock. Services, non-inventory and fixed-asset lines do not move stock. Negative Stock control applies (confirm to post anyway when allowed).",
+"vat": "Output VAT to the Sales VAT register, VAT return, IRD register and CBMS.",
+"other": "Order / challan pending qty moves; bill-wise outstanding (credit); agent sales and commission; customer credit limit; IRD print count.",
+"tips": [
+"F1 on a line shows this customer's rate history for the item.",
+"Cancel reverses accounts, stock and IRD status; a posted bill is never deleted under IRD."
+],
+"fields": [
+[
+"Date",
+"Date of the document. Accounts, stock, VAT month and ageing all use this date. Type it (AD or BS - switch with the AD/BS button) or pick it. A date in a closed fiscal year cannot be posted."
+],
+[
+"Cash / Credit",
+"Cash: paid / received now - the party field becomes a name (or a cash ledger) and no outstanding is created. Credit: the amount stays outstanding against the party (bill-wise, ageing, credit limit)."
+],
+[
+"Customer",
+"The customer (ledger in Sundry Debtors). Debited with the bill total (credited on a return). PAN, address, credit limit, rate category, agent and area come from the customer master."
+],
+[
+"Customer Sub-Ledger",
+"Sub-ledger (e.g. branch or project of the customer) under the customer ledger. The party posting carries it, so sub-ledger statements and ageing show it."
+],
+[
+"Warehouse",
+"Warehouse the stock goes out of / comes into (only with Multi Warehouse on). A line can have its own warehouse."
+],
+[
+"Salesman / Agent",
+"Salesman / agent of the sale: used for agent-wise sales, targets and commission."
+],
+[
+"Due Date",
+"Payment due date (Date + credit days). Ageing, overdue interest and reminders use it."
+],
+[
+"Area",
+"Area of the party / sale - area-wise reports and data access."
+],
+[
+"Route",
+"Delivery / sales route - route-wise sales, loading sheet and route plan."
+],
+[
+"Cost Center",
+"Cost center (department, project, site, shed ...) every posting of this document carries: P&L by cost center, budgets."
+],
+[
+"Unit",
+"Business unit (division / brand) every posting carries: P&L by unit, budgets."
+],
+[
+"Sales Account",
+"Sales (income) account for this document when the product has none. Product account > this account > System Control Sales Account Mapping."
+],
+[
+"Sales Sub-Ledger",
+"Sub-ledger of the sales account for this document."
+],
+[
+"Rate Type",
+"Which selling rate (Sr1 - Sr5) the lines use. Defaults from the customer's rate category; changing it re-rates the lines after asking."
+],
+[
+"Narration",
+"One line description printed on the voucher and shown in the ledger. Pick a saved remark or type."
+],
+[
+"Quotation No.",
+"Pull from a pending quotation of this party: its lines (pending qty only), master part (company, agent, sub-ledger ...), remarks and billing terms come into this entry. Enter on the box opens the list."
+],
+[
+"Order No.",
+"Pull from a pending order of this party (pending qty only). Master part, remarks and billing terms come along. The order's delivered / billed qty moves when this entry posts."
+],
+[
+"Challan No.",
+"Pull from a pending delivery challan. The stock already went out on the challan, so the bill lines from it do not move stock again."
+],
+[
+"Base",
+"Amount TDS is worked out on (default: the bill value without VAT)."
+],
+[
+"TDS %",
+"TDS rate. TDS amount = base x %. Sales: TDS the customer withholds (Dr TDS receivable, Cr customer). Purchase: TDS we withhold (Dr supplier, Cr TDS payable)."
+],
+[
+"TDS Amount",
+"TDS in rupees; typed or worked out from base x %."
+],
+[
+"TDS Ledger",
+"TDS payable (purchase) or TDS receivable (sales) ledger; defaults from System Control."
+],
+[
+"TDS Sub-Ledger",
+"Sub-ledger of the TDS ledger (e.g. TDS type / section)."
+],
+[
+"Item Code",
+"Product code or barcode - type or scan; Enter moves on. F1 shows this customer's / supplier's rate history."
+],
+[
+"Item Name",
+"The product. Its units, rates, accounts, VAT, batch / serial and item type come from the Product Master."
+],
+[
+"Qty",
+"Quantity in the selected unit. Stock moves in the product's base unit (converted automatically)."
+],
+[
+"Free Qty",
+"Free (scheme) quantity: moves stock, no value."
+],
+[
+"UOM",
+"Unit of the line (box, pcs, kg ...). Conversion to the base unit comes from Product Units / the product."
+],
+[
+"Alt Qty",
+"Quantity in the second unit of a dual-unit product (e.g. pcs with cartons)."
+],
+[
+"Rate",
+"Rate per unit (per the rate basis). Sales: from the rate type / rate category / offer rate; purchase: last purchase rate."
+],
+[
+"Rate Basis",
+"Whether the rate is per the primary or the secondary unit of a dual-unit product."
+],
+[
+"Gross",
+"Qty x rate before discounts and terms."
+],
+[
+"Add / Less",
+"Product-wise charges and discounts of the line (from its billing terms popup when Item Charges is on); the popup total shows here."
+],
+[
+"Net Amount",
+"Gross +/- the line terms: the value of the line."
+],
+[
+"Batch",
+"Batch / lot number (Batch System on). Stock and batch-wise costing follow it."
+],
+[
+"Serial No",
+"Serial number of the piece (Serial Number on) - vehicles, electronics."
+],
+[
+"Exp Date",
+"Expiry date of the batch - near-expiry alerts and stock ageing."
+],
+[
+"Ref No (source doc)",
+"The document this line was pulled from (quotation / order / challan / GRN / bill)."
+]
+],
+"slug": "sales-bill",
+"pdf": "/help/menus/sales-bill.pdf"
+},
+"/sales-return": {
+"path": "/sales-return",
+"title": "Sales Return",
+"module": "Sales",
+"kind": "entry",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Goods coming back from a customer (credit note), normally against a bill.",
+"steps": [
+"Choose the customer and pull the bill with Bill No. - only the qty not yet returned is offered.",
+"Give the return reason and settlement type; adjust qty.",
+"Save."
+],
+"accounts": "Dr Sales Return account (product return account > sales account) / Dr VAT / Cr Customer.",
+"stock": "Goods come back IN at their cost (the cost that batch / serial went out at, else the current average) - never at the selling rate.",
+"vat": "Reduces output VAT (credit note in the VAT register; sent to CBMS as a bill return).",
+"other": "The bill's returned qty moves; bill-wise settlement against the bill.",
+"fields": [
+[
+"Date",
+"Date of the document. Accounts, stock, VAT month and ageing all use this date. Type it (AD or BS - switch with the AD/BS button) or pick it. A date in a closed fiscal year cannot be posted."
+],
+[
+"Customer",
+"The customer (ledger in Sundry Debtors). Debited with the bill total (credited on a return). PAN, address, credit limit, rate category, agent and area come from the customer master."
+],
+[
+"Warehouse",
+"Warehouse the stock goes out of / comes into (only with Multi Warehouse on). A line can have its own warehouse."
+],
+[
+"Sales Account",
+"Sales (income) account for this document when the product has none. Product account > this account > System Control Sales Account Mapping."
+],
+[
+"Sales Sub-Ledger",
+"Sub-ledger of the sales account for this document."
+],
+[
+"Return Reason",
+"Why the goods came back: printed on the credit note, sent to IRD for sales returns."
+],
+[
+"Settlement Type",
+"How the return is settled: against the bill (adjusts that bill's outstanding) or on account."
+],
+[
+"Salesman/Agent",
+"Salesman / agent: agent-wise reports, targets and commission."
+],
+[
+"Customer Sub-Ledger",
+"Sub-ledger (e.g. branch or project of the customer) under the customer ledger. The party posting carries it, so sub-ledger statements and ageing show it."
+],
+[
+"Area",
+"Area of the party / sale - area-wise reports and data access."
+],
+[
+"Route",
+"Delivery / sales route - route-wise sales, loading sheet and route plan."
+],
+[
+"Cost Center",
+"Cost center (department, project, site, shed ...) every posting of this document carries: P&L by cost center, budgets."
+],
+[
+"Unit",
+"Business unit (division / brand) every posting carries: P&L by unit, budgets."
+],
+[
+"Narration",
+"One line description printed on the voucher and shown in the ledger. Pick a saved remark or type."
+],
+[
+"Bill No.",
+"Pull from a posted bill of this party (for a return): only the qty not yet returned is offered."
+],
+[
+"Item Code",
+"Product code or barcode - type or scan; Enter moves on. F1 shows this customer's / supplier's rate history."
+],
+[
+"Item Name",
+"The product. Its units, rates, accounts, VAT, batch / serial and item type come from the Product Master."
+],
+[
+"Qty",
+"Quantity in the selected unit. Stock moves in the product's base unit (converted automatically)."
+],
+[
+"Free Qty",
+"Free (scheme) quantity: moves stock, no value."
+],
+[
+"UOM",
+"Unit of the line (box, pcs, kg ...). Conversion to the base unit comes from Product Units / the product."
+],
+[
+"Alt Qty",
+"Quantity in the second unit of a dual-unit product (e.g. pcs with cartons)."
+],
+[
+"Rate",
+"Rate per unit (per the rate basis). Sales: from the rate type / rate category / offer rate; purchase: last purchase rate."
+],
+[
+"Rate Basis",
+"Whether the rate is per the primary or the secondary unit of a dual-unit product."
+],
+[
+"Gross",
+"Qty x rate before discounts and terms."
+],
+[
+"Add / Less",
+"Product-wise charges and discounts of the line (from its billing terms popup when Item Charges is on); the popup total shows here."
+],
+[
+"Net Amount",
+"Gross +/- the line terms: the value of the line."
+],
+[
+"Batch",
+"Batch / lot number (Batch System on). Stock and batch-wise costing follow it."
+],
+[
+"Serial No",
+"Serial number of the piece (Serial Number on) - vehicles, electronics."
+],
+[
+"Exp Date",
+"Expiry date of the batch - near-expiry alerts and stock ageing."
+],
+[
+"Ref No (source doc)",
+"The document this line was pulled from (quotation / order / challan / GRN / bill)."
+]
+],
+"slug": "sales-return",
+"pdf": "/help/menus/sales-return.pdf"
+},
+"/sales-nonsaleable-return": {
+"path": "/sales-nonsaleable-return",
+"title": "Sales Non-saleable Return",
+"module": "Sales",
+"kind": "entry",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Damaged / expired goods returned by a customer that cannot be sold again.",
+"steps": [
+"Pull the bill with Bill No., enter the damaged qty and reason.",
+"Save."
+],
+"accounts": "Dr Non-saleable return account / Cr customer.",
+"stock": "Kept apart as non-saleable stock (not in saleable stock).",
+"vat": "As per the return.",
+"other": "Counts against the bill's returned qty together with normal returns.",
+"fields": [
+[
+"Date",
+"Date of the document. Accounts, stock, VAT month and ageing all use this date. Type it (AD or BS - switch with the AD/BS button) or pick it. A date in a closed fiscal year cannot be posted."
+],
+[
+"Customer",
+"The customer (ledger in Sundry Debtors). Debited with the bill total (credited on a return). PAN, address, credit limit, rate category, agent and area come from the customer master."
+],
+[
+"Warehouse",
+"Warehouse the stock goes out of / comes into (only with Multi Warehouse on). A line can have its own warehouse."
+],
+[
+"Return Reason",
+"Why the goods came back: printed on the credit note, sent to IRD for sales returns."
+],
+[
+"Settlement Type",
+"How the return is settled: against the bill (adjusts that bill's outstanding) or on account."
+],
+[
+"Customer Sub-Ledger",
+"Sub-ledger (e.g. branch or project of the customer) under the customer ledger. The party posting carries it, so sub-ledger statements and ageing show it."
+],
+[
+"Cost Center",
+"Cost center (department, project, site, shed ...) every posting of this document carries: P&L by cost center, budgets."
+],
+[
+"Unit",
+"Business unit (division / brand) every posting carries: P&L by unit, budgets."
+],
+[
+"Narration",
+"One line description printed on the voucher and shown in the ledger. Pick a saved remark or type."
+],
+[
+"Bill No.",
+"Pull from a posted bill of this party (for a return): only the qty not yet returned is offered."
+],
+[
+"Item Code",
+"Product code or barcode - type or scan; Enter moves on. F1 shows this customer's / supplier's rate history."
+],
+[
+"Item Name",
+"The product. Its units, rates, accounts, VAT, batch / serial and item type come from the Product Master."
+],
+[
+"Qty",
+"Quantity in the selected unit. Stock moves in the product's base unit (converted automatically)."
+],
+[
+"Free Qty",
+"Free (scheme) quantity: moves stock, no value."
+],
+[
+"UOM",
+"Unit of the line (box, pcs, kg ...). Conversion to the base unit comes from Product Units / the product."
+],
+[
+"Alt Qty",
+"Quantity in the second unit of a dual-unit product (e.g. pcs with cartons)."
+],
+[
+"Rate",
+"Rate per unit (per the rate basis). Sales: from the rate type / rate category / offer rate; purchase: last purchase rate."
+],
+[
+"Rate Basis",
+"Whether the rate is per the primary or the secondary unit of a dual-unit product."
+],
+[
+"Gross",
+"Qty x rate before discounts and terms."
+],
+[
+"Add / Less",
+"Product-wise charges and discounts of the line (from its billing terms popup when Item Charges is on); the popup total shows here."
+],
+[
+"Net Amount",
+"Gross +/- the line terms: the value of the line."
+],
+[
+"Batch",
+"Batch / lot number (Batch System on). Stock and batch-wise costing follow it."
+],
+[
+"Serial No",
+"Serial number of the piece (Serial Number on) - vehicles, electronics."
+],
+[
+"Exp Date",
+"Expiry date of the batch - near-expiry alerts and stock ageing."
+],
+[
+"Ref No (source doc)",
+"The document this line was pulled from (quotation / order / challan / GRN / bill)."
+]
+],
+"slug": "sales-nonsaleable-return",
+"pdf": "/help/menus/sales-nonsaleable-return.pdf"
+},
+"/sales-additional-entry": {
+"path": "/sales-additional-entry",
+"title": "Sales Additional Entry",
+"module": "Sales",
+"kind": "entry",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Extra charges or discounts on already issued sales bills (freight recovered, rate difference, scheme).",
+"steps": [
+"Choose the customer and the bill(s).",
+"Add the charge / discount lines with their ledgers.",
+"Save."
+],
+"accounts": "Dr / Cr the customer against the chosen ledgers.",
+"stock": "None.",
+"vat": "As per the lines.",
+"other": "Bill-wise outstanding of the bill changes.",
+"fields": [
+[
+"Date",
+"Date of the document. Accounts, stock, VAT month and ageing all use this date. Type it (AD or BS - switch with the AD/BS button) or pick it. A date in a closed fiscal year cannot be posted."
+],
+[
+"Customer",
+"The customer (ledger in Sundry Debtors). Debited with the bill total (credited on a return). PAN, address, credit limit, rate category, agent and area come from the customer master."
+],
+[
+"Salesman/Agent",
+"Salesman / agent: agent-wise reports, targets and commission."
+],
+[
+"Customer Sub-Ledger",
+"Sub-ledger (e.g. branch or project of the customer) under the customer ledger. The party posting carries it, so sub-ledger statements and ageing show it."
+],
+[
+"Cost Center",
+"Cost center (department, project, site, shed ...) every posting of this document carries: P&L by cost center, budgets."
+],
+[
+"Unit",
+"Business unit (division / brand) every posting carries: P&L by unit, budgets."
+],
+[
+"Remarks",
+"Remarks printed on the document; pick a saved remark (Remarks master) or type your own."
+],
+[
+"Narration",
+"One line description printed on the voucher and shown in the ledger. Pick a saved remark or type."
+]
+],
+"slug": "sales-additional-entry",
+"pdf": "/help/menus/sales-additional-entry.pdf"
+},
+"/agent-targets": {
+"path": "/agent-targets",
+"title": "Salesman Targets & Commission",
+"module": "Sales",
+"kind": "entry",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Targets per salesman (month / quarter / year, all products or a product / group / company / category, qty and / or value) and commission rules; achievement and commission posting.",
+"steps": [
+"Set Targets tab: add targets.",
+"Target Achievement tab (the target report): target vs actual net sales, balance, achievement %; tick and post the earned commission (once per target).",
+"Bill-wise Commission tab: posted bills of the salesman (value without VAT, less returns against the bill) with the salesman's commission %; change the % or amount per bill, tick one or all and post. A bill that already got commission moves to \"Commission already given\" and is never offered again; cancelling the posting frees its bills."
+],
+"accounts": "Commission posting: Dr commission expense / Cr salesman commission payable (ledgers from the salesman master, or chosen on posting).",
+"stock": "None.",
+"vat": "None.",
+"other": "Commission Register lists every posting (target-wise and bill-wise) and cancels it (the GL entry is reversed).",
+"fields": [
+[
+"From",
+"First date of the report period."
+],
+[
+"To",
+"Last date of the report period."
+],
+[
+"Date",
+"Date of the document. Accounts, stock, VAT month and ageing all use this date. Type it (AD or BS - switch with the AD/BS button) or pick it. A date in a closed fiscal year cannot be posted."
+],
+[
+"Show",
+"Which rows to show (all / only differences / ...)."
+]
+],
+"slug": "agent-targets",
+"pdf": "/help/menus/agent-targets.pdf"
+},
+"/mobile-approvals": {
+"path": "/mobile-approvals",
+"title": "Mobile Approvals (receipts / returns)",
+"module": "Sales",
+"kind": "entry",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Cash receipts and sales returns the salesmen entered on the phone wait here as pending drafts until the office posts them.",
+"steps": [
+"Filter by type, status, salesman and dates.",
+"Tick one, several or all (tick box in the header) and Post ticked.",
+"Open screen opens Cash / Bank Entry or Sales Return to change an entry before posting."
+],
+"accounts": "On posting - receipt: Dr the mobile cash ledger, Cr the customer (bill-wise settled); return: as Sales Return. The salesman is the agent on both.",
+"stock": "Return: goods come back in on posting.",
+"vat": "Return: reduces output VAT on posting.",
+"other": "Pending entries have no effect at all. The salesman sees them as \"Pending approval\" on the phone.",
+"fields": [
+[
+"Status",
+"Document status: draft, posted, cancelled ..."
+],
+[
+"From",
+"First date of the report period."
+],
+[
+"To",
+"Last date of the report period."
+]
+],
+"slug": "mobile-approvals",
+"pdf": "/help/menus/mobile-approvals.pdf"
+},
+"/purchase-quotation": {
+"path": "/purchase-quotation",
+"title": "Purchase Quotation",
+"module": "Purchase",
+"kind": "entry",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Supplier's price offer; can be pulled into a Purchase Order, GRN or Bill.",
+"steps": [
+"Choose the date, Cash or Credit, then the vendor. Quotation / Order / GRN No. boxes right after the vendor pull pending documents (Enter opens the list).",
+"Add lines: item, qty, unit, rate, discount; product-wise terms through Add / Less; document terms (VAT, freight) in the footer.",
+"Save (or Save as Draft). New, Modify, Cancel, Remove and Print are on the action bar."
+],
+"accounts": "None.",
+"stock": "None.",
+"vat": "None.",
+"other": "Pending qty until pulled forward.",
+"fields": [
+[
+"Date",
+"Date of the document. Accounts, stock, VAT month and ageing all use this date. Type it (AD or BS - switch with the AD/BS button) or pick it. A date in a closed fiscal year cannot be posted."
+],
+[
+"Cash / Credit",
+"Cash: paid / received now - the party field becomes a name (or a cash ledger) and no outstanding is created. Credit: the amount stays outstanding against the party (bill-wise, ageing, credit limit)."
+],
+[
+"Vendor Sub-Ledger",
+"Sub-ledger under the vendor ledger. The party posting carries it (sub-ledger statement / ageing)."
+],
+[
+"Priority",
+"Urgency of the document (normal / high / urgent) - for follow-up lists only."
+],
+[
+"Agent",
+"Salesman / agent: agent-wise reports, targets and commission."
+],
+[
+"Currency",
+"Currency of the document (Multi Currency on). Amounts are entered in it; the exchange rate converts them to NPR for accounts."
+],
+[
+"Due Date",
+"Payment due date (Date + credit days). Ageing, overdue interest and reminders use it."
+],
+[
+"Due Days",
+"Credit days; the due date is the document date plus these days."
+],
+[
+"Master Warehouse",
+"Default warehouse for all lines of this document."
+],
+[
+"Goods Account",
+"Purchase / goods account for this document when the product has none. A fixed asset or stock ledger can be chosen for capital purchases."
+],
+[
+"Goods Sub-Ledger",
+"Sub-ledger of the goods account."
+],
+[
+"Rate Type",
+"Which selling rate (Sr1 - Sr5) the lines use. Defaults from the customer's rate category; changing it re-rates the lines after asking."
+],
+[
+"Cost Center",
+"Cost center (department, project, site, shed ...) every posting of this document carries: P&L by cost center, budgets."
+],
+[
+"Unit (Business Unit)",
+"Business unit every posting carries: P&L by unit, budgets."
+],
+[
+"Area",
+"Area of the party / sale - area-wise reports and data access."
+],
+[
+"Route",
+"Delivery / sales route - route-wise sales, loading sheet and route plan."
+],
+[
+"Terms & Conditions",
+"Terms printed at the bottom of the document (Remarks & Terms master)."
+],
+[
+"PAN Number",
+"PAN / VAT number of the party printed on the bill and used in VAT registers / IRD. Can update the master."
+],
+[
+"Order No.",
+"Pull from a pending order of this party (pending qty only). Master part, remarks and billing terms come along. The order's delivered / billed qty moves when this entry posts."
+],
+[
+"Item Code",
+"Product code or barcode - type or scan; Enter moves on. F1 shows this customer's / supplier's rate history."
+],
+[
+"Item Name",
+"The product. Its units, rates, accounts, VAT, batch / serial and item type come from the Product Master."
+],
+[
+"Qty",
+"Quantity in the selected unit. Stock moves in the product's base unit (converted automatically)."
+],
+[
+"Free Qty",
+"Free (scheme) quantity: moves stock, no value."
+],
+[
+"UOM",
+"Unit of the line (box, pcs, kg ...). Conversion to the base unit comes from Product Units / the product."
+],
+[
+"Alt Qty",
+"Quantity in the second unit of a dual-unit product (e.g. pcs with cartons)."
+],
+[
+"Rate",
+"Rate per unit (per the rate basis). Sales: from the rate type / rate category / offer rate; purchase: last purchase rate."
+],
+[
+"Rate Basis",
+"Whether the rate is per the primary or the secondary unit of a dual-unit product."
+],
+[
+"Gross",
+"Qty x rate before discounts and terms."
+],
+[
+"Add / Less",
+"Product-wise charges and discounts of the line (from its billing terms popup when Item Charges is on); the popup total shows here."
+],
+[
+"Net Amount",
+"Gross +/- the line terms: the value of the line."
+],
+[
+"Batch",
+"Batch / lot number (Batch System on). Stock and batch-wise costing follow it."
+],
+[
+"Serial No",
+"Serial number of the piece (Serial Number on) - vehicles, electronics."
+],
+[
+"Exp Date",
+"Expiry date of the batch - near-expiry alerts and stock ageing."
+],
+[
+"Warehouse",
+"Warehouse the stock goes out of / comes into (only with Multi Warehouse on). A line can have its own warehouse."
+],
+[
+"Ref No (source doc)",
+"The document this line was pulled from (quotation / order / challan / GRN / bill)."
+]
+],
+"slug": "purchase-quotation",
+"pdf": "/help/menus/purchase-quotation.pdf"
+},
+"/purchase-order": {
+"path": "/purchase-order",
+"title": "Purchase Order",
+"module": "Purchase",
+"kind": "entry",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Order placed on a supplier; received later with a GRN or a direct bill.",
+"steps": [
+"Choose the date, Cash or Credit, then the vendor. Quotation / Order / GRN No. boxes right after the vendor pull pending documents (Enter opens the list).",
+"Add lines: item, qty, unit, rate, discount; product-wise terms through Add / Less; document terms (VAT, freight) in the footer.",
+"Save (or Save as Draft). New, Modify, Cancel, Remove and Print are on the action bar."
+],
+"accounts": "None.",
+"stock": "None.",
+"vat": "None.",
+"other": "Pending order qty; additional expenses (freight, duty) can be linked to the order and reach the goods when received.",
+"fields": [
+[
+"Date",
+"Date of the document. Accounts, stock, VAT month and ageing all use this date. Type it (AD or BS - switch with the AD/BS button) or pick it. A date in a closed fiscal year cannot be posted."
+],
+[
+"Cash / Credit",
+"Cash: paid / received now - the party field becomes a name (or a cash ledger) and no outstanding is created. Credit: the amount stays outstanding against the party (bill-wise, ageing, credit limit)."
+],
+[
+"Vendor Sub-Ledger",
+"Sub-ledger under the vendor ledger. The party posting carries it (sub-ledger statement / ageing)."
+],
+[
+"Priority",
+"Urgency of the document (normal / high / urgent) - for follow-up lists only."
+],
+[
+"Agent",
+"Salesman / agent: agent-wise reports, targets and commission."
+],
+[
+"Currency",
+"Currency of the document (Multi Currency on). Amounts are entered in it; the exchange rate converts them to NPR for accounts."
+],
+[
+"Due Date",
+"Payment due date (Date + credit days). Ageing, overdue interest and reminders use it."
+],
+[
+"Due Days",
+"Credit days; the due date is the document date plus these days."
+],
+[
+"Master Warehouse",
+"Default warehouse for all lines of this document."
+],
+[
+"Goods Account",
+"Purchase / goods account for this document when the product has none. A fixed asset or stock ledger can be chosen for capital purchases."
+],
+[
+"Goods Sub-Ledger",
+"Sub-ledger of the goods account."
+],
+[
+"Rate Type",
+"Which selling rate (Sr1 - Sr5) the lines use. Defaults from the customer's rate category; changing it re-rates the lines after asking."
+],
+[
+"Cost Center",
+"Cost center (department, project, site, shed ...) every posting of this document carries: P&L by cost center, budgets."
+],
+[
+"Unit (Business Unit)",
+"Business unit every posting carries: P&L by unit, budgets."
+],
+[
+"Area",
+"Area of the party / sale - area-wise reports and data access."
+],
+[
+"Route",
+"Delivery / sales route - route-wise sales, loading sheet and route plan."
+],
+[
+"Terms & Conditions",
+"Terms printed at the bottom of the document (Remarks & Terms master)."
+],
+[
+"PAN Number",
+"PAN / VAT number of the party printed on the bill and used in VAT registers / IRD. Can update the master."
+],
+[
+"Quotation No.",
+"Pull from a pending quotation of this party: its lines (pending qty only), master part (company, agent, sub-ledger ...), remarks and billing terms come into this entry. Enter on the box opens the list."
+],
+[
+"Item Code",
+"Product code or barcode - type or scan; Enter moves on. F1 shows this customer's / supplier's rate history."
+],
+[
+"Item Name",
+"The product. Its units, rates, accounts, VAT, batch / serial and item type come from the Product Master."
+],
+[
+"Qty",
+"Quantity in the selected unit. Stock moves in the product's base unit (converted automatically)."
+],
+[
+"Free Qty",
+"Free (scheme) quantity: moves stock, no value."
+],
+[
+"UOM",
+"Unit of the line (box, pcs, kg ...). Conversion to the base unit comes from Product Units / the product."
+],
+[
+"Alt Qty",
+"Quantity in the second unit of a dual-unit product (e.g. pcs with cartons)."
+],
+[
+"Rate",
+"Rate per unit (per the rate basis). Sales: from the rate type / rate category / offer rate; purchase: last purchase rate."
+],
+[
+"Rate Basis",
+"Whether the rate is per the primary or the secondary unit of a dual-unit product."
+],
+[
+"Gross",
+"Qty x rate before discounts and terms."
+],
+[
+"Add / Less",
+"Product-wise charges and discounts of the line (from its billing terms popup when Item Charges is on); the popup total shows here."
+],
+[
+"Net Amount",
+"Gross +/- the line terms: the value of the line."
+],
+[
+"Batch",
+"Batch / lot number (Batch System on). Stock and batch-wise costing follow it."
+],
+[
+"Serial No",
+"Serial number of the piece (Serial Number on) - vehicles, electronics."
+],
+[
+"Exp Date",
+"Expiry date of the batch - near-expiry alerts and stock ageing."
+],
+[
+"Warehouse",
+"Warehouse the stock goes out of / comes into (only with Multi Warehouse on). A line can have its own warehouse."
+],
+[
+"Ref No (source doc)",
+"The document this line was pulled from (quotation / order / challan / GRN / bill)."
+]
+],
+"slug": "purchase-order",
+"pdf": "/help/menus/purchase-order.pdf"
+},
+"/purchase-grn": {
+"path": "/purchase-grn",
+"title": "Purchase GRN (Goods Received)",
+"module": "Purchase",
+"kind": "entry",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Goods received before the supplier's bill.",
+"steps": [
+"Choose the date, Cash or Credit, then the vendor. Quotation / Order / GRN No. boxes right after the vendor pull pending documents (Enter opens the list).",
+"Add lines: item, qty, unit, rate, discount; product-wise terms through Add / Less; document terms (VAT, freight) in the footer.",
+"Save (or Save as Draft). New, Modify, Cancel, Remove and Print are on the action bar.",
+"Enter the supplier's challan no / date."
+],
+"accounts": "Dr goods (purchase) account / Cr GRN Clearing (GR/IR) ledger - a provisional liability until the bill comes.",
+"stock": "Stock comes IN at the goods value without VAT per base unit (after discount and non-VAT terms), plus landed cost of additional expenses posted against it.",
+"vat": "None yet (VAT is taken on the bill).",
+"other": "GRN Outstanding lists GRNs not yet billed; the Purchase Bill pulls it with GRN No.",
+"fields": [
+[
+"Date",
+"Date of the document. Accounts, stock, VAT month and ageing all use this date. Type it (AD or BS - switch with the AD/BS button) or pick it. A date in a closed fiscal year cannot be posted."
+],
+[
+"Cash / Credit",
+"Cash: paid / received now - the party field becomes a name (or a cash ledger) and no outstanding is created. Credit: the amount stays outstanding against the party (bill-wise, ageing, credit limit)."
+],
+[
+"Vendor Sub-Ledger",
+"Sub-ledger under the vendor ledger. The party posting carries it (sub-ledger statement / ageing)."
+],
+[
+"Priority",
+"Urgency of the document (normal / high / urgent) - for follow-up lists only."
+],
+[
+"Agent",
+"Salesman / agent: agent-wise reports, targets and commission."
+],
+[
+"Currency",
+"Currency of the document (Multi Currency on). Amounts are entered in it; the exchange rate converts them to NPR for accounts."
+],
+[
+"Due Date",
+"Payment due date (Date + credit days). Ageing, overdue interest and reminders use it."
+],
+[
+"Due Days",
+"Credit days; the due date is the document date plus these days."
+],
+[
+"Master Warehouse",
+"Default warehouse for all lines of this document."
+],
+[
+"Goods Account",
+"Purchase / goods account for this document when the product has none. A fixed asset or stock ledger can be chosen for capital purchases."
+],
+[
+"Goods Sub-Ledger",
+"Sub-ledger of the goods account."
+],
+[
+"Rate Type",
+"Which selling rate (Sr1 - Sr5) the lines use. Defaults from the customer's rate category; changing it re-rates the lines after asking."
+],
+[
+"Cost Center",
+"Cost center (department, project, site, shed ...) every posting of this document carries: P&L by cost center, budgets."
+],
+[
+"Unit (Business Unit)",
+"Business unit every posting carries: P&L by unit, budgets."
+],
+[
+"Area",
+"Area of the party / sale - area-wise reports and data access."
+],
+[
+"Route",
+"Delivery / sales route - route-wise sales, loading sheet and route plan."
+],
+[
+"Terms & Conditions",
+"Terms printed at the bottom of the document (Remarks & Terms master)."
+],
+[
+"PAN Number",
+"PAN / VAT number of the party printed on the bill and used in VAT registers / IRD. Can update the master."
+],
+[
+"Quotation No.",
+"Pull from a pending quotation of this party: its lines (pending qty only), master part (company, agent, sub-ledger ...), remarks and billing terms come into this entry. Enter on the box opens the list."
+],
+[
+"Order No.",
+"Pull from a pending order of this party (pending qty only). Master part, remarks and billing terms come along. The order's delivered / billed qty moves when this entry posts."
+],
+[
+"Item Code",
+"Product code or barcode - type or scan; Enter moves on. F1 shows this customer's / supplier's rate history."
+],
+[
+"Item Name",
+"The product. Its units, rates, accounts, VAT, batch / serial and item type come from the Product Master."
+],
+[
+"Qty",
+"Quantity in the selected unit. Stock moves in the product's base unit (converted automatically)."
+],
+[
+"Free Qty",
+"Free (scheme) quantity: moves stock, no value."
+],
+[
+"UOM",
+"Unit of the line (box, pcs, kg ...). Conversion to the base unit comes from Product Units / the product."
+],
+[
+"Alt Qty",
+"Quantity in the second unit of a dual-unit product (e.g. pcs with cartons)."
+],
+[
+"Rate",
+"Rate per unit (per the rate basis). Sales: from the rate type / rate category / offer rate; purchase: last purchase rate."
+],
+[
+"Rate Basis",
+"Whether the rate is per the primary or the secondary unit of a dual-unit product."
+],
+[
+"Gross",
+"Qty x rate before discounts and terms."
+],
+[
+"Add / Less",
+"Product-wise charges and discounts of the line (from its billing terms popup when Item Charges is on); the popup total shows here."
+],
+[
+"Net Amount",
+"Gross +/- the line terms: the value of the line."
+],
+[
+"Batch",
+"Batch / lot number (Batch System on). Stock and batch-wise costing follow it."
+],
+[
+"Serial No",
+"Serial number of the piece (Serial Number on) - vehicles, electronics."
+],
+[
+"Exp Date",
+"Expiry date of the batch - near-expiry alerts and stock ageing."
+],
+[
+"Warehouse",
+"Warehouse the stock goes out of / comes into (only with Multi Warehouse on). A line can have its own warehouse."
+],
+[
+"Ref No (source doc)",
+"The document this line was pulled from (quotation / order / challan / GRN / bill)."
+]
+],
+"slug": "purchase-grn",
+"pdf": "/help/menus/purchase-grn.pdf"
+},
+"/purchase-bill": {
+"path": "/purchase-bill",
+"title": "Purchase Bill",
+"module": "Purchase",
+"kind": "entry",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Supplier's tax invoice. Books the purchase, input VAT and the payable.",
+"steps": [
+"Choose the date, Cash or Credit, then the vendor. Quotation / Order / GRN No. boxes right after the vendor pull pending documents (Enter opens the list).",
+"Add lines: item, qty, unit, rate, discount; product-wise terms through Add / Less; document terms (VAT, freight) in the footer.",
+"Save (or Save as Draft). New, Modify, Cancel, Remove and Print are on the action bar.",
+"Party Bill No / Date: the supplier's invoice number (cannot be entered twice for the same supplier).",
+"TDS tab: TDS withheld from the supplier.",
+"Import fields for imports (declaration no, customs office, taxable / tax-free import value)."
+],
+"accounts": "Direct bill: Dr goods account per line / Dr VAT / Cr vendor. Bill from a GRN: Dr GRN Clearing / Cr vendor, VAT moved out of the goods account. TDS: Dr vendor / Cr TDS payable.",
+"stock": "Direct lines come IN at the goods value without VAT per base unit; lines from a GRN do not move stock again. Services / fixed assets do not go to stock.",
+"vat": "Input VAT to the Purchase VAT register and VAT return (claimable).",
+"other": "Order / GRN pending qty; bill-wise payable; TDS register; Purchase vs Stock reconciliation.",
+"fields": [
+[
+"Date",
+"Date of the document. Accounts, stock, VAT month and ageing all use this date. Type it (AD or BS - switch with the AD/BS button) or pick it. A date in a closed fiscal year cannot be posted."
+],
+[
+"Cash / Credit",
+"Cash: paid / received now - the party field becomes a name (or a cash ledger) and no outstanding is created. Credit: the amount stays outstanding against the party (bill-wise, ageing, credit limit)."
+],
+[
+"Vendor Sub-Ledger",
+"Sub-ledger under the vendor ledger. The party posting carries it (sub-ledger statement / ageing)."
+],
+[
+"Priority",
+"Urgency of the document (normal / high / urgent) - for follow-up lists only."
+],
+[
+"Agent",
+"Salesman / agent: agent-wise reports, targets and commission."
+],
+[
+"Currency",
+"Currency of the document (Multi Currency on). Amounts are entered in it; the exchange rate converts them to NPR for accounts."
+],
+[
+"Due Date",
+"Payment due date (Date + credit days). Ageing, overdue interest and reminders use it."
+],
+[
+"Due Days",
+"Credit days; the due date is the document date plus these days."
+],
+[
+"Master Warehouse",
+"Default warehouse for all lines of this document."
+],
+[
+"Goods Account",
+"Purchase / goods account for this document when the product has none. A fixed asset or stock ledger can be chosen for capital purchases."
+],
+[
+"Goods Sub-Ledger",
+"Sub-ledger of the goods account."
+],
+[
+"Rate Type",
+"Which selling rate (Sr1 - Sr5) the lines use. Defaults from the customer's rate category; changing it re-rates the lines after asking."
+],
+[
+"Cost Center",
+"Cost center (department, project, site, shed ...) every posting of this document carries: P&L by cost center, budgets."
+],
+[
+"Unit (Business Unit)",
+"Business unit every posting carries: P&L by unit, budgets."
+],
+[
+"Area",
+"Area of the party / sale - area-wise reports and data access."
+],
+[
+"Route",
+"Delivery / sales route - route-wise sales, loading sheet and route plan."
+],
+[
+"Party Bill No",
+"The supplier's own bill number (VAT invoice no). It goes to the purchase VAT register; the same number cannot be entered twice for one supplier."
+],
+[
+"Party Bill Date",
+"Date on the supplier's bill - VAT register and Annex 13."
+],
+[
+"Terms & Conditions",
+"Terms printed at the bottom of the document (Remarks & Terms master)."
+],
+[
+"Import Detail Mode",
+"Import taxable / tax-free amounts for the whole bill, or item-wise."
+],
+[
+"Customs Office (Bhansar)",
+"Customs office of the import."
+],
+[
+"Import Declaration No",
+"Customs declaration (pragyapan patra) number of an import - VAT register import columns."
+],
+[
+"Declaration Date",
+"Date of the customs declaration."
+],
+[
+"Import Taxable Amount (whole bill)",
+"Taxable import value for the VAT register (Annex)."
+],
+[
+"Import Tax-Free Amount (whole bill)",
+"Tax-free import value for the VAT register."
+],
+[
+"PAN Number",
+"PAN / VAT number of the party printed on the bill and used in VAT registers / IRD. Can update the master."
+],
+[
+"Quotation No.",
+"Pull from a pending quotation of this party: its lines (pending qty only), master part (company, agent, sub-ledger ...), remarks and billing terms come into this entry. Enter on the box opens the list."
+],
+[
+"Order No.",
+"Pull from a pending order of this party (pending qty only). Master part, remarks and billing terms come along. The order's delivered / billed qty moves when this entry posts."
+],
+[
+"GRN No.",
+"Pull from a pending GRN (goods received). Stock came in on the GRN; the bill clears the GRN clearing account and books the real payable."
+],
+[
+"TDS %",
+"TDS rate. TDS amount = base x %. Sales: TDS the customer withholds (Dr TDS receivable, Cr customer). Purchase: TDS we withhold (Dr supplier, Cr TDS payable)."
+],
+[
+"TDS Amount",
+"TDS in rupees; typed or worked out from base x %."
+],
+[
+"TDS Ledger",
+"TDS payable (purchase) or TDS receivable (sales) ledger; defaults from System Control."
+],
+[
+"Item Code",
+"Product code or barcode - type or scan; Enter moves on. F1 shows this customer's / supplier's rate history."
+],
+[
+"Item Name",
+"The product. Its units, rates, accounts, VAT, batch / serial and item type come from the Product Master."
+],
+[
+"Qty",
+"Quantity in the selected unit. Stock moves in the product's base unit (converted automatically)."
+],
+[
+"Free Qty",
+"Free (scheme) quantity: moves stock, no value."
+],
+[
+"UOM",
+"Unit of the line (box, pcs, kg ...). Conversion to the base unit comes from Product Units / the product."
+],
+[
+"Alt Qty",
+"Quantity in the second unit of a dual-unit product (e.g. pcs with cartons)."
+],
+[
+"Rate",
+"Rate per unit (per the rate basis). Sales: from the rate type / rate category / offer rate; purchase: last purchase rate."
+],
+[
+"Rate Basis",
+"Whether the rate is per the primary or the secondary unit of a dual-unit product."
+],
+[
+"Gross",
+"Qty x rate before discounts and terms."
+],
+[
+"Add / Less",
+"Product-wise charges and discounts of the line (from its billing terms popup when Item Charges is on); the popup total shows here."
+],
+[
+"Net Amount",
+"Gross +/- the line terms: the value of the line."
+],
+[
+"Batch",
+"Batch / lot number (Batch System on). Stock and batch-wise costing follow it."
+],
+[
+"Serial No",
+"Serial number of the piece (Serial Number on) - vehicles, electronics."
+],
+[
+"Exp Date",
+"Expiry date of the batch - near-expiry alerts and stock ageing."
+],
+[
+"Warehouse",
+"Warehouse the stock goes out of / comes into (only with Multi Warehouse on). A line can have its own warehouse."
+],
+[
+"Ref No (source doc)",
+"The document this line was pulled from (quotation / order / challan / GRN / bill)."
+]
+],
+"slug": "purchase-bill",
+"pdf": "/help/menus/purchase-bill.pdf"
+},
+"/purchase-bill-import": {
+"path": "/purchase-bill-import",
+"title": "Purchase Bill from Image / PDF",
+"module": "Purchase",
+"kind": "entry",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Read a supplier bill photo / PDF (OCR) into a purchase bill draft.",
+"steps": [
+"Upload the image / PDF.",
+"Check the read supplier, bill no, lines and amounts; map items.",
+"Create the draft bill and post it from Purchase Bill."
+],
+"accounts": "Only when the bill is posted.",
+"stock": "Only when posted.",
+"vat": "Only when posted.",
+"fields": [
+[
+"Vendor",
+"The supplier (ledger in Sundry Creditors). Credited with the bill total (debited on a return / debit note). PAN, address and credit days come from the vendor master."
+],
+[
+"Party Bill No",
+"The supplier's own bill number (VAT invoice no). It goes to the purchase VAT register; the same number cannot be entered twice for one supplier."
+],
+[
+"Bill Date",
+"Date of the supplier / customer bill."
+]
+],
+"slug": "purchase-bill-import",
+"pdf": "/help/menus/purchase-bill-import.pdf"
+},
+"/purchase-additional-expense": {
+"path": "/purchase-additional-expense",
+"title": "Purchase Additional Expense",
+"module": "Purchase",
+"kind": "entry",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Freight, customs, clearing, insurance, labour ... on purchased goods - taxable or non-taxable bills of other parties, or no bill - allocated to the goods (landed cost).",
+"steps": [
+"Link to the Order, GRN and / or Bill the cost belongs to - the vendor of that document comes in as the vendor (change it when another party is paid).",
+"Product-wise Terms tab: the products of the linked document; Terms… on a product opens its terms (Billing Terms marked Purchase Additional + Product Wise) - rate % of that product's value or amount; the whole amount goes to that product's cost.",
+"Bill-wise Terms tab: a fixed form with one row per bill-level term - fill the amounts that apply; each is divided over the products by the term's basis (value / qty, changeable per row). Empty rows are left out.",
+"A term's ledger is fixed by the term - only its sub-ledger can be changed. \"Paid to\" (the counter ledger) and its sub-ledger are free; empty = the entry's vendor. Bill type (taxable / non-taxable / no bill), bill no and VAT per row; Add TDS Line for withholding.",
+"Check the per-product preview (additional, cost / unit), then Save and post."
+],
+"accounts": "Dr each term / expense ledger with its sub-ledger (Cr for \"-\" terms) / Dr VAT (claimable) / Cr the party of each line with its sub-ledger. TDS lines: Cr TDS payable.",
+"stock": "Posted: the allocated amount is added to the cost of the stock receipt of each linked line (landed cost); cancelled: taken out again. Terms not \"Include In Costing\" stay out of the stock cost.",
+"vat": "Taxable lines go to the Purchase VAT register as \"Purchase Additional Bill\".",
+"other": "Purchase Account and Purchase vs Stock reconciliation show it separately; TDS register; bills can later be taken in a TDS journal.",
+"fields": [
+[
+"Date",
+"Date of the document. Accounts, stock, VAT month and ageing all use this date. Type it (AD or BS - switch with the AD/BS button) or pick it. A date in a closed fiscal year cannot be posted."
+],
+[
+"Link to Order",
+"Order whose lines this additional expense is allocated to (landed cost)."
+],
+[
+"Link to GRN",
+"GRN whose lines this additional expense is allocated to (landed cost goes into the stock value)."
+],
+[
+"Link to Bill",
+"Purchase bill whose lines this additional expense is allocated to (landed cost)."
+],
+[
+"Account Posting",
+"Yes: the expense is posted to the ledgers. No: only the landed cost moves (e.g. already booked elsewhere)."
+],
+[
+"Invoice Type",
+"Cash or credit, as Cash / Credit: decides whether the document leaves an outstanding against the party."
+],
+[
+"Vendor Sub-Ledger",
+"Sub-ledger under the vendor ledger. The party posting carries it (sub-ledger statement / ageing)."
+],
+[
+"Agent",
+"Salesman / agent: agent-wise reports, targets and commission."
+],
+[
+"Currency",
+"Currency of the document (Multi Currency on). Amounts are entered in it; the exchange rate converts them to NPR for accounts."
+],
+[
+"Priority",
+"Urgency of the document (normal / high / urgent) - for follow-up lists only."
+],
+[
+"Party Bill No",
+"The supplier's own bill number (VAT invoice no). It goes to the purchase VAT register; the same number cannot be entered twice for one supplier."
+],
+[
+"Party Bill Date",
+"Date on the supplier's bill - VAT register and Annex 13."
+],
+[
+"Cost Center",
+"Cost center (department, project, site, shed ...) every posting of this document carries: P&L by cost center, budgets."
+],
+[
+"Unit",
+"Business unit (division / brand) every posting carries: P&L by unit, budgets."
+],
+[
+"Remarks",
+"Remarks printed on the document; pick a saved remark (Remarks master) or type your own."
+],
+[
+"Narration",
+"One line description printed on the voucher and shown in the ledger. Pick a saved remark or type."
+]
+],
+"slug": "purchase-additional-expense",
+"pdf": "/help/menus/purchase-additional-expense.pdf"
+},
+"/purchase-return": {
+"path": "/purchase-return",
+"title": "Purchase Return",
+"module": "Purchase",
+"kind": "entry",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Goods sent back to the supplier (debit note), normally against a bill.",
+"steps": [
+"Choose the vendor, pull the bill with Bill No.",
+"Adjust qty, give Party Bill No (credit note ref).",
+"Save."
+],
+"accounts": "Dr vendor / Cr purchase return account / Cr VAT.",
+"stock": "Goods go OUT (Negative Stock control applies).",
+"vat": "Reduces input VAT.",
+"other": "The bill's returned qty moves.",
+"fields": [
+[
+"Date",
+"Date of the document. Accounts, stock, VAT month and ageing all use this date. Type it (AD or BS - switch with the AD/BS button) or pick it. A date in a closed fiscal year cannot be posted."
+],
+[
+"Invoice Type",
+"Cash or credit, as Cash / Credit: decides whether the document leaves an outstanding against the party."
+],
+[
+"Vendor Sub-Ledger",
+"Sub-ledger under the vendor ledger. The party posting carries it (sub-ledger statement / ageing)."
+],
+[
+"Return Reason",
+"Why the goods came back: printed on the credit note, sent to IRD for sales returns."
+],
+[
+"Warehouse",
+"Warehouse the stock goes out of / comes into (only with Multi Warehouse on). A line can have its own warehouse."
+],
+[
+"Agent",
+"Salesman / agent: agent-wise reports, targets and commission."
+],
+[
+"Currency",
+"Currency of the document (Multi Currency on). Amounts are entered in it; the exchange rate converts them to NPR for accounts."
+],
+[
+"Goods Account",
+"Purchase / goods account for this document when the product has none. A fixed asset or stock ledger can be chosen for capital purchases."
+],
+[
+"Goods Sub-Ledger",
+"Sub-ledger of the goods account."
+],
+[
+"Rate Type",
+"Which selling rate (Sr1 - Sr5) the lines use. Defaults from the customer's rate category; changing it re-rates the lines after asking."
+],
+[
+"Party Bill No",
+"The supplier's own bill number (VAT invoice no). It goes to the purchase VAT register; the same number cannot be entered twice for one supplier."
+],
+[
+"Party Bill Date",
+"Date on the supplier's bill - VAT register and Annex 13."
+],
+[
+"Cost Center",
+"Cost center (department, project, site, shed ...) every posting of this document carries: P&L by cost center, budgets."
+],
+[
+"Unit",
+"Business unit (division / brand) every posting carries: P&L by unit, budgets."
+],
+[
+"Priority",
+"Urgency of the document (normal / high / urgent) - for follow-up lists only."
+],
+[
+"Narration",
+"One line description printed on the voucher and shown in the ledger. Pick a saved remark or type."
+],
+[
+"Bill No.",
+"Pull from a posted bill of this party (for a return): only the qty not yet returned is offered."
+],
+[
+"Item Code",
+"Product code or barcode - type or scan; Enter moves on. F1 shows this customer's / supplier's rate history."
+],
+[
+"Item Name",
+"The product. Its units, rates, accounts, VAT, batch / serial and item type come from the Product Master."
+],
+[
+"Qty",
+"Quantity in the selected unit. Stock moves in the product's base unit (converted automatically)."
+],
+[
+"Free Qty",
+"Free (scheme) quantity: moves stock, no value."
+],
+[
+"UOM",
+"Unit of the line (box, pcs, kg ...). Conversion to the base unit comes from Product Units / the product."
+],
+[
+"Alt Qty",
+"Quantity in the second unit of a dual-unit product (e.g. pcs with cartons)."
+],
+[
+"Rate",
+"Rate per unit (per the rate basis). Sales: from the rate type / rate category / offer rate; purchase: last purchase rate."
+],
+[
+"Rate Basis",
+"Whether the rate is per the primary or the secondary unit of a dual-unit product."
+],
+[
+"Gross",
+"Qty x rate before discounts and terms."
+],
+[
+"Add / Less",
+"Product-wise charges and discounts of the line (from its billing terms popup when Item Charges is on); the popup total shows here."
+],
+[
+"Net Amount",
+"Gross +/- the line terms: the value of the line."
+],
+[
+"Batch",
+"Batch / lot number (Batch System on). Stock and batch-wise costing follow it."
+],
+[
+"Serial No",
+"Serial number of the piece (Serial Number on) - vehicles, electronics."
+],
+[
+"Exp Date",
+"Expiry date of the batch - near-expiry alerts and stock ageing."
+],
+[
+"Ref No (source doc)",
+"The document this line was pulled from (quotation / order / challan / GRN / bill)."
+]
+],
+"slug": "purchase-return",
+"pdf": "/help/menus/purchase-return.pdf"
+},
+"/purchase-nonsaleable-return": {
+"path": "/purchase-nonsaleable-return",
+"title": "Purchase Non-saleable Return",
+"module": "Purchase",
+"kind": "entry",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Damaged / expired stock sent back to the supplier.",
+"steps": [
+"Pull the bill with Bill No.",
+"Enter qty and reason.",
+"Save."
+],
+"accounts": "Dr vendor / Cr non-saleable return account.",
+"stock": "Out of non-saleable stock.",
+"vat": "As per the return.",
+"fields": [
+[
+"Date",
+"Date of the document. Accounts, stock, VAT month and ageing all use this date. Type it (AD or BS - switch with the AD/BS button) or pick it. A date in a closed fiscal year cannot be posted."
+],
+[
+"Invoice Type",
+"Cash or credit, as Cash / Credit: decides whether the document leaves an outstanding against the party."
+],
+[
+"Vendor Sub-Ledger",
+"Sub-ledger under the vendor ledger. The party posting carries it (sub-ledger statement / ageing)."
+],
+[
+"Return Reason",
+"Why the goods came back: printed on the credit note, sent to IRD for sales returns."
+],
+[
+"Settlement Type",
+"How the return is settled: against the bill (adjusts that bill's outstanding) or on account."
+],
+[
+"Warehouse",
+"Warehouse the stock goes out of / comes into (only with Multi Warehouse on). A line can have its own warehouse."
+],
+[
+"Agent",
+"Salesman / agent: agent-wise reports, targets and commission."
+],
+[
+"Currency",
+"Currency of the document (Multi Currency on). Amounts are entered in it; the exchange rate converts them to NPR for accounts."
+],
+[
+"Goods Account",
+"Purchase / goods account for this document when the product has none. A fixed asset or stock ledger can be chosen for capital purchases."
+],
+[
+"Goods Sub-Ledger",
+"Sub-ledger of the goods account."
+],
+[
+"Rate Type",
+"Which selling rate (Sr1 - Sr5) the lines use. Defaults from the customer's rate category; changing it re-rates the lines after asking."
+],
+[
+"Party Bill No",
+"The supplier's own bill number (VAT invoice no). It goes to the purchase VAT register; the same number cannot be entered twice for one supplier."
+],
+[
+"Party Bill Date",
+"Date on the supplier's bill - VAT register and Annex 13."
+],
+[
+"Cost Center",
+"Cost center (department, project, site, shed ...) every posting of this document carries: P&L by cost center, budgets."
+],
+[
+"Unit",
+"Business unit (division / brand) every posting carries: P&L by unit, budgets."
+],
+[
+"Priority",
+"Urgency of the document (normal / high / urgent) - for follow-up lists only."
+],
+[
+"Narration",
+"One line description printed on the voucher and shown in the ledger. Pick a saved remark or type."
+],
+[
+"Bill No.",
+"Pull from a posted bill of this party (for a return): only the qty not yet returned is offered."
+],
+[
+"Item Code",
+"Product code or barcode - type or scan; Enter moves on. F1 shows this customer's / supplier's rate history."
+],
+[
+"Item Name",
+"The product. Its units, rates, accounts, VAT, batch / serial and item type come from the Product Master."
+],
+[
+"Qty",
+"Quantity in the selected unit. Stock moves in the product's base unit (converted automatically)."
+],
+[
+"Free Qty",
+"Free (scheme) quantity: moves stock, no value."
+],
+[
+"UOM",
+"Unit of the line (box, pcs, kg ...). Conversion to the base unit comes from Product Units / the product."
+],
+[
+"Alt Qty",
+"Quantity in the second unit of a dual-unit product (e.g. pcs with cartons)."
+],
+[
+"Rate",
+"Rate per unit (per the rate basis). Sales: from the rate type / rate category / offer rate; purchase: last purchase rate."
+],
+[
+"Rate Basis",
+"Whether the rate is per the primary or the secondary unit of a dual-unit product."
+],
+[
+"Gross",
+"Qty x rate before discounts and terms."
+],
+[
+"Add / Less",
+"Product-wise charges and discounts of the line (from its billing terms popup when Item Charges is on); the popup total shows here."
+],
+[
+"Net Amount",
+"Gross +/- the line terms: the value of the line."
+],
+[
+"Batch",
+"Batch / lot number (Batch System on). Stock and batch-wise costing follow it."
+],
+[
+"Serial No",
+"Serial number of the piece (Serial Number on) - vehicles, electronics."
+],
+[
+"Exp Date",
+"Expiry date of the batch - near-expiry alerts and stock ageing."
+],
+[
+"Ref No (source doc)",
+"The document this line was pulled from (quotation / order / challan / GRN / bill)."
+]
+],
+"slug": "purchase-nonsaleable-return",
+"pdf": "/help/menus/purchase-nonsaleable-return.pdf"
+},
+"/lc-register": {
+"path": "/lc-register",
+"title": "LC Register & Mapping",
+"module": "Purchase",
+"kind": "entry",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Letters of credit for imports: amount, bank, expiry, and which purchase documents used them.",
+"steps": [
+"Add the LC.",
+"Map purchase orders / bills to it.",
+"Actions: amend, close, extend."
+],
+"accounts": "None by itself (margin / charges through Cash / Bank or JV).",
+"stock": "None.",
+"vat": "None.",
+"other": "LC / BG / PDC dashboard warns on expiry and over-use.",
+"fields": [
+[
+"Bank Name",
+"Bank of the cheque."
+],
+[
+"Currency",
+"Currency of the document (Multi Currency on). Amounts are entered in it; the exchange rate converts them to NPR for accounts."
+],
+[
+"Narration",
+"One line description printed on the voucher and shown in the ledger. Pick a saved remark or type."
+]
+],
+"slug": "lc-register",
+"pdf": "/help/menus/lc-register.pdf"
+},
+"/journal-voucher": {
+"path": "/journal-voucher",
+"title": "Journal Voucher",
+"module": "Accounts",
+"kind": "entry",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Any accounting entry, and typed entries: taxable / non-taxable purchase or sales, asset purchase / sale, service purchase / sale, TDS on purchase / sales.",
+"steps": [
+"Choose the JV Type.",
+"Purchase / sales types: party, bill no / date, taxable, non-taxable, VAT % - the lines (e.g. Purchase 2000 Dr, VAT 130 Dr, party 2130 Cr) are filled and can be changed.",
+"TDS types: choose the party, tick its bills (newest first), give TDS % per bill - lines are made; a bill used once is not offered again.",
+"Normal: enter Dr / Cr lines; picking a ledger on the next line puts the balancing amount.",
+"One narration; Save."
+],
+"accounts": "Exactly the lines (Dr = Cr, enforced by the database).",
+"stock": "None.",
+"vat": "Purchase / sales / asset / service types go to the VAT register (JV Purchase / JV Sales).",
+"other": "TDS types: TDS register and the record of bills already taken. JV Type \"Small Balance Write-off (bulk)\" opens its own screen.",
+"fields": [
+[
+"Date",
+"Date of the document. Accounts, stock, VAT month and ageing all use this date. Type it (AD or BS - switch with the AD/BS button) or pick it. A date in a closed fiscal year cannot be posted."
+],
+[
+"JV Type",
+"Kind of journal: Normal, Taxable / non-taxable Purchase or Sales, Asset Purchase / Sale, Service Purchase / Sale, or TDS (on purchase / on sales). Purchase / sales types go to the VAT register; the lines are filled from the amounts."
+],
+[
+"Memo Only",
+"A memo journal is recorded but not posted to the ledgers."
+],
+[
+"Ref Doc No",
+"Reference document (supplier bill no for a purchase)."
+],
+[
+"Ref Doc Date",
+"Date of the reference document."
+],
+[
+"Cost Center",
+"Cost center (department, project, site, shed ...) every posting of this document carries: P&L by cost center, budgets."
+],
+[
+"Unit",
+"Business unit (division / brand) every posting carries: P&L by unit, budgets."
+],
+[
+"PAN / VAT No",
+"PAN of the party (VAT register)."
+],
+[
+"Bill Date",
+"Date of the supplier / customer bill."
+],
+[
+"Taxable Amount",
+"Value on which VAT is charged (JV purchase / sales)."
+],
+[
+"VAT %",
+"VAT rate (13%); VAT amount = taxable x %."
+],
+[
+"VAT Amount",
+"VAT of the journal - posted to the VAT A/c and to the VAT register."
+],
+[
+"Non-taxable Amount",
+"VAT-exempt value (JV purchase / sales)."
+],
+[
+"VAT A/c",
+"VAT ledger the VAT goes to (defaults from System Control)."
+],
+[
+"Bill Total",
+"Taxable + non-taxable + VAT: the party amount."
+],
+[
+"TDS %",
+"TDS rate. TDS amount = base x %. Sales: TDS the customer withholds (Dr TDS receivable, Cr customer). Purchase: TDS we withhold (Dr supplier, Cr TDS payable)."
+],
+[
+"TDS Amount",
+"TDS in rupees; typed or worked out from base x %."
+],
+[
+"TDS Ledger",
+"TDS payable (purchase) or TDS receivable (sales) ledger; defaults from System Control."
+],
+[
+"TDS Sub-Ledger",
+"Sub-ledger of the TDS ledger (e.g. TDS type / section)."
+]
+],
+"slug": "journal-voucher",
+"pdf": "/help/menus/journal-voucher.pdf"
+},
+"/balance-writeoff": {
+"path": "/balance-writeoff",
+"title": "Small Balance Write-off (JV)",
+"module": "Accounts",
+"kind": "entry",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Nil many small customer / supplier balances (e.g. up to Rs 50) in one Journal Voucher against discount.",
+"steps": [
+"Choose customers / suppliers / both, Dr / Cr / both balances, the \"up to\" amount (and \"from\"), the date, area / agent.",
+"List balances; tick all or some.",
+"Choose the discount allowed ledger (for Dr balances) and discount received ledger (for Cr balances); Post write-off JV."
+],
+"accounts": "One JV (type Small Balance Write-off): Dr balance - Cr party, Dr discount allowed; Cr balance - Dr party, Cr discount received.",
+"stock": "None.",
+"vat": "None.",
+"other": "Each party's open bills are settled (bill-wise / ageing clear). Cancel the JV in Journal Voucher to undo the ledger entry and the settlements.",
+"fields": [
+[
+"Narration",
+"One line description printed on the voucher and shown in the ledger. Pick a saved remark or type."
+]
+],
+"slug": "balance-writeoff",
+"pdf": "/help/menus/balance-writeoff.pdf"
+},
+"/cash-bank-entry": {
+"path": "/cash-bank-entry",
+"title": "Cash / Bank Entry",
+"module": "Accounts",
+"kind": "entry",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Receipts and payments through cash or bank.",
+"steps": [
+"Receipt or Payment; cash or bank ledger; mode, cheque / txn no.",
+"Lines: the party / ledger, amount, bill-wise settlement for parties.",
+"One narration; Save."
+],
+"accounts": "Receipt: Dr cash / bank / Cr lines. Payment: Dr lines / Cr cash / bank.",
+"stock": "None.",
+"vat": "None.",
+"other": "Bill-wise settlement of the party's bills; bank reconciliation; cash negative balance control.",
+"fields": [
+[
+"Date",
+"Date of the document. Accounts, stock, VAT month and ageing all use this date. Type it (AD or BS - switch with the AD/BS button) or pick it. A date in a closed fiscal year cannot be posted."
+],
+[
+"Receipt / Payment",
+"Receipt: money comes in (Dr cash / bank, Cr the lines). Payment: money goes out (Cr cash / bank, Dr the lines)."
+],
+[
+"Cash / Bank",
+"Whether the cash or a bank account is used."
+],
+[
+"Document No",
+"Reference number (receipt book no, bank slip no)."
+],
+[
+"Document Date",
+"Date of the reference document / cheque."
+],
+[
+"Cost Center",
+"Cost center (department, project, site, shed ...) every posting of this document carries: P&L by cost center, budgets."
+],
+[
+"Unit",
+"Business unit (division / brand) every posting carries: P&L by unit, budgets."
+],
+[
+"Mode",
+"Cash, cheque, transfer, wallet ... printed and used by bank reconciliation."
+],
+[
+"Cheque / Txn No",
+"Cheque or transaction number - bank reconciliation matches it with the statement."
+],
+[
+"Product Company",
+"Company / brand of the goods on this document. With \"Product Company Compulsory\" in System Control, only that company's products can be picked and the party posting is split by company (company-wise ledger / ageing)."
+],
+[
+"Area",
+"Area of the party / sale - area-wise reports and data access."
+],
+[
+"Agent",
+"Salesman / agent: agent-wise reports, targets and commission."
+],
+[
+"Route",
+"Delivery / sales route - route-wise sales, loading sheet and route plan."
+],
+[
+"Narration",
+"One line description printed on the voucher and shown in the ledger. Pick a saved remark or type."
+],
+[
+"Cash/Bank Ledger",
+"The cash-in-hand or bank ledger debited (receipt) or credited (payment)."
+]
+],
+"slug": "cash-bank-entry",
+"pdf": "/help/menus/cash-bank-entry.pdf"
+},
+"/debit-note": {
+"path": "/debit-note",
+"title": "Debit Note",
+"module": "Accounts",
+"kind": "entry",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Supplier-side adjustment without goods (rate difference, claim, discount received).",
+"steps": [
+"Party, lines with ledgers and amounts (VAT line if any).",
+"Save."
+],
+"accounts": "Dr supplier / Cr the lines.",
+"stock": "None.",
+"vat": "Lines to a VAT ledger reduce input VAT (Debit Note in the VAT register).",
+"other": "Lines to a purchase account appear in the Purchase Account reconciliation.",
+"fields": [],
+"slug": "debit-note",
+"pdf": "/help/menus/debit-note.pdf"
+},
+"/credit-note": {
+"path": "/credit-note",
+"title": "Credit Note",
+"module": "Accounts",
+"kind": "entry",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Customer-side adjustment without goods (discount allowed, rate difference).",
+"steps": [
+"Party, lines with ledgers and amounts.",
+"Save."
+],
+"accounts": "Dr the lines / Cr customer.",
+"stock": "None.",
+"vat": "Lines to a VAT ledger reduce output VAT (Credit Note in the VAT register).",
+"other": "Lines to a sales account appear in the Sales Account reconciliation.",
+"fields": [],
+"slug": "credit-note",
+"pdf": "/help/menus/credit-note.pdf"
+},
+"/pdc-voucher": {
+"path": "/pdc-voucher",
+"title": "PDC (Post-dated Cheque)",
+"module": "Accounts",
+"kind": "entry",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Post-dated cheques received from customers or issued to suppliers.",
+"steps": [
+"Received / Issued, party, cheque no, cheque date, bank, amount.",
+"On the cheque date: deposit / clear, bounce or return from the PDC dashboard."
+],
+"accounts": "Nothing until cleared; clearing posts a receipt / payment (bank Dr / Cr).",
+"stock": "None.",
+"vat": "None.",
+"other": "Ledger Summary / Party Summary can show PDC separately; the PDC dashboard lists due cheques.",
+"fields": [
+[
+"Date",
+"Date of the document. Accounts, stock, VAT month and ageing all use this date. Type it (AD or BS - switch with the AD/BS button) or pick it. A date in a closed fiscal year cannot be posted."
+],
+[
+"Received / Issued",
+"Received: a post-dated cheque from a customer. Issued: our post-dated cheque to a supplier. Nothing posts to the ledger until the cheque is deposited / cleared."
+],
+[
+"Party",
+"The customer / supplier ledger the document is with. Its balance moves with the document."
+],
+[
+"Bank Ledger",
+"Bank the cheque is deposited to / paid from when it clears."
+],
+[
+"Cheque No",
+"Number of the post-dated cheque."
+],
+[
+"Cheque Date",
+"Date on the cheque; the PDC dashboard shows due / overdue cheques by it."
+],
+[
+"Amount",
+"Amount of the line / cheque / document."
+],
+[
+"Bank Name",
+"Bank of the cheque."
+],
+[
+"Customer Sub-Ledger",
+"Sub-ledger (e.g. branch or project of the customer) under the customer ledger. The party posting carries it, so sub-ledger statements and ageing show it."
+],
+[
+"Ref Doc No",
+"Reference document (supplier bill no for a purchase)."
+],
+[
+"Ref Doc Date",
+"Date of the reference document."
+],
+[
+"Cost Center",
+"Cost center (department, project, site, shed ...) every posting of this document carries: P&L by cost center, budgets."
+],
+[
+"Unit",
+"Business unit (division / brand) every posting carries: P&L by unit, budgets."
+],
+[
+"Narration",
+"One line description printed on the voucher and shown in the ledger. Pick a saved remark or type."
+]
+],
+"slug": "pdc-voucher",
+"pdf": "/help/menus/pdc-voucher.pdf"
+},
+"/bulk-cash-settlement": {
+"path": "/bulk-cash-settlement",
+"title": "Bulk Cash Settlement",
+"module": "Accounts",
+"kind": "entry",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Settle many cash-bill or party receipts at once (e.g. a salesman's day collection).",
+"steps": [
+"Choose parties / bills, amounts received.",
+"Post."
+],
+"accounts": "Receipts: Dr cash / Cr each party.",
+"stock": "None.",
+"vat": "None.",
+"other": "Bill-wise settlement of each bill.",
+"fields": [
+[
+"Side",
+"Sales side or purchase side."
+],
+[
+"Agent",
+"Salesman / agent: agent-wise reports, targets and commission."
+],
+[
+"Area",
+"Area of the party / sale - area-wise reports and data access."
+],
+[
+"Route",
+"Delivery / sales route - route-wise sales, loading sheet and route plan."
+],
+[
+"Product Company",
+"Company / brand of the goods on this document. With \"Product Company Compulsory\" in System Control, only that company's products can be picked and the party posting is split by company (company-wise ledger / ageing)."
+],
+[
+"From",
+"First date of the report period."
+],
+[
+"To",
+"Last date of the report period."
+],
+[
+"Mode",
+"Cash, cheque, transfer, wallet ... printed and used by bank reconciliation."
+],
+[
+"Cheque No",
+"Number of the post-dated cheque."
+],
+[
+"Cheque Date",
+"Date on the cheque; the PDC dashboard shows due / overdue cheques by it."
+],
+[
+"Bank Name",
+"Bank of the cheque."
+]
+],
+"slug": "bulk-cash-settlement",
+"pdf": "/help/menus/bulk-cash-settlement.pdf"
+},
+"/bank-reconciliation": {
+"path": "/bank-reconciliation",
+"title": "Bank Reconciliation",
+"module": "Accounts",
+"kind": "entry",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Match the bank ledger with the bank statement (manual or by importing the statement).",
+"steps": [
+"Choose the bank ledger and period.",
+"Import the statement (Excel / CSV) - auto-match by amount / cheque / date; confirm or match by hand.",
+"BRS tab: balance per books, uncleared items, balance per bank."
+],
+"accounts": "No posting (clearing dates only). Bank charges / interest found here are entered through Cash / Bank or JV.",
+"stock": "None.",
+"vat": "None.",
+"fields": [
+[
+"From",
+"First date of the report period."
+],
+[
+"To",
+"Last date of the report period."
+],
+[
+"As on",
+"Report position at the end of this date (balances, stock, ageing)."
+]
+],
+"slug": "bank-reconciliation",
+"pdf": "/help/menus/bank-reconciliation.pdf"
+},
+"/interest-posting": {
+"path": "/interest-posting",
+"title": "Interest on Overdue",
+"module": "Accounts",
+"kind": "entry",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Interest on customers' overdue bills from the due date at the ledger's interest % p.a.",
+"steps": [
+"Choose the date and parties; check the calculated interest.",
+"Post: a register row per party (posted once)."
+],
+"accounts": "Dr customer / Cr interest income.",
+"stock": "None.",
+"vat": "None.",
+"fields": [
+[
+"Date",
+"Date of the document. Accounts, stock, VAT month and ageing all use this date. Type it (AD or BS - switch with the AD/BS button) or pick it. A date in a closed fiscal year cannot be posted."
+]
+],
+"slug": "interest-posting",
+"pdf": "/help/menus/interest-posting.pdf"
+},
+"/fixed-assets": {
+"path": "/fixed-assets",
+"title": "Fixed Assets & Depreciation",
+"module": "Accounts",
+"kind": "entry",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Fixed asset register, depreciation (SLM / WDV by block), asset sale / value reduction; schedule and detail reports.",
+"steps": [
+"Assets tab: add assets (cost, date, block / rate, ledger).",
+"Depreciation tab: calculate for the period and post.",
+"Sale / value reduce from the asset row."
+],
+"accounts": "Depreciation: Dr depreciation expense / Cr accumulated depreciation (or the asset). Sale: asset out, gain / loss.",
+"stock": "None.",
+"vat": "Asset purchase / sale VAT through the bill or JV.",
+"fields": [
+[
+"Date",
+"Date of the document. Accounts, stock, VAT month and ageing all use this date. Type it (AD or BS - switch with the AD/BS button) or pick it. A date in a closed fiscal year cannot be posted."
+],
+[
+"From",
+"First date of the report period."
+],
+[
+"To",
+"Last date of the report period."
+],
+[
+"Group by",
+"How the rows are grouped / totalled."
+],
+[
+"Code",
+"Code of the record - automatic and read-only."
+],
+[
+"Method",
+"Stock valuation method: FIFO, moving average, weighted average ..."
+]
+],
+"slug": "fixed-assets",
+"pdf": "/help/menus/fixed-assets.pdf"
+},
+"/budgets": {
+"path": "/budgets",
+"title": "Budgets",
+"module": "Accounts",
+"kind": "entry",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Budgets by ledger, sub-ledger, cost center, unit or doc class and period; variance against actual.",
+"steps": [
+"Add budget lines per period.",
+"Budget vs Actual shows actual, variance and %."
+],
+"accounts": "None.",
+"stock": "None.",
+"vat": "None.",
+"fields": [
+[
+"From",
+"First date of the report period."
+],
+[
+"To",
+"Last date of the report period."
+]
+],
+"slug": "budgets",
+"pdf": "/help/menus/budgets.pdf"
+},
+"/confirmation-letters": {
+"path": "/confirmation-letters",
+"title": "Account Confirmation Letters",
+"module": "Accounts",
+"kind": "report",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Balance confirmation letters for customers / suppliers - one per ledger, per billing name or per PAN - with statement, open bills, purchases / sales by nature (Inventory, Fixed Asset, Service) and a reply slip.",
+"steps": [
+"Choose party type, group by, as-on date (and from date for a statement).",
+"Pick a format (English, Nepali, with reply slip) or design your own.",
+"Tick the parties and print."
+],
+"accounts": "None (read only).",
+"stock": "None.",
+"vat": "Shows VAT on purchases / sales with the party.",
+"fields": [],
+"slug": "confirmation-letters",
+"pdf": "/help/menus/confirmation-letters.pdf"
+},
+"/stock-transfer": {
+"path": "/stock-transfer",
+"title": "Stock Transfer",
+"module": "Inventory",
+"kind": "entry",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Move stock between warehouses or branches (direct, or two-step dispatch and receipt).",
+"steps": [
+"From / to warehouse (branch), transfer type.",
+"Lines: item, qty, batch.",
+"Two-step: post the dispatch; the other branch receives it on its date."
+],
+"accounts": "Only with \"Post Stock Transfer to Accounts\" on (branch stock ledgers / goods in transit).",
+"stock": "Out of the sending warehouse, into the receiving one (company stock unchanged). Dispatched but not received = goods in transit.",
+"vat": "None.",
+"fields": [
+[
+"Transfer Type",
+"Direct (in and out together) or two-step branch transfer (dispatch, then receipt)."
+],
+[
+"Date",
+"Date of the document. Accounts, stock, VAT month and ageing all use this date. Type it (AD or BS - switch with the AD/BS button) or pick it. A date in a closed fiscal year cannot be posted."
+],
+[
+"From Branch",
+"Sending branch (branch transfer: goods in transit until received)."
+],
+[
+"From Warehouse",
+"Warehouse the goods leave (stock out)."
+],
+[
+"To Branch",
+"Receiving branch."
+],
+[
+"To Warehouse",
+"Warehouse the goods reach (stock in)."
+],
+[
+"Transport",
+"Transporter (Transport Master)."
+],
+[
+"Vehicle No",
+"Vehicle carrying the goods - printed on the challan / transfer."
+],
+[
+"Driver Name",
+"Driver of the vehicle."
+],
+[
+"Cost Center",
+"Cost center (department, project, site, shed ...) every posting of this document carries: P&L by cost center, budgets."
+],
+[
+"Unit",
+"Business unit (division / brand) every posting carries: P&L by unit, budgets."
+],
+[
+"Priority",
+"Urgency of the document (normal / high / urgent) - for follow-up lists only."
+],
+[
+"Remarks",
+"Remarks printed on the document; pick a saved remark (Remarks master) or type your own."
+],
+[
+"Narration",
+"One line description printed on the voucher and shown in the ledger. Pick a saved remark or type."
+],
+[
+"Receiving Date",
+"Date the goods were received at the other branch."
+]
+],
+"slug": "stock-transfer",
+"pdf": "/help/menus/stock-transfer.pdf"
+},
+"/barcode-print": {
+"path": "/barcode-print",
+"title": "Barcode / Label Printing",
+"module": "Inventory",
+"kind": "tool",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Print barcode labels for products / batches from purchases or a list.",
+"steps": [
+"Pick items (or a GRN / bill) and label count.",
+"Choose a label format (designer) and print."
+],
+"accounts": "None.",
+"stock": "None.",
+"vat": "None.",
+"fields": [],
+"slug": "barcode-print",
+"pdf": "/help/menus/barcode-print.pdf"
+},
+"/production-order": {
+"path": "/production-order",
+"title": "Production Order",
+"module": "Production",
+"kind": "entry",
+"nature": [
+"manufacturing",
+"poultry"
+],
+"purpose": "Make a product from raw materials (from a BOM template or by hand), with by-products.",
+"steps": [
+"Output product, qty, unit, warehouse; BOM template fills the raw materials.",
+"Adjust raw material qty; add by-products (value).",
+"Post."
+],
+"accounts": "With WIP / production ledgers set: raw material consumption and output value.",
+"stock": "Raw materials OUT of the source warehouse; output IN at (raw material cost - by-product value) per base unit; by-products IN at their value.",
+"vat": "None.",
+"other": "Production register, consumption, BOM vs actual and cost trend reports.",
+"fields": [
+[
+"Date",
+"Date of the document. Accounts, stock, VAT month and ageing all use this date. Type it (AD or BS - switch with the AD/BS button) or pick it. A date in a closed fiscal year cannot be posted."
+],
+[
+"Output Product",
+"Finished / semi-finished product made. Stock in at the cost of the raw materials (less by-products) per base unit."
+],
+[
+"Output Qty",
+"Quantity produced."
+],
+[
+"Output Warehouse",
+"Warehouse the output goes into."
+],
+[
+"Source Warehouse (Raw Material)",
+"Warehouse the raw materials are taken from."
+],
+[
+"Output Batch No",
+"Batch number of the production."
+],
+[
+"Output Relative Value",
+"Share of cost for the main output when there are joint products (relative sales value)."
+],
+[
+"Cost Center",
+"Cost center (department, project, site, shed ...) every posting of this document carries: P&L by cost center, budgets."
+],
+[
+"Unit",
+"Business unit (division / brand) every posting carries: P&L by unit, budgets."
+],
+[
+"Remarks",
+"Remarks printed on the document; pick a saved remark (Remarks master) or type your own."
+],
+[
+"Narration",
+"One line description printed on the voucher and shown in the ledger. Pick a saved remark or type."
+]
+],
+"slug": "production-order",
+"pdf": "/help/menus/production-order.pdf"
+},
+"/bom-template": {
+"path": "/bom-template",
+"title": "BOM Template",
+"module": "Production",
+"kind": "master",
+"nature": [
+"manufacturing",
+"poultry"
+],
+"purpose": "Bill of materials: raw materials (and by-products) for a given output qty.",
+"steps": [
+"Output product and qty.",
+"Raw material lines with qty and unit.",
+"Save; Production Order uses it."
+],
+"accounts": "None.",
+"stock": "None.",
+"vat": "None.",
+"fields": [
+[
+"Output Product",
+"Finished / semi-finished product made. Stock in at the cost of the raw materials (less by-products) per base unit."
+],
+[
+"Output Relative Value",
+"Share of cost for the main output when there are joint products (relative sales value)."
+]
+],
+"slug": "bom-template",
+"pdf": "/help/menus/bom-template.pdf"
+},
+"/chart-of-accounts": {
+"path": "/chart-of-accounts",
+"title": "Chart of Accounts (Ledger)",
+"module": "Masters",
+"kind": "master",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Ledgers and account groups. The group decides where a ledger goes in the Balance Sheet / P&L, ratios and cash flow; the category type decides where it is offered (customer, supplier, cash, bank).",
+"steps": [
+"Ledger Accounts tab: New Ledger Account - name, group, category type, PAN, credit limit / days, bill-wise tracking, opening balance, area / route / agent, rate / discount category.",
+"Account Groups tab: groups with their NFRS classification.",
+"Ledger Categories tab: categories for grouping ledgers."
+],
+"accounts": "Opening balances are the start of the ledger (Ledger Opening Balance).",
+"stock": "None.",
+"vat": "None.",
+"other": "Every posting uses these ledgers; the ledger purpose check stops a P&L ledger being used where a Balance Sheet one is needed (and the reverse).",
+"tips": [],
+"fields": [
+[
+"Code",
+"Code of the record - automatic and read-only."
+],
+[
+"Account Name",
+"Name of the ledger."
+],
+[
+"Short Name (Alias)",
+"Short name / alias for quick search."
+],
+[
+"Category Type",
+"Customer, supplier, both, cash, bank or others - decides where the ledger is offered (party pickers, cash / bank)."
+],
+[
+"Account Group",
+"Group the ledger belongs to - decides Balance Sheet / P&L place, Trial Balance and ratio / cash-flow category."
+],
+[
+"Tags",
+"Free labels for searching and grouping."
+],
+[
+"Billing Name",
+"Name printed on bills (if different from the ledger name); confirmation letters can group ledgers by it."
+],
+[
+"VAT/PAN Number",
+"PAN / VAT number - printed on bills, VAT register, IRD, confirmation letters."
+],
+[
+"Area",
+"Area of the party / sale - area-wise reports and data access."
+],
+[
+"Route",
+"Delivery / sales route - route-wise sales, loading sheet and route plan."
+],
+[
+"Credit Limit / Days",
+"Maximum outstanding and credit days allowed - warned / blocked on sales per Credit Limit Control."
+],
+[
+"Interest % p.a.",
+"Interest on overdue bills (Interest on Overdue posting)."
+],
+[
+"Rate Category",
+"Which selling rate (Sr1 - Sr5) this customer gets by default."
+],
+[
+"Discount Category",
+"Default discount group of the customer."
+],
+[
+"Sub Ledger Mode",
+"Whether this ledger uses sub-ledgers and which."
+],
+[
+"Credit Limit Control",
+"None, warn or block when a sale takes the party over its credit limit."
+],
+[
+"Bill-wise Tracking",
+"Keep the party's outstanding bill by bill (bill-wise ageing, settlement of payments against bills)."
+],
+[
+"Opening Balance",
+"Balance on the first day of the opening fiscal year (Dr / Cr)."
+]
+],
+"slug": "chart-of-accounts",
+"pdf": "/help/menus/chart-of-accounts.pdf"
+},
+"/sub-ledgers": {
+"path": "/sub-ledgers",
+"title": "Sub Ledgers",
+"module": "Masters",
+"kind": "master",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Sub-divisions of a ledger (branches of a customer, projects, TDS types ...). Postings carry them for sub-ledger statements and ageing.",
+"steps": [
+"Choose the main ledger, add sub-ledgers with code / name."
+],
+"accounts": "None.",
+"stock": "None.",
+"vat": "None.",
+"other": "",
+"tips": [],
+"fields": [
+[
+"Short Name (Alias)",
+"Short name / alias for quick search."
+],
+[
+"Code",
+"Code of the record - automatic and read-only."
+],
+[
+"Agent",
+"Salesman / agent: agent-wise reports, targets and commission."
+],
+[
+"Bank Name",
+"Bank of the cheque."
+]
+],
+"slug": "sub-ledgers",
+"pdf": "/help/menus/sub-ledgers.pdf"
+},
+"/cost-profit-centers": {
+"path": "/cost-profit-centers",
+"title": "Cost & Profit Centers",
+"module": "Masters",
+"kind": "master",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Departments, projects, sites, sheds ... that postings are tagged with (P&L by cost center, budgets).",
+"steps": [
+"Cost Centers / Profit Centers tabs: add, set parent for a hierarchy."
+],
+"accounts": "None.",
+"stock": "None.",
+"vat": "None.",
+"other": "",
+"tips": [],
+"fields": [
+[
+"Code",
+"Code of the record - automatic and read-only."
+],
+[
+"Short Name (Alias)",
+"Short name / alias for quick search."
+]
+],
+"slug": "cost-profit-centers",
+"pdf": "/help/menus/cost-profit-centers.pdf"
+},
+"/billing-terms": {
+"path": "/billing-terms",
+"title": "Billing Terms",
+"module": "Masters",
+"kind": "master",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "VAT, excise, discounts, freight and other charges used on sales / purchase documents - formula, sign (+ / -), basis, ledger, return ledger, sub-ledger, which entries they apply to.",
+"steps": [
+"New Billing Term: name, type (VAT / excise / discount / other), formula or rate, sign, basis (value / quantity), ledgers and sub-ledgers.",
+"Term Used For: Transaction term (Sales / Purchase / Production Entry - on the bill itself) or Additional term (Purchase / Sales Additional - a later bill such as freight, customs, insurance).",
+"Effect: Include In Costing (the amount goes into the cost of the goods / landed cost; off = an expense only) and Include In Profitability (counted in the profitability reports).",
+"Product Wise: entered per product (popup per product); otherwise bill-wise, divided over the products by the basis."
+],
+"accounts": "None.",
+"stock": "None.",
+"vat": "None.",
+"other": "Term Mapping in System Control decides which term is VAT, discount 1-5, bill discount. VAT terms decide which VAT ledger gets the VAT.",
+"tips": [],
+"fields": [],
+"slug": "billing-terms",
+"pdf": "/help/menus/billing-terms.pdf"
+},
+"/remarks-terms": {
+"path": "/remarks-terms",
+"title": "Remarks & Terms",
+"module": "Masters",
+"kind": "master",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Saved remarks (narrations) and terms & conditions offered on documents.",
+"steps": [
+"Add remarks and terms; pick them on entries."
+],
+"accounts": "None.",
+"stock": "None.",
+"vat": "None.",
+"other": "",
+"tips": [],
+"fields": [],
+"slug": "remarks-terms",
+"pdf": "/help/menus/remarks-terms.pdf"
+},
+"/ledger-opening": {
+"path": "/ledger-opening",
+"title": "Ledger Opening Balance",
+"module": "Masters",
+"kind": "master",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Opening balances of ledgers on the first day of the opening fiscal year (with bill-wise opening bills).",
+"steps": [
+"Enter Dr / Cr per ledger; party ledgers can have opening bills for bill-wise ageing."
+],
+"accounts": "Opening balances of the Trial Balance (Dr must equal Cr overall).",
+"stock": "None.",
+"vat": "None.",
+"other": "",
+"tips": [],
+"fields": [],
+"slug": "ledger-opening",
+"pdf": "/help/menus/ledger-opening.pdf"
+},
+"/products": {
+"path": "/products",
+"title": "Product Master",
+"module": "Masters",
+"kind": "master",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Products with units, rates (Sr1-Sr5, purchase), accounts (sales / purchase / return / non-saleable with sub-ledgers), terms, vendor and discount, stock settings (batch, serial, reorder), tracking and rack.",
+"steps": [
+"Basic Info: name, item type (trading, raw material, finished good, service, non-inventory, fixed asset), stock group, company.",
+"Units & Rates: primary unit, other units / dual unit, rates.",
+"Account Mapping: product accounts - they come first when posting.",
+"Term Mapping, Vendor & Discount, Stock & Costing, Tracking, Rack Location."
+],
+"accounts": "None.",
+"stock": "None.",
+"vat": "None.",
+"other": "Item type service / non-inventory / fixed asset: never moves stock. Product accounts override the document and System Control accounts.",
+"tips": [],
+"fields": [
+[
+"Product Name",
+"Name of the product."
+],
+[
+"Short Name",
+"Short name / alias for quick search."
+],
+[
+"Code",
+"Code of the record - automatic and read-only."
+],
+[
+"Item Type",
+"Trading item, raw material, semi-finished, finished good, service, non-inventory or fixed asset. Service, non-inventory and fixed asset are not stock (no stock movement, not in closing stock)."
+],
+[
+"Stock Group",
+"Product group - group-wise stock and sales reports."
+],
+[
+"Company / Brand",
+"Product company - company-wise sales, purchase and compulsory company rules."
+],
+[
+"HS Code",
+"Harmonised System code (customs / VAT annex)."
+],
+[
+"Tags",
+"Free labels for searching and grouping."
+],
+[
+"Unit Mode",
+"Single unit, multiple units with conversion, or dual unit (two quantities per line)."
+],
+[
+"Primary Unit",
+"Base unit of the product: stock is kept in it."
+],
+[
+"Default Vendor",
+"Usual supplier - used by purchase plans."
+]
+],
+"slug": "products",
+"pdf": "/help/menus/products.pdf"
+},
+"/product-units": {
+"path": "/product-units",
+"title": "Product Units",
+"module": "Masters",
+"kind": "master",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Units of measure (pcs, box, kg ...), simple or compound.",
+"steps": [
+"Add the unit name, symbol and type."
+],
+"accounts": "None.",
+"stock": "None.",
+"vat": "None.",
+"other": "",
+"tips": [],
+"fields": [],
+"slug": "product-units",
+"pdf": "/help/menus/product-units.pdf"
+},
+"/product-groups": {
+"path": "/product-groups",
+"title": "Product Groups & Companies",
+"module": "Masters",
+"kind": "master",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Stock groups and product companies (brands).",
+"steps": [
+"Product Groups / Product Companies tabs."
+],
+"accounts": "None.",
+"stock": "None.",
+"vat": "None.",
+"other": "",
+"tips": [],
+"fields": [
+[
+"Default Vendor",
+"Usual supplier - used by purchase plans."
+]
+],
+"slug": "product-groups",
+"pdf": "/help/menus/product-groups.pdf"
+},
+"/categories": {
+"path": "/categories",
+"title": "Categories",
+"module": "Masters",
+"kind": "master",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Product categories for analysis and targets.",
+"steps": [
+"Add categories."
+],
+"accounts": "None.",
+"stock": "None.",
+"vat": "None.",
+"other": "",
+"tips": [],
+"fields": [],
+"slug": "categories",
+"pdf": "/help/menus/categories.pdf"
+},
+"/product-opening": {
+"path": "/product-opening",
+"title": "Product Opening Stock",
+"module": "Masters",
+"kind": "master",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Opening quantity and rate of products (and opening batches) at the start of the opening fiscal year.",
+"steps": [
+"Enter qty and rate per product / batch / warehouse."
+],
+"accounts": "None.",
+"stock": "Opening stock of the stock engine (opening day = day before the fiscal year).",
+"vat": "None.",
+"other": "",
+"tips": [],
+"fields": [],
+"slug": "product-opening",
+"pdf": "/help/menus/product-opening.pdf"
+},
+"/pricing-masters": {
+"path": "/pricing-masters",
+"title": "Rate Types, Rate Category, Discount Category",
+"module": "Masters",
+"kind": "master",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Selling rate types Sr1-Sr5, rate categories (which rate a customer gets) and discount categories.",
+"steps": [
+"Rate Types: names of Sr1-Sr5.",
+"Rate Category / Discount Category: add and assign to customers."
+],
+"accounts": "None.",
+"stock": "None.",
+"vat": "None.",
+"other": "",
+"tips": [],
+"fields": [],
+"slug": "pricing-masters",
+"pdf": "/help/menus/pricing-masters.pdf"
+},
+"/product-rate-change": {
+"path": "/product-rate-change",
+"title": "Product Rate Change",
+"module": "Masters",
+"kind": "master",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Change selling / purchase rates of many products at once (by % or amount).",
+"steps": [
+"Filter products, set the change, apply."
+],
+"accounts": "None.",
+"stock": "None.",
+"vat": "None.",
+"other": "",
+"tips": [],
+"fields": [],
+"slug": "product-rate-change",
+"pdf": "/help/menus/product-rate-change.pdf"
+},
+"/product-offer-rate": {
+"path": "/product-offer-rate",
+"title": "Offer Rate",
+"module": "Masters",
+"kind": "master",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Time-bound offer (scheme) rates for products.",
+"steps": [
+"Product, rate, from / to dates."
+],
+"accounts": "None.",
+"stock": "None.",
+"vat": "None.",
+"other": "",
+"tips": [],
+"fields": [
+[
+"From Date",
+"First date of the report period."
+],
+[
+"To Date",
+"Last date of the report period."
+]
+],
+"slug": "product-offer-rate",
+"pdf": "/help/menus/product-offer-rate.pdf"
+},
+"/salesman-agents": {
+"path": "/salesman-agents",
+"title": "Salesman / Agent",
+"module": "Masters",
+"kind": "master",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Salesmen / agents with commission ledgers, mobile login and order settings.",
+"steps": [
+"Add the agent, commission expense and payable ledgers, linked user."
+],
+"accounts": "None.",
+"stock": "None.",
+"vat": "None.",
+"other": "",
+"tips": [],
+"fields": [
+[
+"Short Name",
+"Short name / alias for quick search."
+],
+[
+"Product Company",
+"Company / brand of the goods on this document. With \"Product Company Compulsory\" in System Control, only that company's products can be picked and the party posting is split by company (company-wise ledger / ageing)."
+]
+],
+"slug": "salesman-agents",
+"pdf": "/help/menus/salesman-agents.pdf"
+},
+"/route-sequencing": {
+"path": "/route-sequencing",
+"title": "Route Sequencing",
+"module": "Masters",
+"kind": "master",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Customers on each route in visiting order.",
+"steps": [
+"Choose the route, order the customers."
+],
+"accounts": "None.",
+"stock": "None.",
+"vat": "None.",
+"other": "",
+"tips": [],
+"fields": [],
+"slug": "route-sequencing",
+"pdf": "/help/menus/route-sequencing.pdf"
+},
+"/route-plan": {
+"path": "/route-plan",
+"title": "Route Plan & Mobile Login",
+"module": "Masters",
+"kind": "master",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Which salesman visits which route on which date; mobile app logins.",
+"steps": [
+"Plan routes by date; give the salesman a user login."
+],
+"accounts": "None.",
+"stock": "None.",
+"vat": "None.",
+"other": "",
+"tips": [],
+"fields": [
+[
+"Salesman / Agent",
+"Salesman / agent of the sale: used for agent-wise sales, targets and commission."
+],
+[
+"Route",
+"Delivery / sales route - route-wise sales, loading sheet and route plan."
+],
+[
+"From",
+"First date of the report period."
+],
+[
+"To",
+"Last date of the report period."
+]
+],
+"slug": "route-plan",
+"pdf": "/help/menus/route-plan.pdf"
+},
+"/transport-master": {
+"path": "/transport-master",
+"title": "Transport Master",
+"module": "Masters",
+"kind": "master",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Transporters and vehicles for challans.",
+"steps": [
+"Add transporter details."
+],
+"accounts": "None.",
+"stock": "None.",
+"vat": "None.",
+"other": "",
+"tips": [],
+"fields": [
+[
+"Code",
+"Code of the record - automatic and read-only."
+],
+[
+"Short Name (Alias)",
+"Short name / alias for quick search."
+]
+],
+"slug": "transport-master",
+"pdf": "/help/menus/transport-master.pdf"
+},
+"/system-control": {
+"path": "/system-control",
+"title": "System Control",
+"module": "Setup",
+"kind": "master",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Company-wide settings: Business Nature (trading, distribution, retail, manufacturing, service, automobile, construction, poultry), default ledgers (VAT, sales, purchase, TDS, cash, bank, GRN clearing, stock), term mapping, number formats, controls (negative stock, credit limit, back / post-date, IRD billing), features (multi warehouse, batch, serial, dual UOM, multi currency).",
+"steps": [
+"Change a setting and Save - it applies to new entries."
+],
+"accounts": "None.",
+"stock": "None.",
+"vat": "None.",
+"other": "Business Nature switches the industry menus. IRD Billing locks posted sales bills / returns to cancel-only.",
+"tips": [],
+"fields": [],
+"slug": "system-control",
+"pdf": "/help/menus/system-control.pdf"
+},
+"/fiscal-years": {
+"path": "/fiscal-years",
+"title": "Fiscal Years",
+"module": "Setup",
+"kind": "master",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Fiscal years (Shrawan 1 - Ashadh end), the current year, and closing.",
+"steps": [
+"Add a year; set current.",
+"Close: irreversible - nothing dated in a closed year can be posted, cancelled or changed any more."
+],
+"accounts": "None.",
+"stock": "None.",
+"vat": "None.",
+"other": "Document numbering restarts per fiscal year.",
+"tips": [],
+"fields": [],
+"slug": "fiscal-years",
+"pdf": "/help/menus/fiscal-years.pdf"
+},
+"/branches-warehouses": {
+"path": "/branches-warehouses",
+"title": "Branches & Warehouses",
+"module": "Setup",
+"kind": "master",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Branches and warehouses (stock locations).",
+"steps": [
+"Branches / Warehouses tabs: add."
+],
+"accounts": "None.",
+"stock": "Stock is kept per warehouse.",
+"vat": "None.",
+"other": "",
+"tips": [],
+"fields": [],
+"slug": "branches-warehouses",
+"pdf": "/help/menus/branches-warehouses.pdf"
+},
+"/business-units": {
+"path": "/business-units",
+"title": "Business Units",
+"module": "Setup",
+"kind": "master",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Divisions / brands / product lines postings are tagged with (P&L by unit).",
+"steps": [
+"Add units; optional hierarchy."
+],
+"accounts": "None.",
+"stock": "None.",
+"vat": "None.",
+"other": "",
+"tips": [],
+"fields": [
+[
+"Code",
+"Code of the record - automatic and read-only."
+],
+[
+"Short Name",
+"Short name / alias for quick search."
+]
+],
+"slug": "business-units",
+"pdf": "/help/menus/business-units.pdf"
+},
+"/ledger-mapping": {
+"path": "/ledger-mapping",
+"title": "Ledger Mapping",
+"module": "Setup",
+"kind": "master",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Which ledgers do which job (sales, purchase, VAT, discount ...) per module.",
+"steps": [
+"Map each job to a ledger."
+],
+"accounts": "None.",
+"stock": "None.",
+"vat": "None.",
+"other": "",
+"tips": [],
+"fields": [],
+"slug": "ledger-mapping",
+"pdf": "/help/menus/ledger-mapping.pdf"
+},
+"/document-numbering": {
+"path": "/document-numbering",
+"title": "Document Numbering",
+"module": "Setup",
+"kind": "master",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Number series per document type, fiscal year, branch and category (prefix, digits, reset).",
+"steps": [
+"Add a series: voucher type, prefix, starting number, fiscal year part."
+],
+"accounts": "None.",
+"stock": "None.",
+"vat": "None.",
+"other": "Doc Class Register shows gaps in a series.",
+"tips": [],
+"fields": [],
+"slug": "document-numbering",
+"pdf": "/help/menus/document-numbering.pdf"
+},
+"/currencies": {
+"path": "/currencies",
+"title": "Currencies",
+"module": "Setup",
+"kind": "master",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Foreign currencies and exchange rates (Multi Currency).",
+"steps": [
+"Add currency, symbol and rate."
+],
+"accounts": "None.",
+"stock": "None.",
+"vat": "None.",
+"other": "",
+"tips": [],
+"fields": [
+[
+"Code",
+"Code of the record - automatic and read-only."
+]
+],
+"slug": "currencies",
+"pdf": "/help/menus/currencies.pdf"
+},
+"/entry-field-control": {
+"path": "/entry-field-control",
+"title": "Entry Field Control",
+"module": "Setup",
+"kind": "master",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Per entry and user: which fields are visible, compulsory, read-only; which pull sources (Quotation / Order / Challan) are offered.",
+"steps": [
+"Choose the entry and user / group; set each field."
+],
+"accounts": "None.",
+"stock": "None.",
+"vat": "None.",
+"other": "",
+"tips": [],
+"fields": [],
+"slug": "entry-field-control",
+"pdf": "/help/menus/entry-field-control.pdf"
+},
+"/user-defined-fields": {
+"path": "/user-defined-fields",
+"title": "User Defined Fields",
+"module": "Setup",
+"kind": "master",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Extra fields on masters and documents (text, number, date, list).",
+"steps": [
+"Add the field and the screens it shows on."
+],
+"accounts": "None.",
+"stock": "None.",
+"vat": "None.",
+"other": "",
+"tips": [],
+"fields": [],
+"slug": "user-defined-fields",
+"pdf": "/help/menus/user-defined-fields.pdf"
+},
+"/users": {
+"path": "/users",
+"title": "Users",
+"module": "Setup",
+"kind": "master",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Users, their security group, branch, department, rate change limits.",
+"steps": [
+"New User: email, name, security group, default branch, password."
+],
+"accounts": "None.",
+"stock": "None.",
+"vat": "None.",
+"other": "",
+"tips": [],
+"fields": [
+[
+"PAN Number",
+"PAN / VAT number of the party printed on the bill and used in VAT registers / IRD. Can update the master."
+]
+],
+"slug": "users",
+"pdf": "/help/menus/users.pdf"
+},
+"/security-groups": {
+"path": "/security-groups",
+"title": "Security Groups",
+"module": "Setup",
+"kind": "master",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Rights per module and action (view, create, edit, delete, cancel, approve).",
+"steps": [
+"Create a group and tick the rights."
+],
+"accounts": "None.",
+"stock": "None.",
+"vat": "None.",
+"other": "",
+"tips": [],
+"fields": [],
+"slug": "security-groups",
+"pdf": "/help/menus/security-groups.pdf"
+},
+"/data-access": {
+"path": "/data-access",
+"title": "Data Access",
+"module": "Setup",
+"kind": "master",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Which ledgers, products, companies, groups, categories and areas a user / group may see.",
+"steps": [
+"Choose the user / group and allowed items."
+],
+"accounts": "None.",
+"stock": "None.",
+"vat": "None.",
+"other": "",
+"tips": [],
+"fields": [],
+"slug": "data-access",
+"pdf": "/help/menus/data-access.pdf"
+},
+"/audit-log": {
+"path": "/audit-log",
+"title": "Audit Log",
+"module": "Setup",
+"kind": "master",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Every change with old and new values, user and time; audit coverage of tables.",
+"steps": [
+"Filter by table, user, date."
+],
+"accounts": "None - read only.",
+"stock": "None.",
+"vat": "None.",
+"other": "",
+"tips": [],
+"fields": [
+[
+"From",
+"First date of the report period."
+],
+[
+"To",
+"Last date of the report period."
+]
+],
+"slug": "audit-log",
+"pdf": "/help/menus/audit-log.pdf"
+},
+"/change-password": {
+"path": "/change-password",
+"title": "Change My Password",
+"module": "Setup",
+"kind": "master",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Change your own password.",
+"steps": [
+"Current password, new password twice."
+],
+"accounts": "None.",
+"stock": "None.",
+"vat": "None.",
+"other": "",
+"tips": [],
+"fields": [],
+"slug": "change-password",
+"pdf": "/help/menus/change-password.pdf"
+},
+"/document-designer": {
+"path": "/document-designer",
+"title": "Document Designer",
+"module": "Setup",
+"kind": "master",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Print layouts of bills, challans, vouchers, letters, labels.",
+"steps": [
+"Pick the document type, design fields / layout, set default."
+],
+"accounts": "None.",
+"stock": "None.",
+"vat": "None.",
+"other": "",
+"tips": [],
+"fields": [],
+"slug": "document-designer",
+"pdf": "/help/menus/document-designer.pdf"
+},
+"/messaging": {
+"path": "/messaging",
+"title": "Messaging",
+"module": "Setup",
+"kind": "master",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Email / SMS / WhatsApp / Viber templates, auto-send on posting, message log and bulk outstanding reminders.",
+"steps": [
+"Templates tab: text with placeholders.",
+"Auto-send: which document sends which template.",
+"Log / Reminders tabs."
+],
+"accounts": "None.",
+"stock": "None.",
+"vat": "None.",
+"other": "",
+"tips": [],
+"fields": [],
+"slug": "messaging",
+"pdf": "/help/menus/messaging.pdf"
+},
+"/notification-settings": {
+"path": "/notification-settings",
+"title": "My Notification Settings",
+"module": "Setup",
+"kind": "master",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Which in-app / email / SMS notifications you receive.",
+"steps": [
+"Tick the events and channels."
+],
+"accounts": "None.",
+"stock": "None.",
+"vat": "None.",
+"other": "",
+"tips": [],
+"fields": [],
+"slug": "notification-settings",
+"pdf": "/help/menus/notification-settings.pdf"
+},
+"/ledger-report": {
+"path": "/ledger-report",
+"title": "Ledger Report",
+"module": "Accounts Report",
+"kind": "report",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Ledger statement of one ledger / sub-ledger: detail, summary (PDC separate) or monthly.",
+"steps": [
+"Choose ledger, period, mode.",
+"Click a line to open the document."
+],
+"views": {},
+"tips": [],
+"accounts": "None - read only.",
+"stock": "None - read only.",
+"vat": "None.",
+"fields": [
+[
+"From",
+"First date of the report period."
+],
+[
+"To",
+"Last date of the report period."
+]
+],
+"slug": "ledger-report",
+"pdf": "/help/menus/ledger-report.pdf"
+},
+"/party-summary": {
+"path": "/party-summary",
+"title": "Party Summary",
+"module": "Accounts Report",
+"kind": "report",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Opening, debit, credit, closing of all parties; PDC can be shown separately.",
+"steps": [
+"Choose party type and period."
+],
+"views": {},
+"tips": [],
+"accounts": "None - read only.",
+"stock": "None - read only.",
+"vat": "None.",
+"fields": [
+[
+"From",
+"First date of the report period."
+],
+[
+"To",
+"Last date of the report period."
+]
+],
+"slug": "party-summary",
+"pdf": "/help/menus/party-summary.pdf"
+},
+"/control-reports": {
+"path": "/control-reports",
+"title": "Control Reports",
+"module": "Accounts Report",
+"kind": "report",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Day Book, Cash & Bank Book, master lists, credit exceeded, inactive customers, non-moving items, price list, cancelled / draft documents, master exceptions.",
+"steps": [
+"Choose the view from the menu (deep link) and the filters."
+],
+"views": {},
+"tips": [],
+"accounts": "None - read only.",
+"stock": "None - read only.",
+"vat": "None.",
+"fields": [
+[
+"From",
+"First date of the report period."
+],
+[
+"To",
+"Last date of the report period."
+],
+[
+"Search",
+"Find rows containing this text."
+]
+],
+"slug": "control-reports",
+"pdf": "/help/menus/control-reports.pdf"
+},
+"/financial-reports": {
+"path": "/financial-reports",
+"title": "Financial Reports",
+"module": "Accounts Report",
+"kind": "report",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Trial Balance, Profit & Loss, Balance Sheet, schedules / notes, ratios, cash flow, funds flow, group mapping, budget vs actual.",
+"steps": [
+"Choose the tab and period; previous-period comparison is available.",
+"Closing stock comes from the stock engine (same as the Stock Movement report)."
+],
+"views": {},
+"tips": [],
+"accounts": "None - read only.",
+"stock": "None - read only.",
+"vat": "None.",
+"fields": [
+[
+"From",
+"First date of the report period."
+],
+[
+"To",
+"Last date of the report period."
+],
+[
+"Product Company",
+"Company / brand of the goods on this document. With \"Product Company Compulsory\" in System Control, only that company's products can be picked and the party posting is split by company (company-wise ledger / ageing)."
+]
+],
+"slug": "financial-reports",
+"pdf": "/help/menus/financial-reports.pdf"
+},
+"/funds-position": {
+"path": "/funds-position",
+"title": "Net Position of Funds",
+"module": "Accounts Report",
+"kind": "report",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Cash, bank, receivables, payables, PDC and unused limits - net funds available.",
+"steps": [
+"Choose the as-on date."
+],
+"views": {},
+"tips": [],
+"accounts": "None - read only.",
+"stock": "None - read only.",
+"vat": "None.",
+"fields": [
+[
+"As on",
+"Report position at the end of this date (balances, stock, ageing)."
+]
+],
+"slug": "funds-position",
+"pdf": "/help/menus/funds-position.pdf"
+},
+"/outstanding-report": {
+"path": "/outstanding-report",
+"title": "Outstanding Report",
+"module": "Accounts Report",
+"kind": "report",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Receivable / payable outstanding by party (bill-wise when tracked).",
+"steps": [
+"Choose side, as-on date."
+],
+"views": {},
+"tips": [],
+"accounts": "None - read only.",
+"stock": "None - read only.",
+"vat": "None.",
+"fields": [
+[
+"From",
+"First date of the report period."
+],
+[
+"To",
+"Last date of the report period."
+]
+],
+"slug": "outstanding-report",
+"pdf": "/help/menus/outstanding-report.pdf"
+},
+"/ageing": {
+"path": "/ageing",
+"title": "Ageing Report",
+"module": "Accounts Report",
+"kind": "report",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Outstanding by age buckets (customer / supplier / delivery / GRN ageing).",
+"steps": [
+"Choose buckets, as-on date, basis."
+],
+"views": {},
+"tips": [],
+"accounts": "None - read only.",
+"stock": "None - read only.",
+"vat": "None.",
+"fields": [
+[
+"As on",
+"Report position at the end of this date (balances, stock, ageing)."
+],
+[
+"Method",
+"Stock valuation method: FIFO, moving average, weighted average ..."
+],
+[
+"Search",
+"Find rows containing this text."
+],
+[
+"Show",
+"Which rows to show (all / only differences / ...)."
+]
+],
+"slug": "ageing",
+"pdf": "/help/menus/ageing.pdf"
+},
+"/bill-wise-ageing-report": {
+"path": "/bill-wise-ageing-report",
+"title": "Bill-wise Ageing",
+"module": "Accounts Report",
+"kind": "report",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Each open bill with its age and due status.",
+"steps": [
+"Choose party / as-on date."
+],
+"views": {},
+"tips": [],
+"accounts": "None - read only.",
+"stock": "None - read only.",
+"vat": "None.",
+"fields": [
+[
+"Vendor",
+"The supplier (ledger in Sundry Creditors). Credited with the bill total (debited on a return / debit note). PAN, address and credit days come from the vendor master."
+],
+[
+"From Date",
+"First date of the report period."
+],
+[
+"To Date",
+"Last date of the report period."
+],
+[
+"Product Company",
+"Company / brand of the goods on this document. With \"Product Company Compulsory\" in System Control, only that company's products can be picked and the party posting is split by company (company-wise ledger / ageing)."
+]
+],
+"slug": "bill-wise-ageing-report",
+"pdf": "/help/menus/bill-wise-ageing-report.pdf"
+},
+"/dimension-reports": {
+"path": "/dimension-reports",
+"title": "Dimension Reports",
+"module": "Accounts Report",
+"kind": "report",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Ledger + sub-ledger balances, sub-ledger statement, P&L by cost center / unit / branch / doc class, cost center x ledger, monthly trend, doc class number gaps, missing dimensions.",
+"steps": [
+"Choose the preset from the menu and the period.",
+"Ledger + Sub-ledger Balance: every sub-ledger with opening / debit / credit / closing and, after them, the \"Ledger balance\" row of the ledger (its master opening included).",
+"Filters: Module (Sales, Purchase, Cash / Bank / PDC, Journal / Notes, Inventory / Production, Other), ledger, group, sub-ledger, cost center, unit, branch, document type, doc class, product company."
+],
+"views": {},
+"tips": [],
+"accounts": "None - read only.",
+"stock": "None - read only.",
+"vat": "None.",
+"fields": [
+[
+"From",
+"First date of the report period."
+],
+[
+"To",
+"Last date of the report period."
+]
+],
+"slug": "dimension-reports",
+"pdf": "/help/menus/dimension-reports.pdf"
+},
+"/day-book": {
+"path": "/day-book",
+"title": "Day Book (all-in-one)",
+"module": "Accounts Report",
+"kind": "report",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Every voucher of a day or period with cash / credit split, cash & bank book, party-wise credit summary, and totals per agent and per user.",
+"steps": [
+"Choose the dates. No user / agent = the whole business (cash and bank with opening and closing).",
+"User: vouchers entered by that user. Salesman / Agent: that agent's sales, returns, receipts (also cash / bank lines of the agent), PDC, credit notes.",
+"Voucher type: any of Sales Bill, Sales Return, Sales Non-saleable Return, Sales Additional, Purchase Bill / Return / Additional, Cash / Bank Receipt, Payment, PDC Received / Issued, Journal, Credit / Debit Note. Party filter; drafts / pending on request.",
+"Show / hide sections: summary, by voucher type, cash & bank, party-wise credit, by agent, by user, voucher list. Print."
+],
+"views": {},
+"tips": [],
+"accounts": "None - read only.",
+"stock": "None - read only.",
+"vat": "None.",
+"fields": [
+[
+"From",
+"First date of the report period."
+],
+[
+"To",
+"Last date of the report period."
+]
+],
+"slug": "day-book",
+"pdf": "/help/menus/day-book.pdf"
+},
+"/vat-reports": {
+"path": "/vat-reports",
+"title": "VAT Reports",
+"module": "Accounts Report",
+"kind": "report",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Sales / Purchase VAT register (bills, returns, notes, additional bills, taxable JVs), monthly summary, Annex 13, VAT return, VAT ledger, TDS report.",
+"steps": [
+"Register: use the book buttons (Sales Book / Purchase Book) or tick document types; view bill / party / item / month / summary.",
+"VAT Return: output VAT, input VAT, payable or carry forward, with a GL check."
+],
+"views": {},
+"tips": [
+"Export in English or Nepali headers with BS dates."
+],
+"accounts": "None - read only.",
+"stock": "None - read only.",
+"vat": "None.",
+"fields": [
+[
+"From",
+"First date of the report period."
+],
+[
+"To",
+"Last date of the report period."
+],
+[
+"Customer / Supplier",
+"Limit the report to one party."
+],
+[
+"Documents",
+"Which document types are included. The book buttons tick a whole book at once (bills + JVs + additional bills)."
+],
+[
+"View",
+"Layout of the report."
+],
+[
+"Side",
+"Sales side or purchase side."
+]
+],
+"slug": "vat-reports",
+"pdf": "/help/menus/vat-reports.pdf"
+},
+"/tax-reconciliation": {
+"path": "/tax-reconciliation",
+"title": "Reconciliation (VAT / Sales / Purchase / Stock / TDS)",
+"module": "Accounts Report",
+"kind": "report",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Do the registers and the books agree? Document by document: VAT register vs VAT ledgers, sales register (incl. JV sales, credit notes) vs sales accounts, purchase register (incl. additional bills, JV purchases, debit notes) vs purchase accounts, purchase value vs value put into stock, TDS vs TDS ledgers.",
+"steps": [
+"Overview: Tallied / Not tallied for each check.",
+"Open a tab; click Differences / Only in register / Only in books to see why.",
+"Add or remove accounts compared with the chips."
+],
+"views": {},
+"tips": [],
+"accounts": "None - read only.",
+"stock": "None - read only.",
+"vat": "None.",
+"fields": [
+[
+"From",
+"First date of the report period."
+],
+[
+"To",
+"Last date of the report period."
+],
+[
+"Show",
+"Which rows to show (all / only differences / ...)."
+]
+],
+"slug": "tax-reconciliation",
+"pdf": "/help/menus/tax-reconciliation.pdf"
+},
+"/ird": {
+"path": "/ird",
+"title": "IRD Compliance / CBMS",
+"module": "Accounts Report",
+"kind": "report",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "IRD materialized view, sales book, CBMS sync queue (retry), IRD audit log and CBMS settings.",
+"steps": [
+"See the IRD User Manual in the Help Center."
+],
+"views": {},
+"tips": [],
+"accounts": "None - read only.",
+"stock": "None - read only.",
+"vat": "None.",
+"fields": [
+[
+"From",
+"First date of the report period."
+],
+[
+"To",
+"Last date of the report period."
+]
+],
+"slug": "ird",
+"pdf": "/help/menus/ird.pdf"
+},
+"/register": {
+"path": "/register",
+"title": "Universal Register",
+"module": "Accounts Report",
+"kind": "report",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Every document of every module with status, party, amount.",
+"steps": [
+"Filter by type, date, status."
+],
+"views": {},
+"tips": [],
+"accounts": "None - read only.",
+"stock": "None - read only.",
+"vat": "None.",
+"fields": [
+[
+"From",
+"First date of the report period."
+],
+[
+"To",
+"Last date of the report period."
+]
+],
+"slug": "register",
+"pdf": "/help/menus/register.pdf"
+},
+"/lc-bg-dashboard": {
+"path": "/lc-bg-dashboard",
+"title": "LC / BG / PDC Dashboard",
+"module": "Accounts Report",
+"kind": "report",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "LCs, bank guarantees and PDCs with expiry and actions.",
+"steps": [
+"Act on due items."
+],
+"views": {},
+"tips": [],
+"accounts": "None - read only.",
+"stock": "None - read only.",
+"vat": "None.",
+"fields": [
+[
+"As on",
+"Report position at the end of this date (balances, stock, ageing)."
+],
+[
+"Status",
+"Document status: draft, posted, cancelled ..."
+],
+[
+"Search",
+"Find rows containing this text."
+]
+],
+"slug": "lc-bg-dashboard",
+"pdf": "/help/menus/lc-bg-dashboard.pdf"
+},
+"/pdc-dashboard": {
+"path": "/pdc-dashboard",
+"title": "PDC Dashboard",
+"module": "Accounts Report",
+"kind": "report",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Post-dated cheques due, overdue, cleared, bounced; deposit / clear from here.",
+"steps": [
+"Choose received / issued and the period."
+],
+"views": {},
+"tips": [],
+"accounts": "None - read only.",
+"stock": "None - read only.",
+"vat": "None.",
+"fields": [
+[
+"As on",
+"Report position at the end of this date (balances, stock, ageing)."
+],
+[
+"From",
+"First date of the report period."
+],
+[
+"To",
+"Last date of the report period."
+],
+[
+"Date",
+"Date of the document. Accounts, stock, VAT month and ageing all use this date. Type it (AD or BS - switch with the AD/BS button) or pick it. A date in a closed fiscal year cannot be posted."
+],
+[
+"Bank Ledger",
+"Bank the cheque is deposited to / paid from when it clears."
+]
+],
+"slug": "pdc-dashboard",
+"pdf": "/help/menus/pdc-dashboard.pdf"
+},
+"/document-printing": {
+"path": "/document-printing",
+"title": "Document Print Status",
+"module": "Tools",
+"kind": "report",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Which documents were printed and how many times; print many at once.",
+"steps": [
+"Filter documents, tick and print."
+],
+"views": {},
+"tips": [],
+"accounts": "None - read only.",
+"stock": "None - read only.",
+"vat": "None.",
+"fields": [
+[
+"From Date",
+"First date of the report period."
+],
+[
+"To Date",
+"Last date of the report period."
+],
+[
+"Search",
+"Find rows containing this text."
+]
+],
+"slug": "document-printing",
+"pdf": "/help/menus/document-printing.pdf"
+},
+"/sales-purchase-analysis": {
+"path": "/sales-purchase-analysis",
+"title": "Sales / Purchase Analysis",
+"module": "Sales/Purchase",
+"kind": "report",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Sales and purchase by party, item, group, company, agent, area with qty and value.",
+"steps": [
+"Choose side, grouping and period."
+],
+"views": {},
+"tips": [],
+"accounts": "None - read only.",
+"stock": "None - read only.",
+"vat": "None.",
+"fields": [
+[
+"From",
+"First date of the report period."
+],
+[
+"To",
+"Last date of the report period."
+]
+],
+"slug": "sales-purchase-analysis",
+"pdf": "/help/menus/sales-purchase-analysis.pdf"
+},
+"/monthly-analysis": {
+"path": "/monthly-analysis",
+"title": "Monthly Analysis",
+"module": "Sales/Purchase",
+"kind": "report",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Month-wise sales / purchase by item or party.",
+"steps": [
+"Choose the year and grouping."
+],
+"views": {},
+"tips": [],
+"accounts": "None - read only.",
+"stock": "None - read only.",
+"vat": "None.",
+"fields": [
+[
+"From",
+"First date of the report period."
+],
+[
+"To",
+"Last date of the report period."
+]
+],
+"slug": "monthly-analysis",
+"pdf": "/help/menus/monthly-analysis.pdf"
+},
+"/profitability": {
+"path": "/profitability",
+"title": "Profitability",
+"module": "Sales/Purchase",
+"kind": "report",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Sales value, cost of goods sold (stock engine), gross profit by item / party / bill.",
+"steps": [
+"Choose the period and valuation method."
+],
+"views": {},
+"tips": [],
+"accounts": "None - read only.",
+"stock": "None - read only.",
+"vat": "None.",
+"fields": [
+[
+"From",
+"First date of the report period."
+],
+[
+"To",
+"Last date of the report period."
+]
+],
+"slug": "profitability",
+"pdf": "/help/menus/profitability.pdf"
+},
+"/rate-history": {
+"path": "/rate-history",
+"title": "Rate History",
+"module": "Sales/Purchase",
+"kind": "report",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Rates charged / paid per item and party over time.",
+"steps": [
+"Choose item / party."
+],
+"views": {},
+"tips": [],
+"accounts": "None - read only.",
+"stock": "None - read only.",
+"vat": "None.",
+"fields": [
+[
+"From",
+"First date of the report period."
+],
+[
+"To",
+"Last date of the report period."
+]
+],
+"slug": "rate-history",
+"pdf": "/help/menus/rate-history.pdf"
+},
+"/product-rate-history": {
+"path": "/product-rate-history",
+"title": "Rate & Discount History",
+"module": "Sales/Purchase",
+"kind": "report",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Rate and discount changes per product.",
+"steps": [
+"Choose the product."
+],
+"views": {},
+"tips": [],
+"accounts": "None - read only.",
+"stock": "None - read only.",
+"vat": "None.",
+"fields": [
+[
+"Side",
+"Sales side or purchase side."
+],
+[
+"From",
+"First date of the report period."
+],
+[
+"To",
+"Last date of the report period."
+]
+],
+"slug": "product-rate-history",
+"pdf": "/help/menus/product-rate-history.pdf"
+},
+"/salesman-reports": {
+"path": "/salesman-reports",
+"title": "Salesman Reports",
+"module": "Sales/Purchase",
+"kind": "report",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Salesman / route / area net sales, route plan vs visit, not visited, visit log, order register, pending orders, fill rate, product-wise orders.",
+"steps": [
+"Choose the view and period."
+],
+"views": {},
+"tips": [],
+"accounts": "None - read only.",
+"stock": "None - read only.",
+"vat": "None.",
+"fields": [
+[
+"From",
+"First date of the report period."
+],
+[
+"To",
+"Last date of the report period."
+],
+[
+"Salesman / Agent",
+"Salesman / agent of the sale: used for agent-wise sales, targets and commission."
+],
+[
+"Route",
+"Delivery / sales route - route-wise sales, loading sheet and route plan."
+],
+[
+"Group by",
+"How the rows are grouped / totalled."
+]
+],
+"slug": "salesman-reports",
+"pdf": "/help/menus/salesman-reports.pdf"
+},
+"/loading-sheet": {
+"path": "/loading-sheet",
+"title": "Loading Sheet",
+"module": "Sales/Purchase",
+"kind": "report",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Items to load per vehicle / route from goods delivery and / or sales bills, with the bill summary on the same sheet.",
+"steps": [
+"Choose dates, sources, customer / salesman / area / route / vehicle filters.",
+"Qty views: By UOM mode - fixed dual \"5 Crt 2 Pcs · Total 62 Pcs\", flexible \"5 Crt = 10 Pcs\"; base unit; as entered; split into units; one unit.",
+"The Total row gives the qty as entered per unit and the total in base unit (per base unit when items differ), for fixed and flexible items alike.",
+"Print sections: Items, Bill Summary (bill no, customer, route, amounts, received / sign) and Bill x Item - print them together on one sheet."
+],
+"views": {},
+"tips": [],
+"accounts": "None - read only.",
+"stock": "None - read only.",
+"vat": "None.",
+"fields": [
+[
+"From",
+"First date of the report period."
+],
+[
+"To",
+"Last date of the report period."
+],
+[
+"Vehicle No",
+"Vehicle carrying the goods - printed on the challan / transfer."
+]
+],
+"slug": "loading-sheet",
+"pdf": "/help/menus/loading-sheet.pdf"
+},
+"/purchase-register-report": {
+"path": "/purchase-register-report",
+"title": "Purchase Register (all)",
+"module": "Sales/Purchase",
+"kind": "report",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Lines of requisitions, quotations, orders, GRNs and bills with converted and outstanding qty / amount.",
+"steps": [
+"Choose the module and filters; Outstanding only."
+],
+"views": {},
+"tips": [],
+"accounts": "None - read only.",
+"stock": "None - read only.",
+"vat": "None.",
+"fields": [
+[
+"View",
+"Layout of the report."
+],
+[
+"From Date",
+"First date of the report period."
+],
+[
+"To Date",
+"Last date of the report period."
+],
+[
+"Doc No",
+"Number of the document. Given automatically on save from Document Numbering (series per fiscal year)."
+],
+[
+"Vendor",
+"The supplier (ledger in Sundry Creditors). Credited with the bill total (debited on a return / debit note). PAN, address and credit days come from the vendor master."
+],
+[
+"Status",
+"Document status: draft, posted, cancelled ..."
+],
+[
+"Agent",
+"Salesman / agent: agent-wise reports, targets and commission."
+],
+[
+"Priority",
+"Urgency of the document (normal / high / urgent) - for follow-up lists only."
+],
+[
+"Ref No (source doc)",
+"The document this line was pulled from (quotation / order / challan / GRN / bill)."
+],
+[
+"Warehouse",
+"Warehouse the stock goes out of / comes into (only with Multi Warehouse on). A line can have its own warehouse."
+]
+],
+"slug": "purchase-register-report",
+"pdf": "/help/menus/purchase-register-report.pdf"
+},
+"/grn-outstanding-report": {
+"path": "/grn-outstanding-report",
+"title": "GRN Outstanding",
+"module": "Sales/Purchase",
+"kind": "report",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "GRN lines not yet billed.",
+"steps": [
+"Filter by vendor and dates."
+],
+"views": {},
+"tips": [],
+"accounts": "None - read only.",
+"stock": "None - read only.",
+"vat": "None.",
+"fields": [
+[
+"Vendor",
+"The supplier (ledger in Sundry Creditors). Credited with the bill total (debited on a return / debit note). PAN, address and credit days come from the vendor master."
+],
+[
+"From Date",
+"First date of the report period."
+],
+[
+"To Date",
+"Last date of the report period."
+]
+],
+"slug": "grn-outstanding-report",
+"pdf": "/help/menus/grn-outstanding-report.pdf"
+},
+"/consignment-cost": {
+"path": "/consignment-cost",
+"title": "Consignment Cost / Sales",
+"module": "Sales/Purchase",
+"kind": "report",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Cost and sales of a consignment (import lot) with its additional expenses.",
+"steps": [
+"Choose the consignment."
+],
+"views": {},
+"tips": [],
+"accounts": "None - read only.",
+"stock": "None - read only.",
+"vat": "None.",
+"fields": [
+[
+"From",
+"First date of the report period."
+],
+[
+"To",
+"Last date of the report period."
+]
+],
+"slug": "consignment-cost",
+"pdf": "/help/menus/consignment-cost.pdf"
+},
+"/stock-report": {
+"path": "/stock-report",
+"title": "Stock Report",
+"module": "Inventory",
+"kind": "report",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Stock quantity and value by item / warehouse / batch.",
+"steps": [
+"Choose the date, grouping and method."
+],
+"views": {},
+"tips": [],
+"accounts": "None - read only.",
+"stock": "None - read only.",
+"vat": "None.",
+"fields": [
+[
+"To",
+"Last date of the report period."
+]
+],
+"slug": "stock-report",
+"pdf": "/help/menus/stock-report.pdf"
+},
+"/stock-movement": {
+"path": "/stock-movement",
+"title": "Stock Movement",
+"module": "Inventory",
+"kind": "report",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Opening, in and out by module, closing - qty and value (the same engine as the financial statements' closing stock).",
+"steps": [
+"Choose period, method, summary / detail."
+],
+"views": {},
+"tips": [],
+"accounts": "None - read only.",
+"stock": "None - read only.",
+"vat": "None.",
+"fields": [
+[
+"From",
+"First date of the report period."
+],
+[
+"To",
+"Last date of the report period."
+],
+[
+"Product Company",
+"Company / brand of the goods on this document. With \"Product Company Compulsory\" in System Control, only that company's products can be picked and the party posting is split by company (company-wise ledger / ageing)."
+]
+],
+"slug": "stock-movement",
+"pdf": "/help/menus/stock-movement.pdf"
+},
+"/stock-in-out": {
+"path": "/stock-in-out",
+"title": "Stock In / Out (Qty)",
+"module": "Inventory",
+"kind": "report",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Quantity in and out per document.",
+"steps": [
+"Choose item and period."
+],
+"views": {},
+"tips": [],
+"accounts": "None - read only.",
+"stock": "None - read only.",
+"vat": "None.",
+"fields": [
+[
+"From",
+"First date of the report period."
+],
+[
+"To",
+"Last date of the report period."
+]
+],
+"slug": "stock-in-out",
+"pdf": "/help/menus/stock-in-out.pdf"
+},
+"/stock-valuation": {
+"path": "/stock-valuation",
+"title": "Stock Valuation",
+"module": "Inventory",
+"kind": "report",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Closing stock value by FIFO, moving / weighted average, last purchase - batch / serial items by System Control's batch / serial costing (e.g. batch-wise: each batch at its own cost, landed cost of Purchase Additional included).",
+"steps": [
+"Choose the date and method; item + batch shows each batch's value. A tag on the item shows when batch / serial costing replaced the method."
+],
+"views": {},
+"tips": [],
+"accounts": "None - read only.",
+"stock": "None - read only.",
+"vat": "None.",
+"fields": [],
+"slug": "stock-valuation",
+"pdf": "/help/menus/stock-valuation.pdf"
+},
+"/stock-ageing": {
+"path": "/stock-ageing",
+"title": "Stock Ageing & Expiry",
+"module": "Inventory",
+"kind": "report",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Age of stock and batches near / past expiry.",
+"steps": [
+"Choose buckets and near-expiry days."
+],
+"views": {},
+"tips": [],
+"accounts": "None - read only.",
+"stock": "None - read only.",
+"vat": "None.",
+"fields": [
+[
+"As on",
+"Report position at the end of this date (balances, stock, ageing)."
+]
+],
+"slug": "stock-ageing",
+"pdf": "/help/menus/stock-ageing.pdf"
+},
+"/reorder": {
+"path": "/reorder",
+"title": "Re-order & Over-stock",
+"module": "Inventory",
+"kind": "report",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Items below re-order level or above maximum.",
+"steps": [
+"Choose warehouse."
+],
+"views": {},
+"tips": [],
+"accounts": "None - read only.",
+"stock": "None - read only.",
+"vat": "None.",
+"fields": [
+[
+"Product Company",
+"Company / brand of the goods on this document. With \"Product Company Compulsory\" in System Control, only that company's products can be picked and the party posting is split by company (company-wise ledger / ageing)."
+]
+],
+"slug": "reorder",
+"pdf": "/help/menus/reorder.pdf"
+},
+"/production-report": {
+"path": "/production-report",
+"title": "Production Reports",
+"module": "Inventory",
+"kind": "report",
+"nature": [
+"manufacturing",
+"poultry"
+],
+"purpose": "Production register, raw material consumption, BOM vs actual, cost trend.",
+"steps": [
+"Choose the view and period."
+],
+"views": {},
+"tips": [],
+"accounts": "None - read only.",
+"stock": "None - read only.",
+"vat": "None.",
+"fields": [
+[
+"From",
+"First date of the report period."
+],
+[
+"To",
+"Last date of the report period."
+],
+[
+"Group by",
+"How the rows are grouped / totalled."
+]
+],
+"slug": "production-report",
+"pdf": "/help/menus/production-report.pdf"
+},
+"/analytics": {
+"path": "/analytics",
+"title": "Forecasting & Inventory Analytics",
+"module": "Analysis",
+"kind": "report",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "FSN, ABC, XYZ, ABC-XYZ, stock cover, turnover, dead stock, sales / purchase forecast, purchase plan, cash flow forecast, period comparison, customer RFM, expense comparison, DSO / DPO.",
+"steps": [
+"Choose the view from the menu and the period."
+],
+"views": {},
+"tips": [],
+"accounts": "None - read only.",
+"stock": "None - read only.",
+"vat": "None.",
+"fields": [
+[
+"From",
+"First date of the report period."
+],
+[
+"To",
+"Last date of the report period."
+],
+[
+"Product Company",
+"Company / brand of the goods on this document. With \"Product Company Compulsory\" in System Control, only that company's products can be picked and the party posting is split by company (company-wise ledger / ageing)."
+],
+[
+"Side",
+"Sales side or purchase side."
+],
+[
+"Method",
+"Stock valuation method: FIFO, moving average, weighted average ..."
+],
+[
+"Search",
+"Find rows containing this text."
+]
+],
+"slug": "analytics",
+"pdf": "/help/menus/analytics.pdf"
+},
+"/dashboard": {
+"path": "/dashboard",
+"title": "Dashboard",
+"module": "Analysis",
+"kind": "report",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Customisable dashboard: sales, purchase, cash, receivables, stock and task widgets with charts.",
+"steps": [
+"Add / arrange widgets."
+],
+"views": {},
+"tips": [],
+"accounts": "None - read only.",
+"stock": "None - read only.",
+"vat": "None.",
+"fields": [],
+"slug": "dashboard",
+"pdf": "/help/menus/dashboard.pdf"
+},
+"/work-dashboard": {
+"path": "/work-dashboard",
+"title": "Work Dashboard",
+"module": "Office",
+"kind": "report",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Tasks and darta / chalani at a glance.",
+"steps": [
+"Filter by your tasks / all."
+],
+"views": {},
+"tips": [],
+"accounts": "None - read only.",
+"stock": "None - read only.",
+"vat": "None.",
+"fields": [],
+"slug": "work-dashboard",
+"pdf": "/help/menus/work-dashboard.pdf"
+},
+"/help-center": {
+"path": "/help-center",
+"title": "Help Center",
+"module": "Tools",
+"kind": "master",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "All manuals: complete user manual, one per business nature, IRD billing architecture and user manual; for super admin also the developer guide, the logic audit and the PDF of every menu screen.",
+"steps": [
+"Read in the browser or download the PDF.",
+"Every screen also has ❓ Help on its toolbar (Shift+F1) and a tooltip on each field caption."
+],
+"accounts": "None.",
+"stock": "None.",
+"vat": "None.",
+"other": "",
+"tips": [],
+"fields": [],
+"slug": "help-center",
+"pdf": "/help/menus/help-center.pdf"
+},
+"/reports": {
+"path": "/reports",
+"title": "Report Center",
+"module": "Tools",
+"kind": "report",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Every report in one place with search.",
+"steps": [
+"Search or open a group."
+],
+"views": {},
+"tips": [],
+"accounts": "None - read only.",
+"stock": "None - read only.",
+"vat": "None.",
+"fields": [],
+"slug": "reports",
+"pdf": "/help/menus/reports.pdf"
+},
+"/tasks": {
+"path": "/tasks",
+"title": "Tasks",
+"module": "Office",
+"kind": "master",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Tasks with assignee, due date, priority, status, comments and reminders.",
+"steps": [
+"New task; update status; filter overdue."
+],
+"accounts": "None.",
+"stock": "None.",
+"vat": "None.",
+"other": "",
+"tips": [],
+"fields": [
+[
+"Priority",
+"Urgency of the document (normal / high / urgent) - for follow-up lists only."
+]
+],
+"slug": "tasks",
+"pdf": "/help/menus/tasks.pdf"
+},
+"/darta-chalani": {
+"path": "/darta-chalani",
+"title": "Darta / Chalani",
+"module": "Office",
+"kind": "master",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Incoming (darta) and outgoing (chalani) letters register with numbers per fiscal year.",
+"steps": [
+"Add a darta / chalani; attach the scan; follow up pending."
+],
+"accounts": "None.",
+"stock": "None.",
+"vat": "None.",
+"other": "",
+"tips": [],
+"fields": [
+[
+"Date",
+"Date of the document. Accounts, stock, VAT month and ageing all use this date. Type it (AD or BS - switch with the AD/BS button) or pick it. A date in a closed fiscal year cannot be posted."
+],
+[
+"Priority",
+"Urgency of the document (normal / high / urgent) - for follow-up lists only."
+],
+[
+"Status",
+"Document status: draft, posted, cancelled ..."
+],
+[
+"Remarks",
+"Remarks printed on the document; pick a saved remark (Remarks master) or type your own."
+],
+[
+"From",
+"First date of the report period."
+],
+[
+"To",
+"Last date of the report period."
+],
+[
+"Search",
+"Find rows containing this text."
+]
+],
+"slug": "darta-chalani",
+"pdf": "/help/menus/darta-chalani.pdf"
+},
+"/mobile": {
+"path": "/mobile",
+"title": "Salesman Mobile App",
+"module": "Tools",
+"kind": "master",
+"nature": [
+"trading",
+"distribution",
+"retail",
+"manufacturing",
+"service",
+"automobile",
+"construction",
+"poultry"
+],
+"purpose": "Mobile screen for salesmen: the routes planned for them on the day, customers in visiting sequence, orders, cash receipts, sales returns, stock, visits.",
+"steps": [
+"Today: only the route(s) planned for this salesman on this date (a date-range plan shows on each date of the range). Open a route: its customers in sequence, with search.",
+"Per customer: Order, Receipt (cash / cheque / online), No order (reason), Details.",
+"Return tab: choose area and route (any), the customer, items and qty, reason - saved as a pending Sales Return.",
+"Entries tab: own orders, and receipts / returns with their approval state."
+],
+"accounts": "None.",
+"stock": "None.",
+"vat": "None.",
+"other": "Orders reach Sales Order with source \"mobile\". Receipts and returns are drafts tagged with the salesman as agent; the office posts them in Mobile Approvals. Settings per salesman in Route Plan > Mobile: allow receipts / returns, mobile cash ledger, off-route.",
+"tips": [],
+"fields": [],
+"slug": "mobile",
+"pdf": "/help/menus/mobile.pdf"
+},
+"/poultry": {
+"path": "/poultry",
+"title": "Poultry Dashboard",
+"module": "Poultry",
+"kind": "report",
+"nature": [
+"poultry"
+],
+"purpose": "Running batches, mortality, FCR, livability, hatchery figures.",
+"steps": [
+"Open a batch or the hatchery."
+],
+"views": {},
+"tips": [],
+"accounts": "None - read only.",
+"stock": "None - read only.",
+"vat": "None.",
+"fields": [],
+"slug": "poultry",
+"pdf": "/help/menus/poultry.pdf"
+},
+"/poultry/batches": {
+"path": "/poultry/batches",
+"title": "Broiler Batches",
+"module": "Poultry",
+"kind": "master",
+"nature": [
+"poultry"
+],
+"purpose": "Shed-wise broiler batches: placement (chicks), daily log (feed / medicine / vaccine used, mortality, culls, weight), lifting (birds sold), close; KPIs and profitability.",
+"steps": [
+"New Batch: shed, date, chicks placed (stock out of chick stock).",
+"Daily log: consumption posts stock adjustments with the batch cost center.",
+"Lifting: makes a draft Sales Bill.",
+"Close the batch."
+],
+"accounts": "Through the normal documents (stock adjustments, sales bills, expenses with the batch cost center).",
+"stock": "Chicks, feed, medicine, vaccine go out through stock adjustments with the batch / shed cost center.",
+"vat": "None.",
+"other": "Livability, FCR, EPEF and profit per batch.",
+"tips": [],
+"fields": [],
+"slug": "poultry-batches",
+"pdf": "/help/menus/poultry-batches.pdf"
+},
+"/poultry/hatchery": {
+"path": "/poultry/hatchery",
+"title": "Hatchery",
+"module": "Poultry",
+"kind": "master",
+"nature": [
+"poultry"
+],
+"purpose": "Egg setting, candling, hatch (A / B grade chicks), fertility, hatchability and chick cost; chicks can go to own sheds.",
+"steps": [
+"Set eggs, record candling and hatch results."
+],
+"accounts": "None.",
+"stock": "Eggs out, chicks in through stock adjustments.",
+"vat": "None.",
+"other": "",
+"tips": [],
+"fields": [],
+"slug": "poultry-hatchery",
+"pdf": "/help/menus/poultry-hatchery.pdf"
+},
+"/poultry/reports": {
+"path": "/poultry/reports",
+"title": "Poultry Reports",
+"module": "Poultry",
+"kind": "report",
+"nature": [
+"poultry"
+],
+"purpose": "Shed / batch profitability, lifecycle, mortality, consumption.",
+"steps": [
+"Choose the view."
+],
+"views": {},
+"tips": [],
+"accounts": "None - read only.",
+"stock": "None - read only.",
+"vat": "None.",
+"fields": [],
+"slug": "poultry-reports",
+"pdf": "/help/menus/poultry-reports.pdf"
+},
+"/poultry/setup": {
+"path": "/poultry/setup",
+"title": "Poultry & Hatchery Setup",
+"module": "Poultry",
+"kind": "master",
+"nature": [
+"poultry"
+],
+"purpose": "Sheds / hatchers, poultry items (chick, feed, medicine ...), breed standards, ledgers and warehouse.",
+"steps": [
+"Fill each tab once."
+],
+"accounts": "None.",
+"stock": "None.",
+"vat": "None.",
+"other": "",
+"tips": [],
+"fields": [],
+"slug": "poultry-setup",
+"pdf": "/help/menus/poultry-setup.pdf"
+},
+"/construction": {
+"path": "/construction",
+"title": "Construction Dashboard",
+"module": "Construction",
+"kind": "report",
+"nature": [
+"construction"
+],
+"purpose": "Sites with contract value, billed, cost and profit.",
+"steps": [
+"Open a site."
+],
+"views": {},
+"tips": [],
+"accounts": "None - read only.",
+"stock": "None - read only.",
+"vat": "None.",
+"fields": [],
+"slug": "construction",
+"pdf": "/help/menus/construction.pdf"
+},
+"/construction/sites": {
+"path": "/construction/sites",
+"title": "Sites / Contracts",
+"module": "Construction",
+"kind": "master",
+"nature": [
+"construction"
+],
+"purpose": "Contract sites (own and petti thekka taken) with BOQ, running bills to the client, material issued, wages, sub-contracts given and other cost.",
+"steps": [
+"New site: client, contract value, cost center.",
+"BOQ items.",
+"RA (running) bill: work done, VAT, retention, TDS, advance recovery - posted to the GL.",
+"Material: from store or straight from a purchase bill.",
+"Wages sheets, sub-contract bills."
+],
+"accounts": "RA bill: Dr client (and retention / TDS / advance) / Cr contract income / Cr VAT.",
+"stock": "Material issued to the site goes out of the store (consumption with the site cost center).",
+"vat": "RA bill VAT is output VAT.",
+"other": "Site profit = billed + other income - (material + wages + sub-contract + other cost).",
+"tips": [],
+"fields": [],
+"slug": "construction-sites",
+"pdf": "/help/menus/construction-sites.pdf"
+},
+"/construction/reports": {
+"path": "/construction/reports",
+"title": "Construction Reports",
+"module": "Construction",
+"kind": "report",
+"nature": [
+"construction"
+],
+"purpose": "Site profit / loss, running bill register, petti thekka register, material consumed, wages.",
+"steps": [
+"Choose the view."
+],
+"views": {},
+"tips": [],
+"accounts": "None - read only.",
+"stock": "None - read only.",
+"vat": "None.",
+"fields": [],
+"slug": "construction-reports",
+"pdf": "/help/menus/construction-reports.pdf"
+},
+"/construction/setup": {
+"path": "/construction/setup",
+"title": "Construction Setup",
+"module": "Construction",
+"kind": "master",
+"nature": [
+"construction"
+],
+"purpose": "Ledgers and settings of the construction module.",
+"steps": [
+"Set once."
+],
+"accounts": "None.",
+"stock": "None.",
+"vat": "None.",
+"other": "",
+"tips": [],
+"fields": [],
+"slug": "construction-setup",
+"pdf": "/help/menus/construction-setup.pdf"
+},
+"/auto": {
+"path": "/auto",
+"title": "Automobile Dashboard",
+"module": "Automobile",
+"kind": "report",
+"nature": [
+"automobile"
+],
+"purpose": "Enquiries, bookings, vehicles in stock, job cards, reminders.",
+"steps": [
+"Open a list."
+],
+"views": {},
+"tips": [],
+"accounts": "None - read only.",
+"stock": "None - read only.",
+"vat": "None.",
+"fields": [],
+"slug": "auto",
+"pdf": "/help/menus/auto.pdf"
+},
+"/auto/enquiries": {
+"path": "/auto/enquiries",
+"title": "Customer Enquiries",
+"module": "Automobile",
+"kind": "master",
+"nature": [
+"automobile"
+],
+"purpose": "Showroom enquiries with follow-ups, test drive, booking, lost reason.",
+"steps": [
+"New enquiry; follow up; convert to booking / delivery."
+],
+"accounts": "None.",
+"stock": "None.",
+"vat": "None.",
+"other": "",
+"tips": [],
+"fields": [],
+"slug": "auto-enquiries",
+"pdf": "/help/menus/auto-enquiries.pdf"
+},
+"/auto/vehicles": {
+"path": "/auto/vehicles",
+"title": "Vehicles / PDI / Delivery",
+"module": "Automobile",
+"kind": "master",
+"nature": [
+"automobile"
+],
+"purpose": "Vehicles in stock (by chassis), PDI checklist, delivery to the customer (documents, keys, accessories), free-service reminders.",
+"steps": [
+"PDI the vehicle.",
+"Deliver: link the Sales Bill of the vehicle."
+],
+"accounts": "The vehicle sale is posted by its Sales Bill.",
+"stock": "The vehicle (serial = chassis) goes out with the Sales Bill.",
+"vat": "None.",
+"other": "",
+"tips": [],
+"fields": [],
+"slug": "auto-vehicles",
+"pdf": "/help/menus/auto-vehicles.pdf"
+},
+"/auto/job-cards": {
+"path": "/auto/job-cards",
+"title": "Job Cards",
+"module": "Automobile",
+"kind": "master",
+"nature": [
+"automobile"
+],
+"purpose": "Workshop job cards: complaints, labour, parts issued from stock, outside work, ready / delivered, invoice.",
+"steps": [
+"New job card: vehicle, odometer, complaints.",
+"Issue parts (stock out), add labour and outside work.",
+"Ready -> Delivered: the job invoice posts."
+],
+"accounts": "Job invoice: Dr customer / Cr labour and parts income / Cr VAT.",
+"stock": "Parts go out through stock adjustments linked to the job.",
+"vat": "None.",
+"other": "",
+"tips": [],
+"fields": [],
+"slug": "auto-job-cards",
+"pdf": "/help/menus/auto-job-cards.pdf"
+},
+"/auto/reminders": {
+"path": "/auto/reminders",
+"title": "Service Reminders",
+"module": "Automobile",
+"kind": "master",
+"nature": [
+"automobile"
+],
+"purpose": "Due / overdue service reminders by date or km.",
+"steps": [
+"Follow up and mark done."
+],
+"accounts": "None.",
+"stock": "None.",
+"vat": "None.",
+"other": "",
+"tips": [],
+"fields": [],
+"slug": "auto-reminders",
+"pdf": "/help/menus/auto-reminders.pdf"
+},
+"/auto/reports": {
+"path": "/auto/reports",
+"title": "Automobile Reports",
+"module": "Automobile",
+"kind": "report",
+"nature": [
+"automobile"
+],
+"purpose": "Enquiry analysis, vehicle delivery register, job card register, parts issued, outside work, technician performance.",
+"steps": [
+"Choose the view."
+],
+"views": {},
+"tips": [],
+"accounts": "None - read only.",
+"stock": "None - read only.",
+"vat": "None.",
+"fields": [],
+"slug": "auto-reports",
+"pdf": "/help/menus/auto-reports.pdf"
+},
+"/auto/setup": {
+"path": "/auto/setup",
+"title": "Automobile Setup",
+"module": "Automobile",
+"kind": "master",
+"nature": [
+"automobile"
+],
+"purpose": "Models, free services, checklists, ledgers of the automobile module.",
+"steps": [
+"Set once."
+],
+"accounts": "None.",
+"stock": "None.",
+"vat": "None.",
+"other": "",
+"tips": [],
+"fields": [],
+"slug": "auto-setup",
+"pdf": "/help/menus/auto-setup.pdf"
+}
+},
+"fields": {
+"Link to Order": "Order whose lines this additional expense is allocated to (landed cost).",
+"Link to GRN": "GRN whose lines this additional expense is allocated to (landed cost goes into the stock value).",
+"Link to Bill": "Purchase bill whose lines this additional expense is allocated to (landed cost).",
+"Term": "The billing term of the row. Its ledger is fixed (only the sub-ledger changes); its basis, sign and costing flag come with it.",
+"Ledger / Sub-Ledger": "Ledger of the term (fixed by the billing term) and its sub-ledger (changeable). Debited with the amount (credited for a \"-\" term).",
+"Paid to": "Who is paid for this row - the counter ledger (supplier, transporter, cash / labour ledger) and its sub-ledger. Empty = the entry's vendor. Credited with the row total.",
+"Term Used For": "Transaction term = charged on the bill itself (Sales / Purchase / Production Entry). Additional term = a later bill on those goods (Purchase / Sales Additional: freight, customs, insurance ...).",
+"Include In Costing": "On: the amount goes into the cost of the goods (stock value / landed cost, and so COGS). Off: it stays an expense of the period.",
+"Include In Profitability": "On: the amount is counted in the profitability reports (product / bill / party profit).",
+"Date": "Date of the document. Accounts, stock, VAT month and ageing all use this date. Type it (AD or BS - switch with the AD/BS button) or pick it. A date in a closed fiscal year cannot be posted.",
+"Voucher No.": "Number of the document. Given automatically on save from Document Numbering (series per fiscal year); shown as \"System series\" until then. Manual numbering only if the series allows it.",
+"Doc No": "Number of the document. Given automatically on save from Document Numbering (series per fiscal year).",
+"Cash / Credit": "Cash: paid / received now - the party field becomes a name (or a cash ledger) and no outstanding is created. Credit: the amount stays outstanding against the party (bill-wise, ageing, credit limit).",
+"Invoice Type": "Cash or credit, as Cash / Credit: decides whether the document leaves an outstanding against the party.",
+"Customer": "The customer (ledger in Sundry Debtors). Debited with the bill total (credited on a return). PAN, address, credit limit, rate category, agent and area come from the customer master.",
+"Vendor": "The supplier (ledger in Sundry Creditors). Credited with the bill total (debited on a return / debit note). PAN, address and credit days come from the vendor master.",
+"Party": "The customer / supplier ledger the document is with. Its balance moves with the document.",
+"Customer Sub-Ledger": "Sub-ledger (e.g. branch or project of the customer) under the customer ledger. The party posting carries it, so sub-ledger statements and ageing show it.",
+"Vendor Sub-Ledger": "Sub-ledger under the vendor ledger. The party posting carries it (sub-ledger statement / ageing).",
+"Quotation No.": "Pull from a pending quotation of this party: its lines (pending qty only), master part (company, agent, sub-ledger ...), remarks and billing terms come into this entry. Enter on the box opens the list.",
+"Order No.": "Pull from a pending order of this party (pending qty only). Master part, remarks and billing terms come along. The order's delivered / billed qty moves when this entry posts.",
+"Challan No.": "Pull from a pending delivery challan. The stock already went out on the challan, so the bill lines from it do not move stock again.",
+"GRN No.": "Pull from a pending GRN (goods received). Stock came in on the GRN; the bill clears the GRN clearing account and books the real payable.",
+"Bill No.": "Pull from a posted bill of this party (for a return): only the qty not yet returned is offered.",
+"Rate Type": "Which selling rate (Sr1 - Sr5) the lines use. Defaults from the customer's rate category; changing it re-rates the lines after asking.",
+"Product Company": "Company / brand of the goods on this document. With \"Product Company Compulsory\" in System Control, only that company's products can be picked and the party posting is split by company (company-wise ledger / ageing).",
+"Warehouse": "Warehouse the stock goes out of / comes into (only with Multi Warehouse on). A line can have its own warehouse.",
+"Master Warehouse": "Default warehouse for all lines of this document.",
+"Salesman / Agent": "Salesman / agent of the sale: used for agent-wise sales, targets and commission.",
+"Agent": "Salesman / agent: agent-wise reports, targets and commission.",
+"Salesman/Agent": "Salesman / agent: agent-wise reports, targets and commission.",
+"Area": "Area of the party / sale - area-wise reports and data access.",
+"Route": "Delivery / sales route - route-wise sales, loading sheet and route plan.",
+"Cost Center": "Cost center (department, project, site, shed ...) every posting of this document carries: P&L by cost center, budgets.",
+"Unit": "Business unit (division / brand) every posting carries: P&L by unit, budgets.",
+"Unit (Business Unit)": "Business unit every posting carries: P&L by unit, budgets.",
+"Due Date": "Payment due date (Date + credit days). Ageing, overdue interest and reminders use it.",
+"Due Days": "Credit days; the due date is the document date plus these days.",
+"Currency": "Currency of the document (Multi Currency on). Amounts are entered in it; the exchange rate converts them to NPR for accounts.",
+"Priority": "Urgency of the document (normal / high / urgent) - for follow-up lists only.",
+"Narration": "One line description printed on the voucher and shown in the ledger. Pick a saved remark or type.",
+"Remarks": "Remarks printed on the document; pick a saved remark (Remarks master) or type your own.",
+"Terms & Conditions": "Terms printed at the bottom of the document (Remarks & Terms master).",
+"Sales Account": "Sales (income) account for this document when the product has none. Product account > this account > System Control Sales Account Mapping.",
+"Sales Sub-Ledger": "Sub-ledger of the sales account for this document.",
+"Goods Account": "Purchase / goods account for this document when the product has none. A fixed asset or stock ledger can be chosen for capital purchases.",
+"Goods Sub-Ledger": "Sub-ledger of the goods account.",
+"Party Bill No": "The supplier's own bill number (VAT invoice no). It goes to the purchase VAT register; the same number cannot be entered twice for one supplier.",
+"Party Bill Date": "Date on the supplier's bill - VAT register and Annex 13.",
+"Return Reason": "Why the goods came back: printed on the credit note, sent to IRD for sales returns.",
+"Settlement Type": "How the return is settled: against the bill (adjusts that bill's outstanding) or on account.",
+"Terms": "Billing terms (VAT, excise, discount, freight ...) of the document.",
+"Import Declaration No": "Customs declaration (pragyapan patra) number of an import - VAT register import columns.",
+"Declaration Date": "Date of the customs declaration.",
+"Customs Office (Bhansar)": "Customs office of the import.",
+"Import Detail Mode": "Import taxable / tax-free amounts for the whole bill, or item-wise.",
+"Import Taxable Amount (whole bill)": "Taxable import value for the VAT register (Annex).",
+"Import Tax-Free Amount (whole bill)": "Tax-free import value for the VAT register.",
+"PAN Number": "PAN / VAT number of the party printed on the bill and used in VAT registers / IRD. Can update the master.",
+"Account Posting": "Yes: the expense is posted to the ledgers. No: only the landed cost moves (e.g. already booked elsewhere).",
+"Item Code": "Product code or barcode - type or scan; Enter moves on. F1 shows this customer's / supplier's rate history.",
+"Item Name": "The product. Its units, rates, accounts, VAT, batch / serial and item type come from the Product Master.",
+"Qty": "Quantity in the selected unit. Stock moves in the product's base unit (converted automatically).",
+"Free Qty": "Free (scheme) quantity: moves stock, no value.",
+"UOM": "Unit of the line (box, pcs, kg ...). Conversion to the base unit comes from Product Units / the product.",
+"Alt Qty": "Quantity in the second unit of a dual-unit product (e.g. pcs with cartons).",
+"Rate": "Rate per unit (per the rate basis). Sales: from the rate type / rate category / offer rate; purchase: last purchase rate.",
+"Rate Basis": "Whether the rate is per the primary or the secondary unit of a dual-unit product.",
+"Gross": "Qty x rate before discounts and terms.",
+"Add / Less": "Product-wise charges and discounts of the line (from its billing terms popup when Item Charges is on); the popup total shows here.",
+"Net Amount": "Gross +/- the line terms: the value of the line.",
+"Disc %": "Line discount percent (a Discount billing term when term mapping is used).",
+"Tax %": "VAT percent of the line (13% for taxable goods, 0 for exempt).",
+"Batch": "Batch / lot number (Batch System on). Stock and batch-wise costing follow it.",
+"Serial No": "Serial number of the piece (Serial Number on) - vehicles, electronics.",
+"Mfg Date": "Manufacturing date of the batch.",
+"Exp Date": "Expiry date of the batch - near-expiry alerts and stock ageing.",
+"Barcode": "Barcode of the product / batch.",
+"Ref No (source doc)": "The document this line was pulled from (quotation / order / challan / GRN / bill).",
+"Gross Amount": "Total of the lines before document-level terms.",
+"Net Amount (total)": "Amount after all terms and VAT - the party is debited / credited with it.",
+"Base": "Amount TDS is worked out on (default: the bill value without VAT).",
+"TDS %": "TDS rate. TDS amount = base x %. Sales: TDS the customer withholds (Dr TDS receivable, Cr customer). Purchase: TDS we withhold (Dr supplier, Cr TDS payable).",
+"TDS Amount": "TDS in rupees; typed or worked out from base x %.",
+"TDS Ledger": "TDS payable (purchase) or TDS receivable (sales) ledger; defaults from System Control.",
+"TDS Sub-Ledger": "Sub-ledger of the TDS ledger (e.g. TDS type / section).",
+"JV Type": "Kind of journal: Normal, Taxable / non-taxable Purchase or Sales, Asset Purchase / Sale, Service Purchase / Sale, or TDS (on purchase / on sales). Purchase / sales types go to the VAT register; the lines are filled from the amounts.",
+"Taxable Amount": "Value on which VAT is charged (JV purchase / sales).",
+"Non-taxable Amount": "VAT-exempt value (JV purchase / sales).",
+"VAT %": "VAT rate (13%); VAT amount = taxable x %.",
+"VAT Amount": "VAT of the journal - posted to the VAT A/c and to the VAT register.",
+"VAT A/c": "VAT ledger the VAT goes to (defaults from System Control).",
+"Bill Total": "Taxable + non-taxable + VAT: the party amount.",
+"Ref Doc No": "Reference document (supplier bill no for a purchase).",
+"Ref Doc Date": "Date of the reference document.",
+"Bill Date": "Date of the supplier / customer bill.",
+"PAN / VAT No": "PAN of the party (VAT register).",
+"Memo Only": "A memo journal is recorded but not posted to the ledgers.",
+"Receipt / Payment": "Receipt: money comes in (Dr cash / bank, Cr the lines). Payment: money goes out (Cr cash / bank, Dr the lines).",
+"Cash / Bank": "Whether the cash or a bank account is used.",
+"Cash/Bank Ledger": "The cash-in-hand or bank ledger debited (receipt) or credited (payment).",
+"Mode": "Cash, cheque, transfer, wallet ... printed and used by bank reconciliation.",
+"Cheque / Txn No": "Cheque or transaction number - bank reconciliation matches it with the statement.",
+"Document No": "Reference number (receipt book no, bank slip no).",
+"Document Date": "Date of the reference document / cheque.",
+"Received / Issued": "Received: a post-dated cheque from a customer. Issued: our post-dated cheque to a supplier. Nothing posts to the ledger until the cheque is deposited / cleared.",
+"Cheque No": "Number of the post-dated cheque.",
+"Cheque Date": "Date on the cheque; the PDC dashboard shows due / overdue cheques by it.",
+"Bank Ledger": "Bank the cheque is deposited to / paid from when it clears.",
+"Bank Name": "Bank of the cheque.",
+"Amount": "Amount of the line / cheque / document.",
+"From Warehouse": "Warehouse the goods leave (stock out).",
+"To Warehouse": "Warehouse the goods reach (stock in).",
+"From Branch": "Sending branch (branch transfer: goods in transit until received).",
+"To Branch": "Receiving branch.",
+"Transfer Type": "Direct (in and out together) or two-step branch transfer (dispatch, then receipt).",
+"Receiving Date": "Date the goods were received at the other branch.",
+"Vehicle No": "Vehicle carrying the goods - printed on the challan / transfer.",
+"Driver Name": "Driver of the vehicle.",
+"Transport": "Transporter (Transport Master).",
+"Output Product": "Finished / semi-finished product made. Stock in at the cost of the raw materials (less by-products) per base unit.",
+"Output Qty": "Quantity produced.",
+"Output Warehouse": "Warehouse the output goes into.",
+"Source Warehouse (Raw Material)": "Warehouse the raw materials are taken from.",
+"Output Batch No": "Batch number of the production.",
+"Output Relative Value": "Share of cost for the main output when there are joint products (relative sales value).",
+"Account Name": "Name of the ledger.",
+"Account Group": "Group the ledger belongs to - decides Balance Sheet / P&L place, Trial Balance and ratio / cash-flow category.",
+"Category Type": "Customer, supplier, both, cash, bank or others - decides where the ledger is offered (party pickers, cash / bank).",
+"Opening Balance": "Balance on the first day of the opening fiscal year (Dr / Cr).",
+"Credit Limit / Days": "Maximum outstanding and credit days allowed - warned / blocked on sales per Credit Limit Control.",
+"Credit Limit Control": "None, warn or block when a sale takes the party over its credit limit.",
+"Bill-wise Tracking": "Keep the party's outstanding bill by bill (bill-wise ageing, settlement of payments against bills).",
+"Sub Ledger Mode": "Whether this ledger uses sub-ledgers and which.",
+"VAT/PAN Number": "PAN / VAT number - printed on bills, VAT register, IRD, confirmation letters.",
+"Billing Name": "Name printed on bills (if different from the ledger name); confirmation letters can group ledgers by it.",
+"Rate Category": "Which selling rate (Sr1 - Sr5) this customer gets by default.",
+"Discount Category": "Default discount group of the customer.",
+"Interest % p.a.": "Interest on overdue bills (Interest on Overdue posting).",
+"Product Name": "Name of the product.",
+"Item Type": "Trading item, raw material, semi-finished, finished good, service, non-inventory or fixed asset. Service, non-inventory and fixed asset are not stock (no stock movement, not in closing stock).",
+"Primary Unit": "Base unit of the product: stock is kept in it.",
+"Unit Mode": "Single unit, multiple units with conversion, or dual unit (two quantities per line).",
+"HS Code": "Harmonised System code (customs / VAT annex).",
+"Stock Group": "Product group - group-wise stock and sales reports.",
+"Company / Brand": "Product company - company-wise sales, purchase and compulsory company rules.",
+"Default Vendor": "Usual supplier - used by purchase plans.",
+"Short Name": "Short name / alias for quick search.",
+"Short Name (Alias)": "Short name / alias for quick search.",
+"Code": "Code of the record - automatic and read-only.",
+"Tags": "Free labels for searching and grouping.",
+"From": "First date of the report period.",
+"To": "Last date of the report period.",
+"From Date": "First date of the report period.",
+"To Date": "Last date of the report period.",
+"As on": "Report position at the end of this date (balances, stock, ageing).",
+"Show": "Which rows to show (all / only differences / ...).",
+"Group by": "How the rows are grouped / totalled.",
+"View": "Layout of the report.",
+"Side": "Sales side or purchase side.",
+"Documents": "Which document types are included. The book buttons tick a whole book at once (bills + JVs + additional bills).",
+"Customer / Supplier": "Limit the report to one party.",
+"Status": "Document status: draft, posted, cancelled ...",
+"Method": "Stock valuation method: FIFO, moving average, weighted average ...",
+"Search": "Find rows containing this text.",
+"IRD Billing": "Yes: a posted Sales Bill / Sales Return can only be cancelled (IRD rules), is kept in the IRD register and can be pushed to CBMS.",
+"VAT Ledger Mapping": "Default VAT ledger for line VAT on sales and purchase.",
+"Negative Stock Control": "None / warn / block when a sale, return, transfer or adjustment would take stock below zero.",
+"Multi Warehouse": "Yes: warehouse on entries and warehouse-wise stock.",
+"Batch System": "Yes: batch / lot on stock entries and batch-wise stock.",
+"Multi Currency System": "Yes: foreign-currency documents with exchange rates.",
+"Default VAT %": "VAT rate used when a line has none (13%).",
+"Default TDS %": "TDS rate offered on bills / JVs.",
+"TDS Payable Ledger (purchase)": "Ledger for TDS we withhold from suppliers.",
+"TDS Receivable Ledger (sales)": "Ledger for TDS customers withhold from us.",
+"Sales Account Mapping": "Default sales account (when neither product nor document has one).",
+"Purchase Account Mapping": "Default purchase account.",
+"GRN Clearing Ledger (GR/IR)": "Provisional liability for goods received before the bill (Cr at GRN, Dr at bill).",
+"Post Stock Adjustment to Accounts": "Yes: stock adjustments post to the ledgers (shortage / damage / excess accounts).",
+"Back-date Entry Control": "How far back an entry may be dated.",
+"Post-date Entry Control": "How far ahead an entry may be dated."
+},
+"aliases": {
+"Salesman": "Salesman / Agent",
+"Customer Sub Ledger": "Customer Sub-Ledger",
+"Party Sub Ledger": "Customer Sub-Ledger",
+"Date From": "From",
+"Date To": "To",
+"Terms &amp; Conditions": "Terms & Conditions",
+"Doc No.": "Doc No",
+"Posting date": "Date",
+"VAT/PAN Type": "VAT/PAN Number",
+"Serial": "Serial No",
+"Free": "Free Qty",
+"Net Amt": "Net Amount",
+"Disc": "Disc %"
+}
+}

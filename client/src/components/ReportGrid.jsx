@@ -545,7 +545,7 @@ export default function ReportGrid({
                                     if (data.startsWith('chip:')) reorderGroupKey(parseInt(data.slice(5), 10), i);
                                     else if (data.startsWith('col:')) addGroupKey(data.slice(4));
                                 }}
-                                className="flex items-center gap-1.5 bg-gray-800 text-white text-xs px-2.5 py-1 rounded-full cursor-grab"
+                                className="rg-chip flex items-center gap-1.5 text-xs px-2.5 py-1 rounded-full cursor-grab"
                             >
                                 {i + 1}. {col?.label || key}
                                 <span onClick={() => removeGroupKey(key)} className="cursor-pointer text-red-300 hover:text-red-100 font-bold">✕</span>
@@ -721,7 +721,7 @@ export default function ReportGrid({
                         }))}
                     </tbody>
                     <tfoot>
-                        <tr className="bg-gray-800 text-white font-semibold sticky bottom-0">
+                        <tr className="rg-footer font-semibold sticky bottom-0">
                             {visibleColumns.map((col, i) => {
                                 const agg = footerAggs[col.key] || 'none';
                                 const values = sorted.map(r => r[col.key]);
@@ -730,7 +730,7 @@ export default function ReportGrid({
                                 return (
                                     <td key={col.key} className="px-2 py-1 text-xs align-top">
                                         <div className="flex flex-col gap-0.5">
-                                            {i === 0 && agg === 'none' && <span className="text-gray-300 text-[10px] uppercase">Footer</span>}
+                                            {i === 0 && agg === 'none' && <span className="text-gray-600 text-[10px] uppercase">Footer</span>}
                                             {result !== null && <span className="text-white text-xs font-bold truncate">{result}</span>}
                                             <select
                                                 value={agg}
@@ -744,7 +744,7 @@ export default function ReportGrid({
                                     </td>
                                 );
                             })}
-                            {rowActions && <td className="bg-gray-800"></td>}
+                            {rowActions && <td className="rg-footer"></td>}
                         </tr>
                     </tfoot>
                 </table>

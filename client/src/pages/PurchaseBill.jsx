@@ -31,6 +31,7 @@ import { CodeCell } from '../components/entry/SalesLineGrid';
 import DocActions, { finalizeEntry } from '../components/entry/DocActions';
 import EntryFillBar from '../components/entry/EntryFillBar';
 import { saveEntryDraft, finishEntryDraft } from '../components/entry/entryDrafts';
+import BillReceiptTds from '../components/entry/BillReceiptTds';
 import { EntryFooter, useEntryHotkeys, latestOf } from '../components/entry/EntryParts';
 import { PurchaseProductTermPopup, PurchaseOverallTermPopup } from '../components/entry/PurchaseTermPopups';
 import { productTermIds, withTermValue } from '../components/entry/lineCalc';
@@ -53,6 +54,7 @@ const emptyForm = {
     source_quotation_id: '', source_order_id: '', source_grn_id: '', party_bill_no: '', party_bill_date: '',
     import_detail_mode: '', customs_office_id: '', customs_declaration_no: '', customs_declaration_date: '',
     bill_wise_import_taxable_amount: '', bill_wise_import_tax_free_amount: '',
+    tds_percent: '', tds_base_amount: '', tds_amount: '', tds_ledger_id: '', tds_sub_ledger_id: '',
     details: [emptyDetailRow()]
 };
 
@@ -61,6 +63,7 @@ const EFC_RENDERED_KEYS = ['agent_id', 'area_id', 'business_unit_id', 'cost_cent
 
 export default function PurchaseBill() {
     const [dualUomEntryMode, setDualUomEntryMode] = useState({ mode: 'fixed', reverseEnabled: false });
+    const [sysCtl, setSysCtl] = useState({});
     // a product's own dual-UOM entry mode (Product Master) over System Control's
     const dualModeOf = pid => productDualMode(products.find(p => p.id === pid), dualUomEntryMode);
     const { authFetch } = useAuth();
@@ -113,12 +116,9 @@ export default function PurchaseBill() {
     const [auditModal, setAuditModal] = useState(null); // { doc_no, entries }
     // FEATURE: "pulls forward from Requisition and/or Quotation" - the
     // "pulls forward from any earlier stage" capability.
-    const [pullQuotationId, setPullQuotationId] = useState('');
-    const [pullOrderId, setPullOrderId] = useState('');
-    const [pullGrnId, setPullGrnId] = useState('');
-    const [openQuotations, setOpenQuotations] = useState([]);
-    const [openOrders, setOpenOrders] = useState([]);
-    const [openGrns, setOpenGrns] = useState([]);
+    const [, setOpenQuotations] = useState([]);
+    const [, setOpenOrders] = useState([]);
+    const [, setOpenGrns] = useState([]);
     const [customsOffices, setCustomsOffices] = useState([]);
     // FEATURE: Master reorganized into tabs (not all fields flat) plus a
     // bottom bar for narration-style fields, matching the "own concept,
@@ -216,36 +216,14 @@ export default function PurchaseBill() {
             setFieldControls(controlsMap);
             setBillingTerms((bt.data || []).filter(t => t.applicable_purchase_entry && t.is_enabled));
             setDualUomEntryMode(resolveDualUomEntryMode(sysCtrl.data));
+            setSysCtl(sysCtrl.data || {});
         } catch (err) {
             showAlert(err.message, 'danger');
         }
     }, [authFetch]);
     useEffect(() => { load(); }, [load]);
 
-    const resetForm = () => { setForm(emptyForm); setEditingId(null); setPullQuotationId(''); setPullOrderId(''); setPullGrnId(''); setPartyInfo(emptyPartyInfo()); setPulledDocs([]); };
-
-    // FEATURE: fetches the shared pull-forward endpoint and populates the
-    // Master + Details with whatever it returns - user can still edit
-    // everything afterward, this is a starting point, not a lock-in.
-    const handlePullForward = async () => {
-        if (!pullQuotationId && !pullOrderId && !pullGrnId) return showAlert('Pick a Quotation, Order, and/or GRN to pull from', 'danger');
-        try {
-            const params = new URLSearchParams();
-            if (pullQuotationId) params.set('quotation_id', pullQuotationId);
-            if (pullOrderId) params.set('order_id', pullOrderId);
-            if (pullGrnId) params.set('grn_id', pullGrnId);
-            const res = await authFetch(`/api/purchase-bills/pull-forward?${params}`);
-            const { master, details } = res.data;
-            setForm(f => ({
-                ...f, ...master,
-                source_quotation_id: pullQuotationId || '', source_order_id: pullOrderId || '', source_grn_id: pullGrnId || '',
-                details: (details && details.length > 0) ? details.map(d => ({ ...emptyDetailRow(), ...d })) : f.details
-            }));
-            showAlert('Pulled forward - review and adjust before saving', 'success');
-        } catch (err) {
-            showAlert(err.message, 'danger');
-        }
-    };
+    const resetForm = () => { setForm(emptyForm); setEditingId(null); setPartyInfo(emptyPartyInfo()); setPulledDocs([]); };
 
     // FEATURE: Entry Field Control - resolved per-field mode drives
     // visibility/required/readonly across the whole form. Section
@@ -731,39 +709,7 @@ export default function PurchaseBill() {
 
             {showForm && (
                 <form onSubmit={handleSubmit} ref={formRef} className="ent-entry">
-                    <EntryFillBar voucherType="purchase_bill" api="purchase-bills" form={form} editing={!!editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={r => handleCopyFrom(r.id)} />
-                    {/* ==================== PULL FORWARD (universal - any earlier stage) ==================== */}
-                    {!editingId && (
-                        <details className="mx-3 mt-2 text-xs"><summary className="cursor-pointer text-[#1a4a8a]">Pull from any earlier document (any party)</summary>
-                        <div className="erp-topbar grid-cols-1 md:grid-cols-4" style={{ background: '#eff6ff' }}>
-                            <div className="erp-field">
-                                <label className="erp-label">Pull From Quotation</label>
-                                <select className="erp-select" value={pullQuotationId} onChange={e => setPullQuotationId(e.target.value)}>
-                                    <option value="">— None —</option>
-                                    {openQuotations.map(q => <option key={q.id} value={q.id}>{q.doc_no}</option>)}
-                                </select>
-                            </div>
-                            <div className="erp-field">
-                                <label className="erp-label">Pull From Order</label>
-                                <select className="erp-select" value={pullOrderId} onChange={e => setPullOrderId(e.target.value)}>
-                                    <option value="">— None —</option>
-                                    {openOrders.map(o => <option key={o.id} value={o.id}>{o.doc_no} — {o.vendor_display_name || 'No vendor yet'}</option>)}
-                                </select>
-                            </div>
-                            <div className="erp-field">
-                                <label className="erp-label">Pull From GRN</label>
-                                <select className="erp-select" value={pullGrnId} onChange={e => setPullGrnId(e.target.value)}>
-                                    <option value="">— None —</option>
-                                    {openGrns.map(g => <option key={g.id} value={g.id}>{g.doc_no} — {g.vendor_display_name || 'No vendor yet'}</option>)}
-                                </select>
-                            </div>
-                            <div className="erp-field justify-end">
-                                <button type="button" onClick={handlePullForward} className="erp-btn primary">⬇ Pull Forward</button>
-                            </div>
-                            <p className="text-xs text-gray-400 md:col-span-4">Pick any combination - all their lines get merged in. GRN lines only bring in what's still outstanding (not yet billed).</p>
-                        </div>
-                        </details>
-                    )}
+                    <EntryFillBar voucherType="purchase_bill" api="purchase-bills" form={form} editing={!!editingId} docId={editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={r => handleCopyFrom(r.id)} />
 
                     {/* ==================== TOP BAR (identity fields, Cash/Credit up front) ==================== */}
                     <div className="erp-topbar grid-cols-1 md:grid-cols-6">
@@ -812,6 +758,20 @@ export default function PurchaseBill() {
                                 </div>
                             )}
                         </div>
+                        {/* Quotation / Order / Challan No. - the source's master part, remarks and terms come along */}
+                        <PendingDocsPanel target="purchase_bill" partyId={form.vendor_ledger_id} efc={efc} disabled={!!editingId} pulled={pulledDocs} onPull={data => { setForm(f => mergePulled(f, data, emptyDetailRow)); setPulledDocs(p => [...p, ...data.documents.map(x => x.id)]); showAlert(`Pulled ${data.lines.length} line(s) from ${data.documents.map(x => x.doc_no).join(', ')}`, 'success'); }} />
+                        {/* the vendor's sub-ledger, next to the vendor */}
+                        <div className="erp-field">
+                            <label className="erp-label">Vendor Sub-Ledger</label>
+                            <SearchablePopupSelect
+                                listKey="purchase_bill_vendor_subledger_picker"
+                                columns={[{ key: 'code', label: 'Code' }, { key: 'name', label: 'Name' }]}
+                                defaultVisibleKeys={['name']}
+                                items={subLedgers.filter(x => x.main_ledger_id === form.vendor_ledger_id).map(x => ({ id: x.id, code: x.sub_ledger_code, name: x.sub_ledger_name }))} getId={x => x.id} getLabel={x => x.name}
+                                searchKeys={['name', 'code']}
+                                value={form.vendor_sub_ledger_id} onChange={id => setForm({ ...form, vendor_sub_ledger_id: id })} placeholder={form.vendor_ledger_id ? 'None' : 'Choose the vendor first'}
+                            />
+                        </div>
                         <ProductCompanyField side="purchase" form={form} setForm={setForm} products={products} emptyRow={emptyDetailRow} />
                         <div className={isVisible('priority') ? 'erp-field' : 'erp-field hidden'}>
                             <label className="erp-label">Priority</label>
@@ -822,7 +782,6 @@ export default function PurchaseBill() {
                             </select>
                         </div>
                     </div>
-                    <PendingDocsPanel target="purchase_bill" partyId={form.vendor_ledger_id} efc={efc} disabled={!!editingId} pulled={pulledDocs} onPull={data => { setForm(f => mergePulled(f, data, emptyDetailRow)); setPulledDocs(p => [...p, ...data.documents.map(x => x.id)]); showAlert(`Pulled ${data.lines.length} line(s) from ${data.documents.map(x => x.doc_no).join(', ')}`, 'success'); }} />
 
 
                     <div className="px-4">
@@ -850,7 +809,7 @@ export default function PurchaseBill() {
                                         <th className={`text-left px-1 py-1 w-20 ${(!chargesInPopup && isVisible('discount_percent', 'detail')) ? '' : 'hidden'}`}>Disc %</th>
                                         <th className={`text-left px-1 py-1 w-20 ${(!chargesInPopup && isVisible('tax_percent', 'detail')) ? '' : 'hidden'}`}>Tax %</th>
                                         <th className="r">Gross</th>
-                                        <th className="r">Charges ±</th>
+                                        <th className="r">Add / Less</th>
                                         <th className="r">Net Amount</th>
                                         <th className={`text-left px-1 py-1 w-28 ${isVisible('barcode', 'detail') ? '' : 'hidden'}`}>Barcode</th>
                                         <th className="text-left px-1 py-1 w-32">Ref No <span className="text-gray-400 normal-case">(source doc)</span></th>
@@ -860,7 +819,6 @@ export default function PurchaseBill() {
                                                 <th className="text-left px-1 py-1 w-32">Import Tax-Free</th>
                                             </>
                                         )}
-                                        {inlineTerms ? termCols.map(c => <th key={c.key} className="text-left px-1 py-1">{c.label}</th>) : <th className="text-left px-1 py-1 w-20">Item Charges</th>}
                                         <th></th>
                                     </tr>
                                 </thead>
@@ -997,7 +955,7 @@ export default function PurchaseBill() {
                                             <td className={`px-1 py-1 ${(!chargesInPopup && isVisible('discount_percent', 'detail')) ? '' : 'hidden'}`}><input disabled={efc.isReadonly('discount_percent', 'detail')} type="number" step="0.01" className="w-full border rounded px-1.5 py-1" value={d.discount_percent} onChange={e => updateDetailRow(idx, { discount_percent: e.target.value })} /></td>
                                             <td className={`px-1 py-1 ${(!chargesInPopup && isVisible('tax_percent', 'detail')) ? '' : 'hidden'}`}><input disabled={efc.isReadonly('tax_percent', 'detail')} type="number" step="0.01" className="w-full border rounded px-1.5 py-1" value={d.tax_percent} onChange={e => updateDetailRow(idx, { tax_percent: e.target.value })} /></td>
                                             <td className="px-1 py-1 r">{d.product_id ? <AmountCell value={lineGross(d)} title="Type the amount: the rate (or the quantity) is worked out" onChange={g => typeGross(idx, g)} /> : ''}</td>
-                                            <td className="px-1 py-1 r">{d.product_id ? (lineNet(d, idx) - lineGross(d)).toFixed(2) : ''}</td>
+                                            <td className="px-1 py-1 r">{d.product_id ? (itemCharges ? <button type="button" tabIndex={-1} className="ent-term-btn" onClick={() => setProductTermModalIndexes([idx])} title="Add / Less of this line - opens its Item Charges">{(lineNet(d, idx) - lineGross(d)).toFixed(2)}</button> : (lineNet(d, idx) - lineGross(d)).toFixed(2)) : ''}</td>
                                             <td className="px-1 py-1 r">{d.product_id ? <AmountCell bold value={lineNet(d, idx)} title="Type the net amount: taken back through the charges" onChange={n => typeNet(idx, n)} /> : ''}</td>
                                             <td className={`px-1 py-1 ${isVisible('barcode', 'detail') ? '' : 'hidden'}`}><input disabled={efc.isReadonly('barcode', 'detail')} className="w-full border rounded px-1.5 py-1" value={d.barcode} onChange={e => updateDetailRow(idx, { barcode: e.target.value })} /></td>
                                             <td className="px-1 py-1 text-xs text-gray-500">{d.source_doc_no || (d.source_quotation_detail_id || d.source_order_detail_id || d.source_grn_detail_id ? '…' : '—')}</td>
@@ -1007,9 +965,6 @@ export default function PurchaseBill() {
                                                     <td className="px-1 py-1"><input type="number" step="0.01" className="w-full border rounded px-1.5 py-1" value={d.item_import_tax_free_amount} onChange={e => updateDetailRow(idx, { item_import_tax_free_amount: e.target.value })} /></td>
                                                 </>
                                             )}
-                                            {inlineTerms ? termCols.map(c => { const on = (d.billing_term_ids || []).includes(c.term_id); const pos = (d.billing_term_ids || []).indexOf(c.term_id); const amt = on ? lineTermPreviews[idx]?.lines?.[pos]?.amount : null; return (<td key={c.key} className="px-1 py-1 whitespace-nowrap"><input type="checkbox" checked={on} onChange={() => updateDetailRow(idx, { billing_term_ids: on ? d.billing_term_ids.filter(x => x !== c.term_id) : [...(d.billing_term_ids || []), c.term_id] })} /> <span className="text-xs">{amt !== null && amt !== undefined ? Number(amt).toFixed(2) : ''}</span></td>); }) : (<td className="px-1 py-1"><button type="button" tabIndex={-1} onClick={() => itemCharges && setProductTermModalIndexes([idx])} className="ent-term-btn" title="Charges of this line">
-{lineTermPreviews[idx]?.total !== undefined ? (lineTermPreviews[idx].total - (Number(d.qty) || 0) * (Number(d.rate) || 0)).toFixed(2) : '…'}
-</button></td>)}
                                             <td className="px-1 py-1"><button type="button" tabIndex={-1} onClick={() => removeDetailRow(idx)} className="text-red-500 text-xs">✕</button></td>
                                         </tr>
                                     ))}
@@ -1022,7 +977,7 @@ export default function PurchaseBill() {
                         </div>
                         <div className="flex items-center gap-2 mt-1 text-xs text-gray-600">
                             <button type="button" className="nav-btn small" onClick={addDetailRow}>➕ Add line</button>
-                            <span>Enter on the last field adds a line · Charges ±: this line's charges · tick lines (#) and use Item Charges to set them together</span>
+                            <span>Enter on the last field adds a line · Add / Less: this line's item charges (click to open them) · tick lines (#) and use Item Charges to set them together</span>
                         </div>
                     </div>
 
@@ -1043,7 +998,8 @@ export default function PurchaseBill() {
                         remarks={{ value: form.remarks_text, onChange: v => setForm(f => ({ ...f, remarks_text: v })), options: remarks.map(r => r.remark_text) }}
                         onProductTerm={itemCharges ? () => setProductTermModalIndexes(selectedRowIndexes.length > 0 ? selectedRowIndexes : form.details.map((_, i) => i).filter(i => form.details[i].product_id)) : null}
                         onBillTerm={() => setOverallOpen(true)}
-                        panels={[{ key: 'other', label: 'More Info', buttons: [{ label: 'More Info', onClick: () => setActiveTab('general') }, { label: 'Party & Tax Info', onClick: () => setActiveTab('party') }], content: (
+                        panels={[{ key: 'tds', label: '🧾 TDS', content: <BillReceiptTds side="purchase" form={form} setForm={setForm} ledgers={ledgers} subLedgers={subLedgers} billTotal={grandTotal + billTermAmount} tax={taxSplit.tax} sysCtl={sysCtl} lp={lp} /> },
+                            { key: 'other', label: 'More Info', buttons: [{ label: 'More Info', onClick: () => setActiveTab('general') }, { label: 'Party & Tax Info', onClick: () => setActiveTab('party') }], content: (
                             <>
                             <div className="erp-tabs">
                                 <button type="button" className={`erp-tab ${activeTab === 'general' ? 'active' : ''}`} onClick={() => setActiveTab('general')}>General</button>
@@ -1099,17 +1055,6 @@ export default function PurchaseBill() {
                                 </div>
 
                                 <div className={activeTab === 'accounts' ? 'grid grid-cols-1 md:grid-cols-4 gap-3' : 'hidden'}>
-                                    <div className="erp-field">
-                                        <label className="erp-label">Vendor Sub-Ledger</label>
-                                        <SearchablePopupSelect
-                                            listKey="purchase_bill_vendor_subledger_picker"
-                                            columns={[{ key: 'code', label: 'Code' }, { key: 'name', label: 'Name' }]}
-                                            defaultVisibleKeys={['name']}
-                                            items={subLedgers.filter(x => x.main_ledger_id === form.vendor_ledger_id).map(x => ({ id: x.id, code: x.sub_ledger_code, name: x.sub_ledger_name }))} getId={x => x.id} getLabel={x => x.name}
-                                            searchKeys={['name', 'code']}
-                                            value={form.vendor_sub_ledger_id} onChange={id => setForm({ ...form, vendor_sub_ledger_id: id })} placeholder="None"
-                                        />
-                                    </div>
                                     <div className={isVisible('goods_account_ledger_id') ? 'erp-field' : 'erp-field hidden'}>
                                         <label className="erp-label">Goods Account</label>
                                         <SearchablePopupSelect

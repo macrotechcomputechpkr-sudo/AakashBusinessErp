@@ -26,6 +26,7 @@ const { getTenantClient, loadUserPermissions } = require('../utils/dbHelpers');
 const { requireAuth, requirePermission } = require('../middleware/auth');
 const { getVatTerms, defaultVatLedger, allVatLedgerIds } = require('../utils/vatLedger');
 const bsCalendar = require('../utils/bsCalendar');
+const taxReco = require('../utils/taxReconciliation');
 
 const round2 = n => Math.round((Number(n) || 0) * 100) / 100;
 
@@ -36,7 +37,7 @@ const VAT_DOCS = {
     purchase:        { label: 'Purchase',        label_np: 'खरिद',            side: 'purchase', sign: 1,  header: 'purchase_bills',   detail: 'purchase_bill_details',   fk: 'bill_id',        party: 'vendor_ledger_id',   partyName: 'vendor_name_snapshot', termDocType: 'purchase_bill' },
     purchase_return: { label: 'Purchase Return', label_np: 'खरिद फिर्ता',       side: 'purchase', sign: -1, header: 'purchase_returns', detail: 'purchase_return_details', fk: 'return_id',      party: 'vendor_ledger_id',   partyName: 'vendor_name_snapshot', termDocType: 'purchase_return' },
     // Additional expense bills (transport, clearing ...) - each taxable / non-taxable bill line
-    purchase_expense: { label: 'Purchase Expense Bill', label_np: 'खर्च बिल (खरिद)', side: 'purchase', sign: 1, custom: 'expense', party: 'vendor_ledger_id' },
+    purchase_expense: { label: 'Purchase Additional Bill', label_np: 'थप खर्च बिल (खरिद)', side: 'purchase', sign: 1, custom: 'expense', party: 'vendor_ledger_id' },
     // Journal Vouchers entered as a taxable / non-taxable purchase or sale
     jv_purchase:     { label: 'Purchase (JV)',   label_np: 'खरिद (जर्नल)',      side: 'purchase', sign: 1,  custom: 'jv', jvType: 'purchase', party: 'party_ledger_id' },
     jv_sales:        { label: 'Sales (JV)',      label_np: 'बिक्री (जर्नल)',     side: 'sales',    sign: 1,  custom: 'jv', jvType: 'sales', party: 'party_ledger_id' },
@@ -524,7 +525,7 @@ router.get('/vat-reports/vat-ledger', requireAuth, loadUserPermissions, requireP
     }
 });
 
-// ---------- TDS (Journal Voucher lines with TDS %) ----------
+// ---------- TDS (Journal Voucher lines with TDS %, additional expense TDS lines, bills with TDS) ----------
 router.get('/vat-reports/tds', requireAuth, loadUserPermissions, requirePermission('reports', 'view'), async (req, res) => {
     try {
         const q = req.query, tenantId = req.auth.tenantId;
@@ -542,6 +543,20 @@ router.get('/vat-reports/tds', requireAuth, loadUserPermissions, requirePermissi
             const base = round2(Number(l.debit_amount || 0) || Number(l.credit_amount || 0));
             return { doc_label: 'Journal', doc_date: jvById[l.jv_id]?.doc_date, doc_no: jvById[l.jv_id]?.doc_no, party_name: l.ledger_name_snapshot, party_pan: panById[l.ledger_id], base_amount: base, tds_percent: Number(l.tds_percent), tds_amount: round2(base * Number(l.tds_percent) / 100) };
         });
+        // Journal Vouchers with TDS on the voucher (TDS type, and purchase / sales types with TDS)
+        {
+            let tq = tenantClient.from('journal_vouchers').select('id, doc_no, doc_date, jv_type, party_ledger_id, party_name_snapshot, party_pan, tds_percent, tds_base_amount, tds_amount').eq('tenant_id', tenantId).eq('status', 'posted').gt('tds_amount', 0);
+            if (q.date_from) tq = tq.gte('doc_date', q.date_from);
+            if (q.date_to) tq = tq.lte('doc_date', q.date_to);
+            const { data: tdsJvs, error: tdsErr } = await tq.limit(20000);
+            if (!tdsErr) {   // migration 143 not run yet -> skipped
+                const ids = [...new Set((tdsJvs || []).map(x => x.party_ledger_id).filter(Boolean))];
+                const pans = await inChunks(ids, 200, async chunk => (await tenantClient.from('ledger_accounts').select('id, pan_number, vat_pan_number').in('id', chunk)).data);
+                const panOf = Object.fromEntries(pans.map(x => [x.id, x.vat_pan_number || x.pan_number || null]));
+                (tdsJvs || []).forEach(x => rows.push({ doc_label: `Journal (${String(x.jv_type || 'tds').replace('_', ' ')})`, doc_date: x.doc_date, doc_no: x.doc_no, party_name: x.party_name_snapshot || '',
+                    party_pan: x.party_pan || panOf[x.party_ledger_id] || null, base_amount: round2(x.tds_base_amount), tds_percent: Number(x.tds_percent) || 0, tds_amount: round2(x.tds_amount) }));
+            }
+        }
         // Additional expense entries: a "deduct" line with a rate % is TDS withheld from that
         // line's party; its base is the party's (VAT-exclusive) expense amount in the entry.
         let eq = tenantClient.from('purchase_additional_expenses').select('id, doc_no, doc_date, vendor_ledger_id, vendor_name_snapshot').eq('tenant_id', tenantId).eq('status', 'posted');
@@ -550,7 +565,7 @@ router.get('/vat-reports/tds', requireAuth, loadUserPermissions, requirePermissi
         const { data: exps } = await eq.limit(20000);
         const expById = Object.fromEntries((exps || []).map(e => [e.id, e]));
         const expLines = await inChunks((exps || []).map(e => e.id), 200, async chunk => (await tenantClient.from('purchase_additional_expense_lines').select('*').in('expense_id', chunk)).data);
-        const tdsLines = expLines.filter(l => l.entry_sign === 'deduct' && Number(l.rate_percent) > 0);
+        const tdsLines = expLines.filter(l => l.entry_sign === 'deduct' && (l.is_tds || Number(l.rate_percent) > 0));
         const expPartyIds = [...new Set(tdsLines.map(l => l.party_ledger_id || expById[l.expense_id]?.vendor_ledger_id).filter(Boolean))];
         const expParties = await inChunks(expPartyIds, 200, async chunk => (await tenantClient.from('ledger_accounts').select('id, account_name, pan_number, vat_pan_number').in('id', chunk)).data);
         const expPartyById = Object.fromEntries(expParties.map(x => [x.id, x]));
@@ -558,13 +573,48 @@ router.get('/vat-reports/tds', requireAuth, loadUserPermissions, requirePermissi
             const h = expById[l.expense_id], pid = l.party_ledger_id || h.vendor_ledger_id, party = expPartyById[pid];
             const base = round2(expLines.filter(x => x.expense_id === l.expense_id && x.entry_sign !== 'deduct' && (x.party_ledger_id || h.vendor_ledger_id) === pid).reduce((a, x) => a + Number(x.amount || 0), 0));
             rows.push({ doc_label: 'Additional Expense', doc_date: h.doc_date, doc_no: h.doc_no, party_name: party?.account_name || h.vendor_name_snapshot || '', party_pan: party?.vat_pan_number || party?.pan_number || null,
-                base_amount: base, tds_percent: Number(l.rate_percent), tds_amount: round2(l.amount) });
+                base_amount: base, tds_percent: Number(l.rate_percent) || (base ? round2(Number(l.amount) * 100 / base) : 0), tds_amount: round2(l.amount) });
         });
+        // Sales / purchase bills with TDS: withheld from the supplier (payable) or by the customer (receivable)
+        for (const [table, party, label] of [['purchase_bills', 'vendor', 'Purchase Bill'], ['sales_bills', 'customer', 'Sales Bill (TDS by customer)']]) {
+            let bq = tenantClient.from(table).select(`id, doc_no, doc_date, ${party}_ledger_id, ${party}_name_snapshot, tds_percent, tds_base_amount, tds_amount`).eq('tenant_id', tenantId).eq('status', 'posted').gt('tds_amount', 0);
+            if (q.date_from) bq = bq.gte('doc_date', q.date_from);
+            if (q.date_to) bq = bq.lte('doc_date', q.date_to);
+            const { data: bills, error: billErr } = await bq.limit(20000);
+            if (billErr) continue;   // migration 142 not run yet
+            const ids = [...new Set((bills || []).map(x => x[`${party}_ledger_id`]).filter(Boolean))];
+            const pans = await inChunks(ids, 200, async chunk => (await tenantClient.from('ledger_accounts').select('id, pan_number, vat_pan_number').in('id', chunk)).data);
+            const panOf = Object.fromEntries(pans.map(x => [x.id, x.vat_pan_number || x.pan_number || null]));
+            (bills || []).forEach(x => rows.push({ doc_label: label, doc_date: x.doc_date, doc_no: x.doc_no, party_name: x[`${party}_name_snapshot`] || '', party_pan: panOf[x[`${party}_ledger_id`]] || null,
+                base_amount: round2(x.tds_base_amount), tds_percent: Number(x.tds_percent) || 0, tds_amount: round2(x.tds_amount) }));
+        }
         rows.sort((a, b) => String(a.doc_date).localeCompare(String(b.doc_date)));
         const totals = rows.reduce((t, r) => ({ base_amount: round2(t.base_amount + r.base_amount), tds_amount: round2(t.tds_amount + r.tds_amount) }), { base_amount: 0, tds_amount: 0 });
         res.json({ success: true, data: { rows, totals } });
     } catch (error) {
         res.status(500).json({ success: false, error: error.message });
+    }
+});
+
+// ---------- Reconciliation: registers vs books (VAT, sales account, purchase account, TDS) ----------
+// ?section=vat|sales|purchase|tds (rows)  or  ?section=all (the four summaries, no rows)
+router.get('/vat-reports/reconciliation', requireAuth, loadUserPermissions, requirePermission('reports', 'view'), async (req, res) => {
+    try {
+        const q = req.query, tenantId = req.auth.tenantId;
+        const tenantClient = await getTenantClient(tenantId);
+        const opts = { from: q.date_from || null, to: q.date_to || null, loadTaxDocs };
+        if (!q.section || q.section === 'all') {
+            const out = {};
+            for (const s of Object.keys(taxReco.SECTIONS)) {
+                const r = await taxReco.reconcile(tenantClient, tenantId, s, opts);
+                out[s] = { label: r.label, convention: r.convention, ledgers: r.ledgers, summary: r.summary };
+            }
+            return res.json({ success: true, data: out });
+        }
+        const ledgerIds = String(q.ledger_ids || '').split(',').filter(Boolean);
+        res.json({ success: true, data: await taxReco.reconcile(tenantClient, tenantId, q.section, { ...opts, ledgerIds }) });
+    } catch (error) {
+        res.status(error.status || 500).json({ success: false, error: error.message });
     }
 });
 

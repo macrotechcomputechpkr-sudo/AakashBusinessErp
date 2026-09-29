@@ -8,6 +8,7 @@
 // =============================================
 
 const express = require('express');
+const { stockLines } = require('../utils/stockItems');
 const { splitByAccount } = require('../utils/accountResolver');
 const { checkAccountPurposes } = require('../utils/ledgerPurpose');
 const { checkCompulsoryFields, lockProtectedFields } = require('../utils/entryFieldRules');
@@ -98,6 +99,7 @@ async function logDocumentAudit(tenantClient, tenantId, documentType, documentId
 }
 
 async function postNonsaleableStockMovements(tenantClient, tenantId, returnDoc, details) {
+    details = await stockLines(tenantClient, details);   // only stock items move stock (utils/stockItems)
     const rows = [];
     for (const d of details) {
         const wh = d.warehouse_id || returnDoc.warehouse_id;

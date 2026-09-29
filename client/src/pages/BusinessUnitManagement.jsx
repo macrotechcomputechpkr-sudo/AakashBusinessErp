@@ -134,19 +134,33 @@ export default function BusinessUnitManagement() {
 
             {showForm && (
                 <form onSubmit={handleCreate} ref={formRef} className="bg-white border rounded-xl p-4 mb-4 grid grid-cols-1 md:grid-cols-3 gap-3">
-                    <input className="erp-input" disabled placeholder="Code" value="Auto-generated on save" />
-                    <input className="erp-input" placeholder="Unit Name *" value={form.unit_name} onChange={e => setForm({ ...form, unit_name: e.target.value })} required />
-                    <input className="erp-input" placeholder={`Short Name (Alias) - e.g. ${nameInitials(form.unit_name)}00001`} value={form.unit_short_name} onChange={e => setForm({ ...form, unit_short_name: e.target.value })} />
-                    <select className="erp-input" value={form.unit_type} onChange={e => setForm({ ...form, unit_type: e.target.value })}>
-                        <option value="brand">Brand</option>
-                        <option value="division">Division</option>
-                        <option value="product_line">Product Line</option>
-                    </select>
-                    <input className="erp-input" placeholder="Brand Name" value={form.brand_name} onChange={e => setForm({ ...form, brand_name: e.target.value })} />
-                    <input className="erp-input" placeholder="Product Category" value={form.product_category} onChange={e => setForm({ ...form, product_category: e.target.value })} />
-                    <input type="number" step="0.01" className="erp-input" placeholder="Tax Rate %" value={form.tax_rate} onChange={e => setForm({ ...form, tax_rate: e.target.value })} />
+                    <div className="erp-field"><label className="erp-label">Code</label>
+                        <input className="erp-input" disabled placeholder="Code" value="Auto-generated on save" />
+                    </div>
+                    <div className="erp-field"><label className="erp-label">Unit Name <span className="req">*</span></label>
+                        <input className="erp-input" placeholder="Unit Name *" value={form.unit_name} onChange={e => setForm({ ...form, unit_name: e.target.value })} required />
+                    </div>
+                    <div className="erp-field"><label className="erp-label">Short Name</label>
+                        <input className="erp-input" placeholder={`Short Name (Alias) - e.g. ${nameInitials(form.unit_name)}00001`} value={form.unit_short_name} onChange={e => setForm({ ...form, unit_short_name: e.target.value })} />
+                    </div>
+                    <div className="erp-field"><label className="erp-label">Unit Type</label>
+                        <select className="erp-input" value={form.unit_type} onChange={e => setForm({ ...form, unit_type: e.target.value })}>
+                            <option value="brand">Brand</option>
+                            <option value="division">Division</option>
+                            <option value="product_line">Product Line</option>
+                        </select>
+                    </div>
+                    <div className="erp-field"><label className="erp-label">Brand Name</label>
+                        <input className="erp-input" placeholder="Brand Name" value={form.brand_name} onChange={e => setForm({ ...form, brand_name: e.target.value })} />
+                    </div>
+                    <div className="erp-field"><label className="erp-label">Product Category</label>
+                        <input className="erp-input" placeholder="Product Category" value={form.product_category} onChange={e => setForm({ ...form, product_category: e.target.value })} />
+                    </div>
+                    <div className="erp-field"><label className="erp-label">Tax Rate %</label>
+                        <input type="number" step="0.01" className="erp-input" placeholder="Tax Rate %" value={form.tax_rate} onChange={e => setForm({ ...form, tax_rate: e.target.value })} />
+                    </div>
                     {sysControl?.enable_business_unit_hierarchy && (
-                        <div>
+                        <div className="erp-field"><label className="erp-label">Parent Unit</label>
                             <SearchablePopupSelect
                                 listKey="business_unit_parent_picker"
                                 columns={[{ key: 'unit_code', label: 'Code' }, { key: 'unit_name', label: 'Name' }]}
@@ -158,7 +172,9 @@ export default function BusinessUnitManagement() {
                             />
                         </div>
                     )}
-                    <input className="border rounded-lg px-3 py-2 md:col-span-3" placeholder="Description" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} />
+                    <div className="erp-field md:col-span-3"><label className="erp-label">Description</label>
+                        <input className="erp-input" placeholder="Description" value={form.description} onChange={e => setForm({ ...form, description: e.target.value })} />
+                    </div>
                     <div className="md:col-span-3 flex justify-end">
                         <button type="submit" className="px-4 py-2 bg-blue-600 text-white rounded-lg">Save</button>
                     </div>

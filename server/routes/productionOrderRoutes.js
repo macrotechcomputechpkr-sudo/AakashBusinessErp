@@ -198,6 +198,8 @@ async function logDocumentAudit(tenantClient, tenantId, documentType, documentId
     if (error) console.error('document_audit_trail insert failed:', error.message);
 }
 
+// Output and by-products enter stock at cost per BASE unit (total cost / base qty) - the
+// entry may be in a bigger unit (e.g. 10 cartons = 120 pcs), the stock ledger is in base units.
 async function postProductionMovements(tenantClient, tenantId, production, rawMaterials, byproducts) {
     const rows = [];
     for (const r of rawMaterials) {
@@ -206,11 +208,11 @@ async function postProductionMovements(tenantClient, tenantId, production, rawMa
         rows.push({ tenant_id: tenantId, product_id: r.product_id, warehouse_id: wh, batch_no: r.batch_no, movement_date: production.doc_date, qty_out: baseQty, qty_in: 0, unit_cost: r.cost_rate || 0, source_type: 'production', source_id: production.id, source_detail_id: r.id, narration: `Production ${production.doc_no} - raw material consumed` });
     }
     const outputBaseQty = await resolveDualAwareBaseQty(tenantClient, production.output_product_id, production.output_qty, production.output_uom_id, production.output_alt_qty, production.output_rate_basis);
-    rows.push({ tenant_id: tenantId, product_id: production.output_product_id, warehouse_id: production.output_warehouse_id, batch_no: production.output_batch_no, movement_date: production.doc_date, qty_in: outputBaseQty, qty_out: 0, unit_cost: production.output_unit_cost || 0, source_type: 'production', source_id: production.id, narration: `Production ${production.doc_no} - output` });
+    rows.push({ tenant_id: tenantId, product_id: production.output_product_id, warehouse_id: production.output_warehouse_id, batch_no: production.output_batch_no, movement_date: production.doc_date, qty_in: outputBaseQty, qty_out: 0, unit_cost: outputBaseQty > 0 ? Math.round((Number(production.output_unit_cost) || 0) * (Number(production.output_qty) || 0) / outputBaseQty * 10000) / 10000 : 0, source_type: 'production', source_id: production.id, narration: `Production ${production.doc_no} - output` });
     for (const bp of byproducts) {
         const wh = bp.warehouse_id || production.output_warehouse_id;
         const baseQty = await resolveDualAwareBaseQty(tenantClient, bp.product_id, bp.qty, bp.uom_id, bp.alt_qty, bp.rate_basis);
-        rows.push({ tenant_id: tenantId, product_id: bp.product_id, warehouse_id: wh, batch_no: bp.batch_no, movement_date: production.doc_date, qty_in: baseQty, qty_out: 0, unit_cost: Number(bp.qty) > 0 ? Number(bp.amount) / Number(bp.qty) : 0, source_type: 'production', source_id: production.id, source_detail_id: bp.id, narration: `Production ${production.doc_no} - by-product` });
+        rows.push({ tenant_id: tenantId, product_id: bp.product_id, warehouse_id: wh, batch_no: bp.batch_no, movement_date: production.doc_date, qty_in: baseQty, qty_out: 0, unit_cost: baseQty > 0 ? Math.round(Number(bp.amount || 0) / baseQty * 10000) / 10000 : 0, source_type: 'production', source_id: production.id, source_detail_id: bp.id, narration: `Production ${production.doc_no} - by-product` });
     }
     if (rows.length > 0) {
         const { error } = await tenantClient.from('stock_movements').insert(rows);

@@ -32,7 +32,8 @@ export default function useEntrySettings() {
                     multiWarehouse: !!sc.multi_warehouse,
                     searchBy: sc.product_search_by === 'code' ? 'code' : 'name',
                     barcode: !!sc.enable_barcode_system,
-                    popupTerms: sc.popup_product_wise_term_applicability || [],
+                    // item charges (product-wise terms) always open in the pop-up - never as inline grid columns
+                    popupTerms: ['sales', 'sales_return', 'purchase', 'purchase_return'],
                     // entries that show item charges (null: all of them)
                     productTermTxns: Array.isArray(sc.product_term_transactions) ? sc.product_term_transactions : null,
                     // grid columns switched on in System Control

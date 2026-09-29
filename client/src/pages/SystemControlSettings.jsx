@@ -170,11 +170,6 @@ export default function SystemControlSettings() {
         }
     };
 
-    const toggleTermApplicability = (term) => {
-        const current = settings.popup_product_wise_term_applicability || [];
-        set('popup_product_wise_term_applicability', current.includes(term) ? current.filter(t => t !== term) : [...current, term]);
-    };
-
     if (!settings) return <Layout><div className="max-w-5xl mx-auto p-4 text-gray-400">Loading...</div></Layout>;
 
     return (
@@ -308,7 +303,8 @@ export default function SystemControlSettings() {
                         <p className="text-xs font-semibold text-gray-500 uppercase pt-2 border-t">Tax & Default Ledgers</p>
                         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                             <LedgerField label="VAT Ledger Mapping" value={settings.vat_ledger_id} onChange={v => set('vat_ledger_id', v)} ledgers={ledgers} />
-                            <LedgerField label="TDS Ledger Mapping" value={settings.tds_ledger_id} onChange={v => set('tds_ledger_id', v)} ledgers={ledgers} />
+                            <LedgerField label="TDS Payable Ledger (purchase)" value={settings.tds_ledger_id} onChange={v => set('tds_ledger_id', v)} ledgers={ledgers} />
+                            <LedgerField label="TDS Receivable Ledger (sales)" value={settings.sales_tds_ledger_id} onChange={v => set('sales_tds_ledger_id', v)} ledgers={ledgers} />
                             <LedgerField label="Excise Duty Mapping" value={settings.excise_duty_ledger_id} onChange={v => set('excise_duty_ledger_id', v)} ledgers={ledgers} />
                             <LedgerField label="Default Cash Ledger" value={settings.default_cash_ledger_id} onChange={v => set('default_cash_ledger_id', v)} ledgers={ledgers} />
                             <LedgerField label="Default Bank Ledger" value={settings.default_bank_ledger_id} onChange={v => set('default_bank_ledger_id', v)} ledgers={ledgers} />
@@ -543,18 +539,6 @@ export default function SystemControlSettings() {
                                 options={[{ value: 'single', label: 'Single' }, { value: 'multiple', label: 'Multiple' }]} />
                             <SelectField label="Amount Wise Qty Change" value={settings.amount_wise_qty_change} onChange={v => set('amount_wise_qty_change', v)}
                                 options={[{ value: 'sales_only', label: 'Only Sales' }, { value: 'purchase_only', label: 'Only Purchase' }, { value: 'both', label: 'Both' }]} />
-                        </div>
-
-                        <div>
-                            <label className="erp-label">Popup Product Wise Term - Applicable To <span className="text-xs text-gray-400">(multiple selection)</span></label>
-                            <div className="flex flex-wrap gap-4 border rounded-lg px-3 py-2">
-                                {['sales', 'purchase', 'sales_return', 'purchase_return'].map(t => (
-                                    <label key={t} className="flex items-center gap-1.5 text-sm">
-                                        <input type="checkbox" data-enter-skip="true" checked={(settings.popup_product_wise_term_applicability || []).includes(t)} onChange={() => toggleTermApplicability(t)} />
-                                        {t.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase())}
-                                    </label>
-                                ))}
-                            </div>
                         </div>
 
                         <div>

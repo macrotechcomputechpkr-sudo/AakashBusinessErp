@@ -40,8 +40,8 @@ function validateTermBody(body) {
         return 'Base Reference Term is required when Base Reference is "Specific Term"';
     }
     const salesOk = body.applicable_sales_entry !== undefined ? body.applicable_sales_entry : true;
-    if (!salesOk && !body.applicable_purchase_entry && !body.applicable_additional_expense && !body.applicable_production_entry) {
-        return 'Select at least one: Sales Entry, Purchase Entry, Additional Expense, or Production Entry';
+    if (!salesOk && !body.applicable_purchase_entry && !body.applicable_additional_expense && !body.applicable_sales_additional && !body.applicable_production_entry) {
+        return 'Select at least one "Term used for": Sales / Purchase / Production Entry, or Purchase / Sales Additional';
     }
     return null;
 }
@@ -51,7 +51,7 @@ router.get('/billing-terms', requireAuth, async (req, res) => {
         const tenantClient = await getTenantClient(req.auth.tenantId);
         const { data, error } = await tenantClient
             .from('billing_terms')
-            .select('*, base_reference_term:base_reference_term_id(term_code, term_name), billing_ledger:billing_ledger_id(account_name), return_ledger:return_ledger_id(account_name), sub_ledger:sub_ledger_id(sub_ledger_name, main_ledger_id), return_sub_ledger:return_sub_ledger_id(sub_ledger_name, main_ledger_id)')
+            .select('*, base_reference_term:base_reference_term_id(term_code, term_name), billing_ledger:billing_ledger_id(account_name), return_ledger:return_ledger_id(account_name), sub_ledger:sub_ledger_id(sub_ledger_name, main_ledger_id), return_sub_ledger:return_sub_ledger_id(sub_ledger_name, main_ledger_id), expiry_return_sub_ledger:expiry_return_sub_ledger_id(sub_ledger_name, main_ledger_id)')
             .eq('tenant_id', req.auth.tenantId)
             .eq('is_active', true)
             .order('display_order');
@@ -68,7 +68,8 @@ router.get('/billing-terms', requireAuth, async (req, res) => {
 async function checkTermSubLedgers(tenantClient, tenantId, t) {
     const pairs = [
         ['Sub-Ledger', t.sub_ledger_id, t.billing_ledger_id, 'Billing Ledger'],
-        ['Return Sub-Ledger', t.return_sub_ledger_id, t.return_ledger_id || t.billing_ledger_id, 'Return Ledger']
+        ['Return Sub-Ledger', t.return_sub_ledger_id, t.return_ledger_id || t.billing_ledger_id, 'Return Ledger'],
+        ['Expiry Return Sub-Ledger', t.expiry_return_sub_ledger_id, t.expiry_return_ledger_id || t.return_ledger_id || t.billing_ledger_id, 'Expiry Return Ledger']
     ];
     for (const [label, subId, ledgerId, ledgerLabel] of pairs) {
         if (!subId) continue;
@@ -136,17 +137,20 @@ router.post('/billing-terms', requireAuth, loadUserPermissions, requirePermissio
                 expiry_return_ledger_id: b.expiry_return_ledger_id || null,
                 sub_ledger_id: b.sub_ledger_id || null,
                 return_sub_ledger_id: b.return_sub_ledger_id || null,
+                expiry_return_sub_ledger_id: b.expiry_return_sub_ledger_id || null,
                 manual_override: b.manual_override !== undefined ? !!b.manual_override : true,
                 entry_input_mode: MODE_KEYS.includes(b.entry_input_mode) ? b.entry_input_mode : 'all',
                 show_in_term_summary: b.show_in_term_summary !== undefined ? !!b.show_in_term_summary : true,
                 suppress_if_zero: !!b.suppress_if_zero,
                 include_in_profitability: !!b.include_in_profitability,
+                include_in_costing: b.include_in_costing !== undefined ? !!b.include_in_costing : true,
                 product_wise: !!b.product_wise,
                 show_product_term_summary: !!b.show_product_term_summary,
                 allow_summary: !!b.allow_summary,
                 applicable_sales_entry: b.applicable_sales_entry !== undefined ? !!b.applicable_sales_entry : true,
                 applicable_purchase_entry: !!b.applicable_purchase_entry,
                 applicable_additional_expense: !!b.applicable_additional_expense,
+                applicable_sales_additional: !!b.applicable_sales_additional,
                 applicable_production_entry: !!b.applicable_production_entry,
                 is_enabled: b.is_enabled !== undefined ? !!b.is_enabled : true,
                 credit_days: b.credit_days || 0,
@@ -189,7 +193,7 @@ router.put('/billing-terms/:id', requireAuth, loadUserPermissions, requirePermis
         // objects (billing_ledger, sub_ledger, ...) and identity columns -
         // strip them or the UPDATE fails on "column does not exist".
         const body = { ...req.body };
-        ['id', 'tenant_id', 'created_at', 'created_by', 'base_reference_term', 'billing_ledger', 'return_ledger', 'sub_ledger', 'return_sub_ledger']
+        ['id', 'tenant_id', 'created_at', 'created_by', 'base_reference_term', 'billing_ledger', 'return_ledger', 'sub_ledger', 'return_sub_ledger', 'expiry_return_sub_ledger']
             .forEach(k => delete body[k]);
         Object.keys(body).forEach(k => { if (body[k] !== null && typeof body[k] === 'object' && !Array.isArray(body[k])) delete body[k]; });
         if ('base_term_ids' in body) {

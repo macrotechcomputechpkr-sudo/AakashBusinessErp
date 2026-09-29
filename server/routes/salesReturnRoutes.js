@@ -7,6 +7,7 @@
 // =============================================
 
 const express = require('express');
+const { stockLines } = require('../utils/stockItems');
 const { cleanLineTerms, exciseOf } = require('../utils/lineTerms');
 const { checkAccountPurposes } = require('../utils/ledgerPurpose');
 const { bumpAltCounter } = require('../utils/progressCounters');
@@ -139,6 +140,7 @@ async function adjustSourceQtyReturned(tenantClient, d, delta, direction = 0) {
 }
 
 async function postReturnStockMovements(tenantClient, tenantId, returnDoc, details) {
+    details = await stockLines(tenantClient, details);   // only stock items move stock (utils/stockItems)
     const rows = [];
     for (const d of details) {
         const wh = d.warehouse_id || returnDoc.warehouse_id;

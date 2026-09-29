@@ -10,6 +10,13 @@
 //                             letter (a ledger with no PAN stays on its own)
 //   as_on       balance date; with `from` also the statement of account for
 //               the period, and optionally the open (unsettled) bills
+//   with_trade  what we bought from / sold to the party in the period (from, or
+//               the start of the fiscal year of as_on), by nature - Inventory,
+//               Fixed Asset, Service - net of returns, without VAT, plus the VAT
+//               (tradeSummary). Nature: the product's Item Type on bill lines
+//               (fixed_asset -> asset, service / non_inventory -> service, rest
+//               -> inventory); JV type on taxable JVs (asset / service / goods);
+//               additional expense bills -> service.
 // Balances come from the general ledger (financialEngine.ledgerBalances), so
 // they agree with the Trial Balance and Ledger report.
 // =============================================
@@ -119,9 +126,82 @@ async function confirmationData(c, t, q) {
                     return { date: String(l.batch.batch_date).slice(0, 10), type: l.batch.document_type, narration: l.narration || l.batch.narration || '', debit: round2(dr), credit: round2(cr), balance: round2(run) }; });
         });
     }
+    if (q.with_trade === 'true' && ids.length) {
+        const tFrom = from || await periodStart(c, t, asOn);
+        const trade = await tradeSummary(c, t, ids, tFrom, asOn);
+        rows.forEach(r => {
+            let x = { bought: emptyNature(), bought_returns: emptyNature(), sold: emptyNature(), sold_returns: emptyNature(), vat_bought: 0, vat_sold: 0 };
+            r.ledgers.forEach(l => { const y = trade[l.id]; if (!y) return;
+                x = { bought: addNature(x.bought, y.bought), bought_returns: addNature(x.bought_returns, y.bought_returns), sold: addNature(x.sold, y.sold), sold_returns: addNature(x.sold_returns, y.sold_returns),
+                    vat_bought: round2(x.vat_bought + y.vat_bought), vat_sold: round2(x.vat_sold + y.vat_sold) }; });
+            r.trade = { from: tFrom, to: asOn, ...x, net_bought: netOf(x.bought, x.bought_returns), net_sold: netOf(x.sold, x.sold_returns) };
+        });
+    }
     return { as_on: asOn, from, party_type: type, group_by: groupBy, company: await companyInfo(c, t), rows,
         totals: { parties: rows.length, receivable: round2(rows.filter(r => r.balance > 0).reduce((s, r) => s + r.balance, 0)), payable: round2(rows.filter(r => r.balance < 0).reduce((s, r) => s - r.balance, 0)) },
         merged: rows.filter(r => r.ledger_count > 1).length };
 }
 
-module.exports = { confirmationData, companyInfo, norm };
+// ---------- purchases / sales with the party by nature ----------
+const NATURE = t => (t === 'fixed_asset' ? 'asset' : t === 'service' || t === 'non_inventory' ? 'service' : 'inventory');
+const emptyNature = () => ({ inventory: 0, asset: 0, service: 0, total: 0 });
+async function periodStart(c, t, asOn) {
+    const { data } = await c.from('fiscal_years').select('start_date_eng, end_date_eng').eq('tenant_id', t);
+    const fy = (data || []).find(y => String(y.start_date_eng).slice(0, 10) <= asOn && asOn <= String(y.end_date_eng).slice(0, 10));
+    return fy ? String(fy.start_date_eng).slice(0, 10) : `${asOn.slice(0, 4)}-01-01`;
+}
+/** ledgerIds -> { [ledgerId]: { bought, bought_returns, sold, sold_returns, vat_bought, vat_sold } } (each by nature) */
+async function tradeSummary(c, t, ledgerIds, from, to) {
+    const { _internals: { loadTaxDocs } } = require('../routes/vatReportRoutes');
+    const want = new Set(ledgerIds);
+    const out = {};
+    const acc = id => (out[id] = out[id] || { bought: emptyNature(), bought_returns: emptyNature(), sold: emptyNature(), sold_returns: emptyNature(), vat_bought: 0, vat_sold: 0 });
+    const productType = {};
+    const typeOf = async ids => {
+        const need = [...new Set(ids.filter(id => id && !(id in productType)))];
+        (await inChunks(need, async ch => (await c.from('products').select('id, item_type').in('id', ch)).data || [])).forEach(p => { productType[p.id] = p.item_type; });
+    };
+    // bills / returns: split each document's value (without VAT) over its lines' nature by line value
+    const DOCS = [['purchase', 'purchase_bill_details', 'bill_id', 'bought', 1], ['purchase_return', 'purchase_return_details', 'return_id', 'bought_returns', 1],
+        ['sales', 'sales_bill_details', 'bill_id', 'sold', 1], ['sales_return', 'sales_return_details', 'return_id', 'sold_returns', 1]];
+    for (const [type, detail, fk, bucket] of DOCS) {
+        const docs = (await loadTaxDocs(c, t, type, { dateFrom: from, dateTo: to })).filter(d => want.has(d.party_ledger_id));
+        if (!docs.length) continue;
+        const lines = await inChunks(docs.map(d => d.id), async ch => (await c.from(detail).select(`${fk}, product_id, amount, tax_amount`).in(fk, ch)).data || []);
+        await typeOf(lines.map(l => l.product_id));
+        docs.forEach(d => {
+            const a = acc(d.party_ledger_id), value = d.taxable + d.exempt;
+            const mine = lines.filter(l => l[fk] === d.id);
+            const w = mine.reduce((s, l) => s + Math.max(0, Number(l.amount || 0) - Number(l.tax_amount || 0)), 0);
+            const split = emptyNature();
+            if (w > 0) mine.forEach(l => { split[NATURE(productType[l.product_id])] += value * Math.max(0, Number(l.amount || 0) - Number(l.tax_amount || 0)) / w; });
+            else split.inventory += value;
+            ['inventory', 'asset', 'service'].forEach(k => { a[bucket][k] = round2(a[bucket][k] + split[k]); a[bucket].total = round2(a[bucket].total + split[k]); });
+            const vk = type.startsWith('purchase') ? 'vat_bought' : 'vat_sold';
+            a[vk] = round2(a[vk] + (bucket.endsWith('returns') ? -d.vat : d.vat));
+        });
+    }
+    // taxable / non-taxable JVs: nature from the JV type
+    for (const type of ['jv_purchase', 'jv_sales']) {
+        const docs = (await loadTaxDocs(c, t, type, { dateFrom: from, dateTo: to })).filter(d => want.has(d.party_ledger_id));
+        if (!docs.length) continue;
+        const kinds = Object.fromEntries((await inChunks(docs.map(d => d.id), async ch => (await c.from('journal_vouchers').select('id, jv_type, is_capital').in('id', ch)).data || [])).map(j => [j.id, j]));
+        docs.forEach(d => {
+            const j = kinds[d.id] || {};
+            const nature = String(j.jv_type || '').startsWith('asset') || j.is_capital ? 'asset' : String(j.jv_type || '').startsWith('service') ? 'service' : 'inventory';
+            const a = acc(d.party_ledger_id), bucket = type === 'jv_purchase' ? 'bought' : 'sold', value = d.taxable + d.exempt;
+            a[bucket][nature] = round2(a[bucket][nature] + value); a[bucket].total = round2(a[bucket].total + value);
+            a[type === 'jv_purchase' ? 'vat_bought' : 'vat_sold'] = round2(a[type === 'jv_purchase' ? 'vat_bought' : 'vat_sold'] + d.vat);
+        });
+    }
+    // additional expense bills (transport, clearing ...) - a service bought from that party
+    (await loadTaxDocs(c, t, 'purchase_expense', { dateFrom: from, dateTo: to })).filter(d => want.has(d.party_ledger_id)).forEach(d => {
+        const a = acc(d.party_ledger_id), value = d.taxable + d.exempt;
+        a.bought.service = round2(a.bought.service + value); a.bought.total = round2(a.bought.total + value); a.vat_bought = round2(a.vat_bought + d.vat);
+    });
+    return out;
+}
+const addNature = (x, y) => ({ inventory: round2(x.inventory + y.inventory), asset: round2(x.asset + y.asset), service: round2(x.service + y.service), total: round2(x.total + y.total) });
+const netOf = (x, y) => ({ inventory: round2(x.inventory - y.inventory), asset: round2(x.asset - y.asset), service: round2(x.service - y.service), total: round2(x.total - y.total) });
+
+module.exports = { confirmationData, companyInfo, norm, tradeSummary };

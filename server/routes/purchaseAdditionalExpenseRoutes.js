@@ -14,6 +14,7 @@ const { getTenantClient, loadUserPermissions, logAudit } = require('../utils/dbH
 const { requireAuth, requirePermission } = require('../middleware/auth');
 const { resolveDocumentNumber } = require('../utils/documentNumbering');
 const { postAdditionalExpenseEntry, buildAdditionalExpenseGl, reverseBatch } = require('../utils/grnAccounting');
+const { refreshLandedCost } = require('../utils/purchaseStockCost');
 
 function validateBody(b, isDraft) {
     if (!b.doc_date) return 'Date is required';
@@ -21,11 +22,12 @@ function validateBody(b, isDraft) {
     if (!b.source_order_id && !b.source_grn_id && !b.source_bill_id) return 'Link this to at least one Order, GRN, or Bill';
     if (!Array.isArray(b.expense_lines) || b.expense_lines.length === 0) return 'At least one expense line is required';
     for (const l of b.expense_lines) {
-        if (!l.expense_ledger_id) return 'Every expense line needs a Ledger';
+        if (!l.expense_ledger_id && !l.billing_term_id) return 'Every expense line needs a Term or a Ledger';
         if (!l.amount || Number(l.amount) <= 0) return 'Every expense line needs an amount greater than zero';
         if (l.allocation_basis && !['value_wise', 'qty_wise', 'equal', 'none'].includes(l.allocation_basis)) return 'Invalid allocation basis on an expense line';
         if (l.entry_sign && !['add', 'deduct'].includes(l.entry_sign)) return 'Invalid sign on an expense line';
         const n = b.expense_lines.indexOf(l) + 1;
+        if (l.is_tds && (l.bill_type || 'no_bill') !== 'no_bill') return `Line ${n}: a TDS line has no bill of its own (bill type: No Bill)`;
         const bt = l.bill_type || 'no_bill';
         if (!['taxable', 'non_taxable', 'no_bill'].includes(bt)) return `Line ${n}: invalid bill type`;
         if (bt !== 'taxable' && Number(l.vat_amount) > 0) return `Line ${n}: VAT is only for a taxable bill`;
@@ -95,12 +97,19 @@ function computeLineShare(sourceLines, signedAmount, basis) {
     });
 }
 
+// the source line a product-wise term belongs to (its Order / GRN / Bill detail id)
+const detailIdOf = l => l.source_grn_detail_id || l.source_bill_detail_id || l.source_order_detail_id || null;
+
 function computeAllocations(sourceLines, expenseLines) {
     const totals = sourceLines.map(() => 0);
     for (const line of expenseLines) {
-        if (line.allocation_basis === 'none') continue;
+        if (line.allocation_basis === 'none' || line.is_tds) continue;   // TDS is withheld tax, never part of the goods cost
         // costing: the line's amount, plus its VAT when that VAT cannot be claimed (vat_in_cost)
         const signedAmount = (line.entry_sign === 'deduct' ? -1 : 1) * (Number(line.amount) + (line.vat_in_cost ? Number(line.vat_amount) || 0 : 0));
+        // product-wise term: the whole amount goes to that product's line only
+        const target = line.target_detail_id ? sourceLines.findIndex(l => detailIdOf(l) === line.target_detail_id) : -1;
+        if (target >= 0) { totals[target] += Math.round(signedAmount * 100) / 100; continue; }
+        // bill-wise term: split over the bill's products by the line's basis (value / qty / equal)
         const shares = computeLineShare(sourceLines, signedAmount, line.allocation_basis);
         shares.forEach((share, i) => { totals[i] += share; });
     }
@@ -109,6 +118,34 @@ function computeAllocations(sourceLines, expenseLines) {
         allocated_amount: Math.round(totals[i] * 100) / 100,
         landed_cost_per_unit: l.qty === 0 ? 0 : Math.round((totals[i] / l.qty) * 10000) / 10000
     }));
+}
+
+// A line with a billing term: the term's ledger is the line ledger (fixed -
+// only its sub-ledger may change), a term kept out of costing is never
+// allocated, and the term's profitability flag is kept on the line.
+async function applyTermRules(tenantClient, tenantId, expenseLines) {
+    const ids = [...new Set((expenseLines || []).map(l => l.billing_term_id).filter(Boolean))];
+    if (!ids.length) return expenseLines || [];
+    const { data } = await tenantClient.from('billing_terms').select('id, term_name, billing_ledger_id, sub_ledger_id, include_in_costing, include_in_profitability, applicable_additional_expense')
+        .eq('tenant_id', tenantId).in('id', ids);
+    const byId = Object.fromEntries((data || []).map(t => [t.id, t]));
+    return expenseLines.map((l, i) => {
+        const t = byId[l.billing_term_id];
+        if (!l.billing_term_id) return l;
+        if (!t) throw new Error(`Line ${i + 1}: the billing term was not found`);
+        const n = { ...l, include_in_profitability: !!t.include_in_profitability };
+        if (t.billing_ledger_id) {
+            // a sub-ledger of another ledger does not belong here: back to the term's default
+            if (n.expense_ledger_id && n.expense_ledger_id !== t.billing_ledger_id) n.expense_sub_ledger_id = undefined;
+            n.expense_ledger_id = t.billing_ledger_id;
+        }
+        if (!n.expense_ledger_id) throw new Error(`Line ${i + 1}: the term "${t.term_name}" has no ledger - set its Billing Ledger in Billing Terms`);
+        // not sent = the term's default sub-ledger; '' = none chosen
+        n.expense_sub_ledger_id = n.expense_sub_ledger_id === undefined ? (t.sub_ledger_id || null) : (n.expense_sub_ledger_id || null);
+        if (t.include_in_costing === false) n.allocation_basis = 'none';
+        if (!n.description) n.description = t.term_name;
+        return n;
+    });
 }
 
 // FEATURE: what's actually owed to the expense provider - every '+'
@@ -123,6 +160,7 @@ function computeNetPayable(expenseLines) {
 async function syncExpenseLines(tenantClient, tenantId, expenseId, expenseLines) {
     await tenantClient.from('purchase_additional_expense_lines').delete().eq('expense_id', expenseId);
     if (!Array.isArray(expenseLines) || expenseLines.length === 0) return { netPayable: 0, lines: [] };
+    expenseLines = await applyTermRules(tenantClient, tenantId, expenseLines);
     const partyIds = [...new Set(expenseLines.map(l => l.party_ledger_id).filter(Boolean))];
     const { data: parties } = partyIds.length ? await tenantClient.from('ledger_accounts').select('id, account_name, pan_number, vat_pan_number').in('id', partyIds) : { data: [] };
     const partyById = Object.fromEntries((parties || []).map(x => [x.id, x]));
@@ -131,7 +169,10 @@ async function syncExpenseLines(tenantClient, tenantId, expenseId, expenseLines)
         return {
             tenant_id: tenantId, expense_id: expenseId, display_order: i + 1,
             expense_ledger_id: l.expense_ledger_id, description: l.description || null,
-            allocation_basis: l.allocation_basis || 'value_wise', entry_sign: l.entry_sign || 'add',
+            billing_term_id: l.billing_term_id || null, expense_sub_ledger_id: l.expense_sub_ledger_id || null,
+            target_detail_id: l.target_detail_id || null, include_in_profitability: !!l.include_in_profitability,
+            // a TDS line is a deduction from the party, credited to the TDS payable ledger, never costed
+            allocation_basis: l.is_tds ? 'none' : l.allocation_basis || 'value_wise', entry_sign: l.is_tds ? 'deduct' : l.entry_sign || 'add', is_tds: !!l.is_tds,
             rate_percent: l.rate_percent || null, amount: Number(l.amount) || 0,
             party_ledger_id: l.party_ledger_id || null, party_sub_ledger_id: l.party_sub_ledger_id || null,
             party_name_snapshot: party?.account_name || l.party_name_snapshot || null, party_pan: l.party_pan || party?.vat_pan_number || party?.pan_number || null,
@@ -184,7 +225,7 @@ router.post('/purchase-additional-expenses/allocation-preview', requireAuth, loa
         const { source_order_id, source_grn_id, source_bill_id, expense_lines } = req.body;
         const tenantClient = await getTenantClient(req.auth.tenantId);
         const sourceLines = await getSourceLines(tenantClient, { source_order_id, source_grn_id, source_bill_id });
-        const lines = Array.isArray(expense_lines) ? expense_lines : [];
+        const lines = await applyTermRules(tenantClient, req.auth.tenantId, Array.isArray(expense_lines) ? expense_lines : []);
         const allocated = computeAllocations(sourceLines, lines);
         const netPayable = computeNetPayable(lines);
         // the reference document (party, number, date, amount) shown above the product lines
@@ -386,6 +427,11 @@ router.put('/purchase-additional-expenses/:id/status', requireAuth, loadUserPerm
         } else if (status === 'cancelled' && existing.status === 'posted') {
             await reverseBatch(tenantClient, 'purchase_additional_expense', req.params.id);
         }
+        // landed cost: the allocated amounts go into (or come out of) the stock value of the purchase lines
+        if ((status === 'posted' && existing.status !== 'posted') || (status === 'cancelled' && existing.status === 'posted')) {
+            const landed = await refreshLandedCost(tenantClient, tenantId, { expenseIds: [req.params.id] });
+            if (landed.error) console.warn('landed cost not applied:', landed.error);
+        }
         await logAudit(tenantId, req.auth.userId, 'change_additional_expense_status', 'purchase_additional_expense', req.params.id, { new_status: status, cancellation_reason });
         await logDocumentAudit(tenantClient, tenantId, 'purchase_additional_expense', req.params.id, 'status_change', req.auth.userId);
         res.json({ success: true, data });
@@ -425,3 +471,4 @@ router.get('/purchase-additional-expenses/:id/audit-trail', requireAuth, loadUse
 });
 
 module.exports = router;
+module.exports._internals = { computeAllocations, applyTermRules, computeNetPayable };

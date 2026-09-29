@@ -218,9 +218,9 @@ export default function ProductGroupManagement() {
                 }`}>{alert.message}</div>
             )}
 
-            <div className="flex gap-2 mb-4 border-b">
-                <button onClick={() => setTab('groups')} className={`px-4 py-2 text-sm font-medium border-b-2 ${tab === 'groups' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500'}`}>Product Groups</button>
-                <button onClick={() => setTab('companies')} className={`px-4 py-2 text-sm font-medium border-b-2 ${tab === 'companies' ? 'border-blue-600 text-blue-600' : 'border-transparent text-gray-500'}`}>Product Companies</button>
+            <div className="erp-tabs">
+                <button onClick={() => setTab('groups')} className={`erp-tab ${tab === 'groups' ? 'active' : ''}`}>Product Groups</button>
+                <button onClick={() => setTab('companies')} className={`erp-tab ${tab === 'companies' ? 'active' : ''}`}>Product Companies</button>
             </div>
 
             {tab === 'groups' && (

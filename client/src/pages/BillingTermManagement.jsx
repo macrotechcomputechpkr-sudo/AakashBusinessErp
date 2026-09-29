@@ -32,11 +32,11 @@ const emptyForm = {
     base_reference: 'basic_amount', base_reference_term_id: '', base_term_ids: [],
     rate_percentage: 0, fixed_amount: 0, maximum_amount: 0, formula_expression: '',
     sign: '+', rounding_method: 'none', rounding_precision: 1,
-    billing_ledger_id: '', return_ledger_id: '', expiry_return_ledger_id: '', sub_ledger_id: '', return_sub_ledger_id: '',
-    manual_override: true, suppress_if_zero: false, include_in_profitability: false,
+    billing_ledger_id: '', return_ledger_id: '', expiry_return_ledger_id: '', sub_ledger_id: '', return_sub_ledger_id: '', expiry_return_sub_ledger_id: '',
+    manual_override: true, suppress_if_zero: false, include_in_profitability: false, include_in_costing: true,
     product_wise: false, show_product_term_summary: false, allow_summary: false, is_enabled: true,
     entry_input_mode: 'all', show_in_term_summary: true,
-    applicable_sales_entry: true, applicable_purchase_entry: false, applicable_additional_expense: false, applicable_production_entry: false,
+    applicable_sales_entry: true, applicable_purchase_entry: false, applicable_additional_expense: false, applicable_sales_additional: false, applicable_production_entry: false,
     credit_days: 0, grace_days: 0, discount_percentage: 0,
     display_order: 1
 };
@@ -81,8 +81,8 @@ export default function BillingTermManagement() {
     const handleSubmit = async (e) => {
         e.preventDefault();
         if (!form.term_name.trim()) return showAlert('Term Name is required', 'danger');
-        if (!form.applicable_sales_entry && !form.applicable_purchase_entry && !form.applicable_additional_expense && !form.applicable_production_entry) {
-            return showAlert('Select at least one: Sales Entry, Purchase Entry, or Additional Expense', 'danger');
+        if (!form.applicable_sales_entry && !form.applicable_purchase_entry && !form.applicable_additional_expense && !form.applicable_sales_additional && !form.applicable_production_entry) {
+            return showAlert('Select at least one "Term used for": a transaction (Sales / Purchase / Production) or an additional bill (Purchase / Sales Additional)', 'danger');
         }
         try {
             if (editingId) {
@@ -444,13 +444,14 @@ export default function BillingTermManagement() {
                                     defaultVisibleKeys={['account_name']}
                                     items={ledgers} getId={l => l.id} getLabel={l => l.account_name}
                                     searchKeys={['account_name', 'account_code']}
-                                    value={form.expiry_return_ledger_id} onChange={id => setForm({ ...form, expiry_return_ledger_id: id })}
+                                    value={form.expiry_return_ledger_id} onChange={id => setForm({ ...form, expiry_return_ledger_id: id, expiry_return_sub_ledger_id: '' })}
                                     placeholder="Select Expiry Return Ledger"
                                 />
                             </div>
                             {/* Real sub-ledgers, limited to the ledger each one sits under. */}
                             {[['sub_ledger_id', 'Billing Sub-Ledger', form.billing_ledger_id, 'Billing Ledger'],
-                              ['return_sub_ledger_id', 'Return Sub-Ledger', form.return_ledger_id || form.billing_ledger_id, 'Return Ledger']].map(([key, label, parentId, parentLabel]) => {
+                              ['return_sub_ledger_id', 'Return Sub-Ledger', form.return_ledger_id || form.billing_ledger_id, 'Return Ledger'],
+                              ['expiry_return_sub_ledger_id', 'Expiry Return Sub-Ledger', form.expiry_return_ledger_id || form.return_ledger_id || form.billing_ledger_id, 'Expiry Return Ledger']].map(([key, label, parentId, parentLabel]) => {
                                 const options = subLedgers.filter(sl => sl.main_ledger_id === parentId);
                                 return (
                                     <div key={key}>
@@ -467,19 +468,35 @@ export default function BillingTermManagement() {
 
                     {/* ==================== OPTIONS ==================== */}
                     <div className="border-t pt-4">
-                        <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Used For (applicable to)</p>
-                        <div className="flex flex-wrap gap-4 mb-4">
-                            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.applicable_sales_entry} onChange={e => setForm({ ...form, applicable_sales_entry: e.target.checked })} /> Sales Entry</label>
-                            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.applicable_purchase_entry} onChange={e => setForm({ ...form, applicable_purchase_entry: e.target.checked })} /> Purchase Entry</label>
-                            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.applicable_additional_expense} onChange={e => setForm({ ...form, applicable_additional_expense: e.target.checked })} /> Additional Expense</label>
-                            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.applicable_production_entry} onChange={e => setForm({ ...form, applicable_production_entry: e.target.checked })} /> Production Entry <span className="text-xs text-gray-400">(costing/report only - never posts to ledger)</span></label>
+                        <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Term Used For</p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-4">
+                            <fieldset className="border rounded px-3 py-2">
+                                <legend className="text-xs font-semibold text-[#1a4a8a] px-1">Transaction term <span className="font-normal text-gray-500">(on the bill itself)</span></legend>
+                                <div className="flex flex-wrap gap-4">
+                                    <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.applicable_sales_entry} onChange={e => setForm({ ...form, applicable_sales_entry: e.target.checked })} /> Sales Entry</label>
+                                    <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.applicable_purchase_entry} onChange={e => setForm({ ...form, applicable_purchase_entry: e.target.checked })} /> Purchase Entry</label>
+                                    <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.applicable_production_entry} onChange={e => setForm({ ...form, applicable_production_entry: e.target.checked })} /> Production Entry <span className="text-xs text-gray-400">(costing only)</span></label>
+                                </div>
+                            </fieldset>
+                            <fieldset className="border rounded px-3 py-2">
+                                <legend className="text-xs font-semibold text-[#1a4a8a] px-1">Additional term <span className="font-normal text-gray-500">(a later bill: freight, customs, insurance …)</span></legend>
+                                <div className="flex flex-wrap gap-4">
+                                    <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.applicable_additional_expense} onChange={e => setForm({ ...form, applicable_additional_expense: e.target.checked })} /> Purchase Additional</label>
+                                    <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={!!form.applicable_sales_additional} onChange={e => setForm({ ...form, applicable_sales_additional: e.target.checked })} /> Sales Additional</label>
+                                </div>
+                            </fieldset>
                         </div>
+                        <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Effect</p>
+                        <div className="flex flex-wrap gap-4 mb-1">
+                            <label className="flex items-center gap-2 text-sm" title="On: the amount goes into the cost of the goods (stock value / landed cost). Off: it stays an expense of the period."><input type="checkbox" checked={form.include_in_costing !== false} onChange={e => setForm({ ...form, include_in_costing: e.target.checked })} /> Include In Costing</label>
+                            <label className="flex items-center gap-2 text-sm" title="On: the amount is counted in the profitability reports (product / bill / party profit)."><input type="checkbox" checked={form.include_in_profitability} onChange={e => setForm({ ...form, include_in_profitability: e.target.checked })} /> Include In Profitability</label>
+                        </div>
+                        <p className="text-xs text-gray-400 mb-4">Product Wise (below) = entered per product (a popup per product, the whole amount on that product); otherwise bill-wise = one amount per bill, divided over the bill's products by {form.basis === 'quantity' ? 'quantity' : 'value'} (the Basis above).</p>
                         <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Options</p>
                         <div className="flex flex-wrap gap-4 mb-3">
                             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.manual_override} onChange={e => setForm({ ...form, manual_override: e.target.checked })} /> Can Change In Entry</label>
                             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.show_in_term_summary !== false} onChange={e => setForm({ ...form, show_in_term_summary: e.target.checked })} /> Show In Charges Summary</label>
                             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.suppress_if_zero} onChange={e => setForm({ ...form, suppress_if_zero: e.target.checked })} /> Suppress If Zero</label>
-                            <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.include_in_profitability} onChange={e => setForm({ ...form, include_in_profitability: e.target.checked })} /> Include In Profitability</label>
                             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.allow_summary} onChange={e => setForm({ ...form, allow_summary: e.target.checked })} /> Allow Summary</label>
                             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.product_wise} onChange={e => setForm({ ...form, product_wise: e.target.checked, show_product_term_summary: e.target.checked ? form.show_product_term_summary : false })} /> Product Wise</label>
                             <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={form.is_enabled} onChange={e => setForm({ ...form, is_enabled: e.target.checked })} /> Enabled</label>

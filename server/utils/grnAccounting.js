@@ -196,17 +196,17 @@ async function buildAdditionalExpenseGl(tenantClient, tenantId, exp, lines) {
     const addParty = (ledgerId, subLedgerId, amt) => { const k = `${ledgerId}|${subLedgerId || ''}`; party[k] = round2((party[k] || 0) + amt); };
     for (const [i, l] of (lines || []).entries()) {
         const amt = round2(Number(l.amount) || 0), vat = l.bill_type === 'taxable' ? round2(Number(l.vat_amount) || 0) : 0;
-        if (!l.expense_ledger_id || amt <= 0) continue;
+        if (!l.expense_ledger_id || amt <= 0) continue;   // term lines carry the term's ledger (+ its sub-ledger)
         const payTo = l.party_ledger_id || exp.vendor_ledger_id;
         const paySub = l.party_ledger_id ? l.party_sub_ledger_id : exp.vendor_sub_ledger_id;
         if (!payTo) throw new Error(`Line ${i + 1} (${l.description || 'expense'}): choose who is paid - the supplier, or the cash / labour ledger for a no-bill expense`);
         const text = [l.description, l.party_bill_no ? `Bill ${l.party_bill_no}` : null].filter(Boolean).join(' · ') || undefined;
         if (l.entry_sign === 'deduct') {
-            glLines.push({ ledgerId: l.expense_ledger_id, credit: amt, narration: text });
+            glLines.push({ ledgerId: l.expense_ledger_id, subLedgerId: l.expense_sub_ledger_id || null, credit: amt, narration: text });
             addParty(payTo, paySub, -amt);
             continue;
         }
-        glLines.push({ ledgerId: l.expense_ledger_id, debit: round2(amt + (l.vat_in_cost ? vat : 0)), narration: text });
+        glLines.push({ ledgerId: l.expense_ledger_id, subLedgerId: l.expense_sub_ledger_id || null, debit: round2(amt + (l.vat_in_cost ? vat : 0)), narration: text });
         if (vat > 0 && !l.vat_in_cost) {
             if (fallbackVat === undefined) fallbackVat = await defaultVatLedger(tenantClient, tenantId, 'purchase');
             const vatLedger = l.vat_ledger_id || fallbackVat;

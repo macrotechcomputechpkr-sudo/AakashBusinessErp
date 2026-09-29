@@ -25,7 +25,7 @@ export default function FundsPosition() {
         try {
             const p = new URLSearchParams({ as_on: cfg.as_on, horizon_days: String(cfg.horizon_days), with_reco: String(cfg.with_reco) });
             if (cfg.forecast_step) p.set('forecast_step', cfg.forecast_step);
-            setData((await authFetch(`/api/reports/funds-position?${p}`)).data);
+            { const d = (await authFetch(`/api/reports/funds-position?${p}`)).data; setData(d && d.summary ? d : null); }
         } catch (e) { setError(e.message); setData(null); }
         finally { setLoading(false); }
     }, [authFetch, cfg]);

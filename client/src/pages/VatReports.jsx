@@ -19,6 +19,13 @@ const TABS = [
     ['register', 'Register'], ['monthly', 'Monthly Summary'], ['threshold', 'Above Threshold / Annex 13'],
     ['vat_return', 'VAT Return'], ['vat_ledger', 'VAT Ledger'], ['tds', 'TDS'], ['periods', 'VAT Months Setup']
 ];
+// preset books for the register (JV = Journal Voucher entered as a taxable / non-taxable sale or purchase)
+const BOOKS = [
+    ['Sales Book (bills + JV sales)', ['sales', 'jv_sales']],
+    ['Sales Book with returns & credit notes', ['sales', 'jv_sales', 'sales_return', 'credit_note']],
+    ['Purchase Book (bills + additional + JV purchase)', ['purchase', 'purchase_expense', 'jv_purchase']],
+    ['Purchase Book with returns & debit notes', ['purchase', 'purchase_expense', 'jv_purchase', 'purchase_return', 'debit_note']]
+];
 const VIEWS = [['bill', 'Bill-wise'], ['party', 'Customer / Supplier-wise'], ['item', 'Item-wise'], ['month', 'Month-wise'], ['summary', 'Summary']];
 
 // Column definitions: key, English header, Nepali header, numeric?
@@ -36,7 +43,7 @@ const NUMERIC = new Set(['count', 'bill_count', 'qty', 'rate', 'discount', 'taxa
 const LABEL_NP = { Sales: 'बिक्री', 'Sales Return': 'बिक्री फिर्ता', 'Credit Note': 'क्रेडिट नोट', Purchase: 'खरिद', 'Purchase Return': 'खरिद फिर्ता', 'Debit Note': 'डेबिट नोट', sales: 'बिक्री', purchase: 'खरिद' };
 
 const defaultConfig = () => ({
-    doc_types: ['sales'], view: 'bill', include_items: false, date_from: '', date_to: '', party_ledger_id: '',
+    doc_types: ['sales', 'jv_sales'], view: 'bill', include_items: false, date_from: '', date_to: '', party_ledger_id: '',
     min_amount: '', max_amount: '', pan: '', vat: '', invoice_type: '', product_name: '',
     threshold: 100000, basis: 'excl_vat', side: '', carry_forward_credit: '', opening: '', include_exempt: false, vat_ledger_id: ''
 });
@@ -60,6 +67,9 @@ export default function VatReports() {
     const loadMeta = useCallback(async () => {
         try {
             const [m, l] = await Promise.all([authFetch('/api/vat-reports/meta'), authFetch('/api/ledger-accounts?pageSize=500')]);
+            // a reply without the expected shape must not blank the page
+            const md = m.data && !Array.isArray(m.data) ? m.data : {};
+            m.data = { doc_types: md.doc_types || [], periods: md.periods || [], fiscal_years: md.fiscal_years || [], bs_months: md.bs_months || [], ...md };
             setMeta(m.data);
             setParties(l.data || []);
             const current = (m.data.fiscal_years || []).find(y => y.is_current) || (m.data.fiscal_years || [])[0];
@@ -183,8 +193,8 @@ export default function VatReports() {
             <div className="erp-header"><span className="erp-header-title">🧾 VAT & Tax Reports</span></div>
             {alert && <div className={`mx-4 mt-3 px-4 py-3 rounded-lg text-sm border-l-4 ${alert.type === 'success' ? 'bg-green-50 border-green-500' : alert.type === 'danger' ? 'bg-red-50 border-red-500' : 'bg-yellow-50 border-yellow-500'}`}>{alert.message}</div>}
 
-            <div className="flex flex-wrap gap-1 px-4 pt-3 border-b">
-                {TABS.map(([k, l]) => <button key={k} onClick={() => { setTab(k); setData(null); }} className={`px-3 py-2 text-sm border-b-2 ${tab === k ? 'border-blue-600 text-blue-600 font-semibold' : 'border-transparent text-gray-500'}`}>{l}</button>)}
+            <div className="erp-tabs">
+                {TABS.map(([k, l]) => <button key={k} onClick={() => { setTab(k); setData(null); }} className={`erp-tab ${tab === k ? 'active' : ''}`}>{l}</button>)}
             </div>
 
             <div className="erp-tab-content">
@@ -239,6 +249,10 @@ export default function VatReports() {
                                 <>
                                     <div className="erp-field md:col-span-2">
                                         <label className="erp-label">Documents</label>
+                                        <div className="flex flex-wrap gap-2 text-xs pt-1">
+                                            {/* whole books in one click: bills + taxable / non-taxable JVs (+ additional bills on the purchase side) */}
+                                            {BOOKS.map(([l, keys]) => <button key={l} type="button" className={`nav-btn small ${keys.every(k => config.doc_types.includes(k)) && config.doc_types.length === keys.length ? 'primary' : ''}`} onClick={() => set('doc_types', keys)}>{l}</button>)}
+                                        </div>
                                         <div className="flex flex-wrap gap-3 text-sm pt-1">
                                             {meta.doc_types.map(t => (
                                                 <label key={t.key} className="flex items-center gap-1"><input type="checkbox" checked={config.doc_types.includes(t.key)}

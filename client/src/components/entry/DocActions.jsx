@@ -41,6 +41,7 @@ export function asNewCopy(form, sourceId) {
     ['id', 'doc_no', 'created_at', 'updated_at', 'created_by', 'updated_by', 'posted_at', 'posted_by', 'cancelled_at', 'cancelled_by', 'cancellation_reason',
         'approved_at', 'approved_by', 'ird_synced', 'ird_sync_status', 'audit_locked'].forEach(k => { delete f[k]; });
     f.status = 'draft';
+    if (Array.isArray(f.tds_bills)) f.tds_bills = [];   // a bill takes TDS only once
     if ('doc_date' in f) f.doc_date = today();
     LINE_ARRAYS.forEach(k => {
         if (!Array.isArray(f[k])) return;
@@ -140,7 +141,13 @@ export async function finalizeEntry(authFetch, api, id, status = 'posted') {
         }
     }
     try {
-        await authFetch(`/api/${api}/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) });
+        try {
+            await authFetch(`/api/${api}/${id}/status`, { method: 'PUT', body: JSON.stringify({ status }) });
+        } catch (e) {
+            // System Control > Negative Stock = block: say which items are short, post only if the user insists
+            if (!(e.warnings?.length > 0) || !window.confirm(`${e.message}\n\n${e.warnings.join('\n')}\n\nPost anyway?`)) throw e;
+            await authFetch(`/api/${api}/${id}/status`, { method: 'PUT', body: JSON.stringify({ status, override_negative_stock_warning: true }) });
+        }
         return true;
     } catch (e) {
         window.alert(`Saved, but it could not be ${status}: ${e.message}\n\nIt waits in the list (not posted) - open it with Modify to finish it.`);

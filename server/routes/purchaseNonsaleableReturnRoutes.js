@@ -10,6 +10,7 @@
 // =============================================
 
 const express = require('express');
+const { stockLines } = require('../utils/stockItems');
 const { checkAccountPurposes } = require('../utils/ledgerPurpose');
 const { bumpAltCounter } = require('../utils/progressCounters');
 const { checkCompulsoryFields, lockProtectedFields } = require('../utils/entryFieldRules');
@@ -529,6 +530,7 @@ async function adjustSourceQtyReturned(tenantClient, { source_bill_detail_id, al
 }
 
 async function postNonsaleableStockMovements(tenantClient, tenantId, nonsaleableReturn, details) {
+    details = await stockLines(tenantClient, details);   // only stock items move stock (utils/stockItems)
     const rows = [];
     for (const d of details) {
         const { data: product } = await tenantClient.from('products').select('uom_mode, dual_uom_primary_unit_id').eq('id', d.product_id).maybeSingle();

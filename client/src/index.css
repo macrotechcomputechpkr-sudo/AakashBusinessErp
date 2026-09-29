@@ -69,8 +69,8 @@
 
   /* ---------- window / form parts ---------- */
   .nav-window { background: #f0f0f0; border: 2px solid; border-color: #fff #5a5a5a #5a5a5a #fff; box-shadow: 3px 3px 10px rgba(0,0,0,.25); }
-  .nav-toolbar { background: #ece9d8; border-bottom: 1px solid #aca899; padding: 3px 8px; display: flex; flex-wrap: wrap; gap: 3px; align-items: center; font-size: 12px; }
-  .nav-tool-btn { display: inline-flex; align-items: center; gap: 4px; padding: 3px 10px; background: transparent; border: 1px solid transparent; border-radius: 2px; color: #1a1a1a; font-size: 12px; cursor: pointer; white-space: nowrap; }
+  .nav-toolbar { background: #ece9d8; border-bottom: 1px solid #aca899; padding: 0 6px; display: flex; flex-wrap: wrap; gap: 3px; align-items: center; font-size: 12px; }
+  .nav-tool-btn { display: inline-flex; align-items: center; gap: 4px; padding: 1px 8px; line-height: 18px; background: transparent; border: 1px solid transparent; border-radius: 2px; color: #1a1a1a; font-size: 12px; cursor: pointer; white-space: nowrap; }
   .nav-tool-btn:hover { background: #d4d0c8; border-color: #aca899; }
   .nav-tool-btn:active, .nav-tool-btn.active { background: #c4c0b8; border-color: #7a7a7a; box-shadow: inset 0 1px 2px rgba(0,0,0,.15); }
   .nav-tool-btn:disabled { opacity: .5; cursor: default; }
@@ -128,21 +128,37 @@
   .nav-page.max { max-width: none; }
   .nav-window-controls { display: flex; gap: 3px; flex-shrink: 0; }
   .nav-wc-btn:disabled { opacity: .5; cursor: default; }
-  .nav-ribbon { background: #dfdcd0; border-bottom: 1px solid #aca899; padding: 2px 8px 0; display: flex; align-items: flex-end; gap: 0; font-size: 12px; user-select: none; }
-  .nav-ribbon-tab { padding: 4px 14px; color: #3a3a3a; background: transparent; border: 1px solid transparent; border-bottom: none; font-weight: 500; font-size: 12px; cursor: pointer; }
+  .nav-ribbon { background: #dfdcd0; border-bottom: 1px solid #aca899; padding: 1px 8px 0; display: flex; align-items: flex-end; gap: 0; font-size: 12px; user-select: none; }
+  .nav-ribbon-tab { padding: 1px 12px; color: #3a3a3a; background: transparent; border: 1px solid transparent; border-bottom: none; font-weight: 500; font-size: 12px; cursor: pointer; }
   .nav-ribbon-tab:hover { background: #cfccc0; }
   .nav-ribbon-tab.active { background: #ece9d8; border-color: #aca899; margin-bottom: -1px; font-weight: 700; color: #1a4a8a; }
   .nav-ribbon-path { margin-left: auto; padding: 4px; font-size: 11px; color: #5a5a5a; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .nav-page-toolbar { min-height: 30px; }
+  /* page tools on the window title bar (Layout.jsx) */
+  .nav-page-titlebar { min-height: 28px; padding-top: 2px; padding-bottom: 2px; }
+  .nav-page-tools { display: flex; align-items: center; gap: 2px; margin-left: auto; flex-shrink: 0; }
+  .nav-pt-btn { height: 21px; min-width: 24px; padding: 0 5px; display: inline-flex; align-items: center; justify-content: center; background: rgba(255,255,255,.12); border: 1px solid rgba(255,255,255,.28); border-radius: 2px; color: #fff; font-size: 11px; font-weight: 600; text-shadow: none; cursor: pointer; text-decoration: none; white-space: nowrap; }
+  .nav-pt-btn:hover, .nav-pt-btn.active { background: rgba(255,255,255,.3); }
+  .nav-pt-drop { position: relative; }
+  .nav-pt-menu { position: absolute; right: 0; top: 100%; margin-top: 2px; z-index: 60; min-width: 220px; max-width: 320px; max-height: 60vh; overflow-y: auto; background: #fff; border: 1px solid #7a96b8; box-shadow: 2px 3px 8px rgba(0,0,0,.25); padding: 2px 0; text-shadow: none; }
+  .nav-pt-item { display: block; padding: 4px 12px; font-size: 12px; font-weight: 400; color: #1a1a1a; text-decoration: none; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .nav-pt-item:hover { background: #dce8f5; color: #1a4a8a; }
   a.nav-tool-btn { text-decoration: none; }
-  .nav-page-body { flex: 1; min-width: 0; background: #f0f0f0; padding: 8px 10px 14px; }
+  .nav-page-body { flex: 1; min-width: 0; background: #f0f0f0; padding: 4px 8px 12px; }
 
   /* screens keep their own erp-card: inside the window it is a framed panel with a
      beige tool strip (the window title bar above already names the screen) */
   .nav-page .erp-shell { background: transparent; padding: 0; min-height: 0; }
   .nav-page .erp-shell + .erp-shell { margin-top: 10px; }
   .nav-page .erp-card { max-width: none !important; box-shadow: none; border: 1px solid; border-color: #aca899 #d4d0c8 #d4d0c8 #aca899; margin-bottom: 10px; }
-  .nav-page .erp-header { background: #ece9d8; border-bottom: 1px solid #aca899; min-height: 30px; padding: 2px 8px; }
+  .nav-page .erp-header { background: #ece9d8; border-bottom: 1px solid #aca899; min-height: 24px; padding: 0 8px; }
+  .nav-page .erp-header .erp-header-btn { padding-top: 1px; padding-bottom: 1px; }
+  .nav-page .erp-card:has(> form) { position: relative; }
+  .nav-page .erp-card:has(> form) > .erp-header { justify-content: flex-end; min-height: 0; }
+  .nav-page .erp-card:has(> form) > .erp-header .erp-header-title { display: none; }
+  .nav-page .erp-card:has(> form > .ent-fillbar:first-child) > .erp-header { position: absolute; top: 1px; right: 4px; z-index: 3; padding: 0;
+    background: transparent; border: 0; }
+  .nav-page .erp-card:has(> form) > form > .ent-fillbar:first-child { padding-right: 240px; min-height: 24px; }
   .nav-page .erp-header-title { color: #1a4a8a; text-shadow: none; font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: .03em; }
   .nav-page .erp-header-btn { background: transparent; border-color: transparent; padding: 3px 10px; }
   .nav-page .erp-header-btn:hover { background: #d4d0c8; border-color: #aca899; }
@@ -156,22 +172,32 @@
      24px inputs - for erp-field screens and plain "label over input" screens alike */
   @media (min-width: 768px) {
     .nav-page .erp-field, .nav-page div:has(> label:first-child + :is(input:not([type=checkbox]):not([type=radio]), select, textarea, div.flex, div.relative):last-child) {
-      display: grid; grid-template-columns: clamp(64px, 38%, 128px) minmax(0, 1fr); column-gap: 8px; row-gap: 2px; align-items: center;
+      display: grid; grid-template-columns: var(--nav-caption, 136px) minmax(0, 1fr); column-gap: 6px; row-gap: 0; align-items: center; min-height: 23px;
     }
     .nav-page .erp-field > .erp-label, .nav-page div:has(> label:first-child + :is(input:not([type=checkbox]):not([type=radio]), select, textarea, div.flex, div.relative):last-child) > label:first-child {
-      grid-column: 1; margin: 0; text-align: right; font-size: 12px; font-weight: 400; color: #1a1a1a; line-height: 1.15; overflow-wrap: anywhere;
+      grid-column: 1; margin: 0; text-align: left; font-size: 12px; font-weight: 400; color: #1a1a1a; line-height: 22px;
+      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
     }
     .nav-page .erp-field > :not(.erp-label) { grid-column: 2; min-width: 0; }
+    /* one-line captions: side notes in a caption are left out of the card layout */
+    .nav-page .erp-field > .erp-label .hint { display: none; }
+    .nav-page .erp-field input[type=date] { min-width: 112px !important; flex: 1 1 auto; }
     .nav-page .erp-field :is(input, select) { min-width: 0; }
     .nav-page .erp-field .flex > * { min-width: 0; }
     .nav-page .erp-field button { flex-shrink: 0; }
     .nav-page .erp-field:has(> textarea), .nav-page div:has(> label:first-child + textarea:last-child) { align-items: start; }
     .nav-page .erp-field:has(> textarea) > .erp-label, .nav-page div:has(> label:first-child + textarea:last-child) > label:first-child { padding-top: 4px; }
     .nav-page :is(input:not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]):not([type=file]), select:not([multiple])) {
-      height: 24px; padding-top: 1px; padding-bottom: 1px; font-size: 12px;
+      height: 22px; padding-top: 0; padding-bottom: 0; font-size: 12px;
     }
     .nav-page :is(button, a):is([class*="py-2"], [class*="py-3"]):not(.nav-tool-btn):not(.nav-ribbon-tab) { padding-top: 3px; padding-bottom: 3px; }
-    .nav-page .erp-topbar { gap: 5px 14px; padding: 12px 12px 8px; }
+    .nav-page .erp-topbar { gap: 3px 22px; padding: 6px 10px 5px; margin: 4px 10px 4px; }
+    .nav-page .ent-fillbar .nav-btn.small { padding-top: 0; padding-bottom: 0; min-height: 20px; }
+    .nav-page .erp-tab-content { padding-top: 6px; }
+    /* grids: one line of 22px fields per row */
+    .nav-page .erp-grid-table tbody td { padding: 1px 3px; }
+    .nav-page .erp-grid-table thead th { padding: 3px 5px; }
+    .nav-page .sps-gear { height: 22px; width: 22px; }
   }
   /* caption-left fields need room: wide field rows drop to 2 (laptop) or 3 columns */
   @media (min-width: 768px) and (max-width: 1279px) {
@@ -271,6 +297,24 @@
   .erp-header-btn.danger { color: #a92a1a; }
   .erp-header-btn:disabled { opacity: .55; cursor: default; }
 
+  /* NAV-style FastTab: a collapsible section of a card - bold caption with an arrow, a thin
+     rule under it, its summary on the right while folded, fields in even caption-left columns */
+  /* pull-from boxes (PendingDocsPanel): one more row of the master part, one caption + box per source */
+  /* Quotation / Order / Challan No. boxes sit in the master grid right after the party */
+  .ent-pullbar { display: contents; }
+  .nav-fasttab { margin: 2px 10px 0; }
+  .sps-row { display: flex; align-items: stretch; }
+  .sps-row > .sps-input { flex: 1; min-width: 0; }
+  .sps-gear { flex: 0 0 auto; width: 26px; height: 28px; padding: 0; margin-left: -1px; font-size: 11px; line-height: 1; color: #6b6b6b;
+    background: linear-gradient(180deg, #fdfdfb 0%, #e6e4dc 100%); border: 1px solid #a0a0a0; cursor: pointer; }
+  .sps-gear:hover { background: #dde8f6; border-color: #4a7ab5; }
+  .nav-fasttab-head { display: flex; align-items: center; gap: 6px; width: 100%; padding: 3px 2px; background: none; border: 0;
+    border-bottom: 1px solid #c9c6ba; font-size: 13px; font-weight: 700; color: #1a4a8a; text-align: left; cursor: pointer; }
+  .nav-fasttab-head:hover { color: #0f3470; background: #f6f5ef; }
+  .nav-fasttab-sum { margin-left: auto; font-size: 11px; font-weight: 400; color: #555; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 60%; }
+  .nav-fasttab-body { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3px 22px; padding: 5px 4px 4px; }
+  @media (max-width: 1279px) { .nav-fasttab-body { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+  @media (max-width: 767px) { .nav-fasttab-body { grid-template-columns: minmax(0, 1fr); } }
   .erp-topbar { display: grid; gap: 7px 12px; background: #f0f0f0; border: 1px solid #aca899; border-right-color: #d4d0c8; border-bottom-color: #d4d0c8; margin: 12px 10px 6px; padding: 14px 12px 10px; position: relative; }
   .erp-field { display: flex; flex-direction: column; gap: 2px; }
   .erp-label { font-size: 12px; font-weight: 400; color: #1a1a1a; }
@@ -334,7 +378,14 @@
     .nav-statusbar { position: static; }
     .nav-workspace { padding: 0; }
     .nav-page { min-height: 0; border: none; box-shadow: none; }
-    .nav-page .nav-ribbon, .nav-page .nav-page-toolbar, .nav-page .nav-window-controls { display: none; }
+    .nav-page .nav-ribbon, .nav-page .nav-page-toolbar, .nav-page .nav-window-controls, .nav-page-tools .hide-sm { display: none; }
+    .nav-pt-btn { height: 30px; min-width: 32px; font-size: 13px; }
+    .nav-page-tools .pt-label { display: none; }
+    .nav-page-titlebar .nav-titlebar-left { flex: 1 1 auto; }
+    /* entry forms: the card's own buttons (Close, Copy From) get their own row above the one-line fill bar */
+    .nav-page .erp-card:has(> form > .ent-fillbar:first-child) > .erp-header { position: static; padding: 0 4px; background: #ece9d8; border-bottom: 1px solid #aca899; }
+    .nav-page .erp-card:has(> form) > form > .ent-fillbar:first-child { padding-right: 8px; }
+    .nav-pt-menu { position: fixed; left: 8px; right: 8px; top: auto; max-width: none; }
   }
   @media print {
     .nav-workspace { background: none; padding: 0; }
@@ -432,7 +483,77 @@ label {
 }
 
 /* fill bar at the top of a transaction form: template / previous entry / draft */
-.ent-fillbar { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; padding: 4px 8px; margin-bottom: 6px; border: 1px dashed var(--nav-border, #c9cfd8); border-radius: 4px; background: rgba(120, 140, 170, 0.06); font-size: 12px; }
+.ent-actions { display: inline-flex; flex-wrap: wrap; align-items: center; gap: 1px; }
+.ent-actions .nav-tool-btn { padding: 0 6px; line-height: 20px; }
+.ent-actions .ent-action-save { font-weight: 700; color: #1a4a8a; }
+.ent-fillbar { display: flex; flex-wrap: nowrap; overflow-x: auto; scrollbar-width: thin; align-items: center; gap: 4px; padding: 2px 8px; margin-bottom: 0; border: 1px dashed var(--nav-border, #c9cfd8); border-radius: 4px; background: rgba(120, 140, 170, 0.06); font-size: 12px; }
 .ent-fillbar-cap { font-weight: 600; color: #55607a; margin-right: 2px; }
 .ent-fillbar-sep { width: 1px; height: 18px; background: #c9cfd8; margin: 0 4px; }
 .ent-fillbar .nav-btn:disabled { opacity: .45; cursor: not-allowed; }
+.ent-fillbar .ent-actions { flex-wrap: nowrap; white-space: nowrap; }
+.ent-fill-drop { position: relative; flex-shrink: 0; }
+.ent-fill-drop .nav-tool-btn { padding: 0 6px; line-height: 20px; white-space: nowrap; }
+.ent-fill-menu { position: fixed; z-index: 70; display: flex; flex-direction: column; min-width: 210px; margin-top: 2px; background: #fff; border: 1px solid #7a96b8; box-shadow: 2px 3px 8px rgba(0,0,0,.25); padding: 2px 0; }
+.ent-fill-menu button { text-align: left; padding: 4px 12px; font-size: 12px; background: none; border: 0; cursor: pointer; white-space: nowrap; }
+.ent-fill-menu button:hover:not(:disabled) { background: #dce8f5; color: #1a4a8a; }
+.ent-fill-menu button:disabled { opacity: .45; cursor: not-allowed; }
+.ent-fill-menu-sep { height: 1px; background: #d4d0c8; margin: 2px 0; }
+
+/* ---- NAV template for older pages: coloured Tailwind buttons become the
+   standard NAV buttons (blue/green/indigo = primary; yellow/orange/red/grey row
+   actions = normal button with coloured text), so every page looks the same.
+   Exact class tokens only (never hover:bg-...) */
+.nav-page-body :is(button, a)[class~="bg-blue-500"], .nav-page-body :is(button, a)[class~="bg-blue-600"], .nav-page-body :is(button, a)[class~="bg-blue-700"], .nav-page-body :is(button, a)[class~="bg-indigo-600"], .nav-page-body :is(button, a)[class~="bg-green-600"], .nav-page-body :is(button, a)[class~="bg-emerald-600"] {
+  background: linear-gradient(180deg, #6a9ad5 0%, #4a7ab5 45%, #3a6aa5 55%, #5a8ac5 100%) !important;
+  border: 1px solid; border-color: #8abae5 #1a3a6a #1a3a6a #8abae5 !important; color: #fff !important; border-radius: 3px !important;
+  box-shadow: 1px 1px 2px rgba(0,0,0,.12) !important; text-shadow: 1px 1px 1px rgba(0,0,0,.3);
+}
+.nav-page-body :is(button, a)[class~="bg-yellow-500"], .nav-page-body :is(button, a)[class~="bg-yellow-600"], .nav-page-body :is(button, a)[class~="bg-orange-500"], .nav-page-body :is(button, a)[class~="bg-orange-600"], .nav-page-body :is(button, a)[class~="bg-red-500"], .nav-page-body :is(button, a)[class~="bg-red-600"], .nav-page-body :is(button, a)[class~="bg-gray-500"], .nav-page-body :is(button, a)[class~="bg-gray-600"] {
+  background: linear-gradient(180deg, #f0f0f0 0%, #d8d8d8 45%, #c8c8c8 55%, #e0e0e0 100%) !important;
+  border: 1px solid; border-color: #fff #5a5a5a #5a5a5a #fff !important; border-radius: 3px !important; box-shadow: 1px 1px 2px rgba(0,0,0,.12) !important; color: #1a1a1a !important;
+}
+.nav-page-body :is(button, a)[class~="bg-red-500"], .nav-page-body :is(button, a)[class~="bg-red-600"] { color: #a92a1a !important; }
+.nav-page-body :is(button, a)[class~="bg-yellow-500"], .nav-page-body :is(button, a)[class~="bg-yellow-600"], .nav-page-body :is(button, a)[class~="bg-orange-500"], .nav-page-body :is(button, a)[class~="bg-orange-600"] { color: #8a5a00 !important; }
+.nav-page-body :is(button, a)[class~="bg-blue-500"]:hover, .nav-page-body :is(button, a)[class~="bg-blue-600"]:hover, .nav-page-body :is(button, a)[class~="bg-blue-700"]:hover, .nav-page-body :is(button, a)[class~="bg-indigo-600"]:hover, .nav-page-body :is(button, a)[class~="bg-green-600"]:hover, .nav-page-body :is(button, a)[class~="bg-emerald-600"]:hover, .nav-page-body :is(button, a)[class~="bg-yellow-500"]:hover, .nav-page-body :is(button, a)[class~="bg-yellow-600"]:hover, .nav-page-body :is(button, a)[class~="bg-orange-500"]:hover, .nav-page-body :is(button, a)[class~="bg-orange-600"]:hover, .nav-page-body :is(button, a)[class~="bg-red-500"]:hover, .nav-page-body :is(button, a)[class~="bg-red-600"]:hover, .nav-page-body :is(button, a)[class~="bg-gray-500"]:hover, .nav-page-body :is(button, a)[class~="bg-gray-600"]:hover { border-color: #4a7ab5 !important; }
+.nav-page-body .rounded-xl, .nav-page-body .rounded-2xl { border-radius: 3px; }
+.nav-page-body .shadow-lg, .nav-page-body .shadow-xl { box-shadow: 1px 1px 3px rgba(0,0,0,.15); }
+/* the grid footer / group chips in NAV colours instead of black */
+.rg-footer, .rg-footer > td { background: #ece9d8 !important; color: #1a1a1a !important; border-top: 2px solid #aca899; }
+.rg-chip { background: #dde8f6 !important; color: #1a4a8a !important; border: 1px solid #8aaad5; }
+/* older master pages: page / form headings and the entry box in the NAV look
+   (same as .erp-header-title and .nav-groupbox) */
+/* the module name is already in the window title bar - no second caption below it
+   (page h1 and the card header title), same as the sales / purchase forms */
+.nav-page-body h1[class*="text-"] { display: none !important; }
+.nav-page .erp-card > .erp-header .erp-header-title { display: none; }
+.nav-page .erp-card > .erp-header:not(:has(button, a, select, input, .nav-toolbar)) { display: none; }
+.nav-page .erp-card > .erp-header { justify-content: flex-end; min-height: 0; }
+.nav-page-body h2 { font-size: 12px !important; font-weight: 700 !important; color: #1a4a8a; text-transform: uppercase; letter-spacing: .03em; line-height: 1.6; }
+.nav-page-body form[class~="rounded-xl"], .nav-page-body form[class~="rounded-lg"] {
+  background: #f0f0f0 !important; border: 1px solid; border-color: #aca899 #d4d0c8 #d4d0c8 #aca899 !important; border-radius: 0 !important;
+  padding: 10px 12px !important; margin-bottom: 10px !important; box-shadow: none !important;
+}
+.nav-page-body form[class~="rounded-xl"] > :is(h1, h2, h3):first-child { border-bottom: 1px solid #c9c6ba; padding-bottom: 2px; margin-bottom: 6px; }
+.nav-page-body form[class~="space-y-4"] > * + * { margin-top: 8px !important; }
+
+/* ---- in-system help (components/help) ---- */
+.has-help { text-decoration: underline dotted #8aa4c8; text-underline-offset: 3px; cursor: help; }
+.help-panel { position: fixed; right: 8px; top: 118px; bottom: 30px; width: 380px; max-width: calc(100vw - 16px); z-index: 60;
+  background: #fbfaf5; border: 1px solid #7f9db9; box-shadow: -2px 2px 8px rgba(0,0,0,.18); display: flex; flex-direction: column; }
+.help-panel-head { display: flex; align-items: center; justify-content: space-between; gap: 6px; padding: 3px 6px;
+  background: linear-gradient(180deg, #2a5ea8 0%, #1d4d94 100%); color: #fff; font-size: 12px; font-weight: 700; }
+.help-panel-body { overflow: auto; padding: 8px 10px; font-size: 12px; line-height: 1.45; }
+.help-panel-body h4 { margin: 8px 0 3px; font-size: 11px; font-weight: 700; color: #1a4a8a; text-transform: uppercase; letter-spacing: .03em; border-bottom: 1px solid #c9c6ba; }
+.help-panel-body ol { list-style: decimal; padding-left: 18px; }
+.help-panel-body ul { list-style: disc; padding-left: 18px; }
+.help-panel-body li { margin: 2px 0; }
+.help-table { width: 100%; border-collapse: collapse; }
+.help-table th { width: 34%; text-align: left; vertical-align: top; padding: 2px 4px; font-weight: 600; color: #333; background: #eceae1; border: 1px solid #d8d4c6; }
+.help-table td { vertical-align: top; padding: 2px 4px; border: 1px solid #d8d4c6; }
+@media (min-width: 1100px) { .nav-page-body.with-help { padding-right: 396px; } }
+.nav-tool-btn.active { background: #d4d0c8; border-color: #aca899; }
+/* field grids: a caption (136px) + box need ~280px - a grid of fields never
+   squeezes them narrower (6-column filter bars wrapped their captions over the boxes) */
+@media (min-width: 768px) {
+  .nav-page-body .grid:has(> .erp-field) { grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)) !important; }
+}

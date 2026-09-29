@@ -10,6 +10,9 @@
 // =============================================
 
 const express = require('express');
+const { stockLines } = require('../utils/stockItems');
+const { lineUnitCosts, refreshLandedCost } = require('../utils/purchaseStockCost');
+const { purchaseVatByLedger } = require('../utils/vatLedger');
 const { checkAccountPurposes } = require('../utils/ledgerPurpose');
 const { bumpAltCounter, rollHeaderStatus, moveSourceProgress } = require('../utils/progressCounters');
 const { checkCompulsoryFields, lockProtectedFields } = require('../utils/entryFieldRules');
@@ -23,6 +26,7 @@ const { effectiveInput, applyInput, loadProductTermMap } = require('../utils/ter
 const { resolveDocumentNumber } = require('../utils/documentNumbering');
 const { isBillWiseTrackingEnabled, getOutstandingReferences, computeFifoAllocation, createReferenceAndSettle, reverseReferenceAndSettlements, checkCanCancelIfSettled } = require('../utils/billWiseSettlement');
 const { postBillPayableEntry, reverseBatch: reverseGlBatch } = require('../utils/grnAccounting');
+const billExtras = require('../utils/billExtras');
 const { toBaseUnitQty } = require('../utils/unitConversion');
 const { toBaseQtyFromDual, computeDualAmount, getDualUomMode, rateBasisFor } = require('../utils/dualUomCalculation');
 
@@ -34,6 +38,8 @@ const { toBaseQtyFromDual, computeDualAmount, getDualUomMode, rateBasisFor } = r
 // A GRN-sourced line is skipped entirely - the GRN already recorded
 // that stock, writing it again here would double-count it.
 async function postBillStockMovements(tenantClient, tenantId, bill, details) {
+    const allDetails = details;   // every line (value shares); only stock items move stock (utils/stockItems)
+    details = await stockLines(tenantClient, details);
     const rows = [];
     for (const d of details) {
         if (d.source_grn_detail_id) continue;
@@ -47,18 +53,37 @@ async function postBillStockMovements(tenantClient, tenantId, bill, details) {
             unitCost = d.rate_basis === 'primary' ? Number(d.rate) / conversionFactor : Number(d.rate);
         } else {
             baseQty = await toBaseUnitQty(tenantClient, d.product_id, d.qty, d.uom_id);
-            unitCost = d.rate || 0;
+            unitCost = null;   // from the goods value below
         }
-        rows.push({ tenant_id: tenantId, product_id: d.product_id, warehouse_id: wh, batch_no: d.batch_no, serial_no: d.serial_no || null, movement_date: bill.doc_date, qty_in: baseQty, qty_out: 0, unit_cost: unitCost, source_type: 'purchase_bill', source_id: bill.id, source_detail_id: d.id, narration: `Bill ${bill.doc_no} - direct purchase` });
+        rows.push({ _detail: d, _baseQty: baseQty, tenant_id: tenantId, product_id: d.product_id, warehouse_id: wh, batch_no: d.batch_no, serial_no: d.serial_no || null, movement_date: bill.doc_date, qty_in: baseQty, qty_out: 0, unit_cost: unitCost, source_type: 'purchase_bill', source_id: bill.id, source_detail_id: d.id, narration: `Bill ${bill.doc_no} - direct purchase` });
     }
     if (rows.length > 0) {
+        // cost = the line's share of the goods value without VAT (what the purchase account gets) / base qty
+        const vatTotal = (await purchaseVatByLedger(tenantClient, tenantId, 'purchase_bill', bill.id)).reduce((s, p) => s + Number(p.amount || 0), 0);
+        const costs = lineUnitCosts(bill, allDetails, d => (rows.find(r => r._detail === d) || {})._baseQty, vatTotal);
+        rows.forEach(r => { const c = costs[r._detail.id]; if (c !== null && c !== undefined) r.unit_cost = c; else if (r.unit_cost === null) r.unit_cost = Number(r._detail.rate) || 0; delete r._detail; delete r._baseQty; });
         const { error } = await tenantClient.from('stock_movements').insert(rows);
         if (error) throw error;
+        // additional expenses already posted against these lines
+        const landed = await refreshLandedCost(tenantClient, tenantId, { billDetailIds: details.map(d => d.id) });
+        if (landed.error) console.warn('landed cost not applied:', landed.error);
     }
 }
 
 async function reverseBillStockMovements(tenantClient, billId) {
     await tenantClient.from('stock_movements').delete().eq('source_type', 'purchase_bill').eq('source_id', billId);
+}
+
+// The supplier's bill no can be entered only once per supplier (as NAV's Vendor
+// Invoice No. / Tally's duplicate supplier invoice check) - a second entry of
+// the same bill would book the purchase and its VAT credit twice.
+async function duplicatePartyBill(c, t, vendorId, partyBillNo, exceptId) {
+    const no = String(partyBillNo || '').trim();
+    if (!no || !vendorId) return null;
+    const { data } = await c.from('purchase_bills').select('id, doc_no, party_bill_no, status').eq('tenant_id', t).eq('vendor_ledger_id', vendorId)
+        .ilike('party_bill_no', no.replace(/[%_\\]/g, m => '\\' + m));
+    const hit = (data || []).find(x => x.id !== exceptId && x.status !== 'cancelled' && String(x.party_bill_no || '').trim().toLowerCase() === no.toLowerCase());
+    return hit ? `Supplier bill no ${no} of this supplier is already entered on Purchase Bill ${hit.doc_no}` : null;
 }
 
 function validateBody(b, isDraft) {
@@ -433,6 +458,10 @@ router.post('/purchase-bills', requireAuth, loadUserPermissions, requirePermissi
         const tenantId = req.auth.tenantId;
         const tenantClient = await getTenantClient(tenantId);
         const b = req.body;
+        if (!isDraft) {
+            const dup = await duplicatePartyBill(tenantClient, tenantId, b.vendor_ledger_id, b.party_bill_no, null);
+            if (dup) return res.status(400).json({ success: false, error: dup });
+        }
 
         const { data: currentUser } = await tenantClient.from('users').select('default_branch_id').eq('id', req.auth.userId).single();
         let branchNameSnapshot = null;
@@ -493,6 +522,7 @@ router.post('/purchase-bills', requireAuth, loadUserPermissions, requirePermissi
                 cash_billing_details: b.cash_billing_details || null,
                 status: b.status || 'draft',
                 pending_bill_wise_settlements: b.bill_wise_settlements ? JSON.stringify(b.bill_wise_settlements) : null,
+                ...billExtras.extraFields(b, 'purchase'),
                 created_by: req.auth.userId, updated_by: req.auth.userId
             })
             .select().single();
@@ -537,6 +567,10 @@ router.put('/purchase-bills/:id', requireAuth, loadUserPermissions, requirePermi
         const companyError = await checkProductCompany(tenantClient, tenantId, 'purchase', { ...existing, ...b, details: b.details }, false);
 
         if (companyError) return res.status(400).json({ success: false, error: companyError });
+        if (!(b.save_as_draft || b.status === 'draft')) {
+            const dup = await duplicatePartyBill(tenantClient, tenantId, b.vendor_ledger_id || existing.vendor_ledger_id, b.party_bill_no !== undefined ? b.party_bill_no : existing.party_bill_no, existing.id);
+            if (dup) return res.status(400).json({ success: false, error: dup });
+        }
 
         // Readonly / disabled header fields keep their stored value (before snapshots + update).
 
@@ -557,6 +591,7 @@ router.put('/purchase-bills/:id', requireAuth, loadUserPermissions, requirePermi
         delete update.summary_overrides;
         delete update.details;
         delete update.bill_wise_settlements;
+        Object.assign(update, billExtras.extraFields(b, 'purchase'));
         if (b.bill_wise_settlements) update.pending_bill_wise_settlements = JSON.stringify(b.bill_wise_settlements);
 
         const { data, error } = await tenantClient.from('purchase_bills').update(update).eq('id', req.params.id).eq('tenant_id', tenantId).select().single();
@@ -628,8 +663,12 @@ router.put('/purchase-bills/:id/status', requireAuth, loadUserPermissions, requi
         const tenantId = req.auth.tenantId;
         const tenantClient = await getTenantClient(tenantId);
 
-        const { data: existing } = await tenantClient.from('purchase_bills').select('status').eq('id', req.params.id).eq('tenant_id', tenantId).single();
+        const { data: existing } = await tenantClient.from('purchase_bills').select('status, vendor_ledger_id, party_bill_no').eq('id', req.params.id).eq('tenant_id', tenantId).single();
         if (!existing) return res.status(404).json({ success: false, error: 'Purchase Bill not found' });
+        if (status === 'posted' && existing.status !== 'posted') {
+            const dup = await duplicatePartyBill(tenantClient, tenantId, existing.vendor_ledger_id, existing.party_bill_no, req.params.id);
+            if (dup) return res.status(400).json({ success: false, error: dup });
+        }
 
         if (status === 'cancelled' && existing.status === 'posted') {
             const blockMsg = await checkCanCancelIfSettled(tenantClient, tenantId, 'purchase_bill', req.params.id);
@@ -641,6 +680,12 @@ router.put('/purchase-bills/:id/status', requireAuth, loadUserPermissions, requi
             update.cancellation_reason = cancellation_reason;
             update.cancelled_at = new Date().toISOString();
             update.cancelled_by = req.auth.userId;
+        }
+        if (status === 'posted' && existing.status !== 'posted') {
+            // TDS ledger / amount resolved and checked before anything posts
+            const { data: full } = await tenantClient.from('purchase_bills').select('*').eq('id', req.params.id).single();
+            try { Object.assign(update, await billExtras.prepareExtras(tenantClient, tenantId, 'purchase', full)); }
+            catch (e) { return res.status(e.status || 500).json({ success: false, error: e.message }); }
         }
         const { data, error } = await tenantClient.from('purchase_bills').update(update).eq('id', req.params.id).eq('tenant_id', tenantId).select().single();
         if (error) throw error;
@@ -664,6 +709,8 @@ router.put('/purchase-bills/:id/status', requireAuth, loadUserPermissions, requi
             // liability and books the real payable; a Bill with no GRN
             // lineage books the goods directly instead.
             await postBillPayableEntry(tenantClient, tenantId, data, req.auth.userId);
+            // TDS withheld from the supplier: Dr Supplier, Cr TDS payable
+            await billExtras.postExtrasBatch(tenantClient, tenantId, 'purchase', data, req.auth.userId);
 
             // FEATURE: "Bill Entry garda ... Dr xa vane FIFO method ma
             // kun doc ma kati balance xa kati adjust garne milaune" - a
@@ -686,6 +733,7 @@ router.put('/purchase-bills/:id/status', requireAuth, loadUserPermissions, requi
                         docNo: data.doc_no, date: data.doc_date, nature: 'cr', totalAmount: data.total_amount, settlements
                     });
                 }
+                await billExtras.settleOnBill(tenantClient, tenantId, 'purchase', data);
             }
         } else if (status === 'cancelled' && existing.status === 'posted') {
             for (const d of (billDetails || [])) {
@@ -693,6 +741,7 @@ router.put('/purchase-bills/:id/status', requireAuth, loadUserPermissions, requi
                 else if (d.source_order_detail_id) await adjustOrderQtyReceived(tenantClient, d.source_order_detail_id, -Number(d.qty), -Number(d.alt_qty || 0));
                 else if (d.source_quotation_detail_id) await moveSourceProgress(tenantClient, [d], PQ_PROGRESS, -1);
             }
+            await billExtras.unsettleOnBill(tenantClient, 'purchase', req.params.id);
             await reverseReferenceAndSettlements(tenantClient, 'purchase_bill', req.params.id);
             await reverseGlBatch(tenantClient, 'purchase_bill', req.params.id);
             await reverseBillStockMovements(tenantClient, req.params.id);
@@ -746,3 +795,4 @@ router.delete('/purchase-bills/:id', requireAuth, loadUserPermissions, requirePe
 });
 
 module.exports = router;
+module.exports._internals = { duplicatePartyBill };

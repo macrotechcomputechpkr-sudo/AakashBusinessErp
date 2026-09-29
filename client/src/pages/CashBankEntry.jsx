@@ -268,7 +268,7 @@ export default function CashBankEntry() {
 
             {mode === 'single' && showForm && (
                 <form onSubmit={handleSubmit} ref={formRef}>
-                    <EntryFillBar voucherType="cash_bank_entry" api="cash-bank-entries" form={form} editing={!!editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={copyAsNew} />
+                    <EntryFillBar voucherType="cash_bank_entry" api="cash-bank-entries" form={form} editing={!!editingId} docId={editingId} onFill={p => setForm(f => ({ ...f, ...p }))} onCopy={copyAsNew} />
                     {/* ==================== MASTER ==================== */}
                     <div className="erp-topbar grid-cols-1 md:grid-cols-4">
                         <DocNumberField docDate={form.doc_date || form.voucher_date} voucherType="cash_bank_entry" categoryId={form.numbering_category_id} docNo={editingId ? form.doc_no : ''} value={form.doc_no} onChange={v => setForm({ ...form, doc_no: v })} label="Voucher No" />
@@ -430,15 +430,10 @@ export default function CashBankEntry() {
                         <datalist id="cb-remarks-suggestions">
                             {remarks.map(r => <option key={r.id} value={r.remark_text} />)}
                         </datalist>
-                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-2">
-                            <div className="erp-field">
-                                <label className="erp-label">Remarks</label>
-                                <input list="cb-remarks-suggestions" className="erp-input" value={form.remarks_text || ''} onChange={e => setForm({ ...form, remarks_text: e.target.value })} placeholder="Type or pick" />
-                            </div>
-                            <div className={efc.isVisible('narration') ? 'erp-field' : 'erp-field hidden'}>
-                                <label className="erp-label">Narration {efc.isRequired('narration') && <span className="req">*</span>}</label>
-                                <input disabled={efc.isReadonly('narration')} className="erp-input" value={form.narration || ''} onChange={e => setForm({ ...form, narration: e.target.value })} />
-                            </div>
+                        {/* one Narration for the voucher (saved remarks offered as suggestions) */}
+                        <div className={efc.isVisible('narration') ? 'erp-field mt-2' : 'erp-field mt-2 hidden'}>
+                            <label className="erp-label">Narration {efc.isRequired('narration') && <span className="req">*</span>}</label>
+                            <input list="cb-remarks-suggestions" disabled={efc.isReadonly('narration')} className="erp-input" value={form.narration || form.remarks_text || ''} onChange={e => setForm({ ...form, narration: e.target.value, remarks_text: '' })} placeholder="Type, or pick a saved remark" />
                         </div>
                         {form.entry_type && net !== 0 && (net > 0) !== (form.entry_type === 'receipt') && (
                             <p className="text-xs text-amber-700 mt-2">The lines add up to a net {net > 0 ? 'receipt' : 'payment'} - the voucher is saved as a {net > 0 ? 'Receipt' : 'Payment'}.</p>

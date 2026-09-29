@@ -176,21 +176,55 @@ async function daySheet(c, t, agent, date) {
     };
 }
 
-// All customers on any of the salesman's routes (party list), with balance.
+// The salesman's party list: customers of the routes planned for the day
+// (a date-range plan shows its route on every date of the range), in route
+// order and visiting sequence. With "Allow Off-Route" also every other
+// customer of their routes / their own customers. q: date, route_id, search
 async function agentParties(c, t, agent, q) {
-    const plans = await plansBetween(c, t, { agentId: agent.id, from: '0000-01-01', to: '9999-12-31' });
-    const { data: defRoutes } = await c.from('routes').select('id').eq('tenant_id', t).eq('default_agent_id', agent.id);
-    const routeIds = [...new Set([...plans.map(p => p.route_id), ...(defRoutes || []).map(r => r.id)])];
+    const date = q.date || today();
+    const planned = await routeIdsFor(c, t, agent.id, date);
+    let routeIds = planned;
+    if (agent.allow_off_route_orders) {
+        const plans = await plansBetween(c, t, { agentId: agent.id, from: '0000-01-01', to: '9999-12-31' });
+        const { data: defRoutes } = await c.from('routes').select('id').eq('tenant_id', t).eq('default_agent_id', agent.id);
+        routeIds = [...new Set([...planned, ...plans.map(p => p.route_id), ...(defRoutes || []).map(r => r.id)])];
+    }
+    if (q.route_id) routeIds = routeIds.filter(id => id === q.route_id);
     let rows = await customersOfRoutes(c, t, routeIds);
-    const { data: own } = await c.from('ledger_accounts').select('id, account_name, account_code, billing_name, pan_number, billing_address, city, phone_office, contact_person_mobile, credit_limit, credit_days, rate_category_id, area_id, is_active').eq('tenant_id', t).eq('agent_id', agent.id);
-    (own || []).map(contact).forEach(l => { if (!rows.some(r => r.id === l.id) && l.is_active !== false) rows.push({ ...l, route_id: null, sequence_order: 9999 }); });
+    if (agent.allow_off_route_orders && !q.route_id) {
+        const { data: own } = await c.from('ledger_accounts').select('id, account_name, account_code, billing_name, pan_number, billing_address, city, phone_office, contact_person_mobile, credit_limit, credit_days, rate_category_id, area_id, is_active').eq('tenant_id', t).eq('agent_id', agent.id);
+        (own || []).map(contact).forEach(l => { if (!rows.some(r => r.id === l.id) && l.is_active !== false) rows.push({ ...l, route_id: null, sequence_order: 9999 }); });
+    }
     const seen = new Set(); rows = rows.filter(r => (seen.has(r.id) ? false : seen.add(r.id)));
     const s = String(q.search || '').trim().toLowerCase();
     if (s) rows = rows.filter(r => [r.account_name, r.account_code, r.billing_name, r.pan_number, r.phone, r.mobile, r.address].some(v => String(v || '').toLowerCase().includes(s)));
     const bal = await partyBalances(c, t, rows.map(r => r.id));
     const { data: rts } = routeIds.length ? await c.from('routes').select('id, route_name').in('id', routeIds) : { data: [] };
     const rn = Object.fromEntries((rts || []).map(r => [r.id, r.route_name]));
-    return rows.map(r => ({ ...r, route_name: rn[r.route_id] || '', balance: bal[r.id] || 0 })).sort((a, b) => a.account_name.localeCompare(b.account_name));
+    // planned routes first, each in its visiting sequence
+    const order = id => { const i = planned.indexOf(id); return i >= 0 ? i : planned.length + routeIds.indexOf(id); };
+    return rows.map(r => ({ ...r, route_name: rn[r.route_id] || '', on_plan: planned.includes(r.route_id), balance: bal[r.id] || 0 }))
+        .sort((a, b) => order(a.route_id) - order(b.route_id) || (a.sequence_order ?? 9999) - (b.sequence_order ?? 9999) || a.account_name.localeCompare(b.account_name));
+}
+
+// Sales returns may be for a customer of ANY area / route: areas and routes to choose from.
+async function areasRoutes(c, t) {
+    const [areas, routes] = await Promise.all([
+        fetchAll(() => c.from('areas').select('id, area_name, parent_area_id').eq('tenant_id', t).eq('is_active', true).order('id')),
+        fetchAll(() => c.from('routes').select('id, route_name, area_id').eq('tenant_id', t).eq('is_active', true).order('id'))
+    ]);
+    return { areas: areas.sort((a, b) => a.area_name.localeCompare(b.area_name)), routes: routes.sort((a, b) => a.route_name.localeCompare(b.route_name)) };
+}
+// Customers of any one route (visiting sequence), or a search over all customers of an area's routes.
+async function anyRouteCustomers(c, t, q) {
+    let routeIds = q.route_id ? [q.route_id] : [];
+    if (!routeIds.length && q.area_id) routeIds = (await fetchAll(() => c.from('routes').select('id').eq('tenant_id', t).eq('area_id', q.area_id).order('id'))).map(r => r.id);
+    if (!routeIds.length) throw httpError('Choose an area or a route');
+    let rows = await customersOfRoutes(c, t, routeIds);
+    const seen = new Set(); rows = rows.filter(r => (seen.has(r.id) ? false : seen.add(r.id)));
+    const s = String(q.search || '').trim().toLowerCase();
+    if (s) rows = rows.filter(r => [r.account_name, r.account_code, r.billing_name, r.pan_number, r.phone, r.mobile, r.address].some(v => String(v || '').toLowerCase().includes(s)));
+    return rows;
 }
 
 // One party: balance, open bills, last orders / bills.
@@ -538,5 +572,5 @@ async function salesmanReport(c, t, view, q) {
 
 module.exports = {
     resolveAgent, planCalendar, savePlans, routeIdsFor, daySheet, agentParties, partyDetail, mobileProducts, mobileStock,
-    buildMobileOrder, recordVisit, pendingOrderLines, planBills, salesmanReport, partyBalances, routesOn
+    buildMobileOrder, recordVisit, areasRoutes, anyRouteCustomers, pendingOrderLines, planBills, salesmanReport, partyBalances, routesOn
 };

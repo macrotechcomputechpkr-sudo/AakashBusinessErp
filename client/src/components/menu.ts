@@ -24,7 +24,7 @@ const si = (to: string, label: string, feature?: Feature): MenuItem => ({ ...i(t
 export const REPORT_GROUPS: ReportGroup[] = [
     { title: 'Accounts & Finance', items: [
         ['/ledger-report', 'Ledger Report (detail)'], ['/ledger-report?mode=summary', 'Ledger Summary (PDC separate option)'], ['/ledger-report?mode=monthly', 'Ledger Monthly Summary'],
-        ['/party-summary', 'Party Summary (PDC separate option)'], ['/control-reports?view=day_book', 'Day Book'], ['/control-reports?view=cash_bank_book', 'Cash & Bank Book'],
+        ['/party-summary', 'Party Summary (PDC separate option)'], ['/day-book', 'Day Book (all-in-one: user / agent / voucher type)'], ['/control-reports?view=day_book', 'Day Book (ledger lines)'], ['/control-reports?view=cash_bank_book', 'Cash & Bank Book'],
         ['/financial-reports?tab=tb', 'Trial Balance'], ['/financial-reports?tab=pl', 'Profit & Loss'], ['/financial-reports?tab=bs', 'Balance Sheet'],
         ['/financial-reports?tab=notes', 'Schedules / Notes'], ['/financial-reports?tab=ratios', 'Ratio Analysis'], ['/financial-reports?tab=cash', 'Cash Flow'], ['/financial-reports?tab=funds', 'Funds Flow'],
         ['/financial-reports?tab=map', 'Group Mapping (P&L / BS)'], ['/funds-position', 'Net Position of Funds'], ['/bank-reconciliation?tab=brs', 'Bank Reconciliation Statement'],
@@ -33,7 +33,7 @@ export const REPORT_GROUPS: ReportGroup[] = [
     ] },
     { title: 'Budget & Dimensions', items: [
         ['/budgets', 'Budget vs Actual / Variance (ledger, sub-ledger, cost center, unit, doc class)'], ['/financial-reports?tab=budget', 'Budget vs Actual (quick)'],
-        ['/dimension-reports?preset=sub_summary', 'Sub-ledger Summary'], ['/dimension-reports?preset=statement', 'Sub-ledger / Cost Center Statement'],
+        ['/dimension-reports?preset=sub_summary', 'Ledger + Sub-ledger Balance (module filter)'], ['/dimension-reports?preset=statement', 'Sub-ledger / Cost Center Statement'],
         ['/dimension-reports?preset=pl_cc', 'P&L by Cost Center'], ['/dimension-reports?preset=pl_unit', 'P&L by Unit'], ['/dimension-reports?preset=pl_branch', 'P&L by Branch'],
         ['/dimension-reports?preset=pl_class', 'P&L by Doc Class'], ['/dimension-reports?preset=cc_summary', 'Cost Center x Ledger'], ['/dimension-reports?preset=monthly', 'Cost Center Monthly Trend'],
         ['/dimension-reports?preset=doc_class', 'Doc Class Register (number gaps)'], ['/dimension-reports?preset=exceptions', 'Missing Dimensions']
@@ -41,6 +41,7 @@ export const REPORT_GROUPS: ReportGroup[] = [
     { title: 'VAT, TDS & IRD', items: [
         ['/vat-reports?tab=register', 'Sales / Purchase VAT Register'], ['/vat-reports?tab=monthly', 'VAT Monthly Summary'], ['/vat-reports?tab=threshold', 'Annex 13 / Above Threshold'],
         ['/vat-reports?tab=vat_return', 'VAT Return'], ['/vat-reports?tab=vat_ledger', 'VAT Ledger'], ['/vat-reports?tab=tds', 'TDS Report'],
+        ['/tax-reconciliation', 'Reconciliation (VAT / Sales / Purchase / TDS)'], ['/tax-reconciliation?tab=vat', 'VAT Reconciliation'], ['/tax-reconciliation?tab=sales', 'Sales Account Reconciliation'], ['/tax-reconciliation?tab=purchase', 'Purchase Account Reconciliation'], ['/tax-reconciliation?tab=stock', 'Purchase vs Stock Reconciliation'], ['/tax-reconciliation?tab=tds', 'TDS Reconciliation'],
         ['/ird?tab=mat', 'IRD Materialized View'], ['/ird?tab=book', 'IRD Sales Book'], ['/ird?tab=sync', 'CBMS Sync Status'], ['/ird?tab=audit', 'IRD Bill Audit Log']
     ] },
     { title: 'Sales, Salesman & Routes', items: [
@@ -49,7 +50,7 @@ export const REPORT_GROUPS: ReportGroup[] = [
         ['/salesman-reports?view=plan_vs_visit', 'Route Plan vs Visit (productive calls)'], ['/salesman-reports?view=not_visited', 'Planned but Not Visited'], ['/salesman-reports?view=visits', 'Visit Log / No-order Reasons'],
         ['/salesman-reports?view=order_register', 'Order Register (desk + mobile)'], ['/salesman-reports?view=pending_orders', 'Pending Orders (ageing)'], ['/salesman-reports?view=fill_rate', 'Order Fill Rate'],
         ['/salesman-reports?view=order_products', 'Product-wise Orders'], ['/agent-targets?tab=ach', 'Target vs Achievement'], ['/agent-targets?tab=perf', 'Salesman Performance (month / qtr / year)'],
-        ['/agent-targets?tab=reg', 'Commission Register'], ['/control-reports?view=customer_master', 'Customer Master List'], ['/control-reports?view=route_customers', 'Route-wise Customer List'],
+        ['/agent-targets?tab=bills', 'Bill-wise Agent Commission'], ['/agent-targets?tab=reg', 'Commission Register'], ['/control-reports?view=customer_master', 'Customer Master List'], ['/control-reports?view=route_customers', 'Route-wise Customer List'],
         ['/control-reports?view=credit_exceed', 'Credit Limit Exceeded / Overdue'], ['/control-reports?view=inactive_customers', 'Inactive Customers'], ['/loading-sheet', 'Loading Sheet']
     ] },
     { title: 'Purchase', items: [
@@ -128,13 +129,13 @@ export const TOP_MENUS: TopMenu[] = [
     ] },
     { key: 'entry', title: 'Data Entry', groups: [
         { title: 'Accounts', items: [
-            i('/journal-voucher', '📗 Journal Voucher'), i('/cash-bank-entry', '💵 Cash / Bank Entry'), si('/debit-note', '📤 Debit Note'), i('/credit-note', '📥 Credit Note'),
+            i('/journal-voucher', '📗 Journal Voucher'), i('/balance-writeoff', '🧹 Small Balance Write-off (JV)'), i('/cash-bank-entry', '💵 Cash / Bank Entry'), si('/debit-note', '📤 Debit Note'), i('/credit-note', '📥 Credit Note'),
             si('/pdc-voucher', '🏦 PDC'), i('/bulk-cash-settlement', '💰 Bulk Cash Settlement'), i('/bank-reconciliation', '🏦 Bank Reconciliation'),
             si('/interest-posting', '% Interest on Overdue'), i('/fixed-assets?tab=depreciation', '🏗 Depreciation Posting'), si('/budgets', '💼 Budgets'),
             i('/confirmation-letters', '✉ Account Confirmation Letters')
         ] },
         { title: 'Sales Transaction', sep: true, items: [
-            i('/sales-quotation', '📝 Sales Quotation'), i('/sales-order', '🧾 Sales Order'), i('/order-billing', '⚡ Order → Bill (single / multiple)'),
+            i('/sales-quotation', '📝 Sales Quotation'), i('/sales-order', '🧾 Sales Order'), i('/order-billing', '⚡ Order → Bill (single / multiple)'), i('/mobile-approvals', '📲 Mobile Approvals (receipts / returns)'),
             si('/sales-delivery', '🚚 Sales Delivery / Challan'), i('/sales-bill', '💵 Sales Bill / Invoice'), si('/sales-return', '↩️ Sales Return'),
             i('/sales-nonsaleable-return', '🗑️ Sales Non-saleable Return'), si('/sales-additional-entry', '➕ Sales Additional Entry'), i('/agent-targets?tab=targets', '🎯 Salesman Targets & Commission')
         ] },
@@ -201,7 +202,7 @@ export const TOP_MENUS: TopMenu[] = [
     ] },
     { key: 'tools', title: 'Tools', groups: [
         { title: 'Tools', items: [
-            i('/reports', '📚 Report Center (all reports)'), i('/document-printing', '🖨 Manual Document Printing'), i('/messaging', '📨 Messaging (Email / SMS / WhatsApp / Viber)'),
+            i('/help-center', '❓ Help Center (manuals, IRD, menu PDFs)'), i('/reports', '📚 Report Center (all reports)'), i('/document-printing', '🖨 Manual Document Printing'), i('/messaging', '📨 Messaging (Email / SMS / WhatsApp / Viber)'),
             i('/ird', '🏛 IRD Compliance / CBMS'), i('/mobile', '📱 Salesman Mobile App')
         ] },
         rg('Messaging')

@@ -83,7 +83,20 @@ router.post('/agent-commission/:id/cancel', ...edit, send(async (c, t, req) => {
     await audit(req, 'cancel_agent_commission', 'agent_commission', req.params.id, { reason: req.body?.reason });
     return out;
 }));
+// bill-wise commission: pick the bills; a bill gets commission only once
+const BC = require('../utils/agentBillCommission');
+router.get('/agent-commission/bills', ...reports, send((c, t, req) => BC.commissionBills(c, t, req.query)));
+router.post('/agent-commission/bills/post', ...edit, send(async (c, t, req) => {
+    const out = await BC.postBillCommission(c, t, req.auth.userId, req.body || {});
+    await audit(req, 'post_agent_bill_commission', 'agent_commission', null, { posted: out.posted, total: out.total, postings: out.postings });
+    return out;
+}));
 router.get('/agent-commission/register', ...reports, send((c, t, req) => AT.commissionRegister(c, t, req.query)));
+
+// ---------------- all-in-one day book (user / agent / voucher type filters) ----------------
+const DB = require('../utils/dayBook');
+router.get('/day-book', ...reports, send((c, t, req) => DB.dayBook(c, t, req.query)));
+router.get('/day-book/types', ...reports, send(async () => DB.TYPE_LIST));
 
 // ---------------- master / control reports (day book, cash book, masters, exceptions) ----------------
 router.get('/control-reports/:view', ...reports, send((c, t, req) => controlReport(c, t, req.params.view, req.query)));
