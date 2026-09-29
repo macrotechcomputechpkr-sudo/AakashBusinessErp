@@ -9,6 +9,7 @@
 // or Nepali (Devanagari headers, BS dates where the VAT month is set).
 // =============================================
 
+import VatAdvancedReports from '../components/vat/VatAdvancedReports';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useAuth } from '../contexts/AuthContext';
 import Layout from '../components/Layout';
@@ -16,7 +17,8 @@ import SearchablePopupSelect from '../components/SearchablePopupSelect';
 import SavedViewsBar from '../components/SavedViewsBar';
 
 const TABS = [
-    ['register', 'Register'], ['monthly', 'Monthly Summary'], ['threshold', 'Above Threshold / Annex 13'],
+    ['register', 'Register'], ['monthly', 'Monthly Summary'], ['sp_monthly', 'Sales / Purchase Monthly'], ['annex13', 'Annexure 13'], ['party_summary', 'Party-wise VAT Summary'],
+    ['threshold', 'Above Threshold (monthly upload)'],
     ['vat_return', 'VAT Return'], ['vat_ledger', 'VAT Ledger'], ['tds', 'TDS'], ['periods', 'VAT Months Setup']
 ];
 // preset books for the register (JV = Journal Voucher entered as a taxable / non-taxable sale or purchase)
@@ -37,14 +39,14 @@ const COLS = {
     taxable: ['Taxable Amount', 'करयोग्य रकम'], exempt: ['Exempt Amount', 'कर छुट रकम'], vat: ['VAT', 'मू.अ.क.'], total: ['Total', 'जम्मा'],
     import_taxable: ['Import (Taxable)', 'पैठारी (करयोग्य)'], amount: ['Amount', 'रकम'], basis_amount: ['Amount (Basis)', 'कारोबार रकम'], side: ['Side', 'पक्ष'],
     vat_out: ['VAT Out (Sales)', 'बिक्री मू.अ.क.'], vat_in: ['VAT In (Purchase)', 'खरिद मू.अ.क.'], running_payable: ['Running Payable', 'तिर्नुपर्ने (क्रमिक)'],
-    vat_accounts: ['VAT Account', 'मू.अ.क. खाता'], base_amount: ['Base Amount', 'आधार रकम'], tds_percent: ['TDS %', 'अग्रिम कर %'], tds_amount: ['TDS Amount', 'अग्रिम कर रकम']
+    vat_accounts: ['VAT Account', 'मू.अ.क. खाता'], sub_ledger_name: ['Sub-Ledger', 'उप-खाता'], base_amount: ['Base Amount', 'आधार रकम'], tds_percent: ['TDS %', 'अग्रिम कर %'], tds_amount: ['TDS Amount', 'अग्रिम कर रकम']
 };
 const NUMERIC = new Set(['count', 'bill_count', 'qty', 'rate', 'discount', 'taxable', 'exempt', 'vat', 'total', 'import_taxable', 'amount', 'basis_amount', 'vat_out', 'vat_in', 'running_payable', 'base_amount', 'tds_percent', 'tds_amount']);
 const LABEL_NP = { Sales: 'बिक्री', 'Sales Return': 'बिक्री फिर्ता', 'Credit Note': 'क्रेडिट नोट', Purchase: 'खरिद', 'Purchase Return': 'खरिद फिर्ता', 'Debit Note': 'डेबिट नोट', sales: 'बिक्री', purchase: 'खरिद' };
 
 const defaultConfig = () => ({
     doc_types: ['sales', 'jv_sales'], view: 'bill', include_items: false, date_from: '', date_to: '', party_ledger_id: '',
-    min_amount: '', max_amount: '', pan: '', vat: '', invoice_type: '', product_name: '',
+    min_amount: '', max_amount: '', pan: '', vat: '', invoice_type: '', product_name: '', sort_on: 'date', product_company_id: '', show_sub_ledger: false,
     threshold: 100000, basis: 'excl_vat', side: '', carry_forward_credit: '', opening: '', include_exempt: false, vat_ledger_id: ''
 });
 
@@ -58,6 +60,8 @@ export default function VatReports() {
     const [loading, setLoading] = useState(false);
     const [alert, setAlert] = useState(null);
     const [lang, setLang] = useState('en');
+    const [companies, setCompanies] = useState([]);
+    useEffect(() => { authFetch('/api/product-companies').then(r => setCompanies(r.data || [])).catch(() => setCompanies([])); }, [authFetch]);
     const [periodFy, setPeriodFy] = useState('');
     const [periodStarts, setPeriodStarts] = useState(Array(12).fill(''));
 
@@ -96,7 +100,7 @@ export default function VatReports() {
             const put = (k, v) => { if (v !== '' && v !== null && v !== undefined && v !== false) p.set(k, v); };
             ['date_from', 'date_to', 'party_ledger_id', 'min_amount', 'max_amount', 'pan', 'vat', 'invoice_type'].forEach(k => put(k, cfg[k]));
             let url;
-            if (tab === 'register') { put('doc_types', cfg.doc_types.join(',')); put('view', cfg.view); put('include_items', cfg.include_items ? 'true' : ''); put('product_name', cfg.product_name); url = '/api/vat-reports/register'; }
+            if (tab === 'register') { put('sort_on', cfg.sort_on); put('product_company_id', cfg.product_company_id); put('show_sub_ledger', cfg.show_sub_ledger ? 'true' : ''); put('doc_types', cfg.doc_types.join(',')); put('view', cfg.view); put('include_items', cfg.include_items ? 'true' : ''); put('product_name', cfg.product_name); url = '/api/vat-reports/register'; }
             else if (tab === 'monthly') url = '/api/vat-reports/monthly-summary';
             else if (tab === 'threshold') { put('threshold', cfg.threshold); put('basis', cfg.basis); put('side', cfg.side); url = '/api/vat-reports/above-threshold'; }
             else if (tab === 'vat_return') { put('carry_forward_credit', cfg.carry_forward_credit); url = '/api/vat-reports/vat-return'; }
@@ -128,7 +132,7 @@ export default function VatReports() {
     const columns = useMemo(() => {
         if (!data) return [];
         if (tab === 'register') {
-            if (data.view === 'bill') return ['doc_date', 'bs_date', 'doc_label', 'doc_no', 'party_bill_no', 'party_name', 'party_pan', 'taxable', 'exempt', 'vat', 'total', ...(config.doc_types.includes('purchase') ? ['import_taxable'] : [])];
+            if (data.view === 'bill') return ['doc_date', 'bs_date', 'doc_label', 'doc_no', 'party_bill_no', 'party_name', ...(config.show_sub_ledger ? ['sub_ledger_name'] : []), 'party_pan', 'taxable', 'exempt', 'vat', 'total', ...(config.doc_types.includes('purchase') ? ['import_taxable'] : [])];
             if (data.view === 'item') return ['doc_date', 'bs_date', 'doc_label', 'doc_no', 'party_name', 'party_pan', 'product_name', 'qty', 'uom', 'rate', 'discount', 'taxable', 'exempt', 'vat', 'amount'];
             if (data.view === 'party') return ['doc_label', 'label', 'party_pan', 'count', 'taxable', 'exempt', 'vat', 'total'];
             if (data.view === 'month') return ['label', 'doc_label', 'count', 'taxable', 'exempt', 'vat', 'total'];
@@ -229,6 +233,8 @@ export default function VatReports() {
                         </div>
                         {!meta.bs_calendar?.accurate && <p className="text-xs text-amber-700 mt-2">Nepali calendar package is not active on the server ({meta.bs_calendar?.reason || 'unknown'}), so dates must be typed in.</p>}
                     </div>
+                ) : ['annex13', 'sp_monthly', 'party_summary'].includes(tab) ? (
+                    <VatAdvancedReports key={tab} tab={tab} quickPeriods={quickPeriods} lang={lang} />
                 ) : (
                     <>
                         <SavedViewsBar reportKey={`vat:${tab}`} getConfig={() => config} onApply={cfg => { const merged = { ...defaultConfig(), ...cfg }; setConfig(merged); run(merged); }} onReset={() => { setConfig(defaultConfig()); setData(null); }} />
@@ -263,6 +269,11 @@ export default function VatReports() {
                                     <div className="erp-field"><label className="erp-label">View</label>
                                         <select className="erp-select" value={config.view} onChange={e => set('view', e.target.value)}>{VIEWS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}</select></div>
                                     {config.view === 'bill' && <label className="flex items-center gap-2 text-sm mt-6"><input type="checkbox" checked={config.include_items} onChange={e => set('include_items', e.target.checked)} /> Show items under each bill</label>}
+                                    <div className="erp-field"><label className="erp-label">Sort On</label>
+                                        <select className="erp-select" value={config.sort_on} onChange={e => set('sort_on', e.target.value)}><option value="date">Date</option><option value="doc_no">Bill No</option><option value="party">Party Name</option><option value="amount">Amount (high first)</option></select></div>
+                                    <div className="erp-field"><label className="erp-label">Company</label>
+                                        <select className="erp-select" value={config.product_company_id} onChange={e => set('product_company_id', e.target.value)}><option value="">All companies</option>{companies.map(c => <option key={c.id} value={c.id}>{c.company_name || c.name}</option>)}</select></div>
+                                    <label className="flex items-center gap-2 text-sm mt-6"><input type="checkbox" checked={!!config.show_sub_ledger} onChange={e => set('show_sub_ledger', e.target.checked)} /> Show Sub-Ledger</label>
                                     {config.view === 'item' && <div className="erp-field"><label className="erp-label">Item contains</label><input className="erp-input" value={config.product_name} onChange={e => set('product_name', e.target.value)} /></div>}
                                 </>
                             )}

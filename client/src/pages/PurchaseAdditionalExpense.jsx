@@ -36,7 +36,7 @@ import EntryFillBar from '../components/entry/EntryFillBar';
 import { EntryPopup } from '../components/entry/EntryParts';
 import { saveEntryDraft, finishEntryDraft } from '../components/entry/entryDrafts';
 
-const emptyExpenseLine = () => ({ expense_ledger_id: '', description: '', allocation_basis: 'value_wise', entry_sign: 'add', rate_percent: '', amount: '',
+const emptyExpenseLine = () => ({ tds_percent: '', expense_ledger_id: '', description: '', allocation_basis: 'value_wise', entry_sign: 'add', rate_percent: '', amount: '',
     party_ledger_id: '', bill_type: 'no_bill', party_bill_no: '', party_bill_date: '', vat_percent: '', vat_amount: '', vat_in_cost: false });
 const BILL_LABEL = { taxable: 'Taxable (VAT)', non_taxable: 'Tax-free bill', no_bill: 'No bill' };
 const r2 = n => Math.round((Number(n) || 0) * 100) / 100;
@@ -69,7 +69,7 @@ const emptyForm = {
     vendor_ledger_id: '', cash_vendor_name: '', agent_id: '', invoice_type: 'credit', currency: 'NPR', exchange_rate: 1,
     party_bill_no: '', party_bill_date: '',
     remarks_text: '', cost_center_id: '', business_unit_id: '', priority: 'normal', narration: '',
-    expense_lines: [emptyExpenseLine()], customs_entries: []
+    expense_lines: [emptyExpenseLine()], customs_entries: [], auto_tds: true
 };
 // Customs (Bhansar) row of an import: pragyapan patra, values, VAT paid at customs, who paid it
 // (VAT report only - no ledger posting; bill-wise values, or item-wise per product of the Ref. Bill)
@@ -158,28 +158,55 @@ export default function PurchaseAdditionalExpense() {
     const resetForm = () => { setForm(emptyForm); setEditingId(null); setAllocationPreview([]); };
     const addExpenseLine = () => setForm(f => ({ ...f, expense_lines: [...f.expense_lines, emptyExpenseLine()] }));
     // TDS withheld from a party: a "−" line on the TDS payable ledger (+ its TDS sub-ledger), never in costing.
-    // One line per party paid, on that party's TDS-applicable terms (Billing Terms > TDS Applicable);
-    // when no term is marked, on all its "+" lines. Pressing again rebuilds the TDS lines.
-    const tdsBase = (lines, party, vendor) => {
-        const own = lines.filter(l => !l.is_tds && l.entry_sign !== 'deduct' && (l.party_ledger_id || vendor) === party);
-        const marked = own.filter(l => termById(l.billing_term_id)?.tds_applicable);
-        const anyMarked = lines.some(l => termById(l.billing_term_id)?.tds_applicable);
-        return r2((anyMarked ? marked : own).reduce((s2, l) => s2 + (Number(l.amount) || 0), 0));
+    // Each "+" line is taxed at its TDS %: typed on the line, else its term's TDS % (Billing Terms > TDS
+    // Applicable + TDS %; empty = System Control default), else none. One TDS line per party and rate;
+    // with Auto TDS on they follow every change by themselves (no refresh needed).
+    const defaultTds = Number(sysCtl.default_tds_percent) || 1.5;
+    const lineTds = l => {
+        if (l.is_tds || l.entry_sign === 'deduct') return 0;
+        if (l.tds_percent !== '' && l.tds_percent != null) return Number(l.tds_percent) || 0;
+        const t = termById(l.billing_term_id);
+        return t?.tds_applicable ? (t.tds_percent !== '' && t.tds_percent != null ? Number(t.tds_percent) : defaultTds) : 0;
     };
+    const buildTds = f => {
+        const groups = new Map();
+        f.expense_lines.filter(l => !l.is_tds && Number(l.amount) > 0).forEach(l => {
+            const rate = lineTds(l);
+            if (!(rate > 0)) return;
+            const party = l.party_ledger_id || f.vendor_ledger_id || '';
+            const k = `${party}|${rate}`;
+            const g = groups.get(k) || { party, rate, base: 0, sub: l.party_ledger_id ? l.party_sub_ledger_id || '' : '' };
+            g.base = r2(g.base + Number(l.amount));
+            groups.set(k, g);
+        });
+        const old = f.expense_lines.filter(l => l.is_tds);
+        return [...groups.values()].map(g => {
+            const prev = old.find(o => (o.party_ledger_id || f.vendor_ledger_id || '') === g.party && Number(o.rate_percent) === g.rate);
+            return { ...emptyExpenseLine(), expense_ledger_id: prev?.expense_ledger_id || sysCtl.tds_ledger_id || '', expense_sub_ledger_id: prev ? prev.expense_sub_ledger_id || '' : sysCtl.tds_sub_ledger_id || '',
+                description: `TDS ${g.rate}%`, entry_sign: 'deduct', is_tds: true, allocation_basis: 'none', bill_type: 'no_bill',
+                party_ledger_id: g.party === f.vendor_ledger_id ? '' : g.party, party_sub_ledger_id: g.sub, tds_base: g.base, rate_percent: g.rate, amount: r2(g.base * g.rate / 100) };
+        });
+    };
+    const tdsKey = lines => JSON.stringify(lines.filter(l => l.is_tds).map(l => [l.party_ledger_id || '', Number(l.rate_percent), Number(l.tds_base), Number(l.amount), l.expense_ledger_id]));
+    const withTds = f => {
+        const tds = buildTds(f);
+        if (tdsKey(tds) === tdsKey(f.expense_lines)) return f;
+        return { ...f, expense_lines: [...f.expense_lines.filter(l => !l.is_tds), ...tds] };
+    };
+    // Auto TDS: rebuilt whenever an amount, party, term or TDS % changes
+    const tdsInputs = JSON.stringify(form.expense_lines.filter(l => !l.is_tds).map(l => [l.amount, l.party_ledger_id, l.party_sub_ledger_id, l.billing_term_id, l.tds_percent, l.entry_sign]));
+    useEffect(() => {
+        if (!showForm || form.auto_tds === false) return;
+        setForm(f => (f.auto_tds === false ? f : withTds(f)));
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [showForm, form.auto_tds, tdsInputs, form.vendor_ledger_id, terms, sysCtl]);
     const addTdsLine = () => setForm(f => {
-        const pct = Number(sysCtl.default_tds_percent) || 1.5;
-        const kept = f.expense_lines.filter(l => !l.is_tds);
-        const parties = [...new Set(kept.filter(l => l.entry_sign !== 'deduct' && Number(l.amount) > 0).map(l => l.party_ledger_id || f.vendor_ledger_id).filter(Boolean))];
-        const tds = parties.map(party => {
-            const base = tdsBase(kept, party, f.vendor_ledger_id);
-            return base > 0 ? { ...emptyExpenseLine(), expense_ledger_id: sysCtl.tds_ledger_id || '', expense_sub_ledger_id: sysCtl.tds_sub_ledger_id || '', description: 'TDS', entry_sign: 'deduct', is_tds: true,
-                allocation_basis: 'none', bill_type: 'no_bill', party_ledger_id: party === f.vendor_ledger_id ? '' : party, tds_base: base, rate_percent: pct, amount: r2(base * pct / 100) } : null;
-        }).filter(Boolean);
-        if (!tds.length) { showAlert('No amount for TDS - enter the terms first (TDS goes on terms marked "TDS Applicable")', 'danger'); return f; }
-        return { ...f, expense_lines: [...kept.filter(l => l.billing_term_id || l.expense_ledger_id || Number(l.amount)), ...tds] };
+        const n = withTds(f);
+        if (!n.expense_lines.some(l => l.is_tds)) showAlert('No TDS - no line has a TDS % (Billing Terms: TDS Applicable, or type TDS % on the line)', 'danger');
+        return n;
     });
     const removeExpenseLine = (idx) => setForm(f => ({ ...f, expense_lines: f.expense_lines.length > 1 ? f.expense_lines.filter((_, i) => i !== idx) : f.expense_lines }));
-    const updateExpenseLine = (idx, patch) => setForm(f => ({ ...f, expense_lines: f.expense_lines.map((l, i) => {
+    const updateExpenseLine = (idx, patch) => setForm(f => ({ ...f, auto_tds: f.expense_lines[idx]?.is_tds && ('amount' in patch || 'party_ledger_id' in patch) ? false : f.auto_tds, expense_lines: f.expense_lines.map((l, i) => {
         if (i !== idx) return l;
         return normLine({ ...l, ...patch }, patch);
     }) }));
@@ -191,10 +218,11 @@ export default function PurchaseAdditionalExpense() {
     const autoCalcFromRate = (idx, ratePercent) => {
         setForm(f => {
             const me = f.expense_lines[idx];
-            const baseAmount = me?.is_tds ? tdsBase(f.expense_lines, me.party_ledger_id || f.vendor_ledger_id, f.vendor_ledger_id)
+            const baseAmount = me?.is_tds ? Number(me.tds_base) || 0
                 : f.expense_lines.reduce((s, l, i) => i === idx ? s : s + (l.entry_sign !== 'deduct' ? (Number(l.amount) || 0) : 0), 0);
             const computed = ratePercent === '' ? '' : Math.round(baseAmount * (Number(ratePercent) / 100) * 100) / 100;
-            return { ...f, expense_lines: f.expense_lines.map((l, i) => i === idx ? normLine({ ...l, rate_percent: ratePercent, amount: computed }, { amount: computed }) : l) };
+            // typing on a TDS line takes it over by hand: Auto TDS off
+            return { ...f, auto_tds: me?.is_tds ? false : f.auto_tds, expense_lines: f.expense_lines.map((l, i) => i === idx ? normLine({ ...l, rate_percent: ratePercent, amount: computed }, { amount: computed }) : l) };
         });
     };
 
@@ -320,7 +348,7 @@ export default function PurchaseAdditionalExpense() {
         try {
             const badPP = customsRows.findIndex(r => !String(r.pragyapan_no || '').trim() || !r.customs_office_id);
             if (!saveAsDraft && badPP >= 0) return showAlert(`Customs row ${badPP + 1}: enter the Pragyapan Patra No and choose the Customs Office`, 'danger');
-            const payload = { ...form, customs_entries: customsRows, expense_lines: validLines, ...(saveAsDraft ? { status: 'draft', save_as_draft: true } : {}) };
+            const payload = { ...form, customs_entries: customsRows, expense_lines: validLines.map(l => (l.is_tds ? l : { ...l, tds_percent: lineTds(l) || null })), ...(saveAsDraft ? { status: 'draft', save_as_draft: true } : {}) };
             if (editingId) {
                 await authFetch(`/api/purchase-additional-expenses/${editingId}`, { method: 'PUT', body: JSON.stringify(payload) });
                 if (!saveAsDraft) await finalizeEntry(authFetch, 'purchase-additional-expenses', editingId, 'posted');
@@ -347,6 +375,7 @@ export default function PurchaseAdditionalExpense() {
                 ...emptyForm, ...res.data,
                 doc_date: res.data.doc_date?.slice(0, 10) || emptyForm.doc_date,
                 party_bill_date: res.data.party_bill_date?.slice(0, 10) || '',
+                auto_tds: res.data.auto_tds !== false && !((res.data.expense_lines || []).some(l => l.is_tds) && !(res.data.expense_lines || []).some(l => !l.is_tds && Number(l.tds_percent) > 0)),
                 customs_entries: (res.data.customs_entries || []).map(r => ({ ...emptyCustoms(), ...Object.fromEntries(Object.entries(r).filter(([k, v]) => v !== null && !['id', 'tenant_id', 'expense_id', 'created_at'].includes(k))), pragyapan_date: r.pragyapan_date ? String(r.pragyapan_date).slice(0, 10) : '' })),
                 expense_lines: (res.data.expense_lines || []).length > 0 ? res.data.expense_lines.map(l => ({ ...emptyExpenseLine(), ...Object.fromEntries(Object.entries(l).filter(([, v]) => v !== null)) })) : [emptyExpenseLine()]
             });
@@ -583,7 +612,7 @@ export default function PurchaseAdditionalExpense() {
                                     footer={<span className="text-sm">Total <b>{productTermTotal(did).toFixed(2)}</b> - goes to the cost of this product only (terms kept out of costing excepted)</span>}>
                                     <div className="overflow-x-auto">
                                         <table className="erp-grid-table min-w-[860px]">
-                                            <thead><tr><th>Term</th><th>Ledger</th><th>Sub-Ledger</th><th className="text-right">Rate %</th><th className="text-right">Amount</th><th>Paid to</th><th>Supplier Bill No</th><th className="text-right">VAT %</th><th className="text-right">VAT</th><th>Bill</th></tr></thead>
+                                            <thead><tr><th>Term</th><th>Ledger</th><th>Sub-Ledger</th><th className="text-right">Rate %</th><th className="text-right">Amount</th><th>Paid to</th><th className="text-right">TDS %</th><th>Supplier Bill No</th><th className="text-right">VAT %</th><th className="text-right">VAT</th><th>Bill</th></tr></thead>
                                             <tbody>
                                                 {productTerms.map(t => {
                                                     const idx = productTermIdx(did, t.id);
@@ -604,6 +633,7 @@ export default function PurchaseAdditionalExpense() {
                                                                     <select className="erp-select mt-0.5" value={l.party_ledger_id ? l.party_sub_ledger_id || '' : ''} onChange={e => set({ party_ledger_id: l.party_ledger_id || form.vendor_ledger_id, party_sub_ledger_id: e.target.value })}>
                                                                         <option value="">Credit sub-ledger: none</option>{subLedgersOf(l.party_ledger_id || form.vendor_ledger_id).map(x => <option key={x.id} value={x.id}>{x.sub_ledger_name}</option>)}</select>
                                                                 )}</td>
+                                                            <td><input type="number" step="0.001" className="erp-input w-16 text-right" disabled={l.entry_sign === 'deduct'} value={l.tds_percent !== '' && l.tds_percent != null ? l.tds_percent : lineTds(l) || ''} onChange={e => set({ tds_percent: e.target.value })} placeholder="—" /></td>
                                                             <td><input className="erp-input w-24" disabled={l.entry_sign === 'deduct'} value={l.party_bill_no || ''} onChange={e => set({ party_bill_no: e.target.value })} /></td>
                                                             <td><input type="number" step="0.01" className="erp-input w-16 text-right" disabled={l.entry_sign === 'deduct'} value={l.vat_percent ?? ''} onChange={e => set({ vat_percent: e.target.value })} placeholder="13" /></td>
                                                             <td><input type="number" step="0.01" className="erp-input w-24 text-right" disabled={l.entry_sign === 'deduct'} value={l.vat_amount ?? ''} onChange={e => set({ vat_amount: e.target.value })} /></td>
@@ -634,6 +664,7 @@ export default function PurchaseAdditionalExpense() {
                                         <th className="min-w-[130px]">Credit Sub-Ledger</th>
                                         <th className="w-24" title="Supplier's bill no - lines of one party with the same bill no make one bill">Supplier Bill No</th>
                                         <th className="w-32">Bill Date</th>
+                                        <th className="min-w-[56px] text-right" title="TDS % on this line - from its Billing Term (TDS Applicable / TDS %), changeable; 0 = no TDS">TDS %</th>
                                         <th className="min-w-[52px] text-right">VAT %</th>
                                         <th className="min-w-[86px] text-right">VAT</th>
                                         <th className="w-24 text-right">Total</th>
@@ -717,6 +748,8 @@ export default function PurchaseAdditionalExpense() {
                                             </td>
                                             <td><input className="erp-input" disabled={minus} value={minus ? '' : l.party_bill_no || ''} onChange={e => updateExpenseLine(idx, { party_bill_no: e.target.value })} placeholder={minus ? '' : 'no bill'} /></td>
                                             <td><input type="date" className="erp-input" disabled={minus || !String(l.party_bill_no || '').trim()} value={l.party_bill_date || ''} onChange={e => updateExpenseLine(idx, { party_bill_date: e.target.value })} /></td>
+                                            <td>{l.is_tds ? <span className="text-xs text-amber-800 whitespace-nowrap px-1" title="TDS base">on {f2(l.tds_base)}</span>
+                                                : <input type="number" step="0.001" className={`erp-input text-right ${lineTds(l) > 0 ? 'text-amber-800 font-semibold' : ''}`} disabled={minus} value={minus ? '' : (l.tds_percent !== '' && l.tds_percent != null ? l.tds_percent : lineTds(l) || '')} onChange={e => updateExpenseLine(idx, { tds_percent: e.target.value })} placeholder="—" />}</td>
                                             <td><input type="number" step="0.01" className="erp-input text-right" disabled={minus} value={minus ? '' : l.vat_percent ?? ''} onChange={e => updateExpenseLine(idx, { vat_percent: e.target.value })} placeholder={minus ? '' : '13'} /></td>
                                             <td>
                                                 <input type="number" step="0.01" className="erp-input text-right" disabled={minus} value={minus ? '' : l.vat_amount ?? ''} onChange={e => updateExpenseLine(idx, { vat_amount: e.target.value })} />
@@ -733,7 +766,7 @@ export default function PurchaseAdditionalExpense() {
                                     <tr className="font-semibold bg-gray-100">
                                         <td colSpan={2 + 2 + (efc.isVisible('entry_sign', 'detail') ? 1 : 0) + (efc.isVisible('rate_percent', 'detail') ? 1 : 0)} className="text-right">Bill-wise total</td>
                                         {efc.isVisible('amount', 'detail') && <td className="text-right">{f2(form.expense_lines.filter(l => !l.target_detail_id).reduce((s2, l) => s2 + (l.is_tds || l.entry_sign === 'deduct' ? -1 : 1) * (Number(l.amount) || 0), 0))}</td>}
-                                        <td colSpan={5} />
+                                        <td colSpan={6} />
                                         <td className="text-right">{f2(form.expense_lines.filter(l => !l.target_detail_id && (l.bill_type || billTypeOf(l)) === 'taxable').reduce((s2, l) => s2 + (Number(l.vat_amount) || 0), 0))}</td>
                                         <td className="text-right">{f2(form.expense_lines.filter(l => !l.target_detail_id).reduce((s2, l) => s2 + (l.is_tds || l.entry_sign === 'deduct' ? -1 : 1) * (Number(l.amount) || 0) + ((l.bill_type || billTypeOf(l)) === 'taxable' ? Number(l.vat_amount) || 0 : 0), 0))}</td>
                                         <td colSpan={2} />
@@ -810,7 +843,8 @@ export default function PurchaseAdditionalExpense() {
                         <div className="flex flex-wrap justify-between items-center gap-2 mb-2">
                             <span className="flex gap-3">
                                 <button type="button" onClick={addExpenseLine} className="nav-btn small">➕ Add Line</button>
-                                <button type="button" onClick={addTdsLine} className="nav-btn small" title="One TDS line per party paid, on its TDS-applicable terms: Cr TDS payable (sub-ledger), less paid to that party">➕ Add / Refresh TDS</button>
+                                <label className="flex items-center gap-1 text-xs" title="On: the TDS lines follow every change (amount, party, term, TDS %) by themselves. Typing on a TDS line turns it off."><input type="checkbox" checked={form.auto_tds !== false} onChange={e => setForm(f => ({ ...f, auto_tds: e.target.checked }))} /> Auto TDS</label>
+                                {form.auto_tds === false && <button type="button" onClick={addTdsLine} className="nav-btn small" title="Rebuild the TDS lines once: one per party and TDS %">↻ Recalculate TDS</button>}
                             </span>
                             <span className="text-xs text-gray-500">VAT typed on a line = taxable bill · Bill No without VAT = tax-free bill · neither = no bill. Lines of one party with the same Bill No are one bill, credited to that party.</span>
                         </div>

@@ -190,6 +190,8 @@ async function syncExpenseLines(tenantClient, tenantId, expenseId, expenseLines)
             // a TDS line is a deduction from the party, credited to the TDS payable ledger, never costed
             allocation_basis: l.is_tds ? 'none' : l.allocation_basis || 'value_wise', entry_sign: l.is_tds ? 'deduct' : l.entry_sign || 'add', is_tds: !!l.is_tds,
             rate_percent: l.rate_percent || null, amount: Number(l.amount) || 0,
+            // TDS % this line is taxed at (from its term) / the base of a TDS line
+            tds_percent: !l.is_tds && Number(l.tds_percent) > 0 ? Number(l.tds_percent) : null, tds_base: l.is_tds && Number(l.tds_base) > 0 ? Math.round(Number(l.tds_base) * 100) / 100 : null,
             party_ledger_id: l.party_ledger_id || null, party_sub_ledger_id: l.party_sub_ledger_id || null,
             party_name_snapshot: party?.account_name || l.party_name_snapshot || null, party_pan: l.party_pan || party?.vat_pan_number || party?.pan_number || null,
             bill_type: bt, party_bill_no: bt === 'no_bill' ? (l.party_bill_no || null) : String(l.party_bill_no).trim(), party_bill_date: l.party_bill_date || null,
@@ -415,6 +417,7 @@ router.post('/purchase-additional-expenses', requireAuth, loadUserPermissions, r
                 vendor_sub_ledger_id: b.vendor_sub_ledger_id || null,
                 product_company_id: b.product_company_id || null,
                 account_posting: b.account_posting !== false, // No: no ledger entry (landed cost still moves)
+                auto_tds: b.auto_tds !== false,
                 tenant_id: tenantId, branch_id: currentUser?.default_branch_id || null, branch_name_snapshot: branchNameSnapshot,
                 doc_no: docNo, doc_date: b.doc_date, fiscal_year_id: currentFy?.id || null,
                 source_order_id: b.source_order_id || null, source_grn_id: b.source_grn_id || null, source_bill_id: b.source_bill_id || null,

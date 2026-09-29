@@ -33,7 +33,7 @@ const emptyForm = {
     rate_percentage: 0, fixed_amount: 0, maximum_amount: 0, formula_expression: '',
     sign: '+', rounding_method: 'none', rounding_precision: 1,
     billing_ledger_id: '', return_ledger_id: '', expiry_return_ledger_id: '', sub_ledger_id: '', return_sub_ledger_id: '', expiry_return_sub_ledger_id: '',
-    manual_override: true, suppress_if_zero: false, include_in_profitability: false, include_in_costing: true, tds_applicable: false,
+    manual_override: true, suppress_if_zero: false, include_in_profitability: false, include_in_costing: true, tds_applicable: false, tds_percent: '',
     product_wise: false, show_product_term_summary: false, allow_summary: false, is_enabled: true,
     entry_input_mode: 'all', show_in_term_summary: true,
     applicable_sales_entry: true, applicable_purchase_entry: false, applicable_additional_expense: false, applicable_sales_additional: false, applicable_production_entry: false,
@@ -491,6 +491,8 @@ export default function BillingTermManagement() {
                             <label className="flex items-center gap-2 text-sm" title="On: the amount goes into the cost of the goods (stock value / landed cost). Off: it stays an expense of the period."><input type="checkbox" checked={form.include_in_costing !== false} onChange={e => setForm({ ...form, include_in_costing: e.target.checked })} /> Include In Costing</label>
                             <label className="flex items-center gap-2 text-sm" title="On: the amount is counted in the profitability reports (product / bill / party profit)."><input type="checkbox" checked={form.include_in_profitability} onChange={e => setForm({ ...form, include_in_profitability: e.target.checked })} /> Include In Profitability</label>
                             <label className="flex items-center gap-2 text-sm" title="On: TDS is worked out on this term's amount (e.g. freight / transport) - Add TDS on a Purchase Additional bill uses it."><input type="checkbox" checked={!!form.tds_applicable} onChange={e => setForm({ ...form, tds_applicable: e.target.checked })} /> TDS Applicable</label>
+                            {form.tds_applicable && <label className="flex items-center gap-2 text-sm" title="TDS rate of this term - empty = the Default TDS % of System Control. Purchase Additional works the TDS out by itself at this rate.">TDS %
+                                <input type="number" step="0.001" className="erp-input w-20" value={form.tds_percent ?? ''} onChange={e => setForm({ ...form, tds_percent: e.target.value })} placeholder="default" /></label>}
                         </div>
                         <p className="text-xs text-gray-400 mb-4">Product Wise (below) = entered per product (a popup per product, the whole amount on that product); otherwise bill-wise = one amount per bill, divided over the bill's products by {form.basis === 'quantity' ? 'quantity' : 'value'} (the Basis above).</p>
                         <p className="text-xs font-semibold text-gray-500 uppercase mb-2">Options</p>

@@ -145,6 +145,7 @@ router.post('/billing-terms', requireAuth, loadUserPermissions, requirePermissio
                 include_in_profitability: !!b.include_in_profitability,
                 include_in_costing: b.include_in_costing !== undefined ? !!b.include_in_costing : true,
                 tds_applicable: !!b.tds_applicable,
+                tds_percent: b.tds_applicable && b.tds_percent !== '' && b.tds_percent != null ? Number(b.tds_percent) : null,
                 product_wise: !!b.product_wise,
                 show_product_term_summary: !!b.show_product_term_summary,
                 allow_summary: !!b.allow_summary,
@@ -202,6 +203,8 @@ router.put('/billing-terms/:id', requireAuth, loadUserPermissions, requirePermis
             body.base_term_ids = [...new Set((Array.isArray(body.base_term_ids) ? body.base_term_ids : []).filter(x => U.test(x || '') && x !== req.params.id))];
         }
         if ('entry_input_mode' in body && !MODE_KEYS.includes(body.entry_input_mode)) body.entry_input_mode = 'all';
+        // TDS % of the term (empty = the System Control default)
+        if ('tds_percent' in body) body.tds_percent = body.tds_percent === '' || body.tds_percent == null ? null : Number(body.tds_percent);
         // term type is Normal, VAT or Excise (no Service Tax / TSC / Cash Discount on sales & purchase)
         if ('tax_type' in body && body.tax_type !== existing.tax_type && !['none', 'vat', 'excise'].includes(body.tax_type)) body.tax_type = 'none';
         const update = {

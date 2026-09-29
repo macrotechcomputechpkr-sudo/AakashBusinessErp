@@ -34,7 +34,7 @@ PAGES = [
       'VAT, excise, discounts, freight and other charges used on sales / purchase documents - formula, sign (+ / -), basis, ledger, return ledger, sub-ledger, which entries they apply to.',
       ['New Billing Term: name, type (VAT / excise / discount / other), formula or rate, sign, basis (value / quantity), ledgers and sub-ledgers.',
        'Term Used For: Transaction term (Sales / Purchase / Production Entry - on the bill itself) or Additional term (Purchase / Sales Additional - a later bill such as freight, customs, insurance).',
-       'Effect: Include In Costing (the amount goes into the cost of the goods / landed cost; off = an expense only), Include In Profitability (counted in the profitability reports) and TDS Applicable (the TDS of a Purchase Additional entry is worked out on these terms only).',
+       'Effect: Include In Costing (the amount goes into the cost of the goods / landed cost; off = an expense only), Include In Profitability (counted in the profitability reports) and TDS Applicable + TDS % (the TDS of a Purchase Additional entry is worked out by itself on these terms at this rate; empty % = System Control default).',
        'Product Wise: entered per product (popup per product); otherwise bill-wise, divided over the products by the basis.'],
       other='Term Mapping in System Control decides which term is VAT, discount 1-5, bill discount. VAT terms decide which VAT ledger gets the VAT.'),
     M('/customs-offices', 'Customs Offices (Bhansar)', 'Masters', 'Customs offices picked on import Purchase Bills and on the Customs (Bhansar) tab of Purchase Additional. Nepal\'s customs offices are created with a code the first time the list opens.',
