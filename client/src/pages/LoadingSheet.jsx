@@ -38,13 +38,16 @@ const AMOUNT_VIEWS = [
 ];
 const BILL_FIELDS = [
     { key: 'doc_no', label: 'Bill No' }, { key: 'doc_date', label: 'Date' }, { key: 'party_name', label: 'Customer' }, { key: 'agent_name', label: 'Agent' },
+    { key: 'party_agent_name', label: 'Master Agent' }, { key: 'route_seq', label: 'Route Seq.' },
     { key: 'party_address', label: 'Address' }, { key: 'party_phone', label: 'Phone' }, { key: 'route_name', label: 'Route' }, { key: 'area_name', label: 'Area' },
     { key: 'vehicle_no', label: 'Vehicle' }, { key: 'items', label: 'Items' }, { key: 'basic', label: 'Basic Amount', amt: true },
     { key: 'discount', label: 'Discount', amt: true }, { key: 'vat', label: 'VAT', amt: true }, { key: 'other', label: 'Bill terms (each)', amt: true },
     { key: 'term', label: 'Term Amount', amt: true }, { key: 'net_amount', label: 'Net Amount', amt: true }, { key: 'sign', label: 'Received / Sign' }
 ];
 const FILTERS = [
-    ['party_ids', 'Customer', m => m.customers], ['agent_ids', 'Salesman / Agent', m => m.agents], ['area_ids', 'Area (+ sub)', m => m.areas],
+    ['party_ids', 'Customer', m => m.customers], ['agent_ids', 'Salesman / Agent (bill, else party)', m => m.agents],
+    ['doc_agent_ids', 'Doc. Agent (chosen on the bill)', m => m.agents], ['party_agent_ids', 'Master Agent (of the customer)', m => m.agents],
+    ['area_ids', 'Area (+ sub)', m => m.areas],
     ['route_ids', 'Route', m => m.routes], ['product_ids', 'Item', m => m.products], ['product_group_ids', 'Product Group (+ sub)', m => m.product_groups],
     ['product_company_ids', 'Product Company', m => m.product_companies], ['branch_ids', 'Branch', m => m.branches], ['warehouse_ids', 'Warehouse', m => m.warehouses]
 ];
@@ -52,7 +55,7 @@ const defaultConfig = () => ({
     date_from: iso(new Date()), date_to: iso(new Date()), sources: ['bill'], include_returns: false, include_draft: false,
     doc_ids: [], vehicle_no: '', search: '', ...Object.fromEntries(FILTERS.map(([k]) => [k, []])),
     views: ['uom', 'free'], amounts: ['basic', 'term', 'net_amount'], breakdown_unit_ids: [], display_unit_id: '', free: 'separate',
-    group_by: 'none', sort_by: 'name', sections: ['items', 'bills'],
+    group_by: 'none', sort_by: 'name', bill_order: 'bill_no', sections: ['items', 'bills'],
     bill_fields: ['doc_no', 'doc_date', 'party_name', 'agent_name', 'party_address', 'party_phone', 'route_name', 'area_name', 'basic', 'term', 'net_amount', 'sign']
 });
 
@@ -71,8 +74,8 @@ export default function LoadingSheet() {
 
     const params = useCallback((cfg, withDocs = true) => {
         const p = new URLSearchParams({ date_from: cfg.date_from, date_to: cfg.date_to, sources: cfg.sources.join(','),
-            include_returns: String(cfg.include_returns), include_draft: String(cfg.include_draft), free: cfg.free, group_by: cfg.group_by, sort_by: cfg.sort_by });
-        FILTERS.forEach(([k]) => { if (cfg[k].length) p.set(k, cfg[k].join(',')); });
+            include_returns: String(cfg.include_returns), include_draft: String(cfg.include_draft), free: cfg.free, group_by: cfg.group_by, sort_by: cfg.sort_by, bill_order: cfg.bill_order || 'bill_no' });
+        FILTERS.forEach(([k]) => { if ((cfg[k] || []).length) p.set(k, cfg[k].join(',')); });
         if (withDocs && cfg.doc_ids.length) p.set('doc_ids', cfg.doc_ids.join(','));
         if (cfg.vehicle_no) p.set('vehicle_no', cfg.vehicle_no);
         if (cfg.search) p.set('search', cfg.search);
@@ -175,7 +178,7 @@ export default function LoadingSheet() {
                     {meta && (
                         <div className="grid grid-cols-2 md:grid-cols-6 gap-3 mb-2">
                             <MultiPick label={`Bill / GDN (${docs.length})`} items={docs} value={config.doc_ids} onChange={v => set('doc_ids', v)} />
-                            {FILTERS.map(([k, label, items]) => <MultiPick key={k} label={label} items={items(meta) || []} value={config[k]} onChange={v => set(k, v)} />)}
+                            {FILTERS.map(([k, label, items]) => <MultiPick key={k} label={label} items={items(meta) || []} value={config[k] || []} onChange={v => set(k, v)} />)}
                             <div className="erp-field"><label className="erp-label">Vehicle No</label><input className="erp-input" value={config.vehicle_no} placeholder="GDN vehicle" onChange={e => set('vehicle_no', e.target.value)} /></div>
                             <div className="erp-field"><label className="erp-label">Search item / code</label>
                                 <input className="erp-input" value={config.search} onChange={e => set('search', e.target.value)} onKeyDown={e => { if (e.key === 'Enter') run(); }} /></div>
@@ -209,6 +212,12 @@ export default function LoadingSheet() {
                             </select></div>
                         <div className="erp-field"><label className="erp-label">Sort items by</label>
                             <select className="erp-select" value={config.sort_by} onChange={e => set('sort_by', e.target.value)}><option value="name">Name</option><option value="code">Code</option></select></div>
+                        <div className="erp-field"><label className="erp-label">Bill summary order</label>
+                            <select className="erp-select" value={config.bill_order || 'bill_no'} onChange={e => set('bill_order', e.target.value)}>
+                                <option value="bill_no">Bill No (date, bill no)</option>
+                                <option value="route_seq">Customer route sequence (route, then its order)</option>
+                                <option value="customer">Customer name</option>
+                            </select></div>
                         <div className="erp-field"><label className="erp-label">Print sections</label>
                             <div className="flex flex-wrap gap-2 text-sm items-center min-h-9">
                                 {[['items', 'Items'], ['bills', 'Bill Summary'], ['detail', 'Bill x Item']].map(([k, l]) => <label key={k} className="flex items-center gap-1"><input type="checkbox" checked={config.sections.includes(k)} onChange={() => toggle('sections', k)} /> {l}</label>)}
@@ -240,6 +249,9 @@ export default function LoadingSheet() {
                             <p className="text-xs text-gray-600">
                                 {data.from === data.to ? data.from : `${data.from} to ${data.to}`} · {data.sources.map(s => (s === 'delivery' ? 'Goods Delivery' : 'Sales Bill')).join(' + ')}{data.with_returns ? ' · returns deducted' : ''}
                                 {config.agent_ids.length > 0 && ` · Agent: ${nameOf(meta?.agents, config.agent_ids)}`}
+                                {(config.doc_agent_ids || []).length > 0 && ` · Doc. Agent: ${nameOf(meta?.agents, config.doc_agent_ids)}`}
+                                {(config.party_agent_ids || []).length > 0 && ` · Master Agent: ${nameOf(meta?.agents, config.party_agent_ids)}`}
+                                {data.bill_order === 'route_seq' && ' · bills in route sequence'}
                                 {config.area_ids.length > 0 && ` · Area: ${nameOf(meta?.areas, config.area_ids)}`}
                                 {config.route_ids.length > 0 && ` · Route: ${nameOf(meta?.routes, config.route_ids)}`}
                                 {data.vehicles.length > 0 && ` · Vehicle: ${data.vehicles.join(', ')}`}

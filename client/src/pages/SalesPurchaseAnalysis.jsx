@@ -60,7 +60,7 @@ const FILTERS = [
     ['party_ids', side => (side === 'purchase' ? 'Supplier' : 'Customer'), m => m.__parties], ['product_ids', 'Item', m => m.products],
     ['product_group_ids', 'Product Group (+ sub)', m => m.product_groups], ['product_company_ids', 'Product Company', m => m.product_companies],
     ['product_category_ids', 'Product Category', m => m.product_categories], ['area_ids', 'Area (+ sub)', m => m.areas], ['route_ids', 'Route', m => m.routes],
-    ['agent_ids', 'Salesman / Agent', m => m.agents], ['branch_ids', 'Branch', m => m.branches], ['warehouse_ids', 'Warehouse', m => m.warehouses],
+    ['agent_ids', 'Agent (bill, else party)', m => m.agents], ['doc_agent_ids', 'Doc. Agent (on the bill)', m => m.agents], ['party_agent_ids', 'Agent (party master)', m => m.agents], ['branch_ids', 'Branch', m => m.branches], ['warehouse_ids', 'Warehouse', m => m.warehouses],
     ['cost_center_ids', 'Cost Center', m => m.cost_centers], ['business_unit_ids', 'Business Unit', m => m.business_units]
 ];
 const PRESETS = {
@@ -113,7 +113,7 @@ export default function SalesPurchaseAnalysis({ mode = 'analysis' }) {
             if (cfg.udf_field && cfg.udf_text.trim()) p.set('udf_filter', `${cfg.udf_field}:${cfg.udf_text.trim()}`);
             if (isProfit) p.set('cost_method', cfg.cost_method);
             if (cfg.compare) { p.set('compare', cfg.compare); if (cfg.compare === 'custom') { p.set('compare_from', cfg.compare_from); p.set('compare_to', cfg.compare_to); } }
-            FILTERS.forEach(([k]) => { if (cfg[k].length) p.set(k, cfg[k].join(',')); });
+            FILTERS.forEach(([k]) => { if ((cfg[k] || []).length) p.set(k, cfg[k].join(',')); });
             const res = await authFetch(`/api/reports/${isProfit ? 'profitability' : 'trade-analysis'}?${p}`);
             setData(res.data); setCollapsed(new Set());
         } catch (e) { setError(e.message); setData(null); }
@@ -258,7 +258,7 @@ export default function SalesPurchaseAnalysis({ mode = 'analysis' }) {
                 {masters && (
                     <div className="grid grid-cols-2 md:grid-cols-6 gap-3 mb-2">
                         {FILTERS.map(([k, label, items]) => (
-                            <MultiPick key={k} label={typeof label === 'function' ? label(config.side) : label} items={items(masters) || []} value={config[k]} onChange={v => set(k, v)} />
+                            <MultiPick key={k} label={typeof label === 'function' ? label(config.side) : label} items={items(masters) || []} value={config[k] || []} onChange={v => set(k, v)} />
                         ))}
                         <div className="erp-field"><label className="erp-label">Search item / code</label>
                             <input className="erp-input" value={config.search} onChange={e => set('search', e.target.value)} onKeyDown={e => { if (e.key === 'Enter') run(); }} /></div>

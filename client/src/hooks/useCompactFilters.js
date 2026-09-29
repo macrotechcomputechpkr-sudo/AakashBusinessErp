@@ -19,8 +19,8 @@ const KEEP_RE = /date|from|^to$|period|month|year|as\s*on|report|view|rows?\s*(b
 const txt = el => (el?.textContent || '').replace(/\s+/g, ' ').replace(/[*▾]/g, '').trim();
 const KEY = 'sg_dims_open';
 
-function runButton(root) {
-    const btns = Array.from(root.querySelectorAll('button')).filter(b => !b.disabled && !b.closest('table, .sg-mount, [data-no-view], form')
+export function runButton(root) {
+    const btns = Array.from(root.querySelectorAll('button')).filter(b => !b.disabled && !b.closest('table, .sg-mount, [data-no-view], form, .rsp-panel')
         && /(^|\s|🔍|▶)(show|run|generate|load|view report|refresh report)\b/i.test(txt(b)));
     return btns.find(b => b.classList.contains('primary')) || btns[0] || null;
 }
@@ -47,7 +47,7 @@ export default function useCompactFilters(ref, path) {
             let n = 0;
             root.querySelectorAll('.erp-field').forEach(f => {
                 const label = txt(f.querySelector('.erp-label, label'));
-                const fold = !!btn && !entry && !f.closest('table, form, .sg-mount, [data-no-view], .fixed, [role="dialog"]')
+                const fold = !!btn && !entry && !f.closest('table, form, .sg-mount, [data-no-view], [data-no-fold], .fixed, [role="dialog"]')
                     && DIM_RE.test(label) && !KEEP_RE.test(label) && isEmpty(f);
                 if (fold) { n += 1; if (!f.hasAttribute('data-sg-dim')) f.setAttribute('data-sg-dim', '1'); }
                 else if (f.hasAttribute('data-sg-dim')) f.removeAttribute('data-sg-dim');

@@ -835,33 +835,7 @@ export default function ReportGrid({
 
     return (
         <div ref={rootRef} className="w-full text-sm rg-root" data-rg-key={storageKey}>
-            {/* FEATURE: one thin line of drop areas - ☰ Rows (group by) and ⫼ Columns
-                (pivot). Drag a column header in, drag a chip from Rows to Columns
-                and back; Σ Values shows once the pivot is on. */}
-            <div className="flex flex-wrap items-stretch gap-1.5 mb-1" data-no-view>
-                <div className="flex-[2] min-w-[240px]">
-                    <AreaDrop compact area="rows" label="☰ Rows:" hint="drag a column header here to group" items={areas.rows} labelOf={labelOf}
-                        onDrop={(d, b) => dropInto('rows', d, b)} onRemove={k => removeFromArea('rows', k)} renderExtra={orderToggle} />
-                </div>
-                <div className="flex-1 min-w-[200px]">
-                    <AreaDrop compact area="cols" label="⫼ Columns:" hint="drag here - values become columns" items={areas.cols} labelOf={labelOf}
-                        onDrop={(d, b) => dropInto('cols', d, b)} onRemove={k => removeFromArea('cols', k)} />
-                </div>
-                {(pivotMode || panel === 'fields') && (
-                    <div className="flex-1 min-w-[180px]">
-                        <AreaDrop compact area="vals" label="Σ Values:" hint="number field (else Count)" items={areas.vals} labelOf={labelOf}
-                            onDrop={(d, b) => dropInto('vals', d, b)} onRemove={k => removeFromArea('vals', k)} renderExtra={valueAgg} />
-                    </div>
-                )}
-                {activeGroupKeys.length > 0 && (
-                    <div className="flex items-center gap-1 text-[11px]">
-                        <button onClick={() => expandToLevel(0)} className="px-1.5 py-0.5 border rounded bg-white hover:bg-gray-50" title="Collapse all groups">⊟</button>
-                        <button onClick={() => setCollapsedGroups(new Set())} className="px-1.5 py-0.5 border rounded bg-white hover:bg-gray-50" title="Expand all groups">⊞</button>
-                    </div>
-                )}
-            </div>
-
-            {/* toolbar: one line; every panel opens as a pop-up under it */}
+            {/* toolbar first (Columns, Chart, Highlight …); every panel opens as a pop-up under it */}
             <div ref={toolRef} className="relative flex flex-wrap items-center gap-1 mb-1.5 bg-[#f4f2ea] border border-gray-300 rounded px-1.5 py-1" data-no-view data-enter-nav="off">
                 {toolbarExtra}
                 <input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="🔎 Search…" className="w-40 border rounded px-2 py-1 text-xs" />
@@ -1040,6 +1014,31 @@ export default function ReportGrid({
                 )}
             </div>
 
+            {/* FEATURE: one thin line of drop areas - ☰ Rows (group by) and ⫼ Columns
+                (pivot). Drag a column header in, drag a chip from Rows to Columns
+                and back; Σ Values shows once the pivot is on. */}
+            <div className="flex flex-wrap items-stretch gap-1.5 mb-1" data-no-view>
+                <div className="flex-[2] min-w-[240px]">
+                    <AreaDrop compact area="rows" label="☰ Rows:" hint="drag a column header here to group" items={areas.rows} labelOf={labelOf}
+                        onDrop={(d, b) => dropInto('rows', d, b)} onRemove={k => removeFromArea('rows', k)} renderExtra={orderToggle} />
+                </div>
+                <div className="flex-1 min-w-[200px]">
+                    <AreaDrop compact area="cols" label="⫼ Columns:" hint="drag here - values become columns" items={areas.cols} labelOf={labelOf}
+                        onDrop={(d, b) => dropInto('cols', d, b)} onRemove={k => removeFromArea('cols', k)} />
+                </div>
+                {(pivotMode || panel === 'fields') && (
+                    <div className="flex-1 min-w-[180px]">
+                        <AreaDrop compact area="vals" label="Σ Values:" hint="number field (else Count)" items={areas.vals} labelOf={labelOf}
+                            onDrop={(d, b) => dropInto('vals', d, b)} onRemove={k => removeFromArea('vals', k)} renderExtra={valueAgg} />
+                    </div>
+                )}
+                {activeGroupKeys.length > 0 && (
+                    <div className="flex items-center gap-1 text-[11px]">
+                        <button onClick={() => expandToLevel(0)} className="px-1.5 py-0.5 border rounded bg-white hover:bg-gray-50" title="Collapse all groups">⊟</button>
+                        <button onClick={() => setCollapsedGroups(new Set())} className="px-1.5 py-0.5 border rounded bg-white hover:bg-gray-50" title="Expand all groups">⊞</button>
+                    </div>
+                )}
+            </div>
             {chartOn && effectiveChart && (
                 <GridChartPanel columns={allColumns} rows={sorted} config={effectiveChart} onChange={setChartCfg} onDrill={drill} onClose={() => setChartOn(false)} title={title || storageKey} />
             )}

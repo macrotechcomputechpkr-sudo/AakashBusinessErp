@@ -64,9 +64,17 @@ router.get('/outstanding-report/stages', requireAuth, (req, res) => {
 
 router.get('/outstanding-report', requireAuth, loadUserPermissions, requirePermission('reports', 'view'), async (req, res) => {
     try {
-        const { stage, date_from, date_to, as_of, party_ledger_id, agent_id, area_id, route_id, product_company_id } = req.query;
+        const { stage, date_from, date_to, as_of, party_ledger_id, area_id, route_id, product_company_id, party_agent_id } = req.query;
+        // agent_id / doc_agent_id = the agent on the document; party_agent_id = the party's master agent
+        const agent_id = req.query.doc_agent_id || req.query.agent_id;
         const tenantId = req.auth.tenantId;
         const tenantClient = await getTenantClient(tenantId);
+        let masterAgentParties = null;
+        if (party_agent_id) {
+            const { data: pl } = await tenantClient.from('ledger_accounts').select('id').eq('tenant_id', tenantId).eq('agent_id', party_agent_id);
+            masterAgentParties = (pl || []).map(l => l.id);
+            if (!masterAgentParties.length) masterAgentParties = ['00000000-0000-0000-0000-000000000000'];
+        }
         const asOf = as_of || new Date().toISOString().slice(0, 10);
 
         const applyHeaderFilters = (q, cfg) => {
@@ -74,6 +82,7 @@ router.get('/outstanding-report', requireAuth, loadUserPermissions, requirePermi
             if (date_to) q = q.lte('doc_date', date_to);
             if (party_ledger_id) q = q.eq(cfg.partyField, party_ledger_id);
             if (agent_id) q = q.eq('agent_id', agent_id);
+            if (masterAgentParties) q = q.in(cfg.partyField, masterAgentParties.slice(0, 1000));
             if (area_id) q = q.eq('area_id', area_id);
             if (route_id) q = q.eq('route_id', route_id);
             if (product_company_id) q = q.eq('product_company_id', product_company_id);

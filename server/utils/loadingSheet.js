@@ -218,7 +218,8 @@ async function loadingSheet(c, t, q) {
         if (!bills.has(l.doc_id)) bills.set(l.doc_id, {
             doc_id: l.doc_id, doc_type: l.doc_type, doc_label: l.doc_label, kind: l.kind, doc_no: l.doc_no, doc_date: l.doc_date, status: l.status,
             party_name: l.party_name, party_code: l.party_code, party_address: l.delivery_address || l.party_address, party_phone: l.party_phone,
-            area_name: l.area_name, route_name: l.route_name, agent_name: l.agent_name, vehicle_no: l.vehicle_no, driver_name: l.driver_name,
+            party_id: l.party_id, route_id: l.route_id,
+            area_name: l.area_name, route_name: l.route_name, agent_name: l.agent_name, party_agent_name: l.party_agent_name, vehicle_no: l.vehicle_no, driver_name: l.driver_name,
             items: new Set(), base_qty: 0, agg: newAgg(), lines: []
         });
         const b = bills.get(l.doc_id);
@@ -234,7 +235,31 @@ async function loadingSheet(c, t, q) {
         basic: round2(agg.basic), discount: round2(agg.discount), vat: round2(agg.vat), other_total: round2(agg.other_total),
         other: Object.fromEntries(Object.entries(agg.other).map(([k, v]) => [k, round2(v)])),
         term: round2(-agg.discount + agg.vat + agg.other_total), net_amount: round2(agg.net_amount)
-    })).sort((a, b) => (isLoad(a) === isLoad(b) ? 0 : isLoad(a) ? -1 : 1) || a.doc_date.localeCompare(b.doc_date) || String(a.doc_no).localeCompare(String(b.doc_no)));
+    }));
+    // Bill order: route_seq = route, then the customer's place in the route (Route Sequencing),
+    // then bill no; customer = name; bill_no (default) = date + bill no
+    const billOrder = ['route_seq', 'customer', 'bill_no'].includes(q.bill_order) ? q.bill_order : 'bill_no';
+    const seqOf = {};
+    if (billOrder === 'route_seq') {
+        const partyIds = [...new Set(billRows.map(b => b.party_id).filter(id => id && !String(id).startsWith('cash:')))];
+        const rc = await inChunks(partyIds, async chunk => {
+            const { data, error } = await c.from('route_customers').select('route_id, ledger_account_id, sequence_order').eq('tenant_id', t).in('ledger_account_id', chunk);
+            if (error) throw error; return data || [];
+        });
+        rc.forEach(r => { seqOf[`${r.route_id}|${r.ledger_account_id}`] = Number(r.sequence_order) || 0; });
+        billRows.forEach(b => { b.route_seq = seqOf[`${b.route_id}|${b.party_id}`] ?? null; });
+    }
+    const byNo = (a, b) => String(a.doc_no).localeCompare(String(b.doc_no), undefined, { numeric: true });
+    billRows.sort((a, b) => {
+        const k = (isLoad(a) === isLoad(b) ? 0 : isLoad(a) ? -1 : 1);
+        if (k) return k;
+        if (billOrder === 'route_seq') {
+            return String(a.route_name || '~').localeCompare(String(b.route_name || '~'))
+                || (a.route_seq ?? 1e9) - (b.route_seq ?? 1e9) || String(a.party_name).localeCompare(String(b.party_name)) || byNo(a, b);
+        }
+        if (billOrder === 'customer') return String(a.party_name).localeCompare(String(b.party_name)) || byNo(a, b);
+        return a.doc_date.localeCompare(b.doc_date) || byNo(a, b);
+    });
 
     // qty totals of the items table: base unit (fixed dual "Total 62 Pcs" and flexible "= 10 Pcs"
     // both add up here), as entered per unit, and the dual primary unit
@@ -260,7 +285,7 @@ async function loadingSheet(c, t, q) {
     if (lines.some(l => l.status === 'draft')) warnings.push('Draft documents are included.');
     if (productFiltered) warnings.push('Item filters are on - bill amounts cover the shown items only.');
     return {
-        from: q.date_from, to: q.date_to, sources: src, with_returns: withReturns, free: opts.freeInLoad ? 'add' : 'separate',
+        from: q.date_from, to: q.date_to, sources: src, bill_order: billOrder, with_returns: withReturns, free: opts.freeInLoad ? 'add' : 'separate',
         group_by: groupKey ? q.group_by : 'none', breakdown_units: opts.breakdownUnits.map(id => M.unitName(id)), display_unit: opts.displayUnitId ? M.unitName(opts.displayUnitId) : null,
         term_names: termNames, items: itemRows, bills: billRows,
         qty_totals: { load: qtyTotals('load'), ...(withReturns ? { returned: qtyTotals('returned'), net: qtyTotals('net') } : {}) },

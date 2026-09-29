@@ -26,7 +26,7 @@ const SECTIONS = [['headline', 'Summary'], ['types', 'By voucher type'], ['cash'
 export default function DayBook() {
     const { authFetch } = useAuth();
     const [m, setM] = useState({ users: [], agents: [], types: [], parties: [] });
-    const [f, setF] = useState({ date_from: iso(new Date()), date_to: iso(new Date()), user_ids: [], agent_ids: [], voucher_types: [], party_ids: [], include_draft: false });
+    const [f, setF] = useState({ date_from: iso(new Date()), date_to: iso(new Date()), user_ids: [], agent_ids: [], party_agent_ids: [], voucher_types: [], party_ids: [], include_draft: false });
     const [show, setShow] = useState(() => SECTIONS.map(s => s[0]));
     const [data, setData] = useState(null);
     const [busy, setBusy] = useState(false);
@@ -45,7 +45,7 @@ export default function DayBook() {
     const run = useCallback(async () => {
         setBusy(true); setError('');
         const p = new URLSearchParams({ date_from: f.date_from, date_to: f.date_to, include_draft: f.include_draft ? 'true' : 'false' });
-        ['user_ids', 'agent_ids', 'voucher_types', 'party_ids'].forEach(k => { if (f[k].length) p.set(k, f[k].join(',')); });
+        ['user_ids', 'agent_ids', 'party_agent_ids', 'voucher_types', 'party_ids'].forEach(k => { if ((f[k] || []).length) p.set(k, f[k].join(',')); });
         try { const d = (await authFetch(`/api/day-book?${p}`)).data; setData(d && d.headline ? d : null); if (!d || !d.headline) setError('No day book data returned'); } catch (e) { setError(e.message); setData(null); }
         setBusy(false);
     }, [authFetch, f]);
@@ -68,7 +68,8 @@ export default function DayBook() {
                             <div className="erp-field"><label className="erp-label">From</label><input type="date" className="erp-input" value={f.date_from} onChange={e => setF({ ...f, date_from: e.target.value })} /></div>
                             <div className="erp-field"><label className="erp-label">To</label><input type="date" className="erp-input" value={f.date_to} onChange={e => setF({ ...f, date_to: e.target.value })} /></div>
                             <MultiPick label="User" items={m.users} value={f.user_ids} onChange={v => setF({ ...f, user_ids: v })} allLabel="All users" />
-                            <MultiPick label="Salesman / Agent" items={m.agents} value={f.agent_ids} onChange={v => setF({ ...f, agent_ids: v })} allLabel="All agents" />
+                            <MultiPick label="Doc. Agent (on the voucher)" items={m.agents} value={f.agent_ids} onChange={v => setF({ ...f, agent_ids: v })} allLabel="All agents" />
+                            <MultiPick label="Agent (party master)" items={m.agents} value={f.party_agent_ids || []} onChange={v => setF({ ...f, party_agent_ids: v })} allLabel="All agents" />
                             <MultiPick label="Voucher type" items={m.types} value={f.voucher_types} onChange={v => setF({ ...f, voucher_types: v })} allLabel="All types" />
                             <MultiPick label="Party" items={m.parties} value={f.party_ids} onChange={v => setF({ ...f, party_ids: v })} allLabel="All parties" />
                             <label className="flex items-center gap-1 text-sm mb-1"><input type="checkbox" checked={f.include_draft} onChange={e => setF({ ...f, include_draft: e.target.checked })} /> Drafts / pending too</label>

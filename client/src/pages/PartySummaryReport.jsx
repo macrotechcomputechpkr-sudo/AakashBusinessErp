@@ -10,6 +10,7 @@ import { useAuth } from '../contexts/AuthContext';
 import Layout from '../components/Layout';
 import SearchablePopupSelect from '../components/SearchablePopupSelect';
 import SavedViewsBar from '../components/SavedViewsBar';
+import ReportSidePanel from '../components/ReportSidePanel';
 
 const COLS = [
     ['purchase', 'Purchase'], ['sales', 'Sales'], ['purchase_return', 'Pur. Return'], ['sales_return', 'Sales Return'],
@@ -18,7 +19,7 @@ const COLS = [
 const today = () => new Date().toISOString().slice(0, 10);
 const defaultConfig = () => ({
     date_from: `${new Date().getFullYear()}-01-01`, date_to: today(), party_scope: 'all', account_group_id: '', party_ledger_id: '',
-    area_id: '', agent_id: '', route_id: '', ledger_category_id: '', product_company_id: '', hide_zero: true, balance_side: '', pdc_separate: false
+    area_id: '', agent_id: '', doc_agent_id: '', route_id: '', ledger_category_id: '', product_company_id: '', hide_zero: true, balance_side: '', pdc_separate: false
 });
 const fmt = n => Number(n || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const drcr = n => Math.abs(n) < 0.005 ? '0.00' : `${fmt(Math.abs(n))} ${n > 0 ? 'Dr' : 'Cr'}`;
@@ -28,6 +29,7 @@ export default function PartySummaryReport() {
     const [config, setConfig] = useState(defaultConfig());
     const [masters, setMasters] = useState({ groups: [], parties: [], areas: [], agents: [], routes: [], categories: [], companies: [] });
     const [data, setData] = useState(null);
+    const [optionsOpen, setOptionsOpen] = useState(true);
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const set = (k, v) => setConfig(c => ({ ...c, [k]: v }));
@@ -45,6 +47,7 @@ export default function PartySummaryReport() {
             const p = new URLSearchParams();
             Object.entries(cfg).forEach(([k, v]) => { if (v !== '' && v !== false && v !== null) p.set(k, v === true ? 'true' : v); });
             setData({ ...(await authFetch(`/api/party-summary?${p}`)).data, pdc_separate: !!cfg.pdc_separate });
+            setOptionsOpen(false);
         } catch (err) { setError(err.message); setData(null); }
         finally { setLoading(false); }
     }, [authFetch, config]);
@@ -81,7 +84,11 @@ export default function PartySummaryReport() {
             <div className="erp-header"><span className="erp-header-title">👥 Party Summary</span></div>
             <div className="erp-tab-content">
                 <SavedViewsBar reportKey="party_summary" getConfig={() => config} onApply={cfg => { const merged = { ...defaultConfig(), ...cfg }; setConfig(merged); run(merged); }} onReset={() => { setConfig(defaultConfig()); setData(null); }} />
-                <div className="grid grid-cols-1 md:grid-cols-4 gap-3 my-3">
+                {/* options + filters in the side panel; the report keeps the whole width */}
+                <ReportSidePanel open={optionsOpen || !data} onOpen={() => setOptionsOpen(true)} onClose={() => { if (data) setOptionsOpen(false); }}
+                    onOk={() => run()} loading={loading} summary={`${config.date_from} → ${config.date_to}`}>
+                    <div className="rsp-box">
+                    <p className="rsp-box-title">Period &amp; Parties</p>
                     <div className="erp-field"><label className="erp-label">From</label><input type="date" className="erp-input" value={config.date_from} onChange={e => set('date_from', e.target.value)} /></div>
                     <div className="erp-field"><label className="erp-label">To</label><input type="date" className="erp-input" value={config.date_to} onChange={e => set('date_to', e.target.value)} /></div>
                     <div className="erp-field"><label className="erp-label">Parties</label>
@@ -89,23 +96,30 @@ export default function PartySummaryReport() {
                             <option value="all">Customers & Suppliers</option><option value="customers">Customers</option><option value="suppliers">Suppliers</option>
                         </select></div>
                     {picker('account_group_id', masters.groups, 'Account Group (overrides Parties)', g => g.group_name)}
+                    </div>
+                    <div className="rsp-box">
+                    <p className="rsp-box-title">🔽 Filters</p>
                     {picker('party_ledger_id', masters.parties, 'Single Party', l => l.account_name)}
                     {picker('ledger_category_id', masters.categories, 'Ledger Category', c => c.category_name)}
                     {picker('area_id', masters.areas, 'Area', a => a.area_name)}
-                    {picker('agent_id', masters.agents, 'Agent', a => a.agent_name)}
+                    {picker('agent_id', masters.agents, 'Agent (party master)', a => a.agent_name)}
+                    {picker('doc_agent_id', masters.agents, 'Doc. Agent (on the voucher)', a => a.agent_name)}
                     {picker('route_id', masters.routes, 'Route', r => r.route_name)}
                     {picker('product_company_id', masters.companies, 'Product Company', c => c.company_name)}
                     <div className="erp-field"><label className="erp-label">Closing balance</label>
                         <select className="erp-select" value={config.balance_side} onChange={e => set('balance_side', e.target.value)}>
                             <option value="">Any</option><option value="dr">Debit (receivable) only</option><option value="cr">Credit (payable) only</option>
                         </select></div>
-                    <label className="flex items-center gap-2 text-sm mt-6"><input type="checkbox" checked={config.hide_zero} onChange={e => set('hide_zero', e.target.checked)} /> Hide parties with nothing to show</label>
-                    <label className="flex items-center gap-2 text-sm mt-6"><input type="checkbox" checked={config.pdc_separate} onChange={e => set('pdc_separate', e.target.checked)} /> Show PDC separately (matured + pending cheques)</label>
-                </div>
-                <div className="flex gap-2 mb-3">
-                    <button className="erp-btn primary" onClick={() => run()} disabled={loading}>{loading ? 'Loading…' : '🔍 Show'}</button>
-                    {data?.rows?.length > 0 && <button className="erp-btn" onClick={exportCsv}>⬇ Excel</button>}
-                </div>
+                    </div>
+                    <div className="rsp-box">
+                    <p className="rsp-box-title">Options</p>
+                    <div data-rsp-opts>
+                    <label><input type="checkbox" checked={config.hide_zero} onChange={e => set('hide_zero', e.target.checked)} /> Hide parties with nothing to show</label>
+                    <label><input type="checkbox" checked={config.pdc_separate} onChange={e => set('pdc_separate', e.target.checked)} /> Show PDC separately (matured + pending cheques)</label>
+                    </div>
+                    </div>
+                </ReportSidePanel>
+                {data?.rows?.length > 0 && <div className="flex gap-2 mb-2 justify-end"><button className="erp-btn" onClick={exportCsv}>⬇ Excel</button></div>}
                 <p className="text-xs text-gray-500 mb-2">JV entries are shown under Debit Note (party debited) or Credit Note (party credited). Cash/Bank and PDC: party credited = Receipt, debited = Payment (tick "Show PDC separately" to split matured PDCs into their own columns and see pending cheques).{config.product_company_id ? ' Company view: only that company\u2019s entries; the ledger\u2019s master opening is not included.' : ''}</p>
                 {error && <p className="text-sm text-red-600 mb-2">{error}</p>}
                 {data && data.all_reconcile === false && <p className="text-sm text-red-600 mb-2">Some rows do not reconcile - please report this.</p>}

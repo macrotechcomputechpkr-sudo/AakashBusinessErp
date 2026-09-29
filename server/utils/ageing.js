@@ -69,7 +69,7 @@ async function docInfo(c, t, keys) {                   // keys: [[type, id]] -> 
             const { data } = await c.from(DOC_TABLES[type][1]).select('*').in('id', chunk);
             return data || [];
         });
-        rows.forEach(h => { out[`${type}:${h.id}`] = { doc_no: h.doc_no || h.voucher_no || null, due_date: h.due_date ? String(h.due_date).slice(0, 10) : null, party_bill_no: h.party_bill_no || null }; });
+        rows.forEach(h => { out[`${type}:${h.id}`] = { doc_no: h.doc_no || h.voucher_no || null, due_date: h.due_date ? String(h.due_date).slice(0, 10) : null, party_bill_no: h.party_bill_no || null, agent_id: h.agent_id || null }; });
     }
     return out;
 }
@@ -94,6 +94,8 @@ async function ageing(c, t, q) {
     if (basis === 'due_date') buckets.unshift({ key: 'not_due', label: 'Not Due', max: -1 });
     const f = {
         partyIds: csv(q.party_ids), areaIds: csv(q.area_ids), routeIds: csv(q.route_ids), agentIds: csv(q.agent_ids),
+        // agent_ids / party_agent_ids = the party's master agent; doc_agent_ids = the agent on each bill
+        partyAgentIds: csv(q.party_agent_ids), docAgentIds: csv(q.doc_agent_ids),
         groupIds: csv(q.party_group_ids), companyIds: csv(q.product_company_ids), search: (q.search || '').trim().toLowerCase()
     };
     const normalSign = side === 'receivable' ? 1 : -1;       // outstanding = sign x (Dr - Cr)
@@ -128,6 +130,7 @@ async function ageing(c, t, q) {
     const anchor = side === 'receivable' ? 'RECEIVABLES' : 'PAYABLES';
     const masterOk = l => (!f.partyIds.length || f.partyIds.includes(l.id)) && (!areaSet || areaSet.has(l.area_id))
         && (!f.routeIds.length || f.routeIds.includes(l.route_id)) && (!f.agentIds.length || f.agentIds.includes(l.agent_id))
+        && (!f.partyAgentIds.length || f.partyAgentIds.includes(l.agent_id))
         && (!groupSet || groupSet.has(l.account_group_id))
         && (!f.search || [l.account_name, l.account_code].some(v => v && String(v).toLowerCase().includes(f.search)));
     const byId = Object.fromEntries(ledgers.map(l => [l.id, l]));
@@ -213,11 +216,11 @@ async function ageing(c, t, q) {
                 const date = String(r.source_date).slice(0, 10);
                 if (r.nature === normalNature) {
                     row.docs.push({ kind: 'bill', doc_type: r.source_type, doc_id: r.source_id, doc_label: DOC_TABLES[r.source_type]?.[0] || r.source_type, doc_no: r.source_doc_no, doc_date: date,
-                        due_date: di.due_date, party_bill_no: di.party_bill_no, amount: round2(r.total_amount), settled: round2(allocated[r.id] || 0), remaining });
+                        due_date: di.due_date, party_bill_no: di.party_bill_no, doc_agent_id: di.agent_id || null, amount: round2(r.total_amount), settled: round2(allocated[r.id] || 0), remaining });
                 } else {
                     row.on_account = round2(row.on_account + remaining);
                     row.docs.push({ kind: 'on_account', doc_type: r.source_type, doc_id: r.source_id, doc_label: DOC_TABLES[r.source_type]?.[0] || r.source_type, doc_no: r.source_doc_no, doc_date: date,
-                        amount: round2(r.total_amount), settled: round2(allocated[r.id] || 0), remaining: -remaining });
+                        doc_agent_id: di.agent_id || null, amount: round2(r.total_amount), settled: round2(allocated[r.id] || 0), remaining: -remaining });
                 }
             });
             // What the references do not explain.
@@ -256,7 +259,7 @@ async function ageing(c, t, q) {
                 if (remaining <= 0.005) return;
                 const di = info[`${e.type}:${e.id}`] || {};
                 row.docs.push({ kind: e.type === 'opening' ? 'opening' : 'bill', doc_type: e.type, doc_id: e.id, doc_label: e.type === 'opening' ? 'Opening Balance' : DOC_TABLES[e.type]?.[0] || e.type,
-                    doc_no: e.type === 'opening' ? 'Opening' : di.doc_no || '', doc_date: e.date === '0000-01-01' ? null : e.date, due_date: di.due_date || null, party_bill_no: di.party_bill_no || null,
+                    doc_no: e.type === 'opening' ? 'Opening' : di.doc_no || '', doc_date: e.date === '0000-01-01' ? null : e.date, due_date: di.due_date || null, party_bill_no: di.party_bill_no || null, doc_agent_id: di.agent_id || null,
                     amount: round2(e.amt), settled: round2(take), remaining });
             });
             if (credit > 0.005) row.on_account = round2(row.on_account + credit);
@@ -273,7 +276,7 @@ async function ageing(c, t, q) {
             if (l ? !masterOk(l) : (f.areaIds.length || f.routeIds.length || f.agentIds.length || f.groupIds.length || f.search)) return;
             const row = rowFor(d.party_id, d.product_company_id, d.party_name);
             row.docs.push({ kind: d.kind, doc_type: d.stage, doc_id: d.doc_id, doc_label: d.label, doc_no: d.doc_no, doc_date: d.doc_date, due_date: d.due_date,
-                amount: d.total_amount, settled: round2(d.total_amount - d.pending_value), remaining: d.pending_value, pending_base_qty: d.pending_base_qty, vehicle_no: d.vehicle_no });
+                amount: d.total_amount, settled: round2(d.total_amount - d.pending_value), remaining: d.pending_value, pending_base_qty: d.pending_base_qty, vehicle_no: d.vehicle_no, doc_agent_id: d.agent_id || null });
         });
         if (docs.length && asOn < new Date().toISOString().slice(0, 10)) warnings.push('Challan / order pending quantities are as of today.');
     }
@@ -283,7 +286,17 @@ async function ageing(c, t, q) {
         if (basis === 'due_date' && d < 0) return 'not_due';
         return buckets.find(b => b.max >= 0 && d <= b.max)?.key || buckets[buckets.length - 1].key;
     };
+    // Doc. Agent: only the bills / challans / orders (and on-account entries) the agent made
+    if (f.docAgentIds.length) {
+        rows.forEach(r => {
+            r.docs = r.docs.filter(d => f.docAgentIds.includes(d.doc_agent_id));
+            r.unallocated = 0;
+            r.on_account = round2(r.docs.filter(d => d.kind === 'on_account').reduce((s, d) => s - d.remaining, 0));
+        });
+        warnings.push('Doc. Agent filter: only the documents of that agent are aged; opening balance and unmatched amounts are left out.');
+    }
     const out = [...rows.values()].map(r => {
+        r.docs.forEach(d => { d.doc_agent = agentName[d.doc_agent_id] || ''; });
         const b = Object.fromEntries(buckets.map(x => [x.key, 0]));
         const sums = { bill: 0, challan: 0, order: 0 };
         let oldest = null, overdue = 0;

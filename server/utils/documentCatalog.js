@@ -217,6 +217,7 @@ async function printList(c, t, q, userId) {
     if (!cfg) throw Object.assign(new Error('Choose a document type'), { status: 400 });
     const f = {
         from: q.from_date || null, to: q.to_date || null, partyIds: csv(q.party_ids), agentIds: csv(q.agent_ids), areaIds: csv(q.area_ids), routeIds: csv(q.route_ids),
+        docAgentIds: csv(q.doc_agent_ids), partyAgentIds: csv(q.party_agent_ids),
         branchIds: csv(q.branch_ids), statuses: csv(q.statuses), docFrom: (q.doc_no_from || '').trim(), docTo: (q.doc_no_to || '').trim(),
         search: (q.search || '').trim().toLowerCase(), printed: q.printed || 'all'
     };
@@ -259,6 +260,7 @@ async function printList(c, t, q, userId) {
             party_address: p ? p.billing_address || p.city || '' : '', party_phone: p ? p.phone_office || p.contact_person_mobile || '' : '',
             area_id: areaId, area_name: h.area_name_snapshot || areaById[areaId]?.area_name || '', route_id: routeId, route_name: h.route_name_snapshot || routeById[routeId]?.route_name || '',
             agent_id: agentId, agent_name: h.agent_name_snapshot || agentById[agentId]?.agent_name || '',
+            doc_agent_id: h.agent_id || null, party_agent_id: p?.agent_id || null,
             amount: Number(h.net_amount ?? h.grand_total ?? h.total_amount ?? h.amount ?? h.cheque_amount ?? h.total_debit ?? 0) || 0,
             narration: h.narration || h.remarks_text || '',
             extra: key === 'production_order' ? h.output_product_name_snapshot || '' : key === 'stock_transfer' ? [h.from_warehouse_name_snapshot, h.to_warehouse_name_snapshot].filter(Boolean).join(' → ') : ''
@@ -268,6 +270,8 @@ async function printList(c, t, q, userId) {
         if (areaSet && !areaSet.has(r.area_id)) return false;
         if (f.routeIds.length && !f.routeIds.includes(r.route_id)) return false;
         if (f.agentIds.length && !f.agentIds.includes(r.agent_id)) return false;
+        if (f.docAgentIds.length && !f.docAgentIds.includes(r.doc_agent_id)) return false;
+        if (f.partyAgentIds.length && !f.partyAgentIds.includes(r.party_agent_id)) return false;
         if (f.docFrom && cmpDocNo(r.doc_no, f.docFrom) < 0) return false;
         if (f.docTo && cmpDocNo(r.doc_no, f.docTo) > 0) return false;
         if (f.search && ![r.doc_no, r.party_name, r.narration, r.extra].some(v => String(v || '').toLowerCase().includes(f.search))) return false;

@@ -26,7 +26,7 @@ export default function OutstandingReport() {
     const [stages, setStages] = useState([]);
     const [stage, setStage] = useState('sales_pending_delivery');
     const [masters, setMasters] = useState({ party: [], agent: [], area: [], route: [] });
-    const defaultFilters = () => ({ date_from: '', date_to: '', as_of: new Date().toISOString().slice(0, 10), party_ledger_id: '', agent_id: '', area_id: '', route_id: '', product_company_id: '' });
+    const defaultFilters = () => ({ date_from: '', date_to: '', as_of: new Date().toISOString().slice(0, 10), party_ledger_id: '', agent_id: '', party_agent_id: '', area_id: '', route_id: '', product_company_id: '' });
     const [filters, setFilters] = useState(defaultFilters());
     const [result, setResult] = useState(null);
     const [loading, setLoading] = useState(false);
@@ -131,7 +131,8 @@ export default function OutstandingReport() {
                         <input type="date" className="erp-input" value={filters.date_to} onChange={e => setFilters(f => ({ ...f, date_to: e.target.value }))} />
                     </div>
                     {picker('party', 'party_ledger_id', isSales ? 'Customer' : 'Supplier')}
-                    {picker('agent', 'agent_id', 'Agent')}
+                    {picker('agent', 'agent_id', 'Doc. Agent (on the document)')}
+                    {picker('agent', 'party_agent_id', 'Agent (party master)')}
                     {picker('area', 'area_id', 'Area')}
                     {picker('route', 'route_id', 'Route')}
                     {picker('company', 'product_company_id', 'Product Company')}

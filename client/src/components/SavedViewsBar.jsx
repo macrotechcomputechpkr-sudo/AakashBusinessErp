@@ -106,7 +106,7 @@ export default function SavedViewsBar({ reportKey, getConfig, onApply, onReset }
     };
 
     return (
-        <div className="border rounded-lg p-2 mb-3 bg-slate-50">
+        <div className="border rounded-lg p-2 mb-3 bg-slate-50" data-rsp-keep>
             <div className="flex flex-wrap items-center gap-2">
                 <span className="text-xs font-semibold text-gray-500">📁 View:</span>
                 <select className="erp-select max-w-xs" value={activeId} onChange={e => selectView(e.target.value)}>

@@ -63,6 +63,8 @@ function parseTradeQuery(q) {
         partyIds: csv(q.party_ids), productIds: csv(q.product_ids), productGroupIds: csv(q.product_group_ids),
         productCompanyIds: csv(q.product_company_ids), productCategoryIds: csv(q.product_category_ids), itemTypes: csv(q.item_types),
         areaIds: csv(q.area_ids), routeIds: csv(q.route_ids), agentIds: csv(q.agent_ids), branchIds: csv(q.branch_ids),
+        // agent_ids = the document's agent, else the party's; these two are one or the other only
+        docAgentIds: csv(q.doc_agent_ids), partyAgentIds: csv(q.party_agent_ids),
         warehouseIds: csv(q.warehouse_ids), costCenterIds: csv(q.cost_center_ids), businessUnitIds: csv(q.business_unit_ids),
         search: (q.search || '').trim().toLowerCase(), docNo: (q.doc_no || '').trim().toLowerCase(), docIds: csv(q.doc_ids),
         statuses: q.include_draft === 'true' ? ['posted', 'draft'] : ['posted'], vehicleNo: (q.vehicle_no || '').trim().toLowerCase()
@@ -169,6 +171,8 @@ async function loadTradeLines(c, t, f, opts = {}) {
             if (areaSet && !areaSet.has(areaId)) continue;
             if (f.routeIds.length && !f.routeIds.includes(routeId)) continue;
             if (f.agentIds.length && !f.agentIds.includes(agentId)) continue;
+            if (f.docAgentIds && f.docAgentIds.length && !f.docAgentIds.includes(h.agent_id)) continue;
+            if (f.partyAgentIds && f.partyAgentIds.length && !f.partyAgentIds.includes(party?.agent_id)) continue;
             if (f.branchIds.length && !f.branchIds.includes(h.branch_id)) continue;
             if (f.warehouseIds.length && !f.warehouseIds.includes(warehouseId)) continue;
             if (f.costCenterIds.length && !f.costCenterIds.includes(h.cost_center_id)) continue;
@@ -204,6 +208,7 @@ async function loadTradeLines(c, t, f, opts = {}) {
                 area_id: areaId, area_name: h.area_name_snapshot || area?.area_name || '', main_area_id: mainArea?.id || null, main_area_name: mainArea?.area_name || '',
                 route_id: routeId, route_name: h.route_name_snapshot || M.routes[routeId]?.route_name || '',
                 agent_id: agentId, agent_name: h.agent_name_snapshot || M.agents[agentId]?.agent_name || '',
+                party_agent_name: M.agents[party?.agent_id]?.agent_name || '',
                 branch_id: h.branch_id || null, branch_name: h.branch_name_snapshot || '',
                 warehouse_id: warehouseId, warehouse_name: d.warehouse_name_snapshot || h.warehouse_name_snapshot || '',
                 cost_center_id: h.cost_center_id || null, cost_center_name: h.cost_center_name_snapshot || '',
