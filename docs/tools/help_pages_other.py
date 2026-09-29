@@ -10,7 +10,8 @@ RO = dict(accounts='None - read only.', stock='None - read only.', vat='None.')
 GRID_TIP = ('▦ Grid / 📄 Report above the table: Grid filters (▾ picks one or many values, AutoFilter, conditions), '
             'groups (drag a header to ☰ Rows - sub-totals), pivots (drag to ⫼ Columns, Σ Values; 📋 Columns = Field Selector), '
             'totals per column (Σ Footer), 📊 chart / pivot chart, data bars, added columns (running balance, % of total, formula), '
-            'CSV and print. 📁 Views keep it all.')
+            'CSV and print. 📁 Views keep it all. Only dates stay up top: product / party / area … boxes fold under ⚙ More filters - '
+            'filter them in the grid, where each item / party brings its Product Group, Company, Category, Area, Route, Agent … as fields.')
 
 
 def R(path, title, module, purpose, how, views=None, nature=None, tips=None):

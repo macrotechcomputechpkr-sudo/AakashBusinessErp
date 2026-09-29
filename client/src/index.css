@@ -525,6 +525,9 @@ label {
 .rg-footer, .rg-footer > td { background: #ece9d8 !important; color: #1a1a1a !important; border-top: 2px solid #aca899; }
 .rg-chip { background: #dde8f6 !important; color: #1a4a8a !important; border: 1px solid #8aaad5; }
 /* ReportGrid: the ▾ of a header shows faintly until the header is pointed at (or the column is filtered) */
+/* reports: empty product / party / area … filter boxes fold away (hooks/useCompactFilters.js) */
+[data-sg-dims="closed"] [data-sg-dim] { display: none !important; }
+[data-sg-dims="open"] [data-sg-dim] { outline: 1px dashed #8aaad5; outline-offset: 1px; }
 .rg-root th .rg-xf { opacity: .3; }
 .rg-root th:hover .rg-xf, .rg-root th .rg-xf.on { opacity: 1; }
 .rg-root table thead th { text-transform: none; letter-spacing: normal; }

@@ -54,6 +54,8 @@ import FieldSelector, { AreaDrop } from './grid/FieldSelector';
 import PivotView from './grid/PivotView';
 import { AGG_LABELS, aggregate, buildPivot, calcColumns, compareRows, compareValues, fmtAgg, pivotLines, toNum } from './grid/gridAnalysis';
 import { registerGrid, takePending } from './grid/gridRegistry';
+import { loadDimensions, withDimensions } from './grid/dimensions';
+import { useAuth } from '../contexts/AuthContext';
 
 const NUMERIC_AGGS = ['sum', 'avg', 'min', 'max', 'count', 'distinct'];
 const TEXT_AGGS = ['count', 'distinct', 'first', 'last'];
@@ -301,8 +303,8 @@ const setToArr = obj => Object.fromEntries(Object.entries(obj || {}).filter(([, 
 const arrToSet = obj => Object.fromEntries(Object.entries(obj || {}).filter(([, v]) => Array.isArray(v)).map(([k, v]) => [k, new Set(v)]));
 
 export default function ReportGrid({
-    columns,
-    rows,
+    columns: ownColumns,
+    rows: ownRows,
     getId,
     storageKey = 'report_grid',
     rowActions: ownActions,
@@ -320,8 +322,23 @@ export default function ReportGrid({
     defaultGroupBy,     // optional [keys] when nothing is saved yet
     initialChart = false, // open the 📊 Chart panel at first
     openChartSignal,      // a changing number: open the 📊 Chart panel now
-    note            // optional small text under the grid
+    note,           // optional small text under the grid
+    noDimensions    // true: do not add the product / party attribute fields
 }) {
+    // FEATURE: a product or party column brings its attributes (Product Group,
+    // Company, Category, Unit / Account Group, Area, Route, Agent, PAN) as hidden
+    // fields - shown, filtered, grouped or pivoted from 📋 Columns (grid/dimensions.js).
+    const { authFetch, tenant } = useAuth();
+    const [dims, setDims] = useState(null);
+    useEffect(() => {
+        if (noDimensions || !authFetch) return undefined;
+        let alive = true;
+        loadDimensions(authFetch, tenant?.id || '').then(d => { if (alive) setDims(d); });
+        return () => { alive = false; };
+    }, [authFetch, tenant, noDimensions]);
+    const dimmed = useMemo(() => withDimensions(ownColumns, ownRows, dims), [ownColumns, ownRows, dims]);
+    const columns = dimmed.columns;
+    const rows = dimmed.rows;
     const [historyOf, setHistoryOf] = useState(null); // { id, title } | null
     const rowActions = auditTable
         ? (row) => (
@@ -380,12 +397,12 @@ export default function ReportGrid({
     const allColumns = useMemo(() => [...columns, ...customColumns], [columns, customColumns]);
 
     const [columnsConfig, setColumnsConfig] = useState(() =>
-        allColumns.map((c, i) => ({ key: c.key, visible: true, order: i }))
+        allColumns.map((c, i) => ({ key: c.key, visible: !c.hidden, order: i }))
     );
     useEffect(() => {
         setColumnsConfig(prev => {
             const known = new Set(prev.map(c => c.key));
-            const additions = allColumns.filter(c => !known.has(c.key)).map((c, i) => ({ key: c.key, visible: true, order: prev.length + i }));
+            const additions = allColumns.filter(c => !known.has(c.key)).map((c, i) => ({ key: c.key, visible: !c.hidden, order: prev.length + i }));
             const kept = prev.filter(c => allColumns.some(ac => ac.key === c.key));
             return additions.length || kept.length !== prev.length ? [...kept, ...additions] : prev;
         });
@@ -399,7 +416,7 @@ export default function ReportGrid({
             setFilters([]); setHighlightRules([]); setDataBars({}); setAutoFilterOn(false); setAutoFilterValues({}); setValueFilters({});
             setFooterAggs(defaultFooterAggs || {}); setCustomColumns([]); setChartOn(false); setChartCfg(null); setAutoWidth(true);
             setPivotCols([]); setPivotValues([]); setFilterFields([]); setShowGrouped(true); setHeat(false);
-            setColumnsConfig(columns.map((c, i) => ({ key: c.key, visible: true, order: i })));
+            setColumnsConfig(columns.map((c, i) => ({ key: c.key, visible: !c.hidden, order: i })));
             return;
         }
         if (Array.isArray(s.customColumns)) setCustomColumns(s.customColumns);
