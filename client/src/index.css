@@ -796,3 +796,21 @@ table.lr-summary tr.lr-grandtotal td { background: #fff7d6; font-weight: 700; bo
 .rsp-box [data-rsp-opts] { margin: 0; }
 /* a tick-box row that is itself a field's value (Include: …, Show: …) stays light: no outer box */
 .erp-field > :is([data-rsp-optg], [data-rsp-opts]) { margin: 0; padding: 0; border: none; background: transparent; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+
+/* hooks/useReportDates - the BS chip beside every date box */
+.bsd-chip {
+  flex-shrink: 0; margin-left: 4px; padding: 0 6px; height: 22px; font-size: 11px; line-height: 20px; white-space: nowrap;
+  border: 1px solid #c7d2e3; border-radius: 4px; background: #f3f7fe; color: #1f4f99; cursor: pointer;
+}
+.bsd-chip:hover:not(:disabled) { background: #e1ebfb; border-color: #7aa2e3; }
+.bsd-chip:disabled { opacity: .5; cursor: default; }
+@media (min-width: 768px) {
+  .nav-page .erp-field:has(> input[type=date] + .bsd-chip) { grid-template-columns: var(--nav-caption, 136px) minmax(0, 1fr) auto; }
+  .nav-page .erp-field > .bsd-chip { grid-column: 3; margin-left: 0; }
+  .nav-page div:has(> label:first-child + input[type=date] + .bsd-chip:last-child) {
+    display: grid; grid-template-columns: var(--nav-caption, 136px) minmax(0, 1fr) auto; column-gap: 6px; align-items: center; min-height: 23px;
+  }
+  .nav-page div:has(> label:first-child + input[type=date] + .bsd-chip:last-child) > label:first-child {
+    margin: 0; font-size: 12px; font-weight: 400; line-height: 22px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+}

@@ -7,6 +7,7 @@
 // =============================================
 
 import React, { useEffect, useState, useCallback, useRef } from 'react';
+import { setDateSettings } from '../utils/dateSettings';
 import { APPROVAL_DOCS } from '../components/entry/approvalDocs';
 import { useAuth } from '../contexts/AuthContext';
 import { useEnterKeyNavigation } from '../hooks/useEnterKeyNavigation';
@@ -154,6 +155,7 @@ export default function SystemControlSettings() {
             setSettings(res.data);
             refreshAppFeatures();
             clearEntrySettings();
+            setDateSettings(res.data || settings);
             clearDocPolicy();
             if (stockMap) {
                 const dirty = kind => stockMap[kind].filter(r => r._dirty).map(r => ({ id: r.id, stock_ledger_id: r.stock_ledger_id }));

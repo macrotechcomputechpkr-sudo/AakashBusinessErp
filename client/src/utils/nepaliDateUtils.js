@@ -8,6 +8,7 @@
 // =============================================
 
 import { bsAvailable, adToBs } from './bsCalendar';
+import { fmtDate, reportDateMode } from './dateSettings';
 
 class NepaliDateConverter {
     constructor() {
@@ -76,8 +77,11 @@ const nepaliDateConverter = new NepaliDateConverter();
 // FEATURE: "date selection should follow whatever English/Nepali/Dual
 // is chosen in System Control" - a single formatter used by every
 // report's date display, honoring that tenant-wide setting.
+// 'dual' (what most reports pass) and no setting now follow System Control >
+// Date In Reports (utils/dateSettings), so one switch sets every report.
 function formatDateForDisplay(isoDate, dateFormatSetting) {
     if (!isoDate) return '';
+    if (!dateFormatSetting || dateFormatSetting === 'dual') return fmtDate(isoDate, reportDateMode());
     if (dateFormatSetting === 'english') return isoDate;
     const bs = nepaliDateConverter.toNepali(isoDate);
     if (!bs) return isoDate;
