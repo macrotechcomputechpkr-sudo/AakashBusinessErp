@@ -12,8 +12,19 @@
 const { createClient } = require('@supabase/supabase-js');
 const { auditFetch } = require('./requestContext');
 
-const GLOBAL_MASTER_URL = process.env.GLOBAL_MASTER_URL;
-const GLOBAL_MASTER_KEY = process.env.GLOBAL_MASTER_KEY;
+// The project URL is https://<ref>.supabase.co. A pasted dashboard link
+// (https://supabase.com/dashboard/project/<ref>) or a trailing "/" is fixed here.
+function projectUrl(raw) {
+    const v = String(raw || '').trim().replace(/\/+$/, '');
+    const m = v.match(/supabase\.com\/dashboard\/project\/([a-z0-9]+)/i);
+    if (m) {
+        console.warn(`[config] GLOBAL_MASTER_URL is a dashboard link - using https://${m[1]}.supabase.co (set that value in the host's variables).`);
+        return `https://${m[1]}.supabase.co`;
+    }
+    return v;
+}
+const GLOBAL_MASTER_URL = projectUrl(process.env.GLOBAL_MASTER_URL);
+const GLOBAL_MASTER_KEY = String(process.env.GLOBAL_MASTER_KEY || '').trim();
 const globalMasterDb = createClient(GLOBAL_MASTER_URL, GLOBAL_MASTER_KEY);
 
 // Cache tenant clients per-process so we are not re-creating a Supabase
