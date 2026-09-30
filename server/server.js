@@ -18,7 +18,8 @@ app.set('trust proxy', true);
 
 // CORS: the configured origins, plus the ERP's own domain (the React build
 // served by this server - docs/DEPLOY_YETI_CLOUD.md) whatever it is.
-const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:3000').split(',').map(s => s.trim()).filter(Boolean);
+// "https://erp.example.com/" and "https://erp.example.com" are the same origin
+const allowedOrigins = (process.env.CORS_ORIGINS || 'http://localhost:3000').split(',').map(s => s.trim().replace(/\/+$/, '')).filter(Boolean);
 const sameHost = (origin, req) => { try { return new URL(origin).host === req.get('host'); } catch { return false; } };
 app.use(cors((req, callback) => {
     const origin = req.header('Origin');
