@@ -12,7 +12,7 @@
 //     the login - permissions are read from it), linked to ADMIN.
 // Used by POST /company/create; safe to run again (nothing is duplicated).
 // =============================================
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
 const { globalMasterDb } = require('./dbHelpers');
 
 const DEFAULT_ADMIN_EMAIL = () => String(process.env.DEFAULT_TENANT_ADMIN_EMAIL || 'admin@businesserp.com.np').trim().toLowerCase();
