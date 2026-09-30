@@ -14,7 +14,7 @@ browser ──https──> Yeti Cloud Node.js  (server/server.js: /api/* + the R
 ## What the repository does for this
 
 - `package.json` at the root:
-  - `npm install` also installs `server/` and `client/` and builds the React app (`client/build`).
+  - `npm install` also installs `server/` and `client/` and builds the React app (`client/build`). If the React build fails (usually memory), the install still finishes and the API starts; the web address then says the app is not built yet - raise the cloudlets and run `npm run build:client` (Web SSH, in `/home/jelastic/ROOT`) or Redeploy.
   - `npm start` runs `server/server.js`; the root `server.js` starts it too, so the platform's default `APP_FILE=server.js` works.
 - `server/server.js` serves `client/build`. Every path that is not `/api` gets `index.html`.
 - A React build without `REACT_APP_API_URL` calls `/api` on its own domain.

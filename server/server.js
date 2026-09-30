@@ -245,6 +245,11 @@ if (fs.existsSync(path.join(clientBuild, 'index.html'))) {
         res.setHeader('Cache-Control', 'no-cache');
         res.sendFile(path.join(clientBuild, 'index.html'));
     });
+} else {
+    // no React build yet (still building, or the build ran out of memory): say so instead of a blank 404
+    app.get(/^\/(?!api(\/|$)).*/, (req, res) => res.status(503).type('html').send(
+        '<h2>Aakash Business ERP - the API is running, the web app is not built yet</h2>'
+        + '<p>Wait for the deploy to finish, or run <code>npm run build:client</code> in the repo root (it needs about 1.5 GB of memory).</p>'));
 }
 
 // FIX: global error handler - previously an uncaught throw inside any route
