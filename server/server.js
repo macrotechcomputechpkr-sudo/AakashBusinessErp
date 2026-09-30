@@ -8,6 +8,19 @@
 // =============================================
 
 require('dotenv').config();
+
+// One stray async error must not take the whole ERP down (the host then answers
+// 503 to everybody until the process restarts): log it and keep serving.
+// The last few (message + time only, no stack / data) show on /api/health/setup.
+const recentErrors = [];
+const keepError = (kind, err) => {
+    const msg = String((err && err.message) || err).slice(0, 200);
+    console.error(`[${kind}]`, err);
+    recentErrors.unshift({ at: new Date().toISOString(), kind, message: msg });
+    recentErrors.length = Math.min(recentErrors.length, 5);
+};
+process.on('unhandledRejection', err => keepError('unhandledRejection', err));
+process.on('uncaughtException', err => keepError('uncaughtException', err));
 const path = require('path');
 const fs = require('fs');
 const express = require('express');
@@ -241,7 +254,7 @@ app.get('/api/health/setup', async (req, res) => {
     else if (out.key_matches_url === false) out.key_hint = `The key belongs to project ${out.key_project_ref}, the URL to ${out.url_project_ref} - take both from the same project.`;
     try {
         const { error, count, status } = await globalMasterDb.from('global_users').select('id', { count: 'exact' }).limit(1);
-        if (error) { Object.assign(out, { global_db: 'error', status, hint: setupHint(error, status) || String(error.message || `HTTP ${status}`).slice(0, 200) }); return res.json(out); }
+        if (error) { Object.assign(out, { global_db: 'error', status, hint: setupHint(error, status) || String(error.message || `HTTP ${status}`).slice(0, 200) }); return sendSetup(res, out); }
         const { count: admins } = await globalMasterDb.from('global_users').select('id', { count: 'exact', head: true }).eq('is_global_admin', true);
         Object.assign(out, { global_db: 'ok', users: count, super_admins: admins || 0 });
         if (!admins) out.hint = 'No super admin yet - run database/124_default_admin_logins_schema.sql in the global Supabase project.';
@@ -249,8 +262,14 @@ app.get('/api/health/setup', async (req, res) => {
         Object.assign(out, { global_db: 'error', hint: setupHint(e) || String(e?.message || 'unknown error').slice(0, 200) });
     }
     if (!out.jwt_secret_set) out.hint = `${out.hint ? `${out.hint} ` : ''}JWT_SECRET is not set.`;
-    res.json(out);
+    sendSetup(res, out);
 });
+function sendSetup(res, out) {
+    out.uptime_seconds = Math.round(process.uptime());
+    out.memory_mb = Math.round(process.memoryUsage().rss / 1048576);
+    out.recent_errors = recentErrors;
+    res.json(out);
+}
 
 app.get('/api/health', (req, res) => {
     res.json({ status: 'OK', message: 'Server is running' });
