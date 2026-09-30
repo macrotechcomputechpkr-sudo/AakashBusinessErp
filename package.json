@@ -7,10 +7,11 @@
     "node": ">=18"
   },
   "scripts": {
-    "postinstall": "npm --prefix server install --omit=dev && npm --prefix client install --include=dev && npm run build",
-    "build": "cd client && GENERATE_SOURCEMAP=false npm run build",
+    "postinstall": "npm --prefix server install --omit=dev && (npm run build:client || echo '[install] React build did not finish - the API still starts; run npm run build:client again (more cloudlets)')",
+    "build": "cd client && GENERATE_SOURCEMAP=false NODE_OPTIONS=--max-old-space-size=1536 npm run build",
     "start": "node server/server.js",
     "dev:server": "npm --prefix server run dev",
-    "dev:client": "npm --prefix client start"
+    "dev:client": "npm --prefix client start",
+    "build:client": "npm --prefix client install --include=dev && npm run build"
   }
 }
