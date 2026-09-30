@@ -15,4 +15,23 @@ function setupHint(err, status) {
     if (/permission denied/i.test(m) || code === '42501') return 'Server setup: the key has no access to the global tables - use the service_role key.';
     return null;
 }
-module.exports = { setupHint };
+/**
+ * What kind of key GLOBAL_MASTER_KEY is - never the key itself:
+ * legacy JWT keys carry their role (anon / service_role) and project ref;
+ * new keys start with sb_secret_ / sb_publishable_.
+ */
+function describeKey(key, url) {
+    const k = String(key || '').trim();
+    const urlRef = (String(url || '').match(/https?:\/\/([a-z0-9]+)\.supabase\.co/i) || [])[1] || null;
+    const out = { key_length: k.length, url_project_ref: urlRef };
+    if (/^sb_secret_/.test(k)) return { ...out, key_type: 'secret (new)' };
+    if (/^sb_publishable_/.test(k)) return { ...out, key_type: 'publishable (new) - not allowed, use a secret / service_role key' };
+    const parts = k.split('.');
+    if (parts.length !== 3) return { ...out, key_type: 'not a Supabase key (expected eyJ… with 3 parts, or sb_secret_…) - probably cut short when copied' };
+    try {
+        const p = JSON.parse(Buffer.from(parts[1].replace(/-/g, '+').replace(/_/g, '/'), 'base64').toString('utf8'));
+        return { ...out, key_type: 'legacy JWT', key_role: p.role || null, key_project_ref: p.ref || null,
+            key_matches_url: !!(urlRef && p.ref && urlRef === p.ref) };
+    } catch { return { ...out, key_type: 'unreadable JWT - probably cut short when copied' }; }
+}
+module.exports = { setupHint, describeKey };

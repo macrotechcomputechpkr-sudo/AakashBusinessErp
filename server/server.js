@@ -229,12 +229,16 @@ app.use('/api', documentNumberingRoutes);
 // Setup check for a new host: can the server read its global database?
 // Reports only yes / no and a hint - never keys or data.
 app.get('/api/health/setup', async (req, res) => {
-    const { globalMasterDb } = require('./utils/dbHelpers');
-    const { setupHint } = require('./utils/setupCheck');
+    const { globalMasterDb, globalMasterUrl } = require('./utils/dbHelpers');
+    const { setupHint, describeKey } = require('./utils/setupCheck');
     const out = {
         global_url_set: !!process.env.GLOBAL_MASTER_URL, global_key_set: !!process.env.GLOBAL_MASTER_KEY,
         jwt_secret_set: !!process.env.JWT_SECRET, web_app_built: fs.existsSync(path.join(__dirname, '..', 'client', 'build', 'index.html'))
     };
+    // the key's kind / role / project (never the key) - a wrong key is the usual setup mistake
+    Object.assign(out, describeKey(process.env.GLOBAL_MASTER_KEY, globalMasterUrl()));
+    if (out.key_role && out.key_role !== 'service_role') out.key_hint = `This is the ${out.key_role} key - use the service_role key.`;
+    else if (out.key_matches_url === false) out.key_hint = `The key belongs to project ${out.key_project_ref}, the URL to ${out.url_project_ref} - take both from the same project.`;
     try {
         const { error, count, status } = await globalMasterDb.from('global_users').select('id', { count: 'exact' }).limit(1);
         if (error) { Object.assign(out, { global_db: 'error', status, hint: setupHint(error, status) || String(error.message || `HTTP ${status}`).slice(0, 200) }); return res.json(out); }

@@ -222,6 +222,7 @@ async function checkTransactionUsage(tenantClient, tenantId, masterId, checks) {
 }
 
 module.exports = {
+    globalMasterUrl: () => GLOBAL_MASTER_URL,
     tenantIdOfClient,
     globalMasterDb,
     getTenantClient,
