@@ -90,6 +90,9 @@ Do **not** set `REACT_APP_API_URL`: the app then calls its own domain. After cha
 
 ## Checks if something fails
 
+- **Setup check**: open `https://<your-domain>/api/health/setup`. It says whether the server reaches the global database (`global_db: ok`), how many super admins exist, whether the web app is built, and a hint when something is wrong (key, URL, missing tables). It never shows keys or data.
+- **"Login failed" / "Server setup: …" on the login page**: the hint names the problem - fix that variable (or run the SQL files) and Restart.
+
 - **"jem service restart … Failed to start"**: open the node's **Log** (`run.log` / `nodejs.log`).
   - Or **Web SSH** on the node: `journalctl -xeu nodejs.service | tail -50` and `pm2 logs --lines 50`.
   - `Cannot find module …/server.js`: `APP_FILE` must be `server.js` (root) - update from Git so the root `server.js` is there.
