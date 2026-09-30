@@ -8,7 +8,7 @@
 //   node scripts/generateHash.js "Super@2024"
 // =============================================
 
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
 
 const password = process.argv[2];
 if (!password) {

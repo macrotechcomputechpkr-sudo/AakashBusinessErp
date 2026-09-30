@@ -10,7 +10,7 @@
 
 const express = require('express');
 const router = express.Router();
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
 const { getTenantClient, logAudit, loadUserPermissions, applyListQuery } = require('../utils/dbHelpers');
 const { requireAuth, requirePermission } = require('../middleware/auth');

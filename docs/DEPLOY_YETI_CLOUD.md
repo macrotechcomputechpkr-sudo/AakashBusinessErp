@@ -91,6 +91,7 @@ Do **not** set `REACT_APP_API_URL`: the app then calls its own domain. After cha
 ## Checks if something fails
 
 - **"jem service restart … Failed to start"**: open the node's **Log** (`run.log` / `nodejs.log`).
+  - Or **Web SSH** on the node: `journalctl -xeu nodejs.service | tail -50` and `pm2 logs --lines 50`.
   - `Cannot find module …/server.js`: `APP_FILE` must be `server.js` (root) - update from Git so the root `server.js` is there.
   - `Cannot find module 'express'` / `server/node_modules is missing`: `npm install` did not finish (often too few cloudlets for the React build) - raise the cloudlet limit and **Redeploy**.
 - **"503 SSL Service Unavailable"**: HTTPS is not on for the environment. Environment → **Settings → SSL → Built-In SSL** (for `*.yetiappcloud.com`), or Let's Encrypt for a custom domain. Until then open the `http://` address.

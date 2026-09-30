@@ -9,7 +9,7 @@
 // =============================================
 
 const express = require('express');
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
 const router = express.Router();
 const { createClient } = require('@supabase/supabase-js');
 const { auditFetch } = require('../utils/requestContext');

@@ -16,7 +16,7 @@
 // ledger permission.
 // =============================================
 const express = require('express');
-const bcrypt = require('bcrypt');
+const bcrypt = require('bcryptjs');
 const router = express.Router();
 const { getTenantClient, loadUserPermissions, logAudit } = require('../utils/dbHelpers');
 const { requireAuth, requirePermission } = require('../middleware/auth');
