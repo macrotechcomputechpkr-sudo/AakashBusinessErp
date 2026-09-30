@@ -226,6 +226,28 @@ app.use('/api', salesNonsaleableReturnRoutes);
 app.use('/api', salesAdditionalEntryRoutes);
 app.use('/api', documentNumberingRoutes);
 
+// Setup check for a new host: can the server read its global database?
+// Reports only yes / no and a hint - never keys or data.
+app.get('/api/health/setup', async (req, res) => {
+    const { globalMasterDb } = require('./utils/dbHelpers');
+    const { setupHint } = require('./utils/setupCheck');
+    const out = {
+        global_url_set: !!process.env.GLOBAL_MASTER_URL, global_key_set: !!process.env.GLOBAL_MASTER_KEY,
+        jwt_secret_set: !!process.env.JWT_SECRET, web_app_built: fs.existsSync(path.join(__dirname, '..', 'client', 'build', 'index.html'))
+    };
+    try {
+        const { error, count, status } = await globalMasterDb.from('global_users').select('id', { count: 'exact' }).limit(1);
+        if (error) { Object.assign(out, { global_db: 'error', status, hint: setupHint(error, status) || String(error.message || `HTTP ${status}`).slice(0, 200) }); return res.json(out); }
+        const { count: admins } = await globalMasterDb.from('global_users').select('id', { count: 'exact', head: true }).eq('is_global_admin', true);
+        Object.assign(out, { global_db: 'ok', users: count, super_admins: admins || 0 });
+        if (!admins) out.hint = 'No super admin yet - run database/124_default_admin_logins_schema.sql in the global Supabase project.';
+    } catch (e) {
+        Object.assign(out, { global_db: 'error', hint: setupHint(e) || String(e?.message || 'unknown error').slice(0, 200) });
+    }
+    if (!out.jwt_secret_set) out.hint = `${out.hint ? `${out.hint} ` : ''}JWT_SECRET is not set.`;
+    res.json(out);
+});
+
 app.get('/api/health', (req, res) => {
     res.json({ status: 'OK', message: 'Server is running' });
 });

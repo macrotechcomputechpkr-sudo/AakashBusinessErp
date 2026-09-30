@@ -15,6 +15,7 @@ const jwt = require('jsonwebtoken');
 const router = express.Router();
 const { globalMasterDb, getUserTenants, logAudit } = require('../utils/dbHelpers');
 const { requireAuth, JWT_SECRET } = require('../middleware/auth');
+const { setupHint } = require('../utils/setupCheck');
 
 const JWT_EXPIRY = '24h';
 
@@ -44,9 +45,9 @@ router.post('/login', async (req, res) => {
             query = query.eq('tenant_id', tenantRow.id);
         }
 
-        const { data: matches, error: userError } = await query;
+        const { data: matches, error: userError, status: queryStatus } = await query;
 
-        if (userError) throw userError;
+        if (userError) { userError.httpStatus = queryStatus; throw userError; }
 
         // FIX: same email can legitimately exist under different tenants.
         if (!matches || matches.length === 0) {
@@ -161,7 +162,8 @@ router.post('/login', async (req, res) => {
 
     } catch (error) {
         console.error('Login error:', error);
-        res.status(500).json({ success: false, error: 'Login failed. Please try again.' });
+        // a setup problem (key / URL / tables) says so; anything else stays generic
+        res.status(500).json({ success: false, error: setupHint(error, error?.httpStatus) || 'Login failed. Please try again.' });
     }
 });
 
