@@ -11,10 +11,20 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const router = express.Router();
-const { createClient } = require('@supabase/supabase-js');
-const { auditFetch } = require('../utils/requestContext');
-const { ensureDefaultAdmin, setupTenantAccess } = require('../utils/tenantSetup');
-const { globalMasterDb, logAudit } = require('../utils/dbHelpers');
+const { ensureDefaultAdmin, setupTenantAccess, ensureMainBranchWarehouse } = require('../utils/tenantSetup');
+const { globalMasterDb, logAudit, LOCAL_DB, DATABASE_URL, clientForTenantRow } = require('../utils/dbHelpers');
+const { createDatabase, dropDatabase, migrate, databaseUrl } = require('../db/migrate');
+
+// Local mode: a new company gets a unique 9-digit code (its company code at
+// sign-in) and its own database erp_<code>, created and migrated right here.
+async function generateTenantCode() {
+    for (let i = 0; i < 20; i += 1) {
+        const code = String(100000000 + Math.floor(Math.random() * 900000000));
+        const { data } = await globalMasterDb.from('tenants').select('id').eq('tenant_code', code).maybeSingle();
+        if (!data) return code;
+    }
+    throw new Error('Could not find a free company code - try again');
+}
 const { requireAuth, requireSuperAdmin } = require('../middleware/auth');
 
 const SALT_ROUNDS = 10;
@@ -42,6 +52,8 @@ router.post('/company/create', requireAuth, async (req, res) => {
         db_host, db_name, db_anon_key, db_service_key
     } = req.body;
 
+    // a new local company whose setup fails half-way is removed again (its row and database)
+    let createdLocal = null;
     try {
         const { userId, isSuperAdmin } = req.auth;
         let tenantId = req.auth.tenantId;
@@ -59,10 +71,24 @@ router.post('/company/create', requireAuth, async (req, res) => {
                 }
                 tenantId = existingTenant.id;
             } else {
-                if (!db_host || !db_name || !db_anon_key) {
-                    return res.status(400).json({ success: false, error: 'db_host, db_name and db_anon_key are required to provision a new tenant' });
+                if (!company_name) return res.status(400).json({ success: false, error: 'Company name is required' });
+                let dbConfig;
+                let newTenantCode;
+                if (LOCAL_DB) {
+                    // own PostgreSQL: create the company's database and its tables now
+                    newTenantCode = await generateTenantCode();
+                    const dbNameLocal = `erp_${newTenantCode}`;
+                    await createDatabase(DATABASE_URL, dbNameLocal);
+                    createdLocal = { tenantId: null, dbName: dbNameLocal };
+                    await migrate(databaseUrl(DATABASE_URL, dbNameLocal), 'tenant');
+                    dbConfig = { master_db_host: 'local', master_db_name: dbNameLocal, master_db_anon_key: 'local', master_db_service_key: null };
+                } else {
+                    if (!db_host || !db_name || !db_anon_key) {
+                        return res.status(400).json({ success: false, error: 'db_host, db_name and db_anon_key are required to provision a new tenant' });
+                    }
+                    newTenantCode = company_name.toLowerCase().replace(/[^a-z0-9]/g, '_') + '_' + Date.now().toString().slice(-6);
+                    dbConfig = { master_db_host: db_host, master_db_name: db_name, master_db_anon_key: db_anon_key, master_db_service_key: db_service_key };
                 }
-                const newTenantCode = company_name.toLowerCase().replace(/[^a-z0-9]/g, '_') + '_' + Date.now().toString().slice(-6);
                 const { data: newTenant, error: insertError } = await globalMasterDb
                     .from('tenants')
                     .insert({
@@ -70,10 +96,7 @@ router.post('/company/create', requireAuth, async (req, res) => {
                         company_name,
                         company_type: company_type || 'private',
                         contact_email,
-                        master_db_host: db_host,
-                        master_db_name: db_name,
-                        master_db_anon_key: db_anon_key,
-                        master_db_service_key: db_service_key,
+                        ...dbConfig,
                         subscription_status: 'active',
                         is_company_created: false
                     })
@@ -81,6 +104,7 @@ router.post('/company/create', requireAuth, async (req, res) => {
                     .single();
                 if (insertError) throw insertError;
                 tenantId = newTenant.id;
+                if (createdLocal) createdLocal.tenantId = tenantId;
 
             }
         } else {
@@ -100,24 +124,25 @@ router.post('/company/create', requireAuth, async (req, res) => {
 
         const { data: tenant, error: tenantError } = await globalMasterDb
             .from('tenants')
-            .select('tenant_code, master_db_host, master_db_anon_key')
+            .select('tenant_code, master_db_host, master_db_name, master_db_anon_key')
             .eq('id', tenantId)
             .single();
         if (tenantError || !tenant) {
             return res.status(404).json({ success: false, error: 'Tenant database configuration not found' });
         }
 
-        const tenantClient = createClient(tenant.master_db_host, tenant.master_db_anon_key, { global: { fetch: auditFetch } });
+        const tenantClient = clientForTenantRow(tenant);
 
         const { data: companyProfile, error: companyError } = await tenantClient
             .from('company_profile')
             .insert({
                 tenant_id: tenantId,
-                company_name, company_code: tenant_code, registration_number, pan_number,
+                company_name, company_code: tenant.tenant_code, registration_number, pan_number,
                 vat_number, cin_number, registration_date: new Date().toISOString(),
                 company_type: company_type || 'private', industry_type, business_category,
                 province, district, municipality, ward_number, address_line1, address_line2,
-                contact_person, contact_designation, contact_email, contact_phone, contact_mobile,
+                // company_profile names them email / phone / mobile
+                contact_person, contact_designation, email: contact_email, phone: contact_phone, mobile: contact_mobile,
                 tax_office, tax_payer_type: tax_payer_type || 'entity',
                 fiscal_year_start_month: fiscal_year_start_month || 7,
                 fiscal_year_start_day: fiscal_year_start_day || 16,
@@ -128,9 +153,7 @@ router.post('/company/create', requireAuth, async (req, res) => {
             .select()
             .single();
 
-        if (companyError) {
-            return res.status(500).json({ success: false, error: 'Failed to create company profile: ' + companyError.message });
-        }
+        if (companyError) throw new Error('Failed to create company profile: ' + companyError.message);
 
         const currentYear = new Date().getFullYear();
         const startDate = new Date(currentYear, 6, 16);
@@ -182,6 +205,10 @@ router.post('/company/create', requireAuth, async (req, res) => {
         try { access = await setupTenantAccess(tenantClient, tenantId, companyProfile.id, userId); }
         catch (e) { console.error('setupTenantAccess failed:', e.message); }
 
+        // one branch + warehouse (MAIN) so stock entries post from day one
+        try { await ensureMainBranchWarehouse(tenantClient, tenantId, companyProfile); }
+        catch (e) { console.error('ensureMainBranchWarehouse failed:', e.message); }
+
         await logAudit(tenantId, userId, 'create_company', 'company', companyProfile.id, { new_data: companyProfile });
         res.json({ success: true, message: 'Company created successfully', company: companyProfile, fiscal_year: fiscalYear, tenant_id: tenantId, access,
             // shown once to the super admin who created the company; the admin must change it at first sign-in
@@ -189,6 +216,13 @@ router.post('/company/create', requireAuth, async (req, res) => {
 
     } catch (error) {
         console.error('Company creation error:', error);
+        if (createdLocal) {
+            if (createdLocal.tenantId) {
+                await globalMasterDb.from('global_users').delete().eq('tenant_id', createdLocal.tenantId);
+                await globalMasterDb.from('tenants').delete().eq('id', createdLocal.tenantId);
+            }
+            await dropDatabase(DATABASE_URL, createdLocal.dbName).catch(e => console.error('drop database failed:', e.message));
+        }
         res.status(500).json({ success: false, error: error.message });
     }
 });
@@ -200,7 +234,7 @@ router.get('/company/profile', requireAuth, async (req, res) => {
 
         const { data: tenant, error: tenantError } = await globalMasterDb
             .from('tenants')
-            .select('master_db_host, master_db_anon_key, is_company_created')
+            .select('master_db_host, master_db_name, master_db_anon_key, is_company_created')
             .eq('id', targetTenantId)
             .single();
         if (tenantError || !tenant) return res.status(404).json({ success: false, error: 'Tenant not found' });
@@ -209,7 +243,7 @@ router.get('/company/profile', requireAuth, async (req, res) => {
             return res.json({ success: true, is_company_created: false, message: 'Company profile not created yet' });
         }
 
-        const tenantClient = createClient(tenant.master_db_host, tenant.master_db_anon_key, { global: { fetch: auditFetch } });
+        const tenantClient = clientForTenantRow(tenant);
         const { data: profile, error: profileError } = await tenantClient
             .from('company_profile')
             .select('*')

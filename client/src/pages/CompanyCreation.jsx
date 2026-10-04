@@ -10,7 +10,7 @@
 //        those fields, since that is a one-time admin/ops action.
 // =============================================
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useEnterKeyNavigation } from '../hooks/useEnterKeyNavigation';
@@ -43,6 +43,12 @@ const CompanyCreation = () => {
     const [error, setError] = useState('');
     const [selectedTenant, setSelectedTenant] = useState('');
     const [isNewTenant, setIsNewTenant] = useState(false);
+    // own PostgreSQL server: the company's database is created by the server
+    // (code = a 9-digit number), so no Supabase fields are asked
+    const [localDb, setLocalDb] = useState(false);
+    useEffect(() => {
+        fetch('/api/health').then(r => r.json()).then(d => { if (d.db_mode === 'local') { setLocalDb(true); setIsNewTenant(true); } }).catch(() => {});
+    }, []);
     const [formData, setFormData] = useState(emptyForm);
     const formRef = useRef(null);
     useEnterKeyNavigation(formRef);
@@ -141,7 +147,7 @@ const CompanyCreation = () => {
                             <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg space-y-3">
                                 <label className="flex items-center gap-2 text-sm font-medium text-yellow-800">
                                     <input type="checkbox" checked={isNewTenant} onChange={e => setIsNewTenant(e.target.checked)} />
-                                    Provision a brand new tenant (needs a fresh Supabase project)
+                                    {localDb ? 'Create a brand new company (its own database is created automatically; company code = 9-digit number)' : 'Provision a brand new tenant (needs a fresh Supabase project)'}
                                 </label>
 
                                 {!isNewTenant ? (
@@ -156,6 +162,8 @@ const CompanyCreation = () => {
                                             ))}
                                         </select>
                                     </div>
+                                ) : localDb ? (
+                                    <p className="text-xs text-yellow-800">The server creates the database <code>erp_&lt;company code&gt;</code> with all tables, a Main branch / warehouse and the company admin login. Nothing else to enter.</p>
                                 ) : (
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                         <input name="db_host" value={formData.db_host} onChange={handleChange} placeholder="https://xxxx.supabase.co" className="erp-input" required />

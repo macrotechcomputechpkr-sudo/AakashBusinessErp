@@ -83,4 +83,28 @@ async function setupTenantAccess(tenantClient, tenantId, companyId, actorId) {
     return { groups: Object.keys(byCode), admins_linked: linked };
 }
 
-module.exports = { ensureDefaultAdmin, setupTenantAccess, ALL_MODULES, GROUPS, DEFAULT_ADMIN_EMAIL, DEFAULT_ADMIN_PASSWORD };
+/**
+ * A new company starts with one branch and one warehouse (code MAIN), so
+ * entries of a single-warehouse company can post stock right away.
+ */
+async function ensureMainBranchWarehouse(tenantClient, tenantId, profile = {}) {
+    const loc = { province: profile.province || 'Bagmati', district: profile.district || 'Kathmandu' };
+    const { data: br } = await tenantClient.from('branches').select('id').eq('tenant_id', tenantId).limit(1);
+    let branchId = br && br[0] ? br[0].id : null;
+    if (!branchId) {
+        const { data, error } = await tenantClient.from('branches').insert({ tenant_id: tenantId, branch_code: 'MAIN', branch_name: 'Main Branch', ...loc }).select('id').single();
+        if (error) throw error;
+        branchId = data.id;
+    }
+    const { data: wh } = await tenantClient.from('warehouses').select('id').eq('tenant_id', tenantId).limit(1);
+    if (!wh || !wh.length) {
+        const row = { tenant_id: tenantId, warehouse_code: 'MAIN', warehouse_name: 'Main Warehouse', ...loc, branch_id: branchId };
+        let res = await tenantClient.from('warehouses').insert(row).select('id').single();
+        if (res.error && /branch_id/.test(res.error.message || '')) { delete row.branch_id; res = await tenantClient.from('warehouses').insert(row).select('id').single(); }
+        if (res.error) throw res.error;
+    }
+    return branchId;
+}
+
+module.exports = {
+    ensureMainBranchWarehouse, ensureDefaultAdmin, setupTenantAccess, ALL_MODULES, GROUPS, DEFAULT_ADMIN_EMAIL, DEFAULT_ADMIN_PASSWORD };

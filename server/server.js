@@ -249,7 +249,8 @@ app.get('/api/health/setup', async (req, res) => {
         jwt_secret_set: !!process.env.JWT_SECRET, web_app_built: fs.existsSync(path.join(__dirname, '..', 'client', 'build', 'index.html'))
     };
     // the key's kind / role / project (never the key) - a wrong key is the usual setup mistake
-    Object.assign(out, describeKey(process.env.GLOBAL_MASTER_KEY, globalMasterUrl()));
+    out.db_mode = require('./utils/dbHelpers').LOCAL_DB ? 'local PostgreSQL (DATABASE_URL)' : 'Supabase';
+    if (!require('./utils/dbHelpers').LOCAL_DB) Object.assign(out, describeKey(process.env.GLOBAL_MASTER_KEY, globalMasterUrl()));
     if (out.key_role && out.key_role !== 'service_role') out.key_hint = `This is the ${out.key_role} key - use the service_role key.`;
     else if (out.key_matches_url === false) out.key_hint = `The key belongs to project ${out.key_project_ref}, the URL to ${out.url_project_ref} - take both from the same project.`;
     try {
@@ -272,7 +273,7 @@ function sendSetup(res, out) {
 }
 
 app.get('/api/health', (req, res) => {
-    res.json({ status: 'OK', message: 'Server is running' });
+    res.json({ status: 'OK', message: 'Server is running', db_mode: require('./utils/dbHelpers').LOCAL_DB ? 'local' : 'supabase' });
 });
 
 // 404 for unmatched API routes
@@ -308,7 +309,28 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-    console.log(`🚀 Server running on port ${PORT}`);
-    console.log(`✅ Environment: ${process.env.NODE_ENV || 'development'}`);
-});
+// Local PostgreSQL (DATABASE_URL): bring the global database and every
+// company's database up to date (database/*.sql not yet applied) - see db/migrate.js.
+async function migrateLocalDatabases() {
+    const { LOCAL_DB, DATABASE_URL, globalMasterDb } = require('./utils/dbHelpers');
+    if (!LOCAL_DB) return;
+    const { migrate, databaseUrl, createDatabase } = require('./db/migrate');
+    // the global database itself may not exist yet on a new server
+    const globalName = new URL(DATABASE_URL).pathname.slice(1);
+    await createDatabase(databaseUrl(DATABASE_URL, 'postgres'), globalName).catch(e => console.warn(`[db] could not check / create ${globalName}: ${e.message}`));
+    await migrate(DATABASE_URL, 'global');
+    globalMasterDb.reloadMeta();
+    const { data: tenants, error } = await globalMasterDb.from('tenants').select('tenant_code, master_db_name').eq('master_db_host', 'local');
+    if (error) throw error;
+    for (const t of tenants || []) {
+        try { await migrate(databaseUrl(DATABASE_URL, t.master_db_name), 'tenant'); }
+        catch (e) { console.error(`[db] company ${t.tenant_code}: ${e.message}`); }
+    }
+}
+
+migrateLocalDatabases()
+    .catch(e => { console.error('[db] migration failed:', e.message); })
+    .finally(() => app.listen(PORT, () => {
+        console.log(`🚀 Server running on port ${PORT}`);
+        console.log(`✅ Environment: ${process.env.NODE_ENV || 'development'}`);
+    }));
