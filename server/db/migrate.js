@@ -16,7 +16,7 @@ const { Client } = require('pg');
 const { SCHEMAS } = require('./pgClient');
 
 const DIR = path.join(__dirname, '..', '..', 'database');
-const GLOBAL_FILES = ['01_global_master_schema.sql', '124_default_admin_logins_schema.sql', '156_global_tenants_company_columns_schema.sql'];
+const GLOBAL_FILES = ['01_global_master_schema.sql', '124_default_admin_logins_schema.sql', '156_global_tenants_company_columns_schema.sql', '158_global_tenant_companies_schema.sql'];
 const num = f => parseInt(f, 10);
 
 function migrationFiles(kind) {
@@ -73,7 +73,7 @@ async function createDatabase(baseUrl, dbName) {
 
 /** DROP DATABASE (a company whose creation failed) */
 async function dropDatabase(baseUrl, dbName) {
-    if (!/^erp_[0-9]{9}$/.test(dbName)) throw new Error(`refusing to drop ${dbName}`);
+    if (!/^erp_[0-9]{9}(_[a-z0-9]{1,20})?$/.test(dbName)) throw new Error(`refusing to drop ${dbName}`);
     const client = new Client({ connectionString: baseUrl });
     await client.connect();
     try { await client.query(`DROP DATABASE IF EXISTS "${dbName}" WITH (FORCE)`); } finally { await client.end().catch(() => {}); }

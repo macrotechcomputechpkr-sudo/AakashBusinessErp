@@ -22,7 +22,13 @@ The effect of each transaction is shown in a box like this:
 - Press **Enter** to move to the next field. In a grid, Enter moves to the next cell and then to a new line.
 - Every report table has an Excel-style filter on each column heading.
 
-### 1.2 First-time setup order
+### 1.2 Creating a company
+
+- **Company Creation**: company name, type, **PAN / VAT Number** (one field - the same number is used as PAN and VAT), address, contact, and the first fiscal year: **Starting Year** (B.S.) and **Starting Month** (default Shrawan). E.g. 2082 + Shrawan = Fiscal Year 2082/83 from 2082-04-01.
+- Every company gets a 9-digit company code (e.g. `446662298`) and its own database.
+- **More companies in your tenant**: a company admin clicks **➕ New Company** on the title bar, enters the company name and a short code (e.g. `abc`) and creates it. It gets the code `446662298_abc` and its own database; your admins are its admins, it shows in the company switcher, and you can sign in to it with that code. (Needs the ERP on its own PostgreSQL server.)
+
+### 1.3 First-time setup order
 
 1. **Setup > System Control**: Business Nature, default ledgers, VAT, stock method, dual unit, approvals.
 2. **Setup > Fiscal Years**, **Branches & Warehouses**, **Document Numbering**, **Currencies**.
@@ -32,7 +38,7 @@ The effect of each transaction is shown in a box like this:
 6. **Ledger Opening Balance** and **Product Opening Stock**.
 7. **Setup > Users, Security Groups, Data Access**.
 
-### 1.3 Buttons on every transaction screen
+### 1.4 Buttons on every transaction screen
 
 | Button | What it does | Effect |
 |---|---|---|
@@ -55,7 +61,7 @@ The effect of each transaction is shown in a box like this:
 
 **Approval**: when a module is ticked under System Control > Approval Needed For, Save keeps the entry as **Awaiting approval** with no effect. Only a user whose Security Group has the approval right for that document can approve it. Approving posts it, and only then do accounts and stock move.
 
-### 1.4 Common parts of a sales or purchase entry
+### 1.5 Common parts of a sales or purchase entry
 
 - **Master part** (top): date (BS/AD), document number (automatic or manual, following Document Numbering), Cash/Credit, party, currency and exchange rate, sales rate type (Sr1-Sr5), agent, warehouse, and the source documents to pull from.
 - **Item Code cell**: type a code, short name or barcode. In POS mode, scanning a barcode adds the item straight away.

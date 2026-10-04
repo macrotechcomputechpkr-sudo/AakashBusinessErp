@@ -33,6 +33,7 @@ router.post('/login', async (req, res) => {
             .eq('email', email.toLowerCase().trim())
             .eq('status', 'active');
 
+        let loginTenantId = null;   // a further company of the tenant (code <tenant>_<abc>), opened through user_tenant_access
         if (tenant_code) {
             const { data: tenantRow } = await globalMasterDb
                 .from('tenants')
@@ -45,9 +46,20 @@ router.post('/login', async (req, res) => {
             query = query.eq('tenant_id', tenantRow.id);
         }
 
-        const { data: matches, error: userError, status: queryStatus } = await query;
+        let { data: matches, error: userError, status: queryStatus } = await query;
 
         if (userError) { userError.httpStatus = queryStatus; throw userError; }
+        if (tenant_code && (!matches || !matches.length)) {
+            const { data: tenantRow } = await globalMasterDb.from('tenants').select('id').eq('tenant_code', tenant_code.toLowerCase().trim()).single();
+            const { data: acc } = await globalMasterDb.from('user_tenant_access').select('user_id').eq('tenant_id', tenantRow.id).eq('is_active', true);
+            const ids = (acc || []).map(a => a.user_id);
+            if (ids.length) {
+                const r = await globalMasterDb.from('global_users').select('*').eq('email', email.toLowerCase().trim()).eq('status', 'active').in('id', ids);
+                if (r.error) throw r.error;
+                matches = r.data;
+                loginTenantId = tenantRow.id;
+            }
+        }
 
         // FIX: same email can legitimately exist under different tenants.
         if (!matches || matches.length === 0) {
@@ -107,7 +119,7 @@ router.post('/login', async (req, res) => {
         const { data: tenant, error: tenantError } = await globalMasterDb
             .from('tenants')
             .select('id, tenant_code, company_name, subscription_status, is_company_created')
-            .eq('id', user.tenant_id)
+            .eq('id', loginTenantId || user.tenant_id)
             .single();
 
         if (tenantError || !tenant) {
@@ -261,7 +273,8 @@ router.post('/switch-tenant', requireAuth, async (req, res) => {
 
         await logAudit(tenant.id, req.auth.userId, 'switch_tenant', 'tenant', tenant.id, {});
 
-        res.json({ success: true, token, tenant, requires_company_creation: !tenant.is_company_created });
+        // the list too: a company created a moment ago shows up in the switcher
+        res.json({ success: true, token, tenant, tenants: await getUserTenants(req.auth.userId, false), requires_company_creation: !tenant.is_company_created });
     } catch (error) {
         console.error('Switch tenant error:', error);
         res.status(500).json({ success: false, error: error.message });

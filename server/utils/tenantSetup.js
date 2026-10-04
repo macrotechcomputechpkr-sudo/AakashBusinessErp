@@ -49,7 +49,7 @@ async function ensureDefaultAdmin(tenantId) {
 }
 
 /** Default security groups + a tenant users row for every company admin login. */
-async function setupTenantAccess(tenantClient, tenantId, companyId, actorId) {
+async function setupTenantAccess(tenantClient, tenantId, companyId, actorId, extraAdminIds = []) {
     const { data: have } = await tenantClient.from('security_rights_groups').select('id, group_code, permissions').eq('tenant_id', tenantId);
     const byCode = Object.fromEntries((have || []).map(g => [g.group_code, g]));
     for (const g of GROUPS) {
@@ -67,8 +67,16 @@ async function setupTenantAccess(tenantClient, tenantId, companyId, actorId) {
         byCode[g.group_code] = data;
     }
     const adminGroup = byCode.ADMIN;
-    const { data: admins, error } = await globalMasterDb.from('global_users').select('id, email, full_name, phone, password_hash').eq('tenant_id', tenantId).eq('role', 'admin');
+    const { data: tenantAdmins, error } = await globalMasterDb.from('global_users').select('id, email, full_name, phone, password_hash').eq('tenant_id', tenantId).eq('role', 'admin');
     if (error) throw error;
+    // e.g. the tenant user who created this company inside their tenant
+    let extra = [];
+    if (extraAdminIds.length) {
+        const r = await globalMasterDb.from('global_users').select('id, email, full_name, phone, password_hash').in('id', extraAdminIds);
+        if (r.error) throw r.error;
+        extra = r.data || [];
+    }
+    const admins = [...(tenantAdmins || []), ...extra.filter(x => !(tenantAdmins || []).some(a => a.id === x.id))];
     let linked = 0;
     for (const a of admins || []) {
         const { data: exists } = await tenantClient.from('users').select('id').eq('id', a.id).maybeSingle();

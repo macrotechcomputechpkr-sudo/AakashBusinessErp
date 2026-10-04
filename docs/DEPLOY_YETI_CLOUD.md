@@ -13,7 +13,7 @@ domain. The database is either
 browser ──https──> Yeti Cloud Node.js  (server/server.js: /api/* + the React build)
                           │
                           ├──> A. PostgreSQL node: erp_global (companies, logins)
-                          │                       + erp_<9-digit code> per company
+                          │                       + erp_<9-digit code> per company (+ erp_<code>_<abc> for more companies)
                           └──> B. Supabase: global project + company project(s)
 ```
 
@@ -29,7 +29,7 @@ browser ──https──> Yeti Cloud Node.js  (server/server.js: /api/* + the R
    - `JWT_SECRET` (as below). `GLOBAL_MASTER_URL` / `GLOBAL_MASTER_KEY` are not needed - remove them.
 3. **Restart** the Node.js node. At start the server
    - creates the database `erp_global` if it is missing and runs
-     `01_global_master_schema.sql`, `124_default_admin_logins_schema.sql`, `156_…`
+     `01_global_master_schema.sql`, `124_default_admin_logins_schema.sql`, `156_…`, `158_…`
      (super admin `superadmin@businesserp.com.np` / `Super@12345`),
    - applies any newer `database/*.sql` to `erp_global` and to every company's
      database (each database remembers what ran, in `public.erp_schema_migrations`).
@@ -40,6 +40,14 @@ browser ──https──> Yeti Cloud Node.js  (server/server.js: /api/* + the R
    - creates the Main branch / warehouse and the company admin login
      (`admin@businesserp.com.np` / `Admin@12345`, changed at the first sign-in).
    Sign in to the company with that company code.
+   On the form: **PAN / VAT Number** is one field (one number), and the fiscal
+   year comes from **Starting Year** (B.S.) + **Starting Month** (default Shrawan).
+4b. More companies in the same tenant: the company admin signs in → **➕ New
+   Company** (title bar) → company name + short code (e.g. `abc`) → **Create
+   Company**. The server creates `erp_<code>_abc` (company code `<code>_abc`,
+   e.g. `446662298_abc`, `446662298_xyz`) with all tables, and the tenant's
+   admins become its admins (no new login). It appears in the company switcher;
+   sign in to it directly with company code `<code>_abc`.
 5. Check: `https://<your-domain>/api/health/setup` shows `db_mode: local PostgreSQL` and `global_db: ok`.
 6. Backups: back up the PostgreSQL node (Yeti backup add-on, or `pg_dumpall`).
 
