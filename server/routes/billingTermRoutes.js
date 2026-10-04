@@ -18,6 +18,24 @@ const { requireAuth, requirePermission } = require('../middleware/auth');
 const { validateFormula, evaluateAllTerms, FormulaError } = require('../utils/formulaEvaluator');
 const { MODE_KEYS, effectiveInput, applyInput, loadProductTermMap } = require('../utils/termInput');
 
+// "Use As" (Sales and Purchase terms): VAT, Excise Duty, Discount or Other Addition.
+// It decides the internal tax_type (VAT / Excise postings and reports read it)
+// and the sign (a discount is always minus, the others plus).
+const USE_AS = { vat: { tax_type: 'vat', sign: '+' }, excise: { tax_type: 'excise', sign: '+' }, discount: { tax_type: 'none', sign: '-' }, other_addition: { tax_type: 'none', sign: '+' } };
+function useAsFields(body, existing = {}) {
+    let useAs = body.use_as;
+    if (!USE_AS[useAs]) {
+        if (!('use_as' in body) && !('tax_type' in body) && !('sign' in body)) return {};
+        const tax = 'tax_type' in body ? body.tax_type : existing.tax_type, sign = 'sign' in body ? body.sign : existing.sign;
+        useAs = tax === 'vat' ? 'vat' : tax === 'excise' ? 'excise' : sign === '-' || ['discount', 'cash_discount'].includes(tax) ? 'discount' : 'other_addition';
+    }
+    const keepCash = useAs === 'discount' && existing.tax_type === 'cash_discount' && !('tax_type' in body);
+    const out = { use_as: useAs, tax_type: keepCash ? 'cash_discount' : USE_AS[useAs].tax_type, sign: USE_AS[useAs].sign };
+    // a Rounded Off term carries the rounding difference either way - its sign stays as set
+    if ((body.term_category || existing.term_category) === 'rounded_off') delete out.sign;
+    return out;
+}
+
 function validateTermBody(body) {
     const { calculation_mode, formula_expression, base_reference, base_reference_term_id, rate_percentage } = body;
 
@@ -109,10 +127,11 @@ router.post('/billing-terms', requireAuth, loadUserPermissions, requirePermissio
         const { data: codeRow, error: codeErr } = await masterCodes.nextRpc(tenantClient, req.auth.tenantId, 'billing_term');
         if (codeErr) throw codeErr;
 
-        const b = req.body;
+        const b = { ...req.body, ...useAsFields({ use_as: req.body.use_as || undefined, tax_type: req.body.tax_type, sign: req.body.sign, term_category: req.body.term_category }) };
         const { data, error } = await tenantClient
             .from('billing_terms')
             .insert({
+                use_as: b.use_as || 'other_addition',
                 tenant_id: tenantId,
                 term_code: codeRow,
                 term_name: term_name.trim(),
@@ -207,6 +226,7 @@ router.put('/billing-terms/:id', requireAuth, loadUserPermissions, requirePermis
         if ('tds_percent' in body) body.tds_percent = body.tds_percent === '' || body.tds_percent == null ? null : Number(body.tds_percent);
         // term type is Normal, VAT or Excise (no Service Tax / TSC / Cash Discount on sales & purchase)
         if ('tax_type' in body && body.tax_type !== existing.tax_type && !['none', 'vat', 'excise'].includes(body.tax_type)) body.tax_type = 'none';
+        Object.assign(body, useAsFields(body, existing));
         const update = {
             ...body,
             formula_expression: merged.calculation_mode === 'formula' ? merged.formula_expression : null,

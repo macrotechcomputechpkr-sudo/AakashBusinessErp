@@ -8,6 +8,9 @@
 //                   VAT (total - VAT, the same figure the purchase / goods
 //                   account is debited with: after discount, with product-wise
 //                   and document-level non-VAT terms) / its qty in base units.
+//                   Each over-all term is shared by its own basis (quantity
+//                   or value), product-wise terms stay on their line, and a
+//                   term not "included in costing" stays out (lineGoods).
 //                   Before, the entry rate was used as the base-unit cost, so a
 //                   line in boxes (1 box = 12 pcs) was valued 12 times over and
 //                   discounts / terms never reached the stock value.
@@ -28,26 +31,95 @@ const round4 = n => Math.round((Number(n) || 0) * 10000) / 10000;
 const round2 = n => Math.round((Number(n) || 0) * 100) / 100;
 
 /**
- * details: the document's lines; baseQtyOf(detail) -> qty in base units (already worked out by the caller)
- * vatTotal: VAT on the document (line tax + VAT terms)
- * -> { [detailId]: unitCost } (null for a line with no qty)
+ * The goods value of each line of a purchase document (what its stock is worth):
+ *   line value after discount, without the line's VAT
+ *   + its product-wise terms (non-VAT)
+ *   + its share of each document (over-all) term (non-VAT), split by THAT
+ *     TERM's basis (Billing Term > Basis): Quantity -> by the lines' qty in
+ *     base units, Value -> by the lines' value
+ * A term with "Include in costing" off stays out of the stock value
+ * (excluded) - it is still in the purchase account, so Purchase vs Stock
+ * shows it as "not in costing".
+ * Whatever is left between these lines and (total - VAT - excluded) - e.g.
+ * rounding - is spread by value, so the lines always add up to the goods value
+ * the purchase account is debited with.
+ *
+ * terms (optional, from loadDocTerms): { doc: [{ amount, basis, vat, costing }], line: { detailId: [{ amount, vat, costing }] } }
+ * -> { [detailId]: { goods, excluded, base, qty } }
  */
-function lineUnitCosts(doc, details, baseQtyOf, vatTotal) {
+function lineGoods(doc, details, baseQtyOf, vatTotal, terms = null) {
     const total = Number(doc.total_amount) || 0;
     const vat = Number(vatTotal) || 0;
-    const goods = vat > 0 && vat < total ? total - vat : total - details.reduce((s, d) => s + (Number(d.tax_amount) || 0), 0);
-    const weight = d => {
+    const lineTax = details.reduce((s, d) => s + (Number(d.tax_amount) || 0), 0);
+    const goodsAll = vat > 0 && vat < total ? total - vat : total - lineTax;
+    const value = d => {
         const base = (Number(d.amount) || 0) - (Number(d.tax_amount) || 0);
         return base > 0 ? base : (Number(d.rate) || 0) * (Number(d.qty) || 0);
     };
-    const sumW = details.reduce((s, d) => s + weight(d), 0);
+    const out = {};
+    details.forEach(d => { out[d.id] = { base: value(d), goods: value(d), excluded: 0, qty: Number(baseQtyOf(d)) || 0 }; });
+    let excludedAll = 0;
+    if (terms) {
+        details.forEach(d => (terms.line[d.id] || []).filter(x => !x.vat).forEach(x => {
+            if (x.costing) out[d.id].goods += x.amount; else { out[d.id].excluded += x.amount; excludedAll += x.amount; }
+        }));
+        // quantity: base units when every line has them (boxes and pieces compare), else the entered qty
+        const allBase = details.every(d => out[d.id].qty > 0);
+        const qtyOf = d => (allBase ? out[d.id].qty : Number(d.qty) || 0);
+        terms.doc.filter(x => !x.vat && Math.abs(x.amount) > 1e-9).forEach(x => {
+            const byQty = x.basis === 'quantity';
+            const w = details.map(d => (byQty ? qtyOf(d) : out[d.id].base + (terms.line[d.id] || []).filter(y => !y.vat).reduce((a, y) => a + y.amount, 0)));
+            const sw = w.reduce((a, b) => a + b, 0);
+            details.forEach((d, i) => {
+                const share = sw > 0 ? x.amount * w[i] / sw : x.amount / details.length;
+                if (x.costing) out[d.id].goods += share; else { out[d.id].excluded += share; excludedAll += share; }
+            });
+        });
+    }
+    // rounding / anything not in the terms: spread by value so the lines add up to the goods value
+    const target = goodsAll - excludedAll;
+    const have = details.reduce((a, d) => a + out[d.id].goods, 0);
+    const gap = target - have;
+    if (Math.abs(gap) > 0.004) {
+        const sv = details.reduce((a, d) => a + out[d.id].base, 0);
+        details.forEach(d => { out[d.id].goods += sv > 0 ? gap * out[d.id].base / sv : gap / details.length; });
+    }
+    details.forEach(d => { out[d.id].goods = round4(out[d.id].goods); out[d.id].excluded = round4(out[d.id].excluded); });
+    return out;
+}
+
+/**
+ * details: the document's lines; baseQtyOf(detail) -> qty in base units (already worked out by the caller)
+ * vatTotal: VAT on the document (line tax + VAT terms)
+ * terms: loadDocTerms() of the document (optional - without it every term is spread by value)
+ * -> { [detailId]: unitCost } (null for a line with no qty)
+ */
+function lineUnitCosts(doc, details, baseQtyOf, vatTotal, terms = null) {
+    const g = lineGoods(doc, details, baseQtyOf, vatTotal, terms);
     const out = {};
     details.forEach(d => {
-        const q = Number(baseQtyOf(d)) || 0;
-        if (!(q > 0)) { out[d.id] = null; return; }
-        out[d.id] = sumW > 0 && goods > 0 ? round4((goods * weight(d) / sumW) / q) : null;
+        const q = g[d.id].qty;
+        out[d.id] = q > 0 && g[d.id].goods > 0 ? round4(g[d.id].goods / q) : null;
     });
     return out;
+}
+
+/** a document's billing terms for lineGoods(): over-all terms with their basis, product-wise terms per line */
+async function loadDocTerms(c, documentType, documentId) {
+    const [docRows, lineRows] = await Promise.all([
+        c.from('document_billing_terms').select('billing_term_id, computed_amount').eq('document_type', documentType).eq('document_id', documentId),
+        c.from('document_line_billing_terms').select('detail_id, billing_term_id, computed_amount').eq('document_type', documentType).eq('document_id', documentId)
+    ]);
+    const ids = [...new Set([...(docRows.data || []), ...(lineRows.data || [])].map(r => r.billing_term_id))];
+    const T = {};
+    if (ids.length) {
+        const { data } = await c.from('billing_terms').select('id, tax_type, use_as, basis, include_in_costing').in('id', ids);
+        (data || []).forEach(t => { T[t.id] = t; });
+    }
+    const info = id => ({ vat: T[id]?.tax_type === 'vat' || T[id]?.use_as === 'vat', costing: T[id]?.include_in_costing !== false, basis: T[id]?.basis || 'value' });
+    const line = {};
+    (lineRows.data || []).forEach(r => { (line[r.detail_id] = line[r.detail_id] || []).push({ amount: Number(r.computed_amount) || 0, ...info(r.billing_term_id) }); });
+    return { doc: (docRows.data || []).map(r => ({ amount: Number(r.computed_amount) || 0, ...info(r.billing_term_id) })), line };
 }
 
 async function rowsIn(c, table, col, ids, select = '*') {
@@ -156,4 +228,4 @@ async function refreshLandedCost(c, t, { expenseIds = [], grnDetailIds = [], bil
     }
 }
 
-module.exports = { lineUnitCosts, refreshLandedCost };
+module.exports = { lineUnitCosts, lineGoods, loadDocTerms, refreshLandedCost };

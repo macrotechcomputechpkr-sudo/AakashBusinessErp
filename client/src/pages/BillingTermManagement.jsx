@@ -16,9 +16,17 @@ import SearchablePopupSelect from '../components/SearchablePopupSelect';
 import ReportGrid from '../components/ReportGrid';
 import Layout from '../components/Layout';
 
-// VAT and Excise terms post to the VAT / Excise ledgers and reports; Cash Discount works on credit days
-// sales / purchase terms: Normal, VAT or Excise only (no Service Tax / TSC / Cash Discount)
-const TERM_TYPES = [{ value: 'none', label: 'Normal' }, { value: 'vat', label: 'VAT' }, { value: 'excise', label: 'Excise' }];
+// "Use As" (Sales and Purchase terms): VAT and Excise Duty post to the VAT / Excise ledgers and
+// reports; a Discount is always minus, an Other Addition plus (the sign follows)
+const USE_AS = [
+    { value: 'vat', label: 'VAT', tax_type: 'vat', sign: '+' },
+    { value: 'excise', label: 'Excise Duty', tax_type: 'excise', sign: '+' },
+    { value: 'discount', label: 'Discount', tax_type: 'none', sign: '-' },
+    { value: 'other_addition', label: 'Other Addition', tax_type: 'none', sign: '+' }
+];
+const termUseAs = t => (USE_AS.some(u => u.value === t.use_as) ? t.use_as
+    : t.tax_type === 'vat' ? 'vat' : t.tax_type === 'excise' ? 'excise' : t.sign === '-' || t.tax_type === 'discount' || t.tax_type === 'cash_discount' ? 'discount' : 'other_addition');
+const termUseAsLabel = t => USE_AS.find(u => u.value === termUseAs(t))?.label || '';
 
 // what may be typed for the term in a transaction line: % of value, rate per qty (x qty) or an amount
 const ENTRY_INPUTS = [['percent', '%'], ['rate', 'Rate (x qty)'], ['amount', 'Amount'], ['all', 'All'], ['rate_percent', 'Rate and %'],
@@ -26,7 +34,7 @@ const ENTRY_INPUTS = [['percent', '%'], ['rate', 'Rate (x qty)'], ['amount', 'Am
 
 const emptyForm = {
     term_name: '', description: '',
-    term_category: 'general', tax_type: 'none',
+    term_category: 'general', tax_type: 'none', use_as: 'other_addition',
     calculation_mode: 'percentage',
     basis: 'value', quantity_unit: 'primary',
     base_reference: 'basic_amount', base_reference_term_id: '', base_term_ids: [],
@@ -102,7 +110,7 @@ export default function BillingTermManagement() {
 
     const handleEdit = (row) => {
         setEditingId(row.id);
-        setForm({ ...emptyForm, ...row, base_term_ids: row.base_term_ids || [] });
+        setForm({ ...emptyForm, ...row, use_as: termUseAs(row), base_term_ids: row.base_term_ids || [] });
         setShowForm(true);
         window.scrollTo({ top: 0, behavior: 'smooth' });
     };
@@ -148,6 +156,7 @@ export default function BillingTermManagement() {
                 : r.calculation_mode === 'free_quantity' ? `${r.fixed_amount} free (${r.quantity_unit})`
                 : 'Formula'
         },
+        { key: 'use_as', label: 'Use As', type: 'text', render: r => termUseAsLabel(r) },
         { key: 'sign', label: 'Sign', type: 'text' },
         { key: 'is_enabled', label: 'Enabled', type: 'text', render: r => r.is_enabled ? '✅' : '❌' }
     ];
@@ -204,9 +213,12 @@ export default function BillingTermManagement() {
                         </div>
 
                         <div>
-                            <label className="erp-label">Type</label>
-                            <select className="erp-input" value={TERM_TYPES.some(t => t.value === form.tax_type) ? form.tax_type : 'none'} onChange={e => setForm({ ...form, tax_type: e.target.value })}>
-                                {TERM_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                            <label className="erp-label">Use As <span className="text-xs text-gray-400">(Sales &amp; Purchase)</span></label>
+                            <select className="erp-input" value={termUseAs(form)} onChange={e => {
+                                const u = USE_AS.find(x => x.value === e.target.value);
+                                setForm({ ...form, use_as: u.value, tax_type: form.tax_type === 'cash_discount' && u.value === 'discount' ? 'cash_discount' : u.tax_type, ...(form.term_category === 'rounded_off' ? {} : { sign: u.sign }) });
+                            }}>
+                                {USE_AS.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
                             </select>
                         </div>
                         <div>
@@ -226,7 +238,8 @@ export default function BillingTermManagement() {
                         </div>
                         <div>
                             <label className="erp-label">Sign</label>
-                            <select className="erp-input" value={form.sign} onChange={e => setForm({ ...form, sign: e.target.value })}>
+                            <select className="erp-input" value={form.sign} disabled={form.term_category !== 'rounded_off'} title={form.term_category !== 'rounded_off' ? 'Set by Use As: Discount is minus, VAT / Excise Duty / Other Addition plus' : ''}
+                                onChange={e => setForm({ ...form, sign: e.target.value })}>
                                 <option value="+">+ Add</option>
                                 <option value="-">− Subtract</option>
                             </select>

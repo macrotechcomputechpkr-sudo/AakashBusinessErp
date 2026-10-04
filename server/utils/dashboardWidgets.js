@@ -168,7 +168,7 @@ const WIDGETS = {
     payable_ageing: { label: 'Payable Ageing', group: 'Accounts', kind: 'series', charts: ['bar', 'donut', 'pie', 'hbar', 'table'], async data(c, t) {
         return series('Payable Ageing', await partyAgeing(c, t, 'cr'), ['Outstanding'], '/ageing'); } },
     expense_breakdown: { label: 'Expenses by Group', group: 'Accounts', kind: 'series', charts: ['donut', 'pie', 'hbar', 'bar', 'table'], async data(c, t, p) {
-        const [groups, bals] = await Promise.all([loadGroups(c, t), ledgerBalances(c, t, p)]);
+        const [groups, bals] = await Promise.all([loadGroups(c, t), ledgerBalances(c, t, { ...p, skipClosingInPeriod: true })]);
         const m = new Map();
         Object.values(bals).forEach(b => { const g = groups[b.account_group_id]; if (!/expense/.test(sectionOf(g))) return; const x = m.get(g.id) || { label: g.group_name, value: 0 }; x.value += b.dr - b.cr; m.set(g.id, x); });
         const all = [...m.values()].filter(x => Math.abs(x.value) > 0.005).sort((a, b) => b.value - a.value);

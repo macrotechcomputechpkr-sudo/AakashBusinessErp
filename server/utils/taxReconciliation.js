@@ -39,6 +39,7 @@
 
 const { allVatLedgerIds } = require('./vatLedger');
 const { nonStockIds } = require('./stockItems');
+const { lineGoods } = require('./purchaseStockCost');
 
 const round2 = n => Math.round((Number(n) || 0) * 100) / 100;
 
@@ -329,24 +330,40 @@ async function reconcileStock(c, t, { from, to, loadTaxDocs }) {
     const billHeads = await inChunks(bills.map(b => b.id), 200, async ch => safe(c.from('purchase_bills').select('id, source_grn_id').in('id', ch)));
     const grnOfBill = Object.fromEntries(billHeads.filter(b => b.source_grn_id).map(b => [b.id, b.source_grn_id]));
     const keyOf = (type, id) => (type === 'purchase_bill' && grnOfBill[id] ? `purchase_grn:${grnOfBill[id]}` : `${type}:${id}`);
-    // only the stock items' share of a document goes to stock (no service / non-inventory / fixed asset lines)
-    const stockShare = async (detail, fk, ids) => {
-        const lines = await inChunks(ids, 200, async ch => safe(c.from(detail).select(`${fk}, product_id, amount, tax_amount, rate, qty`).in(fk, ch)));
+    // only the stock items' share of a document goes to stock (no service / non-inventory / fixed asset lines).
+    // Lines are valued the way the stock receipt was (utils/purchaseStockCost.lineGoods): product-wise
+    // terms on their line, over-all terms shared by their own basis (qty / value); a term not
+    // "included in costing" is in the purchase but not in stock - shown as excluded.
+    const terms = await safe(c.from('billing_terms').select('id, tax_type, use_as, basis, include_in_costing').eq('tenant_id', t));
+    const T = Object.fromEntries(terms.map(x => [x.id, x]));
+    const info = id => ({ vat: T[id]?.tax_type === 'vat' || T[id]?.use_as === 'vat', costing: T[id]?.include_in_costing !== false, basis: T[id]?.basis || 'value' });
+    const stockShare = async (detail, fk, docType, docs) => {
+        const ids = docs.map(d => d.id);
+        const lines = await inChunks(ids, 200, async ch => safe(c.from(detail).select(`id, ${fk}, product_id, amount, tax_amount, rate, qty`).in(fk, ch)));
+        const docTerms = await inChunks(ids, 200, async ch => safe(c.from('document_billing_terms').select('document_id, billing_term_id, computed_amount').eq('document_type', docType).in('document_id', ch)));
+        const lineTerms = await inChunks(ids, 200, async ch => safe(c.from('document_line_billing_terms').select('document_id, detail_id, billing_term_id, computed_amount').eq('document_type', docType).in('document_id', ch)));
         const skip = await nonStockIds(c, lines.map(l => l.product_id));
-        const w = l => { const b = Number(l.amount || 0) - Number(l.tax_amount || 0); return b > 0 ? b : Number(l.rate || 0) * Number(l.qty || 0); };
         const out = {};
-        ids.forEach(id => {
-            const mine = lines.filter(l => l[fk] === id);
-            const all = mine.reduce((a, l) => a + w(l), 0), stock = mine.filter(l => !skip.has(l.product_id)).reduce((a, l) => a + w(l), 0);
-            out[id] = all > 0 ? stock / all : 1;
+        docs.forEach(doc => {
+            const mine = lines.filter(l => l[fk] === doc.id);
+            if (!mine.length) { out[doc.id] = { share: 1, excluded: 0 }; return; }
+            const tm = { doc: docTerms.filter(x => x.document_id === doc.id).map(x => ({ amount: Number(x.computed_amount) || 0, ...info(x.billing_term_id) })), line: {} };
+            lineTerms.filter(x => x.document_id === doc.id).forEach(x => { (tm.line[x.detail_id] = tm.line[x.detail_id] || []).push({ amount: Number(x.computed_amount) || 0, ...info(x.billing_term_id) }); });
+            const head = { total_amount: Number(doc.taxable || 0) + Number(doc.exempt || 0) + mine.reduce((a, l) => a + Number(l.tax_amount || 0), 0) };
+            const g = lineGoods(head, mine, () => 0, 0, tm);
+            const sum = (list, k) => list.reduce((a, l) => a + (g[l.id][k] || 0), 0);
+            const stockLines = mine.filter(l => !skip.has(l.product_id));
+            const allIn = sum(mine, 'goods') + sum(mine, 'excluded');
+            out[doc.id] = { share: allIn > 0 ? (sum(stockLines, 'goods') + sum(stockLines, 'excluded')) / allIn : 1, excluded: sum(stockLines, 'excluded') };
         });
         return out;
     };
-    const billShare = await stockShare('purchase_bill_details', 'bill_id', bills.map(b => b.id));
-    bills.forEach(d => { const v = round2((d.taxable + d.exempt) * billShare[d.id]); if (Math.abs(v) >= 0.01) addReg(keyOf('purchase_bill', d.id), { amount: v, doc_no: d.doc_no, doc_date: d.doc_date, party_name: d.party_name, label: 'Purchase Bill' }); });
+    const regValue = (d, s) => round2((d.taxable + d.exempt) * s.share - s.excluded);
+    const billShare = await stockShare('purchase_bill_details', 'bill_id', 'purchase_bill', bills);
+    bills.forEach(d => { const v = regValue(d, billShare[d.id]); if (Math.abs(v) >= 0.01) addReg(keyOf('purchase_bill', d.id), { amount: v, doc_no: d.doc_no, doc_date: d.doc_date, party_name: d.party_name, label: 'Purchase Bill' }); });
     const rets = await loadTaxDocs(c, t, 'purchase_return', { dateFrom: from, dateTo: to });
-    const retShare = await stockShare('purchase_return_details', 'return_id', rets.map(r => r.id));
-    rets.forEach(d => { const v = round2((d.taxable + d.exempt) * retShare[d.id]); if (Math.abs(v) >= 0.01) addReg(`purchase_return:${d.id}`, { amount: -v, doc_no: d.doc_no, doc_date: d.doc_date, party_name: d.party_name, label: 'Purchase Return' }); });
+    const retShare = await stockShare('purchase_return_details', 'return_id', 'purchase_return', rets);
+    rets.forEach(d => { const v = regValue(d, retShare[d.id]); if (Math.abs(v) >= 0.01) addReg(`purchase_return:${d.id}`, { amount: -v, doc_no: d.doc_no, doc_date: d.doc_date, party_name: d.party_name, label: 'Purchase Return' }); });
     const exps = await safe(dated(c.from('purchase_additional_expenses').select('id, doc_no, doc_date, vendor_name_snapshot').eq('tenant_id', t).eq('status', 'posted'), from, to).limit(20000));
     const expLines = await inChunks(exps.map(e => e.id), 200, async ch => safe(c.from('purchase_additional_expense_lines').select('*').in('expense_id', ch)));
     exps.forEach(e => {

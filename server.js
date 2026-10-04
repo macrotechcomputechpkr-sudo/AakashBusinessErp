@@ -11,7 +11,7 @@ const fs = require('fs');
 if (!fs.existsSync(path.join(__dirname, 'server', 'node_modules'))) {
     console.error('[start] server/node_modules is missing - run `npm install` in the repo root (it installs server + client and builds the app).');
 }
-if (!process.env.GLOBAL_MASTER_URL || !process.env.GLOBAL_MASTER_KEY) {
-    console.error('[start] GLOBAL_MASTER_URL / GLOBAL_MASTER_KEY are not set - add them under the Node.js node > Variables.');
+if (!process.env.DATABASE_URL && (!process.env.GLOBAL_MASTER_URL || !process.env.GLOBAL_MASTER_KEY)) {
+    console.error('[start] set DATABASE_URL (own PostgreSQL) - or GLOBAL_MASTER_URL / GLOBAL_MASTER_KEY (Supabase) - under the Node.js node > Variables.');
 }
 require('./server/server.js');

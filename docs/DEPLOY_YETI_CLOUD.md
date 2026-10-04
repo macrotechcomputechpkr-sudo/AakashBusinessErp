@@ -2,14 +2,54 @@
 
 Yeti Cloud (DataHub Nepal) is a Jelastic / Virtuozzo PaaS. The ERP runs there
 as **one Node.js environment**: the Express API and the React app on one
-domain. The database stays on **Supabase**.
+domain. The database is either
+
+- **A. your own PostgreSQL** (recommended): a PostgreSQL node in the same
+  environment. No Supabase. Every company gets its own database, created
+  automatically when the super admin creates the company; or
+- **B. Supabase** projects (the earlier set-up, section 1 below).
 
 ```
 browser ──https──> Yeti Cloud Node.js  (server/server.js: /api/* + the React build)
                           │
-                          └──> Supabase: global project (tenants, users)
-                               + company (tenant) project(s)
+                          ├──> A. PostgreSQL node: erp_global (companies, logins)
+                          │                       + erp_<9-digit code> per company (+ erp_<code>_<abc> for more companies)
+                          └──> B. Supabase: global project + company project(s)
 ```
+
+## A. Own PostgreSQL (no Supabase)
+
+1. Yeti Cloud → your environment → **Change Environment Topology** → add
+   **PostgreSQL** (15 or 16) next to the Node.js node → Apply. The admin login
+   (`webadmin` and its password) arrives by e-mail.
+2. Node.js node → **Variables**: add
+   - `DATABASE_URL` = `postgres://webadmin:<password>@<postgres-node-host>:5432/erp_global`
+     (`<postgres-node-host>` is the PostgreSQL node's internal host name or IP,
+     shown on the node; the user needs the right to create databases - `webadmin` has it)
+   - `JWT_SECRET` (as below). `GLOBAL_MASTER_URL` / `GLOBAL_MASTER_KEY` are not needed - remove them.
+3. **Restart** the Node.js node. At start the server
+   - creates the database `erp_global` if it is missing and runs
+     `01_global_master_schema.sql`, `124_default_admin_logins_schema.sql`, `156_…`, `158_…`
+     (super admin `superadmin@businesserp.com.np` / `Super@12345`),
+   - applies any newer `database/*.sql` to `erp_global` and to every company's
+     database (each database remembers what ran, in `public.erp_schema_migrations`).
+4. Sign in as the super admin → **Company Creation** → tick "Create a brand new
+   company" → fill the company → **Create Company**. The server
+   - gives the company a unique **9-digit company code** (e.g. `446662298`),
+   - creates the database `erp_<code>` and all its tables (about 10 seconds),
+   - creates the Main branch / warehouse and the company admin login
+     (`admin@businesserp.com.np` / `Admin@12345`, changed at the first sign-in).
+   Sign in to the company with that company code.
+   On the form: **PAN / VAT Number** is one field (one number), and the fiscal
+   year comes from **Starting Year** (B.S.) + **Starting Month** (default Shrawan).
+4b. More companies in the same tenant: the company admin signs in → **➕ New
+   Company** (title bar) → company name + short code (e.g. `abc`) → **Create
+   Company**. The server creates `erp_<code>_abc` (company code `<code>_abc`,
+   e.g. `446662298_abc`, `446662298_xyz`) with all tables, and the tenant's
+   admins become its admins (no new login). It appears in the company switcher;
+   sign in to it directly with company code `<code>_abc`.
+5. Check: `https://<your-domain>/api/health/setup` shows `db_mode: local PostgreSQL` and `global_db: ok`.
+6. Backups: back up the PostgreSQL node (Yeti backup add-on, or `pg_dumpall`).
 
 ## What the repository does for this
 
@@ -20,7 +60,9 @@ browser ──https──> Yeti Cloud Node.js  (server/server.js: /api/* + the R
 - A React build without `REACT_APP_API_URL` calls `/api` on its own domain.
 - CORS always allows the ERP's own domain.
 
-## 1. Supabase
+## B. Supabase (instead of A)
+
+### 1. Supabase
 
 The app talks to Supabase through `@supabase/supabase-js`, so the database must be Supabase. A plain PostgreSQL server on Yeti will not work.
 

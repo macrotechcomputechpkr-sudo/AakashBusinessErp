@@ -12,10 +12,16 @@ const { requireAuth, requirePermission } = require('../middleware/auth');
 const fe = require('../utils/financialEngine');
 const stockEngine = require('../utils/stockEngine');
 const { cleanLines } = require('../utils/budgetReports');
+const yc = require('../utils/yearClosing');
 
 const guard = [requireAuth, loadUserPermissions, requirePermission('reports', 'view')];
 const wrap = fn => async (req, res) => {
-    try { res.json({ success: true, data: await fn(req, await getTenantClient(req.auth.tenantId), req.auth.tenantId, req.query) }); }
+    try {
+        const c = await getTenantClient(req.auth.tenantId);
+        // Year Re-closing = auto: out-of-date closings are re-posted before a statement is drawn
+        if (/^\/financial\/(trial-balance|profit-loss|balance-sheet|ratios-flows|schedules)/.test(req.path) && !req.auth.readOnly) await yc.autoReclose(c, req.auth.tenantId, req.auth.userId);
+        res.json({ success: true, data: await fn(req, c, req.auth.tenantId, req.query) });
+    }
     catch (error) { res.status(error.status || 500).json({ success: false, error: error.message }); }
 };
 const need = (q, ...keys) => { const miss = keys.filter(k => !q[k]); if (miss.length) { const e = new Error(`Missing: ${miss.join(', ')}`); e.status = 400; throw e; } };
@@ -51,7 +57,7 @@ router.get('/financial/meta', requireAuth, (req, res) => res.json({ success: tru
 
 router.get('/financial/trial-balance', ...guard, wrap(async (req, c, t, q) => {
     need(q, 'date_from', 'date_to');
-    return fe.trialBalance(c, t, { from: q.date_from, to: q.date_to, productCompanyId: q.product_company_id || null });
+    return fe.trialBalance(c, t, { from: q.date_from, to: q.date_to, productCompanyId: q.product_company_id || null, afterClosing: q.after_closing === 'true' });
 }));
 
 router.get('/financial/profit-loss', ...guard, wrap(async (req, c, t, q) => {

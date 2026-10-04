@@ -140,6 +140,7 @@ export const AuthProvider = ({ children }) => {
             persist({
                 token: data.token,
                 tenant: data.tenant,
+                ...(Array.isArray(data.tenants) ? { tenants: data.tenants } : {}),
                 requiresCompanyCreation: !!data.requires_company_creation
             });
             return data;

@@ -17,7 +17,7 @@
 // search, batch / serial tracking, warehouse, batch no, serial no, party,
 // module, stock status; quantities can be shown in any unit of the item.
 // =============================================
-const { itemMovement: rawMovement, METHODS, MODULE_LABEL, TRANSFER_KEYS, costingSettings, methodFor, keyEvents } = require('./stockEngine');
+const { itemMovement: rawMovement, METHODS, MODULE_LABEL, TRANSFER_KEYS, costingSettings, methodFor, keyEvents, addYearEnds, YEAR_END } = require('./stockEngine');
 const { reportScope } = require('./dataAccess');
 // Batch / serial products are costed per System Control (FIFO / LIFO / average or batch-wise / serial-wise).
 const moveOf = (f, p, events, from, to) => { const e = methodFor(p, f.method, f.cs); return rawMovement(keyEvents(events, e.keyBy), e.method, from, to); };
@@ -256,6 +256,7 @@ async function loadEvents(c, t, f, products) {
             id: m.id, source_id: m.source_id, source_detail_id: m.source_detail_id, batch_no: m.batch_no, serial_no: m.serial_no || null, warehouse_id: m.warehouse_id, narration: m.narration
         });
     });
+    await addYearEnds(c, t, f.to, [...rows.values()].map(r => r.events));     // closed years: stock carried forward as opening
     rows.forEach(r => r.events.sort((a, b) => a.date.localeCompare(b.date) || String(a.seq).localeCompare(String(b.seq))));
     return { rows: [...rows.values()], whName, batchMeta, openingBatches, openingDay, warnings, byWh };
 }
@@ -346,7 +347,7 @@ function buildSummary(f, info, ev) {
 
 // ---------------- detail ----------------
 async function buildDetail(c, t, f, info, ev) {
-    const inPeriod = e => e.date >= f.from && e.date <= f.to && !(e.src === 'stock_transfer');   // company-level transfers net to zero
+    const inPeriod = e => e.date >= f.from && e.date <= f.to && !(e.src === 'stock_transfer') && e.src !== YEAR_END;   // company-level transfers net to zero
     const { docOf, serialOf } = await loadDocs(c, t, ev.rows.flatMap(r => r.events.filter(inPeriod)));
     const keep = lineFilter(f);
     const filtered = !!(f.modules.length || f.partyKey || f.serialNo);
@@ -358,7 +359,7 @@ async function buildDetail(c, t, f, info, ev) {
         const lines = [];
         r.events.forEach(e => {
             if (e.date > f.to) return;
-            if (e.date < f.from || e.src === 'stock_transfer') return;
+            if (e.date < f.from || e.src === 'stock_transfer' || e.src === YEAR_END) return;
             bal += e.qin - e.qout;
             const doc = docOf(e);
             const line = { ...e, party: doc?.party || null, serial_no: serialOf(e) };

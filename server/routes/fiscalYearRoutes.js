@@ -9,9 +9,10 @@
 
 const express = require('express');
 const router = express.Router();
-const { getTenantClient, logAudit } = require('../utils/dbHelpers');
+const { getTenantClient, logAudit, loadUserPermissions } = require('../utils/dbHelpers');
 const { nepaliDateConverter } = require('../utils/nepaliDateUtils');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, requirePermission } = require('../middleware/auth');
+const yc = require('../utils/yearClosing');
 
 router.get('/fiscal-years', requireAuth, async (req, res) => {
     try {
@@ -171,40 +172,31 @@ router.put('/fiscal-years/:id/set-current', requireAuth, async (req, res) => {
     }
 });
 
-router.put('/fiscal-years/:id/close', requireAuth, async (req, res) => {
+// Close = Year Closing (utils/yearClosing.js): P&L heads to the Profit & Loss
+// A/c, closing stock carried forward, the year locked.
+const canClose = [requireAuth, loadUserPermissions, requirePermission('company_settings', 'edit')];
+const run = (action, fn) => async (req, res) => {
     try {
-        const { id } = req.params;
         const tenantId = req.auth.tenantId;
-        const userId = req.auth.userId;
-        const tenantClient = await getTenantClient(tenantId);
-
-        const { data: fy, error: fyError } = await tenantClient
-            .from('fiscal_years')
-            .select('*')
-            .eq('id', id)
-            .eq('tenant_id', tenantId)
-            .single();
-        if (fyError || !fy) return res.status(404).json({ success: false, error: 'Fiscal year not found' });
-        if (fy.is_closed) return res.status(400).json({ success: false, error: 'Fiscal year is already closed' });
-
-        const closingDate = new Date();
-        const closingNepali = nepaliDateConverter.toNepali(closingDate);
-
-        await tenantClient.from('fiscal_years').update({
-            is_closed: true, is_locked: true, is_current: false,
-            closing_date: closingDate.toISOString().split('T')[0],
-            closing_date_nep: closingNepali ? closingNepali.date : null,
-            closed_by: userId, status: 'closed', updated_at: new Date().toISOString()
-        }).eq('id', id);
-
-        // FIX: closing a fiscal year is irreversible (is_locked=true, no
-        // "reopen" endpoint exists) - definitely audit-logged.
-        await logAudit(tenantId, userId, 'close_fiscal_year', 'fiscal_year', id, { old_data: fy });
-        res.json({ success: true, message: 'Fiscal year closed successfully' });
+        const data = await fn(await getTenantClient(tenantId), tenantId, req);
+        if (action) await logAudit(tenantId, req.auth.userId, action, 'fiscal_year', req.params.id || null, { result: data && (data.net_profit !== undefined ? { net_profit: data.net_profit, closing_stock: data.closing_stock } : data) });
+        res.json({ success: true, data });
     } catch (error) {
-        console.error('Error closing fiscal year:', error);
-        res.status(500).json({ success: false, error: error.message });
+        if (!error.status) console.error(`year closing (${action || 'read'}) error:`, error);
+        res.status(error.status || 500).json({ success: false, error: error.message });
     }
-});
+};
+
+router.put('/fiscal-years/:id/close', ...canClose, run('close_fiscal_year', (c, t, req) => yc.close(c, t, req.auth.userId, req.params.id, req.body || {})));
+
+router.get('/fiscal-years/closing/status', requireAuth, run(null, (c, t, req) => yc.status(c, t, req.auth.userId, { readOnly: !!req.auth.readOnly })));
+router.put('/fiscal-years/closing/mode', ...canClose, run('year_reclosing_mode', (c, t, req) => yc.setMode(c, t, (req.body || {}).mode)));
+router.post('/fiscal-years/closing/reclose-all', ...canClose, run('reclose_fiscal_years', async (c, t, req) => ({ reclosed: (await yc.recloseStale(c, t, req.auth.userId)).length })));
+router.get('/fiscal-years/:id/closing/preview', requireAuth, run(null, (c, t, req) => yc.preview(c, t, req.params.id, req.query.stock_method)));
+router.get('/fiscal-years/:id/closing/stock', requireAuth, run(null, (c, t, req) => yc.carried(c, t, req.params.id)));
+router.post('/fiscal-years/:id/closing', ...canClose, run('close_fiscal_year', (c, t, req) => yc.close(c, t, req.auth.userId, req.params.id, req.body || {})));
+router.post('/fiscal-years/:id/reclose', ...canClose, run('reclose_fiscal_year', (c, t, req) => yc.reclose(c, t, req.auth.userId, req.params.id, req.body || {})));
+router.post('/fiscal-years/:id/reopen', ...canClose, run('reopen_fiscal_year', (c, t, req) => yc.reopen(c, t, req.auth.userId, req.params.id)));
+router.delete('/fiscal-years/:id/closing', ...canClose, run('cancel_year_closing', (c, t, req) => yc.cancelClosing(c, t, req.auth.userId, req.params.id)));
 
 module.exports = router;

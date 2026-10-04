@@ -8,6 +8,19 @@
 // =============================================
 
 require('dotenv').config();
+
+// One stray async error must not take the whole ERP down (the host then answers
+// 503 to everybody until the process restarts): log it and keep serving.
+// The last few (message + time only, no stack / data) show on /api/health/setup.
+const recentErrors = [];
+const keepError = (kind, err) => {
+    const msg = String((err && err.message) || err).slice(0, 200);
+    console.error(`[${kind}]`, err);
+    recentErrors.unshift({ at: new Date().toISOString(), kind, message: msg });
+    recentErrors.length = Math.min(recentErrors.length, 5);
+};
+process.on('unhandledRejection', err => keepError('unhandledRejection', err));
+process.on('uncaughtException', err => keepError('uncaughtException', err));
 const path = require('path');
 const fs = require('fs');
 const express = require('express');
@@ -236,12 +249,13 @@ app.get('/api/health/setup', async (req, res) => {
         jwt_secret_set: !!process.env.JWT_SECRET, web_app_built: fs.existsSync(path.join(__dirname, '..', 'client', 'build', 'index.html'))
     };
     // the key's kind / role / project (never the key) - a wrong key is the usual setup mistake
-    Object.assign(out, describeKey(process.env.GLOBAL_MASTER_KEY, globalMasterUrl()));
+    out.db_mode = require('./utils/dbHelpers').LOCAL_DB ? 'local PostgreSQL (DATABASE_URL)' : 'Supabase';
+    if (!require('./utils/dbHelpers').LOCAL_DB) Object.assign(out, describeKey(process.env.GLOBAL_MASTER_KEY, globalMasterUrl()));
     if (out.key_role && out.key_role !== 'service_role') out.key_hint = `This is the ${out.key_role} key - use the service_role key.`;
     else if (out.key_matches_url === false) out.key_hint = `The key belongs to project ${out.key_project_ref}, the URL to ${out.url_project_ref} - take both from the same project.`;
     try {
         const { error, count, status } = await globalMasterDb.from('global_users').select('id', { count: 'exact' }).limit(1);
-        if (error) { Object.assign(out, { global_db: 'error', status, hint: setupHint(error, status) || String(error.message || `HTTP ${status}`).slice(0, 200) }); return res.json(out); }
+        if (error) { Object.assign(out, { global_db: 'error', status, hint: setupHint(error, status) || String(error.message || `HTTP ${status}`).slice(0, 200) }); return sendSetup(res, out); }
         const { count: admins } = await globalMasterDb.from('global_users').select('id', { count: 'exact', head: true }).eq('is_global_admin', true);
         Object.assign(out, { global_db: 'ok', users: count, super_admins: admins || 0 });
         if (!admins) out.hint = 'No super admin yet - run database/124_default_admin_logins_schema.sql in the global Supabase project.';
@@ -249,11 +263,17 @@ app.get('/api/health/setup', async (req, res) => {
         Object.assign(out, { global_db: 'error', hint: setupHint(e) || String(e?.message || 'unknown error').slice(0, 200) });
     }
     if (!out.jwt_secret_set) out.hint = `${out.hint ? `${out.hint} ` : ''}JWT_SECRET is not set.`;
-    res.json(out);
+    sendSetup(res, out);
 });
+function sendSetup(res, out) {
+    out.uptime_seconds = Math.round(process.uptime());
+    out.memory_mb = Math.round(process.memoryUsage().rss / 1048576);
+    out.recent_errors = recentErrors;
+    res.json(out);
+}
 
 app.get('/api/health', (req, res) => {
-    res.json({ status: 'OK', message: 'Server is running' });
+    res.json({ status: 'OK', message: 'Server is running', db_mode: require('./utils/dbHelpers').LOCAL_DB ? 'local' : 'supabase' });
 });
 
 // 404 for unmatched API routes
@@ -289,7 +309,28 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-    console.log(`🚀 Server running on port ${PORT}`);
-    console.log(`✅ Environment: ${process.env.NODE_ENV || 'development'}`);
-});
+// Local PostgreSQL (DATABASE_URL): bring the global database and every
+// company's database up to date (database/*.sql not yet applied) - see db/migrate.js.
+async function migrateLocalDatabases() {
+    const { LOCAL_DB, DATABASE_URL, globalMasterDb } = require('./utils/dbHelpers');
+    if (!LOCAL_DB) return;
+    const { migrate, databaseUrl, createDatabase } = require('./db/migrate');
+    // the global database itself may not exist yet on a new server
+    const globalName = new URL(DATABASE_URL).pathname.slice(1);
+    await createDatabase(databaseUrl(DATABASE_URL, 'postgres'), globalName).catch(e => console.warn(`[db] could not check / create ${globalName}: ${e.message}`));
+    await migrate(DATABASE_URL, 'global');
+    globalMasterDb.reloadMeta();
+    const { data: tenants, error } = await globalMasterDb.from('tenants').select('tenant_code, master_db_name').eq('master_db_host', 'local');
+    if (error) throw error;
+    for (const t of tenants || []) {
+        try { await migrate(databaseUrl(DATABASE_URL, t.master_db_name), 'tenant'); }
+        catch (e) { console.error(`[db] company ${t.tenant_code}: ${e.message}`); }
+    }
+}
+
+migrateLocalDatabases()
+    .catch(e => { console.error('[db] migration failed:', e.message); })
+    .finally(() => app.listen(PORT, () => {
+        console.log(`🚀 Server running on port ${PORT}`);
+        console.log(`✅ Environment: ${process.env.NODE_ENV || 'development'}`);
+    }));

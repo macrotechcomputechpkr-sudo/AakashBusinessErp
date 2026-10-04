@@ -56,13 +56,13 @@ const GL_LABEL = {
     purchase_grn: 'Purchase GRN', purchase_bill: 'Purchase Bill', purchase_return: 'Purchase Return', purchase_nonsalable_return: 'Purchase Non-saleable Return',
     purchase_additional_expense: 'Purchase Additional Expense', cash_bank_entry: 'Cash / Bank Entry', pdc: 'PDC', journal_voucher: 'Journal Voucher', credit_note: 'Credit Note',
     debit_note: 'Debit Note', production: 'Production', stock_transfer: 'Stock Transfer', interest_posting: 'Interest Posting', depreciation: 'Depreciation', asset_disposal: 'Asset Disposal',
-    agent_commission: 'Agent Commission', ledger_opening: 'Opening'
+    agent_commission: 'Agent Commission', ledger_opening: 'Opening', year_closing: 'Year Closing'
 };
 const HEADER = { sales_bill: 'sales_bills', sales_return: 'sales_returns', purchase_bill: 'purchase_bills', purchase_grn: 'purchase_grns', purchase_return: 'purchase_returns',
     cash_bank_entry: 'cash_bank_entries', pdc: 'pdc_vouchers', journal_voucher: 'journal_vouchers', credit_note: 'credit_notes', debit_note: 'debit_notes', production: 'production_orders',
     stock_transfer: 'stock_transfers', sales_additional: 'sales_additional_entries', purchase_additional_expense: 'purchase_additional_expenses', interest_posting: 'interest_runs',
     depreciation: 'depreciation_runs', asset_disposal: 'depreciation_runs', agent_commission: 'agent_commission_postings', sales_nonsalable_return: 'sales_nonsaleable_returns',
-    purchase_nonsalable_return: 'purchase_nonsaleable_returns', sales_delivery: 'sales_deliveries' };
+    purchase_nonsalable_return: 'purchase_nonsaleable_returns', sales_delivery: 'sales_deliveries', year_closing: 'fiscal_year_closings' };
 
 async function ledgersById(c, t) {
     const rows = await fetchAll(() => c.from('ledger_accounts').select('*').eq('tenant_id', t).order('id'));

@@ -251,6 +251,9 @@ export default function Layout({ children }) {
                     <span className="hidden md:inline truncate max-w-[180px]" title={user?.email}>👤 {user?.full_name || user?.email}{isSuperAdmin ? ' (Super Admin)' : ''}</span>
                     {readOnly && <span className="px-2 py-0.5 rounded bg-amber-400 text-black text-xs font-semibold" title="Super Admin opened this company view only - no entries or changes">👁 VIEW ONLY</span>}
                     {isSuperAdmin && <button type="button" className="px-2 py-0.5 rounded bg-white/20 hover:bg-white/30 text-xs" title="Back to the Admin Panel (company list)" onClick={async () => { try { await exitTenant(); } catch { /* token without company anyway */ } navigate('/admin'); }}>🛡 Admin Panel</button>}
+                    {!isSuperAdmin && user?.role === 'admin' && !readOnly && (
+                        <button type="button" className="px-2 py-0.5 rounded bg-white/20 hover:bg-white/30 text-xs hidden md:inline" title="Open another company in this tenant (own database)" onClick={() => navigate('/company-creation')}>➕ New Company</button>
+                    )}
                     {tenants.length > 1 && !isSuperAdmin && (
                         <select className="nav-title-select hidden md:block" value={tenant?.id || ''} onChange={e => switchTenant(e.target.value)} title="Switch company">
                             {tenants.map(t => <option key={t.id} value={t.id}>{t.company_name}</option>)}

@@ -11,6 +11,15 @@
 
 const { createClient } = require('@supabase/supabase-js');
 const { auditFetch } = require('./requestContext');
+const { createPgClient } = require('../db/pgClient');
+const { databaseUrl } = require('../db/migrate');
+
+// Local mode: DATABASE_URL = the ERP's own PostgreSQL server (global
+// database). Every company then has its own database erp_<9-digit code> on
+// that server (tenants.master_db_host = 'local', master_db_name = its name).
+// Without DATABASE_URL the Supabase projects of GLOBAL_MASTER_URL are used.
+const DATABASE_URL = String(process.env.DATABASE_URL || '').trim();
+const LOCAL_DB = !!DATABASE_URL;
 
 // The project URL is https://<ref>.supabase.co. A pasted dashboard link
 // (https://supabase.com/dashboard/project/<ref>) or a trailing "/" is fixed here.
@@ -25,7 +34,12 @@ function projectUrl(raw) {
 }
 const GLOBAL_MASTER_URL = projectUrl(process.env.GLOBAL_MASTER_URL);
 const GLOBAL_MASTER_KEY = String(process.env.GLOBAL_MASTER_KEY || '').trim();
-const globalMasterDb = createClient(GLOBAL_MASTER_URL, GLOBAL_MASTER_KEY);
+const globalMasterDb = LOCAL_DB ? createPgClient(DATABASE_URL) : createClient(GLOBAL_MASTER_URL, GLOBAL_MASTER_KEY);
+
+/** the database client of a tenants row (local database or its Supabase project) */
+const clientForTenantRow = (tenant) => (tenant.master_db_host === 'local'
+    ? createPgClient(databaseUrl(DATABASE_URL, tenant.master_db_name))
+    : createClient(tenant.master_db_host, tenant.master_db_anon_key, { global: { fetch: auditFetch } }));
 
 // Cache tenant clients per-process so we are not re-creating a Supabase
 // client object on every single request.
@@ -36,7 +50,7 @@ const getTenantClient = async (tenantId) => {
 
     const { data: tenant, error } = await globalMasterDb
         .from('tenants')
-        .select('master_db_host, master_db_anon_key')
+        .select('master_db_host, master_db_name, master_db_anon_key')
         .eq('id', tenantId)
         .single();
 
@@ -44,9 +58,9 @@ const getTenantClient = async (tenantId) => {
         throw new Error('Tenant not found');
     }
 
-    // auditFetch tags every call with the current user / IP / route for the
-    // audit log trigger (database/121_audit_log_schema.sql)
-    const client = createClient(tenant.master_db_host, tenant.master_db_anon_key, { global: { fetch: auditFetch } });
+    // auditFetch (Supabase) / request.headers (local) tag every call with the
+    // current user / IP / route for the audit log trigger (database/121_audit_log_schema.sql)
+    const client = clientForTenantRow(tenant);
     tenantClientCache.set(tenantId, client);
     clientTenantIds.set(client, tenantId);
     return client;
@@ -222,7 +236,10 @@ async function checkTransactionUsage(tenantClient, tenantId, masterId, checks) {
 }
 
 module.exports = {
-    globalMasterUrl: () => GLOBAL_MASTER_URL,
+    LOCAL_DB,
+    DATABASE_URL,
+    clientForTenantRow,
+    globalMasterUrl: () => (LOCAL_DB ? 'local PostgreSQL' : GLOBAL_MASTER_URL),
     tenantIdOfClient,
     globalMasterDb,
     getTenantClient,

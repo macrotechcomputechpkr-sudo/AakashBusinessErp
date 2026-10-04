@@ -22,7 +22,13 @@ The effect of each transaction is shown in a box like this:
 - Press **Enter** to move to the next field. In a grid, Enter moves to the next cell and then to a new line.
 - Every report table has an Excel-style filter on each column heading.
 
-### 1.2 First-time setup order
+### 1.2 Creating a company
+
+- **Company Creation**: company name, type, **PAN / VAT Number** (one field - the same number is used as PAN and VAT), address, contact, and the first fiscal year: **Starting Year** (B.S.) and **Starting Month** (default Shrawan). E.g. 2082 + Shrawan = Fiscal Year 2082/83 from 2082-04-01.
+- Every company gets a 9-digit company code (e.g. `446662298`) and its own database.
+- **More companies in your tenant**: a company admin clicks **➕ New Company** on the title bar, enters the company name and a short code (e.g. `abc`) and creates it. It gets the code `446662298_abc` and its own database; your admins are its admins, it shows in the company switcher, and you can sign in to it with that code. (Needs the ERP on its own PostgreSQL server.)
+
+### 1.3 First-time setup order
 
 1. **Setup > System Control**: Business Nature, default ledgers, VAT, stock method, dual unit, approvals.
 2. **Setup > Fiscal Years**, **Branches & Warehouses**, **Document Numbering**, **Currencies**.
@@ -32,7 +38,7 @@ The effect of each transaction is shown in a box like this:
 6. **Ledger Opening Balance** and **Product Opening Stock**.
 7. **Setup > Users, Security Groups, Data Access**.
 
-### 1.3 Buttons on every transaction screen
+### 1.4 Buttons on every transaction screen
 
 | Button | What it does | Effect |
 |---|---|---|
@@ -55,7 +61,7 @@ The effect of each transaction is shown in a box like this:
 
 **Approval**: when a module is ticked under System Control > Approval Needed For, Save keeps the entry as **Awaiting approval** with no effect. Only a user whose Security Group has the approval right for that document can approve it. Approving posts it, and only then do accounts and stock move.
 
-### 1.4 Common parts of a sales or purchase entry
+### 1.5 Common parts of a sales or purchase entry
 
 - **Master part** (top): date (BS/AD), document number (automatic or manual, following Document Numbering), Cash/Credit, party, currency and exchange rate, sales rate type (Sr1-Sr5), agent, warehouse, and the source documents to pull from.
 - **Item Code cell**: type a code, short name or barcode. In POS mode, scanning a barcode adds the item straight away.
@@ -87,9 +93,9 @@ The effect of each transaction is shown in a box like this:
 **Billing Terms**
 
 - Define terms used in bills:
-  - **Type**: Normal, VAT or Excise.
-  - **Sign**: add or deduct.
-  - **Basis**: value or quantity.
+  - **Use As** (sales and purchase terms): **VAT**, **Excise Duty**, **Discount** or **Other Addition**. VAT and Excise Duty post to the VAT / Excise ledgers and reports; a Discount always deducts and an Other Addition always adds (the Sign follows; only a Rounded Off term sets its own sign).
+  - **Sign**: add or deduct (set by Use As).
+  - **Basis**: value or quantity. On a purchase the term reaches the stock value on the same basis: an over-all term with Basis = Quantity is shared over the lines by qty (base units), with Basis = Value by line value; a product-wise term stays on its line. A term with *Include in costing* off is not put into stock (Purchase vs Stock reconciliation shows it as not in costing). Example: Freight 300 by quantity on 10 pcs A + 20 pcs B gives A 100 and B 200; a 10 % discount by value takes 100 from each of A and B (1,000 each).
   - **Calculation**: percentage, fixed rate, or formula, with an optional cap.
   - **Order** of calculation.
   - **Ledger** and sub-ledgers: Billing Ledger + Billing Sub-Ledger, Return Ledger + Return Sub-Ledger, Expiry Return Ledger + Expiry Return Sub-Ledger.
@@ -590,7 +596,18 @@ The main switchboard:
 
 **Fiscal Years**
 
-- Create and close fiscal years (BS). Numbering and reports follow the fiscal year.
+- Create fiscal years (BS). Numbering and reports follow the fiscal year.
+- **Year Closing…** (on a year) shows what closing posts, then **Post Year Closing**:
+  - every Profit & Loss ledger (income / expenses) is brought to nil against the **Profit & Loss A/c** (an Equity ledger, made the first time if there is none);
+  - the **closing stock** (valued by the chosen method, e.g. Weighted Average) goes to the **Closing Stock A/c** and is carried forward as the next year's **opening stock** (item-wise list under **Stock c/f**);
+  - the year's net profit / loss lands in the Profit & Loss A/c, the year is locked and the next year becomes current.
+  - One closing voucher (type *Year Closing*, dated the year's last day) does all of this; the year's P&L and Trial Balance still show the year before closing, the next year's Trial Balance opens with nil P&L heads.
+  - Years are closed in order (the earlier year first).
+- **Re-open** opens a closed year for changes again. **Re-close** posts the closing again with the new figures; **Cancel Closing** removes it.
+- **Re-closing after a change in an old year** (top of the screen):
+  - **Auto** - when anything dated in a closed (or re-opened) year changes, its closing and every later one are re-posted by themselves (when Fiscal Years or a financial statement is opened);
+  - **Manual** - the year only shows **Re-closing required** (with the reason); press **Re-close** (or **Re-close all**).
+- Nothing dated in a closed year can be posted, cancelled or changed - the entry is refused before anything is saved.
 
 **Branches & Warehouses**
 

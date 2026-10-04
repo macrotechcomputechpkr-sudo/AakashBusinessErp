@@ -10,10 +10,11 @@
 //        those fields, since that is a one-time admin/ops action.
 // =============================================
 
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useEnterKeyNavigation } from '../hooks/useEnterKeyNavigation';
+import { adToBs } from '../utils/bsCalendar';
 
 const nepalProvinces = ['Province 1', 'Province 2', 'Bagmati', 'Gandaki', 'Lumbini', 'Karnali', 'Sudurpashchim'];
 
@@ -32,18 +33,38 @@ const emptyForm = {
     contact_person: '', contact_designation: '', contact_email: '', contact_phone: '', contact_mobile: '',
     tax_office: '', tax_payer_type: 'entity', fiscal_year_start_month: 7, fiscal_year_start_day: 16,
     accounting_standard: 'NFRS',
+    // first fiscal year (BS) and, for a further company inside a tenant, its short code
+    fy_start_year: '', fy_start_month: 4, company_suffix: '',
     // Only used for the super-admin "brand new tenant" path:
     db_host: '', db_name: '', db_anon_key: '', db_service_key: ''
 };
 
+const BS_MONTHS = ['Baishakh', 'Jestha', 'Ashadh', 'Shrawan', 'Bhadra', 'Ashwin', 'Kartik', 'Mangsir', 'Poush', 'Magh', 'Falgun', 'Chaitra'];
+
 const CompanyCreation = () => {
-    const { isSuperAdmin, tenants, authFetch } = useAuth();
+    const { isSuperAdmin, tenants, tenant: myTenant, authFetch, switchTenant } = useAuth();
     const navigate = useNavigate();
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState('');
     const [selectedTenant, setSelectedTenant] = useState('');
     const [isNewTenant, setIsNewTenant] = useState(false);
-    const [formData, setFormData] = useState(emptyForm);
+    // own PostgreSQL server: the company's database is created by the server
+    // (code = a 9-digit number), so no Supabase fields are asked
+    const [localDb, setLocalDb] = useState(false);
+    useEffect(() => {
+        fetch('/api/health').then(r => r.json()).then(d => { if (d.db_mode === 'local') { setLocalDb(true); setIsNewTenant(true); } }).catch(() => {});
+    }, []);
+    const [formData, setFormData] = useState(() => {
+        // the fiscal year running today: from Shrawan of this BS year, or of last year before Shrawan
+        const bs = adToBs(new Date().toISOString().slice(0, 10));
+        const y = bs ? (bs.month >= 4 ? bs.year : bs.year - 1) : 2082;
+        return { ...emptyForm, fy_start_year: y };
+    });
+    const fyYears = Array.from({ length: 12 }, (_, i) => (Number(formData.fy_start_year) || 2082) + 3 - i).sort((a, b) => a - b);
+    // a further company: inside the user's own tenant, or under a tenant the super admin picked that already has one
+    const pickedTenant = isSuperAdmin && !isNewTenant ? (tenants || []).find(t => t.tenant_code === selectedTenant) : null;
+    const childCompany = isSuperAdmin ? !!pickedTenant?.is_company_created : !!myTenant?.is_company_created;
+    const childBase = String((isSuperAdmin ? pickedTenant?.tenant_code : myTenant?.tenant_code) || '').split('_')[0];
     const formRef = useRef(null);
     useEnterKeyNavigation(formRef);
 
@@ -89,6 +110,8 @@ const CompanyCreation = () => {
 
             // super admin: show the new company's admin login once before leaving
             if (data.admin_login) { setCreated(data.admin_login); return; }
+            // a company opened inside the tenant: go straight into it
+            if (data.tenant_id && myTenant?.id && data.tenant_id !== myTenant.id) { await switchTenant(data.tenant_id); }
             navigate('/dashboard');
         } catch (err) {
             setError(err.message || 'Failed to create company');
@@ -141,7 +164,7 @@ const CompanyCreation = () => {
                             <div className="mb-6 p-4 bg-yellow-50 border border-yellow-200 rounded-lg space-y-3">
                                 <label className="flex items-center gap-2 text-sm font-medium text-yellow-800">
                                     <input type="checkbox" checked={isNewTenant} onChange={e => setIsNewTenant(e.target.checked)} />
-                                    Provision a brand new tenant (needs a fresh Supabase project)
+                                    {localDb ? 'Create a brand new company (its own database is created automatically; company code = 9-digit number)' : 'Provision a brand new tenant (needs a fresh Supabase project)'}
                                 </label>
 
                                 {!isNewTenant ? (
@@ -151,11 +174,13 @@ const CompanyCreation = () => {
                                             <option value="">Select a tenant...</option>
                                             {tenants?.map(t => (
                                                 <option key={t.id} value={t.tenant_code}>
-                                                    {t.company_name || t.tenant_code}{t.is_company_created ? ' (Already Created)' : ' (Pending)'}
+                                                    {t.company_name || t.tenant_code}{t.is_company_created ? ' - add another company to this tenant' : ' (Pending)'}
                                                 </option>
                                             ))}
                                         </select>
                                     </div>
+                                ) : localDb ? (
+                                    <p className="text-xs text-yellow-800">The server creates the database <code>erp_&lt;company code&gt;</code> with all tables, a Main branch / warehouse and the company admin login. Nothing else to enter.</p>
                                 ) : (
                                     <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
                                         <input name="db_host" value={formData.db_host} onChange={handleChange} placeholder="https://xxxx.supabase.co" className="erp-input" required />
@@ -188,7 +213,7 @@ const CompanyCreation = () => {
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">PAN Number *</label>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">PAN / VAT Number *</label>
                                 <input type="text" name="pan_number" value={formData.pan_number} onChange={handleChange} placeholder="e.g., 123456789" className="erp-input" required />
                             </div>
 
@@ -209,11 +234,6 @@ const CompanyCreation = () => {
                             </div>
 
                             <div>
-                                <label className="block text-sm font-medium text-gray-700 mb-1">VAT Number</label>
-                                <input type="text" name="vat_number" value={formData.vat_number} onChange={handleChange} className="erp-input" />
-                            </div>
-
-                            <div>
                                 <label className="block text-sm font-medium text-gray-700 mb-1">CIN Number</label>
                                 <input type="text" name="cin_number" value={formData.cin_number} onChange={handleChange} className="erp-input" />
                             </div>
@@ -229,6 +249,26 @@ const CompanyCreation = () => {
                                     <option value="Cash Basis">Cash Basis</option>
                                 </select>
                             </div>
+                            {/* the company's first fiscal year: BS starting year + month (Nepal: Shrawan) */}
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Starting Year (BS) *</label>
+                                <select name="fy_start_year" value={formData.fy_start_year} onChange={handleChange} className="erp-input" required>
+                                    {fyYears.map(y => <option key={y} value={y}>{y}/{String(y + 1).slice(-2)}</option>)}
+                                </select>
+                            </div>
+                            <div>
+                                <label className="block text-sm font-medium text-gray-700 mb-1">Starting Month *</label>
+                                <select name="fy_start_month" value={formData.fy_start_month} onChange={handleChange} className="erp-input" required>
+                                    {BS_MONTHS.map((m, i) => <option key={m} value={i + 1}>{m}</option>)}
+                                </select>
+                            </div>
+                            {childCompany && (
+                                <div>
+                                    <label className="block text-sm font-medium text-gray-700 mb-1">Company short code</label>
+                                    <input type="text" name="company_suffix" value={formData.company_suffix} onChange={handleChange} placeholder="e.g. abc (blank = initials)" maxLength={12} className="erp-input" />
+                                    <p className="text-xs text-gray-500 mt-1">Company code becomes <code>{childBase}_{(formData.company_suffix || 'abc').toLowerCase()}</code>, database <code>erp_{childBase}_…</code></p>
+                                </div>
+                            )}
                         </div>
 
                         <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-6">

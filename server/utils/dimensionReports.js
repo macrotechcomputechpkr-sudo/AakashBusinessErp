@@ -62,7 +62,8 @@ const DOCS = {
     agent_commission: ['agent_commission_postings', null, 'Agent Commission'],
     construction_ra_bill: ['construction_ra_bills', null, 'Running Bill (Construction)'], construction_sub_bill: ['construction_subcontract_bills', null, 'Sub-contract Bill'],
     construction_wage: ['construction_wage_sheets', null, 'Wage Sheet'],
-    auto_job_invoice: ['auto_job_cards', null, 'Job Card Invoice'], auto_outside_work: ['auto_outside_works', null, 'Outside Work (Job Card)']
+    auto_job_invoice: ['auto_job_cards', null, 'Job Card Invoice'], auto_outside_work: ['auto_outside_works', null, 'Outside Work (Job Card)'],
+    year_closing: ['fiscal_year_closings', null, 'Year Closing']
 };
 // module of each GL document type (Module filter)
 const MODULES = { sales: 'Sales', purchase: 'Purchase', cash_bank: 'Cash / Bank / PDC', journal: 'Journal / Notes', inventory: 'Inventory / Production', other: 'Other (interest, depreciation, commission ...)' };

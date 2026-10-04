@@ -13,7 +13,7 @@ const express = require('express');
 const { checkNegativeStock } = require('../utils/negativeStock');
 const { stockLines } = require('../utils/stockItems');
 const { purchaseVatByLedger } = require('../utils/vatLedger');
-const { lineUnitCosts } = require('../utils/purchaseStockCost');
+const { lineUnitCosts, loadDocTerms } = require('../utils/purchaseStockCost');
 const { checkAccountPurposes } = require('../utils/ledgerPurpose');
 const { bumpAltCounter } = require('../utils/progressCounters');
 const { checkCompulsoryFields, lockProtectedFields } = require('../utils/entryFieldRules');
@@ -82,7 +82,7 @@ async function postReturnStockMovements(tenantClient, tenantId, returnDoc, detai
     if (rows.length > 0) {
         // cost = the line's share of the goods value without VAT / base qty (same rule as GRN / Bill)
         const vatTotal = (await purchaseVatByLedger(tenantClient, tenantId, 'purchase_return', returnDoc.id)).reduce((s, p) => s + Number(p.amount || 0), 0);
-        const costs = lineUnitCosts(returnDoc, allDetails, d => (rows.find(r => r._detail === d) || {})._baseQty, vatTotal);
+        const costs = lineUnitCosts(returnDoc, allDetails, d => (rows.find(r => r._detail === d) || {})._baseQty, vatTotal, await loadDocTerms(tenantClient, 'purchase_return', returnDoc.id));
         rows.forEach(r => { const c = costs[r._detail.id]; if (c !== null && c !== undefined) r.unit_cost = c; else if (r.unit_cost === null) r.unit_cost = Number(r._detail.rate) || 0; delete r._detail; delete r._baseQty; });
         const { error } = await tenantClient.from('stock_movements').insert(rows);
         if (error) throw error;
