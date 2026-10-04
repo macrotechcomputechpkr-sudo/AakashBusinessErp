@@ -93,9 +93,9 @@ The effect of each transaction is shown in a box like this:
 **Billing Terms**
 
 - Define terms used in bills:
-  - **Type**: Normal, VAT or Excise.
-  - **Sign**: add or deduct.
-  - **Basis**: value or quantity.
+  - **Use As** (sales and purchase terms): **VAT**, **Excise Duty**, **Discount** or **Other Addition**. VAT and Excise Duty post to the VAT / Excise ledgers and reports; a Discount always deducts and an Other Addition always adds (the Sign follows; only a Rounded Off term sets its own sign).
+  - **Sign**: add or deduct (set by Use As).
+  - **Basis**: value or quantity. On a purchase the term reaches the stock value on the same basis: an over-all term with Basis = Quantity is shared over the lines by qty (base units), with Basis = Value by line value; a product-wise term stays on its line. A term with *Include in costing* off is not put into stock (Purchase vs Stock reconciliation shows it as not in costing). Example: Freight 300 by quantity on 10 pcs A + 20 pcs B gives A 100 and B 200; a 10 % discount by value takes 100 from each of A and B (1,000 each).
   - **Calculation**: percentage, fixed rate, or formula, with an optional cap.
   - **Order** of calculation.
   - **Ledger** and sub-ledgers: Billing Ledger + Billing Sub-Ledger, Return Ledger + Return Sub-Ledger, Expiry Return Ledger + Expiry Return Sub-Ledger.
@@ -596,7 +596,18 @@ The main switchboard:
 
 **Fiscal Years**
 
-- Create and close fiscal years (BS). Numbering and reports follow the fiscal year.
+- Create fiscal years (BS). Numbering and reports follow the fiscal year.
+- **Year Closing…** (on a year) shows what closing posts, then **Post Year Closing**:
+  - every Profit & Loss ledger (income / expenses) is brought to nil against the **Profit & Loss A/c** (an Equity ledger, made the first time if there is none);
+  - the **closing stock** (valued by the chosen method, e.g. Weighted Average) goes to the **Closing Stock A/c** and is carried forward as the next year's **opening stock** (item-wise list under **Stock c/f**);
+  - the year's net profit / loss lands in the Profit & Loss A/c, the year is locked and the next year becomes current.
+  - One closing voucher (type *Year Closing*, dated the year's last day) does all of this; the year's P&L and Trial Balance still show the year before closing, the next year's Trial Balance opens with nil P&L heads.
+  - Years are closed in order (the earlier year first).
+- **Re-open** opens a closed year for changes again. **Re-close** posts the closing again with the new figures; **Cancel Closing** removes it.
+- **Re-closing after a change in an old year** (top of the screen):
+  - **Auto** - when anything dated in a closed (or re-opened) year changes, its closing and every later one are re-posted by themselves (when Fiscal Years or a financial statement is opened);
+  - **Manual** - the year only shows **Re-closing required** (with the reason); press **Re-close** (or **Re-close all**).
+- Nothing dated in a closed year can be posted, cancelled or changed - the entry is refused before anything is saved.
 
 **Branches & Warehouses**
 

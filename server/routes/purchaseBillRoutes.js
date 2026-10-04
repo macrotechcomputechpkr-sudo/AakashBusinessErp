@@ -11,7 +11,7 @@
 
 const express = require('express');
 const { stockLines } = require('../utils/stockItems');
-const { lineUnitCosts, refreshLandedCost } = require('../utils/purchaseStockCost');
+const { lineUnitCosts, loadDocTerms, refreshLandedCost } = require('../utils/purchaseStockCost');
 const { purchaseVatByLedger } = require('../utils/vatLedger');
 const { checkAccountPurposes } = require('../utils/ledgerPurpose');
 const { bumpAltCounter, rollHeaderStatus, moveSourceProgress } = require('../utils/progressCounters');
@@ -60,7 +60,7 @@ async function postBillStockMovements(tenantClient, tenantId, bill, details) {
     if (rows.length > 0) {
         // cost = the line's share of the goods value without VAT (what the purchase account gets) / base qty
         const vatTotal = (await purchaseVatByLedger(tenantClient, tenantId, 'purchase_bill', bill.id)).reduce((s, p) => s + Number(p.amount || 0), 0);
-        const costs = lineUnitCosts(bill, allDetails, d => (rows.find(r => r._detail === d) || {})._baseQty, vatTotal);
+        const costs = lineUnitCosts(bill, allDetails, d => (rows.find(r => r._detail === d) || {})._baseQty, vatTotal, await loadDocTerms(tenantClient, 'purchase_bill', bill.id));
         rows.forEach(r => { const c = costs[r._detail.id]; if (c !== null && c !== undefined) r.unit_cost = c; else if (r.unit_cost === null) r.unit_cost = Number(r._detail.rate) || 0; delete r._detail; delete r._baseQty; });
         const { error } = await tenantClient.from('stock_movements').insert(rows);
         if (error) throw error;

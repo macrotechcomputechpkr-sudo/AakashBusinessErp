@@ -44,7 +44,8 @@ const GL_DOC_TYPES = {
     interest_posting:           { model: 'journal',   label: 'Interest Posting',         headerTable: 'interest_runs' },
     depreciation:               { model: 'journal',   label: 'Depreciation',             headerTable: 'depreciation_runs' },
     asset_disposal:             { model: 'journal',   label: 'Asset Disposal',           headerTable: 'depreciation_runs' },
-    agent_commission:           { model: 'journal',   label: 'Agent Commission',         headerTable: 'agent_commission_postings' }
+    agent_commission:           { model: 'journal',   label: 'Agent Commission',         headerTable: 'agent_commission_postings' },
+    year_closing:               { model: 'journal',   label: 'Year Closing',             headerTable: 'fiscal_year_closings' }
 };
 const MODELS = { sales: 'Sales', purchase: 'Purchase', cash_bank: 'Cash / Bank', journal: 'Journal / Notes', production: 'Production' };
 // Billing Terms are stored under these same document_type names.

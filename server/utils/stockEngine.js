@@ -60,6 +60,18 @@ const SUMMARY_OF = { purchase_grn: 'purchase', purchase_bill: 'purchase', purcha
 const SUMMARY_LABEL = { purchase: 'Purchase', purchase_return: 'Purchase Return', sales: 'Sales', sales_return: 'Sales Return', production: 'Production', stock_transfer: 'Stock Transfer',
     stock_adjustment: 'Stock Adjustment', goods_in_transit: 'Goods in Transit' };
 
+// marker event: the end of a closed fiscal year (see loadItems)
+const YEAR_END = '__year_end';
+/** add a YEAR_END marker (last of its day) for every closed year end up to `to` to each event list */
+async function addYearEnds(tenantClient, tenantId, to, lists) {
+    let ends = [];
+    try {
+        const { data } = await tenantClient.from('fiscal_year_closings').select('doc_date').eq('tenant_id', tenantId).lte('doc_date', to);
+        ends = [...new Set((data || []).map(r => String(r.doc_date).slice(0, 10)))];
+    } catch { ends = []; }                              // migration 159 not run yet
+    if (ends.length) lists.forEach(ev => ends.forEach(d => ev.push({ date: d, seq: '\uffff', qin: 0, qout: 0, cost: 0, src: YEAR_END, src_type: YEAR_END })));
+}
+
 // Company-level movements that never change stock qty or cost.
 const TRANSFER_KEYS = new Set(['stock_transfer', 'goods_in_transit']);
 
@@ -186,6 +198,10 @@ async function loadItems(tenantClient, tenantId, to, filters = {}) {
     });
     moves.forEach(m => events[m.product_id].push({ date: String(m.movement_date).slice(0, 10), seq: m.created_at || '', qin: Number(m.qty_in) || 0, qout: Number(m.qty_out) || 0, cost: RETURN_IN.has(m.source_type) ? 0 : Number(m.unit_cost) || 0,
         src: m.source_type || 'other', batch_no: m.batch_no || null, serial_no: m.serial_no || null }));
+    // Year closing (utils/yearClosing.js): a closed year's closing stock is the next
+    // year's opening stock - at each closed year end the periodic weighted average
+    // starts again from that stock (qty x closing rate), as a new period does.
+    await addYearEnds(tenantClient, tenantId, to, Object.values(events));
     Object.values(events).forEach(ev => ev.sort((a, b) => a.date.localeCompare(b.date) || String(a.seq).localeCompare(String(b.seq))));
     return { products, events };
 }
@@ -198,6 +214,10 @@ function itemMovement(ev, method, from, to) {
     const snap = () => ({ qty: st.qty, value: valueOf(st, method) });
     for (const e of ev) {
         if (e.date > to) break;
+        if (e.src === YEAR_END) {                       // closed year end: carry the stock forward as opening
+            if (method === 'weighted_average') { const v = valueOf(st, method); st.sumQ = Math.max(st.qty, 0); st.sumV = v; }
+            continue;
+        }
         const inPeriod = !from || e.date >= from;
         if (inPeriod && !opening) opening = snap();
         if (e.src === 'stock_transfer') {               // company level: no effect on qty or cost
@@ -326,6 +346,7 @@ async function costRatesOn(tenantClient, tenantId, wants, method = 'moving_avera
     pids.forEach(pid => {
         const eff = methodFor(P[pid], method, cs), m = eff.method;
         const apply = (st, e, withIssue) => {
+            if (e.src === YEAR_END) { if (m === 'weighted_average') { const v = valueOf(st, m); st.sumQ = Math.max(st.qty, 0); st.sumV = v; } return; }
             if (e.src === 'stock_transfer') return;            // company level: no effect
             if (e.qin > 0) { receive(st, e.qin, e.cost, e.key); if (e.cost > 0 && PURCHASE_SOURCES.has(e.src)) st.last = e.cost; }
             if (withIssue && e.qout > 0) issue(st, e.qout, m, e.key);
@@ -363,4 +384,4 @@ async function costRatesOn(tenantClient, tenantId, wants, method = 'moving_avera
     return out;
 }
 
-module.exports = { stockMovement, closingStock, costRatesOn, METHODS, MODULE_LABEL, TRANSFER_KEYS, itemMovement, costingSettings, methodFor, keyEvents, COSTING_CHOICES };
+module.exports = { YEAR_END, addYearEnds, stockMovement, closingStock, costRatesOn, METHODS, MODULE_LABEL, TRANSFER_KEYS, itemMovement, costingSettings, methodFor, keyEvents, COSTING_CHOICES };

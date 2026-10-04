@@ -76,7 +76,11 @@ const isCash = g => g && g.anchor === 'CASH_BANK';
 // ---------------------------------------------------------------- balances
 // Every ledger's signed (Dr +) master opening, movement before `from`, and
 // Dr/Cr within [from, to]. `from` null => everything up to `to` is "before".
-async function ledgerBalances(tenantClient, tenantId, { from, to, productCompanyId }) {
+// Year closing vouchers (utils/yearClosing.js): skipClosingInPeriod leaves out
+// the ones dated inside [from, to] (a period's P&L / Trial Balance is shown
+// before closing; a closing of an earlier year is part of the opening),
+// skipClosingOn leaves out the one dated that day.
+async function ledgerBalances(tenantClient, tenantId, { from, to, productCompanyId, skipClosingInPeriod = false, skipClosingOn = null }) {
     const ledgers = await fetchAll(() => tenantClient.from('ledger_accounts')
         .select('id, account_code, account_name, account_group_id, opening_balance, opening_balance_type').eq('tenant_id', tenantId));
     const bal = {};
@@ -84,13 +88,18 @@ async function ledgerBalances(tenantClient, tenantId, { from, to, productCompany
         bal[l.id] = { ...l, master: productCompanyId ? 0 : (l.opening_balance_type === 'cr' ? -1 : 1) * (Number(l.opening_balance) || 0), before: 0, dr: 0, cr: 0 };
     });
     const lines = await fetchAll(() => {
-        let q = tenantClient.from('ledger_transaction_lines').select('ledger_account_id, debit_amount, credit_amount, batch:batch_id!inner(batch_date)')
+        let q = tenantClient.from('ledger_transaction_lines').select('ledger_account_id, debit_amount, credit_amount, batch:batch_id!inner(batch_date, document_type)')
             .eq('tenant_id', tenantId).lte('batch.batch_date', to);
         if (productCompanyId) q = q.eq('product_company_id', productCompanyId);
         return q;
     });
     lines.forEach(l => {
         const b = bal[l.ledger_account_id]; if (!b) return;
+        if (l.batch.document_type === 'year_closing') {
+            const d = String(l.batch.batch_date).slice(0, 10);
+            if (skipClosingOn && d === skipClosingOn) return;
+            if (skipClosingInPeriod && (!from || d >= from)) return;
+        }
         const dr = Number(l.debit_amount) || 0, cr = Number(l.credit_amount) || 0;
         if (from && l.batch.batch_date >= from) { b.dr += dr; b.cr += cr; } else b.before += dr - cr;
     });
@@ -170,6 +179,13 @@ async function positionAt(tenantClient, tenantId, groups, asOf, stockMethod, man
     return { bals, stock, secOf, bsLedger, cumulativeProfit, openingDifference, invGL: round2(invGL) };
 }
 
+async function lastClosing(tenantClient, tenantId, asOf) {
+    try {
+        const { data } = await tenantClient.from('fiscal_year_closings').select('doc_no, doc_date').eq('tenant_id', tenantId).lte('doc_date', asOf).order('doc_date', { ascending: false }).limit(1);
+        return data && data[0] ? data[0].doc_no || String(data[0].doc_date).slice(0, 10) : null;
+    } catch { return null; }
+}
+
 async function balanceSheet(tenantClient, tenantId, { asOf, stockMethod, manualStock, productCompanyId }) {
     const groups = await loadGroups(tenantClient, tenantId);
     const P = await positionAt(tenantClient, tenantId, groups, asOf, stockMethod, manualStock, productCompanyId);
@@ -177,7 +193,10 @@ async function balanceSheet(tenantClient, tenantId, { asOf, stockMethod, manualS
     const assets = tree('assets'), liabilities = tree('liabilities'), equity = tree('equity');
     const unmapped = buildTree(groups, P.bals, b => P.bsLedger(b) && P.secOf(b) === 'unmapped', b => b.closing);
     const stockNode = { type: 'stock', id: 'closing_stock', name: `Closing Stock (${P.stock.method_label})`, amount: P.stock.value, children: [] };
-    const plNode = { type: 'profit', id: 'pl_account', name: 'Profit & Loss A/c (cumulative)', amount: P.cumulativeProfit, children: [] };
+    // after a year closing the closed years' profit sits in the Profit & Loss A/c ledger (Equity);
+    // this line is then the profit since the last closing
+    const closed = await lastClosing(tenantClient, tenantId, asOf);
+    const plNode = { type: 'profit', id: 'pl_account', name: closed ? `Profit & Loss (after year closing ${closed})` : 'Profit & Loss A/c (cumulative)', amount: P.cumulativeProfit, children: [] };
     const totalAssets = round2(sumTree(assets) + P.stock.value + Math.max(0, sumTree(unmapped)));
     const diffNode = Math.abs(P.openingDifference) > 0.005 ? [{ type: 'difference', id: 'opening_difference', name: 'Difference in Opening Balances', amount: P.openingDifference, children: [] }] : [];
     const totalLiabEq = round2(sumTree(liabilities) + sumTree(equity) + P.cumulativeProfit - Math.min(0, sumTree(unmapped)) + P.openingDifference);
@@ -192,7 +211,7 @@ async function balanceSheet(tenantClient, tenantId, { asOf, stockMethod, manualS
 
 async function profitAndLoss(tenantClient, tenantId, { from, to, stockMethod, manualOpening, manualClosing, productCompanyId }) {
     const groups = await loadGroups(tenantClient, tenantId);
-    const bals = await ledgerBalances(tenantClient, tenantId, { from, to, productCompanyId });
+    const bals = await ledgerBalances(tenantClient, tenantId, { from, to, productCompanyId, skipClosingInPeriod: true });
     const secOf = b => sectionOf(groups[b.account_group_id]);
     const net = (b, incomeSide) => incomeSide ? b.cr - b.dr : b.dr - b.cr;
     const tree = (sec, incomeSide) => buildTree(groups, bals, b => secOf(b) === sec, b => net(b, incomeSide));
@@ -218,9 +237,10 @@ async function profitAndLoss(tenantClient, tenantId, { from, to, stockMethod, ma
     };
 }
 
-async function trialBalance(tenantClient, tenantId, { from, to, productCompanyId }) {
+async function trialBalance(tenantClient, tenantId, { from, to, productCompanyId, afterClosing = false }) {
     const groups = await loadGroups(tenantClient, tenantId);
-    const bals = await ledgerBalances(tenantClient, tenantId, { from, to, productCompanyId });
+    // before closing by default: the year closing voucher dated in the period is left out
+    const bals = await ledgerBalances(tenantClient, tenantId, { from, to, productCompanyId, skipClosingInPeriod: !afterClosing });
     const rows = Object.values(bals).filter(b => Math.abs(b.opening) > 0.005 || b.dr > 0.005 || b.cr > 0.005 || Math.abs(b.closing) > 0.005);
     const tree = buildTree(groups, bals, b => rows.includes(b), b => b.closing);
     // attach opening/dr/cr to every node
@@ -276,7 +296,9 @@ async function ratiosAndFlows(tenantClient, tenantId, { from, to, stockMethod, p
     const days = Math.max(1, Math.round((new Date(to) - new Date(from)) / 86400000) + 1);
     const div = (a, b) => (b && Math.abs(b) > 1e-9) ? round2(a / b) : null;
     const avg = (a, b) => (a + b) / 2;
-    const interest = Object.values(P1.bals).filter(b => groups[b.account_group_id]?.anchor === 'INTEREST_EXPENSE').reduce((s, b) => s + (b.closing - b.master) - ((P0.bals[b.id]?.closing || 0) - (P0.bals[b.id]?.master || 0)), 0);
+    // the period's own movement (a year closing voucher nils interest expense at the year end)
+    const periodBals = await ledgerBalances(tenantClient, tenantId, { from, to, productCompanyId, skipClosingInPeriod: true });
+    const interest = Object.values(periodBals).filter(b => groups[b.account_group_id]?.anchor === 'INTEREST_EXPENSE').reduce((s, b) => s + b.dr - b.cr, 0);
     const ratio = (key, label, value, formula, category, unit = 'x') => ({ key, label, value, formula, category, unit });
     const ratios = [
         ratio('current_ratio', 'Current Ratio', div(s1.current_assets, s1.current_liabilities), 'Current Assets / Current Liabilities', 'Liquidity'),
@@ -368,7 +390,7 @@ async function schedules(tenantClient, tenantId, { from, to, productCompanyId })
 // sub-groups and ledgers.
 async function budgetVsActual(tenantClient, tenantId, budget, lines) {
     const groups = await loadGroups(tenantClient, tenantId);
-    const bals = await ledgerBalances(tenantClient, tenantId, { from: budget.date_from, to: budget.date_to });
+    const bals = await ledgerBalances(tenantClient, tenantId, { from: budget.date_from, to: budget.date_to, skipClosingInPeriod: true });
     const descendants = gid => { const out = new Set([gid]); let grew = true; while (grew) { grew = false; Object.values(groups).forEach(g => { if (g.parent_group_id && out.has(g.parent_group_id) && !out.has(g.id)) { out.add(g.id); grew = true; } }); } return out; };
     const natural = b => {
         const sec = sectionOf(groups[b.account_group_id]);

@@ -399,7 +399,7 @@ async function customerRfm(c, t, q) {
 async function expenseCompare(c, t, q) {
     const to = q.date_to || today(), from = q.date_from || `${to.slice(0, 4)}-01-01`;
     const cmp = comparePeriod(q, from, to);
-    const [groups, cur, prev] = await Promise.all([loadGroups(c, t), ledgerBalances(c, t, { from, to }), ledgerBalances(c, t, { from: cmp.from, to: cmp.to })]);
+    const [groups, cur, prev] = await Promise.all([loadGroups(c, t), ledgerBalances(c, t, { from, to, skipClosingInPeriod: true }), ledgerBalances(c, t, { from: cmp.from, to: cmp.to, skipClosingInPeriod: true })]);
     const rows = Object.values(cur).map(b => {
         const g = groups[b.account_group_id], sec = sectionOf(g);
         if (!/income|expense/.test(sec)) return null;

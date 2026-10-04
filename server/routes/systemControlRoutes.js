@@ -100,7 +100,7 @@ router.put('/system-control', requireAuth, loadUserPermissions, requirePermissio
         if (termTypes) {
             // keep each term's internal type in step with the mapping (VAT posting, VAT reports read it)
             const prevIds = termTypes.__prev;
-            const { data: terms } = await tenantClient.from('billing_terms').select('id, tax_type').eq('tenant_id', tenantId);
+            const { data: terms } = await tenantClient.from('billing_terms').select('id, tax_type, sign').eq('tenant_id', tenantId);
             for (const tm of terms || []) {
                 // a term taken out of the mapping loses the type the mapping gave it; others are left alone
                 const mapped = termTypes[tm.id];
@@ -108,7 +108,8 @@ router.put('/system-control', requireAuth, loadUserPermissions, requirePermissio
                 if (mapped === 'vat' || mapped === 'excise') want = mapped;
                 else if (mapped === 'keep') want = ['vat', 'excise', 'discount'].includes(tm.tax_type) ? 'none' : tm.tax_type;
                 else if (prevIds.has(tm.id) && ['vat', 'excise', 'discount'].includes(tm.tax_type)) want = 'none';
-                if (want !== tm.tax_type) await tenantClient.from('billing_terms').update({ tax_type: want }).eq('id', tm.id);
+                // "Use As" follows: VAT / Excise Duty, else the term's sign (Discount / Other Addition)
+                if (want !== tm.tax_type) await tenantClient.from('billing_terms').update({ tax_type: want, use_as: want === 'vat' || want === 'excise' ? want : tm.sign === '-' ? 'discount' : 'other_addition' }).eq('id', tm.id);
             }
         }
         await logAudit(tenantId, req.auth.userId, 'update_system_control', 'system_control_settings', data.id, { new_data: data });
